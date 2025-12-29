@@ -28,27 +28,71 @@ export class InstallService {
   async createTrackDirectory(): Promise<void> {
     try {
       const trackDir = path.join(this.workingDirectory, ".track");
-      const templatesDir = path.join(trackDir, "config/issues/templates");
+      const defaultTemplatesDir = path.join(trackDir, "config/issues/templates");
+      const userTemplatesDir = path.join(trackDir, "issues/templates");
 
       // Create directory structure
-      await this.fileSystem.mkdir(templatesDir, { recursive: true });
+      await this.fileSystem.mkdir(defaultTemplatesDir, { recursive: true });
+      await this.fileSystem.mkdir(userTemplatesDir, { recursive: true });
 
-      // Copy default templates
+      // Copy default templates to config directory
       const templatesSource = path.join(this.packageRoot, "templates/issues");
       const templates = ["feature.md", "bug.md", "enhancement.md", "task.md"];
 
       for (const template of templates) {
         await this.fileSystem.copyFile(
           path.join(templatesSource, template),
-          path.join(templatesDir, template)
+          path.join(defaultTemplatesDir, template)
         );
       }
+
+      // Create README in user templates directory
+      const userTemplatesReadme = `# User Templates
+
+This directory is for your custom issue templates.
+
+## How it works
+- Templates here override default templates in \`.track/config/issues/templates/\`
+- If a template with the same filename exists here, it takes precedence
+- Templates must be markdown files with YAML frontmatter
+
+## Example
+Copy a default template and customize it:
+\`\`\`bash
+cp .track/config/issues/templates/feature.md .track/issues/templates/my-feature.md
+\`\`\`
+
+Then edit \`my-feature.md\` to match your needs.
+
+## Frontmatter Format
+\`\`\`yaml
+---
+type: FEATURE | BUG | ENHANCEMENT | TASK
+priority: LOW | MEDIUM | HIGH | CRITICAL
+labels: [label1, label2]
+---
+\`\`\`
+
+## Template Metadata
+When a template is selected, its frontmatter values will be used as defaults for creating issues:
+- \`type\`: Issue type (FEATURE, BUG, ENHANCEMENT, or TASK)
+- \`priority\`: Issue priority (LOW, MEDIUM, HIGH, or CRITICAL)
+- \`labels\`: Array of labels to apply to the issue
+
+These values can still be overridden when creating an issue explicitly.
+`;
+
+      await this.fileSystem.writeFile(
+        path.join(userTemplatesDir, "README.md"),
+        userTemplatesReadme
+      );
 
       // Create default config
       const config = {
         version: "1.0.0",
         issueTemplates: {
           templatesPath: ".track/config/issues/templates/",
+          userTemplatesPath: ".track/issues/templates/",
           defaultTemplate: "feature.md",
         },
       };

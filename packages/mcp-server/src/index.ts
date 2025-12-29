@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import * as path from "node:path";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -8,60 +9,19 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { DatabaseService } from "./infrastructure/database.js";
 import { SqliteIssueRepository } from "./infrastructure/issue-repository.js";
-import type { Issue } from "./domain/issue.js";
+import { TemplateService } from "./infrastructure/template-service.js";
+import { NodeFileSystem } from "./infrastructure/file-system.js";
 
-// Get database path from environment
+// Get paths from environment
 const DATABASE_PATH =
   process.env["DATABASE_PATH"] || "./data/workflow.db";
+const TEMPLATES_PATH =
+  process.env["TEMPLATES_PATH"] || "./.track/config/issues/templates/";
 
 // Database and repository instances (initialized in main)
 let dbService: DatabaseService;
 let issueRepository: SqliteIssueRepository;
-
-// Available templates
-const availableTemplates = ["feature.md", "bug.md", "enhancement.md", "task.md"];
-
-// Template selection logic
-function selectTemplate(description: string): string {
-  const lower = description.toLowerCase();
-
-  if (
-    lower.includes("bug") ||
-    lower.includes("error") ||
-    lower.includes("broken") ||
-    lower.includes("failing")
-  ) {
-    return "bug.md";
-  }
-
-  if (
-    lower.includes("enhance") ||
-    lower.includes("improve") ||
-    lower.includes("optimize") ||
-    lower.includes("better")
-  ) {
-    return "enhancement.md";
-  }
-
-  if (
-    lower.includes("task") ||
-    lower.includes("chore") ||
-    lower.includes("setup")
-  ) {
-    return "task.md";
-  }
-
-  // Default to feature
-  return "feature.md";
-}
-
-// Extract type from template
-function getTypeFromTemplate(template: string): Issue["type"] {
-  if (template === "bug.md") return "BUG";
-  if (template === "enhancement.md") return "ENHANCEMENT";
-  if (template === "task.md") return "TASK";
-  return "FEATURE";
-}
+let templateService: TemplateService;
 
 // Create MCP server
 const server = new Server(
@@ -189,14 +149,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         useTemplate = true,
       } = args as any;
 
-      // Select template if requested
+      // Select template if requested and use metadata
       let templateUsed: string | undefined;
       let finalType = type;
+      let finalPriority = priority;
+      let finalLabels = labels;
 
       if (useTemplate) {
-        templateUsed = selectTemplate(description);
-        if (!finalType) {
-          finalType = getTypeFromTemplate(templateUsed);
+        try {
+          const template = await templateService.selectTemplate(description);
+          templateUsed = template.filename;
+
+          // Use template metadata as defaults (if not explicitly provided)
+          if (!finalType) {
+            finalType = template.metadata.type;
+          }
+          if (priority === "MEDIUM") {
+            // Only override if using default priority
+            finalPriority = template.metadata.priority;
+          }
+          if (labels.length === 0) {
+            // Only override if no labels provided
+            finalLabels = [...template.metadata.labels];
+          }
+        } catch (error) {
+          // Log error but continue without template
+          console.error("Failed to select template:", error);
         }
       }
 
@@ -206,9 +184,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         description,
         acceptanceCriteria,
         type: finalType || "FEATURE",
-        priority,
+        priority: finalPriority,
         status: "OPEN",
-        labels,
+        labels: finalLabels,
         templateUsed,
         createdBy: "claude-code",
       });
@@ -289,14 +267,48 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === "list_templates") {
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(availableTemplates, null, 2),
-          },
-        ],
-      };
+      try {
+        const templates = await templateService.getAvailableTemplates();
+        const discovery = await templateService.discoverTemplates();
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  available: templates,
+                  details: discovery.merged.map((t) => ({
+                    filename: t.filename,
+                    type: t.metadata.type,
+                    priority: t.metadata.priority,
+                    labels: t.metadata.labels,
+                    source: t.isUserDefined ? "user" : "default",
+                  })),
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  success: false,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      }
     }
 
     return {
@@ -334,10 +346,23 @@ async function main() {
   // Initialize repository
   issueRepository = new SqliteIssueRepository(dbService.getDb());
 
+  // Initialize template service
+  const fileSystem = new NodeFileSystem();
+  const workingDir = path.dirname(path.dirname(DATABASE_PATH)); // .track/data -> .track
+  const userTemplatesPath = path.join(workingDir, "issues/templates");
+  const defaultTemplatesPath = path.resolve(TEMPLATES_PATH);
+
+  templateService = new TemplateService(
+    fileSystem,
+    userTemplatesPath,
+    defaultTemplatesPath
+  );
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("dev-workflow MCP server running on stdio");
   console.error(`Database: ${DATABASE_PATH}`);
+  console.error(`Templates: ${defaultTemplatesPath} (defaults), ${userTemplatesPath} (user)`);
 }
 
 main().catch((error) => {

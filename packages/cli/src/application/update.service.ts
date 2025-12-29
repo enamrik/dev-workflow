@@ -171,24 +171,73 @@ export class UpdateService {
 
   /**
    * Update templates
-   * (Copies latest default templates, preserving user customizations)
+   * (Updates default templates, preserves user templates, ensures user templates directory exists)
    */
   async updateTemplates(): Promise<void> {
     try {
-      const templatesDir = path.join(this.workingDirectory, ".track/config/issues/templates");
+      const defaultTemplatesDir = path.join(this.workingDirectory, ".track/config/issues/templates");
+      const userTemplatesDir = path.join(this.workingDirectory, ".track/issues/templates");
       const templatesSource = path.join(this.packageRoot, "templates/issues");
       const templates = ["feature.md", "bug.md", "enhancement.md", "task.md"];
 
+      // Ensure user templates directory exists (for existing installations)
+      const userDirExists = await this.fileSystem.exists(userTemplatesDir);
+      if (!userDirExists) {
+        await this.fileSystem.mkdir(userTemplatesDir, { recursive: true });
+
+        // Create README in user templates directory
+        const userTemplatesReadme = `# User Templates
+
+This directory is for your custom issue templates.
+
+## How it works
+- Templates here override default templates in \`.track/config/issues/templates/\`
+- If a template with the same filename exists here, it takes precedence
+- Templates must be markdown files with YAML frontmatter
+
+## Example
+Copy a default template and customize it:
+\`\`\`bash
+cp .track/config/issues/templates/feature.md .track/issues/templates/my-feature.md
+\`\`\`
+
+Then edit \`my-feature.md\` to match your needs.
+
+## Frontmatter Format
+\`\`\`yaml
+---
+type: FEATURE | BUG | ENHANCEMENT | TASK
+priority: LOW | MEDIUM | HIGH | CRITICAL
+labels: [label1, label2]
+---
+\`\`\`
+
+## Template Metadata
+When a template is selected, its frontmatter values will be used as defaults for creating issues:
+- \`type\`: Issue type (FEATURE, BUG, ENHANCEMENT, or TASK)
+- \`priority\`: Issue priority (LOW, MEDIUM, HIGH, or CRITICAL)
+- \`labels\`: Array of labels to apply to the issue
+
+These values can still be overridden when creating an issue explicitly.
+`;
+
+        await this.fileSystem.writeFile(
+          path.join(userTemplatesDir, "README.md"),
+          userTemplatesReadme
+        );
+
+        console.log("✓ Created user templates directory");
+      }
+
+      // Update default templates (always overwrite to get latest versions)
       for (const template of templates) {
         const sourcePath = path.join(templatesSource, template);
-        const destPath = path.join(templatesDir, template);
-
-        // Only update if template doesn't exist (preserve user customizations)
-        const exists = await this.fileSystem.exists(destPath);
-        if (!exists) {
-          await this.fileSystem.copyFile(sourcePath, destPath);
-        }
+        const destPath = path.join(defaultTemplatesDir, template);
+        await this.fileSystem.copyFile(sourcePath, destPath);
       }
+
+      console.log("✓ Default templates updated");
+      console.log("  User templates in .track/issues/templates/ are preserved");
     } catch (error) {
       throw new UpdateError("Failed to update templates", error);
     }
