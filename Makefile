@@ -7,7 +7,7 @@ help:
 	@echo "  make install          - Install all dependencies"
 	@echo "  make build            - Build all packages"
 	@echo "  make clean            - Clean build artifacts"
-	@echo "  make reset            - Remove dev-workflow directories (.track/, .claude/skills/dev-workflow, .claude/agents/dev-workflow)"
+	@echo "  make reset            - Uninstall dev-workflow (run 'dev-workflow uninit')"
 	@echo "  make init             - Initialize dev-workflow in this repository"
 	@echo "  make dogfood          - Full reset + build + init (start dogfooding)"
 	@echo "  make test             - Run all tests"
@@ -27,11 +27,7 @@ clean:
 	pnpm --filter @dev-workflow/mcp-server clean
 
 reset:
-	@echo "🗑️  Removing dev-workflow directories..."
-	rm -rf .track
-	rm -rf .claude/skills/dev-workflow
-	rm -rf .claude/agents/dev-workflow
-	@echo "✓ Reset complete (preserved .claude/config and other .claude contents)"
+	@node packages/cli/dist/index.js uninit || true
 
 init: build
 	@echo "🚀 Initializing dev-workflow in current repository..."

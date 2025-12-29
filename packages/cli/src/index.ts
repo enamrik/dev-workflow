@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import { InstallService } from "./application/install.service.js";
 import { UpdateService } from "./application/update.service.js";
+import { UninstallService } from "./application/uninstall.service.js";
 import { NodeFileSystem } from "./infrastructure/file-system.js";
 
 function getPackageRoot(): string {
@@ -111,6 +112,47 @@ async function runUpdate(): Promise<void> {
   }
 }
 
+async function runUninit(): Promise<void> {
+  const fileSystem = new NodeFileSystem();
+  const workingDirectory = process.cwd();
+
+  // Check if initialized
+  const trackDir = path.join(workingDirectory, ".track");
+  const isInitialized = await fileSystem.exists(trackDir);
+
+  if (!isInitialized) {
+    console.error("❌ dev-workflow is not initialized in this directory.");
+    console.error("\nNothing to remove.");
+    process.exit(1);
+  }
+
+  const uninstaller = new UninstallService(fileSystem, workingDirectory);
+
+  try {
+    console.log("🗑️  Uninstalling dev-workflow...");
+
+    await uninstaller.removeTrackDirectory();
+    console.log("✓ Removed .track/ directory");
+
+    await uninstaller.removeSkills();
+    console.log("✓ Removed skills");
+
+    await uninstaller.removeSubagents();
+    console.log("✓ Removed subagents");
+
+    await uninstaller.unregisterMCPServer();
+    console.log("✓ Unregistered MCP server");
+
+    console.log("\n✨ dev-workflow uninstalled successfully!");
+    console.log("\nPreserved:");
+    console.log("- .claude/config/ (your Claude Code configuration)");
+    console.log("- Other .claude/ contents (your other integrations)");
+  } catch (error) {
+    console.error("Error during uninstall:", error);
+    process.exit(1);
+  }
+}
+
 function runMcp(): void {
   const currentFile = fileURLToPath(import.meta.url);
   const cliRoot = path.resolve(path.dirname(currentFile), "..");
@@ -159,6 +201,18 @@ program
       await runUpdate();
     } catch (error) {
       console.error("Error during update:", error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("uninit")
+  .description("Uninstall dev-workflow from current repository")
+  .action(async () => {
+    try {
+      await runUninit();
+    } catch (error) {
+      console.error("Error during uninstall:", error);
       process.exit(1);
     }
   });
