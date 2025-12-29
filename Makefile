@@ -16,11 +16,6 @@ help:
 install:
 	@echo "📦 Installing dependencies..."
 	pnpm install
-	@echo "🔧 Building better-sqlite3 native bindings..."
-	@echo "   (Using system libtool to avoid anaconda conflict)"
-	@cd node_modules/.pnpm/better-sqlite3@11.10.0/node_modules/better-sqlite3 && \
-		PATH="/usr/bin:/bin:/usr/sbin:/sbin:$$PATH" npm run build-release || \
-		echo "⚠️  Warning: better-sqlite3 build failed - database features will not work"
 
 build:
 	@echo "🔨 Building all packages..."
