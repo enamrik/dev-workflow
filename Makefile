@@ -7,7 +7,7 @@ help:
 	@echo "  make install          - Install all dependencies"
 	@echo "  make build            - Build all packages"
 	@echo "  make clean            - Clean build artifacts"
-	@echo "  make reset            - Remove .track/ and .claude/ directories"
+	@echo "  make reset            - Remove dev-workflow directories (.track/, .claude/skills/dev-workflow, .claude/agents/dev-workflow)"
 	@echo "  make init             - Initialize dev-workflow in this repository"
 	@echo "  make dogfood          - Full reset + build + init (start dogfooding)"
 	@echo "  make test             - Run all tests"
@@ -27,10 +27,11 @@ clean:
 	pnpm --filter @dev-workflow/mcp-server clean
 
 reset:
-	@echo "🗑️  Removing .track/ and .claude/ directories..."
+	@echo "🗑️  Removing dev-workflow directories..."
 	rm -rf .track
-	rm -rf .claude
-	@echo "✓ Reset complete"
+	rm -rf .claude/skills/dev-workflow
+	rm -rf .claude/agents/dev-workflow
+	@echo "✓ Reset complete (preserved .claude/config and other .claude contents)"
 
 init: build
 	@echo "🚀 Initializing dev-workflow in current repository..."
