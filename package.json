@@ -1,0 +1,32 @@
+{
+  "name": "dev-workflow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-driven development workflow system",
+  "author": "kravariere",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm -r --parallel dev",
+    "test": "pnpm -r test",
+    "clean": "pnpm -r clean && rm -rf node_modules",
+    "typecheck": "pnpm -r typecheck",
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.6",
+    "node-gyp": "^12.1.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0"
+  }
+}

@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data (gitignored for dev, user's .track/ also gitignored)
+data/
+*.db
+*.db-journal
+
+# Dogfooding - our own .track/ and .claude/ for building dev-workflow
+.track/
+.claude/

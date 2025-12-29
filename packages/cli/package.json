@@ -1,0 +1,26 @@
+{
+  "name": "@dev-workflow/cli",
+  "version": "0.1.0",
+  "description": "CLI for dev-workflow system",
+  "type": "module",
+  "bin": {
+    "dev-workflow": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dev-workflow/mcp-server": "workspace:*",
+    "commander": "^12.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.6",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

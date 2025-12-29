@@ -1,0 +1,38 @@
+{
+  "name": "@dev-workflow/mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server for dev-workflow task tracker",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./infrastructure/database.js": "./dist/infrastructure/database.js",
+    "./infrastructure/issue-repository.js": "./dist/infrastructure/issue-repository.js",
+    "./domain/issue.js": "./dist/domain/issue.js"
+  },
+  "bin": {
+    "dev-workflow-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "better-sqlite3": "^11.0.0",
+    "drizzle-orm": "^0.36.0",
+    "sql.js": "^1.10.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^20.10.6",
+    "@types/sql.js": "^1.4.9",
+    "drizzle-kit": "^0.28.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
