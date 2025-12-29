@@ -7,6 +7,7 @@ import * as path from "node:path";
 import { InstallService } from "./application/install.service.js";
 import { UpdateService } from "./application/update.service.js";
 import { UninstallService } from "./application/uninstall.service.js";
+import { UIService } from "./application/ui.service.js";
 import { NodeFileSystem } from "./infrastructure/file-system.js";
 
 function getPackageRoot(): string {
@@ -153,6 +154,30 @@ async function runUninit(): Promise<void> {
   }
 }
 
+async function runUI(): Promise<void> {
+  const fileSystem = new NodeFileSystem();
+  const workingDirectory = process.cwd();
+
+  // Check if initialized
+  const trackDir = path.join(workingDirectory, ".track");
+  const isInitialized = await fileSystem.exists(trackDir);
+
+  if (!isInitialized) {
+    console.error("❌ dev-workflow is not initialized in this directory.");
+    console.error("\nRun: dev-workflow init");
+    process.exit(1);
+  }
+
+  const uiService = new UIService(fileSystem, workingDirectory);
+
+  try {
+    await uiService.start();
+  } catch (error) {
+    console.error("Error starting UI:", error);
+    process.exit(1);
+  }
+}
+
 function runMcp(): void {
   const currentFile = fileURLToPath(import.meta.url);
   const cliRoot = path.resolve(path.dirname(currentFile), "..");
@@ -225,6 +250,18 @@ program
       runMcp();
     } catch (error) {
       console.error("Error starting MCP server:", error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("ui")
+  .description("Start web UI for dev-workflow")
+  .action(async () => {
+    try {
+      await runUI();
+    } catch (error) {
+      console.error("Error starting UI:", error);
       process.exit(1);
     }
   });

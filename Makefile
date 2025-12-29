@@ -1,4 +1,11 @@
-.PHONY: help install build clean reset init dogfood test test-npm-install
+# Global installation support
+SHELL := /bin/bash
+PNPM_HOME ?= $(HOME)/Library/pnpm
+export PNPM_HOME
+export PATH := $(PNPM_HOME):$(PATH)
+DEV_WORKFLOW := $(PNPM_HOME)/dev-workflow
+
+.PHONY: help install build clean reset init dogfood test test-npm-install link unlink
 
 help:
 	@echo "dev-workflow - Makefile commands"
@@ -7,9 +14,11 @@ help:
 	@echo "  make install          - Install all dependencies"
 	@echo "  make build            - Build all packages"
 	@echo "  make clean            - Clean build artifacts"
+	@echo "  make link             - Install dev-workflow globally (for testing in other repos)"
+	@echo "  make unlink           - Uninstall global dev-workflow"
 	@echo "  make reset            - Uninstall dev-workflow (run 'dev-workflow uninit')"
 	@echo "  make init             - Initialize dev-workflow in this repository"
-	@echo "  make dogfood          - Full reset + build + init (start dogfooding)"
+	@echo "  make dogfood          - Full reset + build + global link + init (start dogfooding)"
 	@echo "  make test             - Run all tests"
 	@echo "  make test-npm-install - Test npm install scenario (simulates user install)"
 
@@ -26,12 +35,47 @@ clean:
 	pnpm --filter @dev-workflow/cli clean
 	pnpm --filter @dev-workflow/mcp-server clean
 
-reset:
-	@node packages/cli/dist/index.js uninit || true
+link: build
+	@echo "🔗 Linking dev-workflow globally for development..."
+	@cd packages/mcp-server && pnpm link --global
+	@cd packages/cli && pnpm link --global
+	@echo "✓ dev-workflow is now linked globally"
+	@echo ""
+	@if ! command -v dev-workflow >/dev/null 2>&1; then \
+		echo "⚠️  dev-workflow is NOT in your PATH yet!"; \
+		echo ""; \
+		echo "To fix this, add these lines to your ~/.zshrc (or ~/.bashrc):"; \
+		echo ""; \
+		echo '  export PNPM_HOME="$(PNPM_HOME)"'; \
+		echo '  export PATH="$$PNPM_HOME:$$PATH"'; \
+		echo ""; \
+		echo "Then run: source ~/.zshrc"; \
+		echo ""; \
+		echo "Or run pnpm setup to do this automatically:"; \
+		echo "  pnpm setup && source ~/.zshrc"; \
+		echo ""; \
+		echo "Until then, use the full path:"; \
+		echo "  $(DEV_WORKFLOW) init"; \
+		echo "  $(DEV_WORKFLOW) ui"; \
+	else \
+		echo "✓ dev-workflow is available on your PATH!"; \
+		echo ""; \
+		echo "You can now use these commands anywhere:"; \
+		echo "  dev-workflow init"; \
+		echo "  dev-workflow ui"; \
+	fi
 
-init: build
+unlink:
+	@echo "🔓 Uninstalling global dev-workflow..."
+	@pnpm remove -g @dev-workflow/cli || true
+	@echo "✓ Global dev-workflow removed"
+
+reset:
+	@$(DEV_WORKFLOW) uninit || true
+
+init: link
 	@echo "🚀 Initializing dev-workflow in current repository..."
-	node packages/cli/dist/index.js init
+	@$(DEV_WORKFLOW) init
 	@echo ""
 	@echo "✨ Dogfooding setup complete!"
 	@echo ""
@@ -39,10 +83,16 @@ init: build
 	@echo "  1. Open Claude Code in this repository"
 	@echo "  2. Say: 'Show me issue #1'"
 	@echo "  3. Start using dev-workflow to build dev-workflow!"
+	@echo "  4. Or run '$(DEV_WORKFLOW) ui' to open the web UI"
 
-dogfood: reset install build init
+dogfood: reset install build link init
 	@echo ""
-	@echo "🐕 Ready to dogfood! You can now use dev-workflow to develop dev-workflow."
+	@echo "🐕 Ready to dogfood! You can now use dev-workflow anywhere on this machine."
+	@echo ""
+	@echo "Try these commands:"
+	@echo "  dev-workflow --help      - See all available commands"
+	@echo "  dev-workflow ui          - Start the web UI"
+	@echo "  cd /path/to/other/repo && dev-workflow init  - Use in other repos"
 
 test:
 	@echo "🧪 Running tests..."
