@@ -1,29 +1,21 @@
 /**
- * Test Helpers for MCP Server
+ * Test Helpers
  *
- * Utility functions for testing MCP tools.
+ * Utility functions for testing repositories, services, and MCP tools.
  */
 
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import {
-  SqliteIssueRepository,
-  SqlitePlanRepository,
-  SqliteTaskRepository,
-  SqliteSnapshotRepository,
-  VersioningService,
-  PlanningService,
-  TaskManagementService,
-  type Issue,
-  type IssueType,
-  type IssuePriority,
-  type IssueStatus,
-  type Plan,
-  type PlanComplexity,
-  type Task,
-  type TaskStatus,
-  type TaskSource,
-} from "@dev-workflow/core";
-import * as schema from "@dev-workflow/core";
+import * as schema from "../infrastructure/database/schema.js";
+import { SqliteIssueRepository } from "../infrastructure/repositories/issue-repository.js";
+import { SqlitePlanRepository } from "../infrastructure/repositories/plan-repository.js";
+import { SqliteTaskRepository } from "../infrastructure/repositories/task-repository.js";
+import { SqliteSnapshotRepository } from "../infrastructure/repositories/snapshot-repository.js";
+import { VersioningService } from "../application/versioning-service.js";
+import { PlanningService } from "../application/planning-service.js";
+import { TaskManagementService } from "../application/task-management-service.js";
+import type { Issue, IssueType, IssuePriority, IssueStatus } from "../domain/issue.js";
+import type { Plan, PlanComplexity } from "../domain/plan.js";
+import type { Task, TaskStatus, TaskSource } from "../domain/task.js";
 import type { TestDatabase } from "./setup.js";
 
 /** Database type used by repositories */
@@ -33,6 +25,7 @@ type DbType = BetterSQLite3Database<typeof schema>;
  * Create all repositories from a database connection
  */
 export function createRepositories(db: TestDatabase["db"]) {
+  // Cast to the expected type - TestDatabase["db"] includes schema
   const typedDb = db as DbType;
   return {
     issueRepository: new SqliteIssueRepository(typedDb),
@@ -46,6 +39,7 @@ export function createRepositories(db: TestDatabase["db"]) {
  * Create all services from repositories
  */
 export function createServices(repos: ReturnType<typeof createRepositories>) {
+  // Create a mock hook config service for testing
   const mockHookConfigService = {
     loadConfig: async () => ({ label: "test", hooks: {} }),
     loadAndMergeConfigs: async () => ({ label: "merged", hooks: {} }),
@@ -175,9 +169,13 @@ export function createTestScenario(
 } {
   const { taskCount = 3, manualTaskCount = 0 } = options;
 
+  // Create issue
   const issue = createTestIssue(repos.issueRepository);
+
+  // Create plan
   const plan = createTestPlan(repos.planRepository, issue.id);
 
+  // Create generated tasks
   const tasks: Task[] = [];
   for (let i = 0; i < taskCount; i++) {
     tasks.push(
@@ -189,6 +187,7 @@ export function createTestScenario(
     );
   }
 
+  // Create manual tasks
   const manualTasks: Task[] = [];
   for (let i = 0; i < manualTaskCount; i++) {
     manualTasks.push(

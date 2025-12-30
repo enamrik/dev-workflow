@@ -1,7 +1,8 @@
 /**
- * Test Setup for MCP Server
+ * Test Setup
  *
- * Creates test database using core infrastructure.
+ * This file is run before each test file.
+ * It sets up the test database and provides cleanup utilities.
  */
 
 import { afterEach } from "vitest";
@@ -11,7 +12,7 @@ import { tmpdir } from "os";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import * as schema from "@dev-workflow/core";
+import * as schema from "../infrastructure/database/schema.js";
 
 /**
  * Type for the test database instance
@@ -39,9 +40,8 @@ export function createTestDatabase(): TestDatabase {
   const sqlite = new Database(dbPath);
   const db = drizzle(sqlite, { schema });
 
-  // Run migrations from core package
-  const corePath = require.resolve("@dev-workflow/core");
-  const migrationsPath = join(corePath, "../../drizzle");
+  // Run migrations
+  const migrationsPath = join(__dirname, "../../drizzle");
   if (existsSync(migrationsPath)) {
     migrate(db, { migrationsFolder: migrationsPath });
   }
@@ -61,8 +61,21 @@ export function createTestDatabase(): TestDatabase {
   };
 }
 
+/**
+ * Reset the database by deleting all data from all tables
+ */
+export function resetDatabase(sqlite: Database.Database): void {
+  // Delete in order to respect foreign keys
+  sqlite.exec("DELETE FROM task_status_history");
+  sqlite.exec("DELETE FROM tasks");
+  sqlite.exec("DELETE FROM plans");
+  sqlite.exec("DELETE FROM snapshots");
+  sqlite.exec("DELETE FROM issues");
+}
+
 // Global cleanup after all tests in a file
 afterEach(() => {
+  // Close any open database connections
   if (currentTestDb) {
     try {
       currentTestDb.close();
@@ -72,6 +85,7 @@ afterEach(() => {
     currentTestDb = null;
   }
 
+  // Clean up temp directory
   if (currentTestDbPath && existsSync(currentTestDbPath)) {
     try {
       rmSync(currentTestDbPath, { recursive: true, force: true });

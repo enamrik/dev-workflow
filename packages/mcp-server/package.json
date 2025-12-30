@@ -5,21 +5,13 @@
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
-    ".": "./dist/index.js",
-    "./infrastructure/database.js": "./dist/infrastructure/database.js",
-    "./infrastructure/issue-repository.js": "./dist/infrastructure/issue-repository.js",
-    "./infrastructure/plan-repository.js": "./dist/infrastructure/plan-repository.js",
-    "./infrastructure/task-repository.js": "./dist/infrastructure/task-repository.js",
-    "./domain/issue.js": "./dist/domain/issue.js",
-    "./domain/plan.js": "./dist/domain/plan.js",
-    "./domain/task.js": "./dist/domain/task.js"
+    ".": "./dist/index.js"
   },
   "bin": {
     "dev-workflow-mcp": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc && npm run copy-migrations",
-    "copy-migrations": "mkdir -p dist/drizzle && cp -r drizzle/* dist/drizzle/",
+    "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
@@ -28,19 +20,14 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
+    "@dev-workflow/core": "workspace:*",
     "@modelcontextprotocol/sdk": "^0.5.0",
-    "better-sqlite3": "^12.5.0",
-    "drizzle-orm": "^0.36.0",
-    "fastest-levenshtein": "^1.0.16",
-    "js-yaml": "^4.1.1",
-    "sql.js": "^1.10.3"
+    "drizzle-orm": "^0.36.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
-    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.10.6",
-    "@types/sql.js": "^1.4.9",
-    "drizzle-kit": "^0.28.0",
+    "better-sqlite3": "^12.5.0",
     "typescript": "^5.3.3",
     "vitest": "^2.0.0"
   },

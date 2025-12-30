@@ -158,7 +158,7 @@ export class UpdateService {
       }
 
       // Import and run migrations with automatic native/WASM detection
-      const { DatabaseService } = await import("@dev-workflow/mcp-server/infrastructure/database.js");
+      const { DatabaseService } = await import("@dev-workflow/core");
 
       const dbService = await DatabaseService.create(dbPath);
       dbService.runMigrations();

@@ -2,7 +2,7 @@ import * as path from "node:path";
 import open from "open";
 import { FileSystem } from "../infrastructure/file-system.js";
 import { findAvailablePort } from "../infrastructure/port-manager.js";
-import { createServer } from "../ui/server.js";
+import { createServer } from "@dev-workflow/web";
 
 export class UIError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -29,18 +29,12 @@ export class UIService {
 
       // Initialize database
       const dbPath = path.join(this.workingDirectory, ".track/data/workflow.db");
-      const { DatabaseService } = await import(
-        "@dev-workflow/mcp-server/infrastructure/database.js"
-      );
-      const { SqliteIssueRepository } = await import(
-        "@dev-workflow/mcp-server/infrastructure/issue-repository.js"
-      );
-      const { SqlitePlanRepository } = await import(
-        "@dev-workflow/mcp-server/infrastructure/plan-repository.js"
-      );
-      const { SqliteTaskRepository } = await import(
-        "@dev-workflow/mcp-server/infrastructure/task-repository.js"
-      );
+      const {
+        DatabaseService,
+        SqliteIssueRepository,
+        SqlitePlanRepository,
+        SqliteTaskRepository,
+      } = await import("@dev-workflow/core");
 
       const dbService = await DatabaseService.create(dbPath);
       const db = dbService.getDb();

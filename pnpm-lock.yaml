@@ -27,18 +27,18 @@ importers:
 
   packages/cli:
     dependencies:
+      '@dev-workflow/core':
+        specifier: workspace:*
+        version: link:../core
       '@dev-workflow/mcp-server':
         specifier: workspace:*
         version: link:../mcp-server
-      '@fastify/static':
-        specifier: ^8.0.3
-        version: 8.3.0
+      '@dev-workflow/web':
+        specifier: workspace:*
+        version: link:../web
       commander:
         specifier: ^12.0.0
         version: 12.1.0
-      fastify:
-        specifier: ^5.2.1
-        version: 5.6.2
       get-port:
         specifier: ^7.1.0
         version: 7.1.0
@@ -53,11 +53,8 @@ importers:
         specifier: ^5.3.3
         version: 5.9.3
 
-  packages/mcp-server:
+  packages/core:
     dependencies:
-      '@modelcontextprotocol/sdk':
-        specifier: ^0.5.0
-        version: 0.5.0
       better-sqlite3:
         specifier: ^12.5.0
         version: 12.5.0
@@ -95,6 +92,53 @@ importers:
       vitest:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.27)
+
+  packages/mcp-server:
+    dependencies:
+      '@dev-workflow/core':
+        specifier: workspace:*
+        version: link:../core
+      '@modelcontextprotocol/sdk':
+        specifier: ^0.5.0
+        version: 0.5.0
+      drizzle-orm:
+        specifier: ^0.36.0
+        version: 0.36.4(@types/better-sqlite3@7.6.13)(@types/sql.js@1.4.9)(better-sqlite3@12.5.0)(sql.js@1.13.0)
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.11
+        version: 7.6.13
+      '@types/node':
+        specifier: ^20.10.6
+        version: 20.19.27
+      better-sqlite3:
+        specifier: ^12.5.0
+        version: 12.5.0
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.27)
+
+  packages/web:
+    dependencies:
+      '@dev-workflow/core':
+        specifier: workspace:*
+        version: link:../core
+      '@fastify/static':
+        specifier: ^8.0.3
+        version: 8.3.0
+      fastify:
+        specifier: ^5.2.1
+        version: 5.6.2
+    devDependencies:
+      '@types/node':
+        specifier: ^20.10.6
+        version: 20.19.27
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
 
 packages:
 

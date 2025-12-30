@@ -8,16 +8,20 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
 import { createRepositories, createServices } from "../helpers.js";
-import { SqliteIssueRepository } from "../../infrastructure/issue-repository.js";
-import { SqlitePlanRepository } from "../../infrastructure/plan-repository.js";
-import { SqliteTaskRepository } from "../../infrastructure/task-repository.js";
-import { VersioningService } from "../../application/versioning-service.js";
-import { PlanningService } from "../../application/planning-service.js";
-import { TaskManagementService } from "../../application/task-management-service.js";
-import type { IssueType, IssuePriority, IssueStatus } from "../../domain/issue.js";
-import type { TaskStatus } from "../../domain/task.js";
-import type { PlanComplexity } from "../../domain/plan.js";
-import type { SnapshotType } from "../../domain/snapshot.js";
+import {
+  SqliteIssueRepository,
+  SqlitePlanRepository,
+  SqliteTaskRepository,
+  VersioningService,
+  PlanningService,
+  TaskManagementService,
+  type IssueType,
+  type IssuePriority,
+  type IssueStatus,
+  type TaskStatus,
+  type PlanComplexity,
+  type SnapshotType,
+} from "@dev-workflow/core";
 
 /**
  * Simulates MCP tool call results

@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * dev-workflow MCP Server
+ *
+ * Model Context Protocol server for issue tracking and task management.
+ * This file handles server bootstrap and tool routing only.
+ */
+
 import * as path from "node:path";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -7,41 +14,79 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { DatabaseService } from "./infrastructure/database.js";
-import { SqliteIssueRepository } from "./infrastructure/issue-repository.js";
-import { SqliteSnapshotRepository } from "./infrastructure/snapshot-repository.js";
-import { SqlitePlanRepository } from "./infrastructure/plan-repository.js";
-import { SqliteTaskRepository } from "./infrastructure/task-repository.js";
-import * as schema from "./infrastructure/schema.js";
-import { eq, asc } from "drizzle-orm";
-import { TemplateService } from "./infrastructure/template-service.js";
-import { NodeFileSystem } from "./infrastructure/file-system.js";
-import { VersioningService } from "./application/versioning-service.js";
-import { PlanningService } from "./application/planning-service.js";
-import { FileSystemHookConfigService } from "./application/hook-config-service.js";
-import { ShellHookExecutor } from "./application/hook-executor.js";
-import { TaskSessionService } from "./application/task-session-service.js";
-import { TaskManagementService } from "./application/task-management-service.js";
+
+// Import everything from core
+import {
+  DatabaseService,
+  SqliteIssueRepository,
+  SqliteSnapshotRepository,
+  SqlitePlanRepository,
+  SqliteTaskRepository,
+  TemplateService,
+  NodeFileSystem,
+  VersioningService,
+  PlanningService,
+  FileSystemHookConfigService,
+  ShellHookExecutor,
+  TaskSessionService,
+  TaskManagementService,
+  taskExecutionLogs,
+} from "@dev-workflow/core";
+
+// Import tools
+import {
+  // Tool definitions
+  issueToolDefinitions,
+  planToolDefinitions,
+  taskToolDefinitions,
+  snapshotToolDefinitions,
+  // Issue handlers
+  handleCreateIssue,
+  handleGetIssue,
+  handleListIssues,
+  handleListTemplates,
+  handleUpdateIssue,
+  // Plan handlers
+  handleGeneratePlan,
+  handleGetPlan,
+  // Task handlers
+  handleUpdateTaskStatus,
+  handleStartTaskSession,
+  handleCompleteTaskSession,
+  handleAbandonTaskSession,
+  handleGetTaskForSession,
+  handleListAvailableTasks,
+  handleUpdateTaskHookConfigs,
+  handleListHookConfigs,
+  handleAddManualTask,
+  handleDeleteTask,
+  handleUpdateTask,
+  handleGetTaskExecutionPrompt,
+  handleLogTaskProgress,
+  handleGetTaskExecutionLog,
+  // Snapshot handlers
+  handleGetSnapshotHistory,
+  handleRevertToSnapshot,
+  handleViewSnapshot,
+  // Types
+  type IssueToolContext,
+  type PlanToolContext,
+  type TaskToolContext,
+  type SnapshotToolContext,
+  errorResponse,
+} from "./tools/index.js";
 
 // Get paths from environment
-const DATABASE_PATH =
-  process.env["DATABASE_PATH"] || "./data/workflow.db";
+const DATABASE_PATH = process.env["DATABASE_PATH"] || "./data/workflow.db";
 const TEMPLATES_PATH =
   process.env["TEMPLATES_PATH"] || "./.track/config/issues/templates/";
 
-// Database and repository instances (initialized in main)
+// Service instances (initialized in main)
 let dbService: DatabaseService;
-let issueRepository: SqliteIssueRepository;
-let snapshotRepository: SqliteSnapshotRepository;
-let planRepository: SqlitePlanRepository;
-let taskRepository: SqliteTaskRepository;
-let templateService: TemplateService;
-let versioningService: VersioningService;
-let planningService: PlanningService;
-let hookConfigService: FileSystemHookConfigService;
-let hookExecutor: ShellHookExecutor;
-let taskSessionService: TaskSessionService;
-let taskManagementService: TaskManagementService;
+let issueToolContext: IssueToolContext;
+let planToolContext: PlanToolContext;
+let taskToolContext: TaskToolContext;
+let snapshotToolContext: SnapshotToolContext;
 
 // Create MCP server
 const server = new Server(
@@ -59,1504 +104,110 @@ const server = new Server(
 // List available tools
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
-    {
-      name: "create_issue",
-      description: "Create a new issue in the task tracker",
-      inputSchema: {
-        type: "object",
-        properties: {
-          title: {
-            type: "string",
-            description: "Issue title",
-          },
-          description: {
-            type: "string",
-            description: "Detailed description of the issue",
-          },
-          acceptanceCriteria: {
-            type: "array",
-            items: { type: "string" },
-            description: "List of acceptance criteria",
-          },
-          type: {
-            type: "string",
-            enum: ["FEATURE", "BUG", "ENHANCEMENT", "TASK"],
-            description: "Issue type",
-          },
-          priority: {
-            type: "string",
-            enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
-            description: "Issue priority",
-          },
-          labels: {
-            type: "array",
-            items: { type: "string" },
-            description: "Issue labels/tags",
-          },
-          useTemplate: {
-            type: "boolean",
-            description: "Auto-select template based on description",
-          },
-        },
-        required: ["title", "description"],
-      },
-    },
-    {
-      name: "get_issue",
-      description: "Get issue by ID or number",
-      inputSchema: {
-        type: "object",
-        properties: {
-          id: {
-            type: "string",
-            description: "Issue UUID",
-          },
-          number: {
-            type: "number",
-            description: "Issue number (e.g., 123 for #123)",
-          },
-        },
-      },
-    },
-    {
-      name: "list_issues",
-      description: "List issues with optional filters",
-      inputSchema: {
-        type: "object",
-        properties: {
-          status: {
-            type: "string",
-            enum: ["OPEN", "IN_PROGRESS", "CLOSED"],
-            description: "Filter by status",
-          },
-          type: {
-            type: "string",
-            enum: ["FEATURE", "BUG", "ENHANCEMENT", "TASK"],
-            description: "Filter by type",
-          },
-          labels: {
-            type: "array",
-            items: { type: "string" },
-            description: "Filter by labels",
-          },
-        },
-      },
-    },
-    {
-      name: "list_templates",
-      description: "List available issue templates",
-      inputSchema: {
-        type: "object",
-        properties: {},
-      },
-    },
-    {
-      name: "generate_plan",
-      description: "Generate or regenerate an implementation plan for an issue with tasks. Automatically preserves in-progress and completed tasks from previous plan when possible.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          issueId: {
-            type: "string",
-            description: "Issue UUID",
-          },
-          issueNumber: {
-            type: "number",
-            description: "Issue number (e.g., 123 for #123) - alternative to issueId",
-          },
-          summary: {
-            type: "string",
-            description: "Brief summary of the plan",
-          },
-          approach: {
-            type: "string",
-            description: "Detailed implementation approach (markdown)",
-          },
-          tasks: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                title: { type: "string" },
-                description: { type: "string" },
-                acceptanceCriteria: {
-                  type: "array",
-                  items: { type: "string" },
-                },
-                estimatedMinutes: { type: "number" },
-              },
-              required: ["title", "description"],
-            },
-            description: "Array of task definitions",
-          },
-          estimatedComplexity: {
-            type: "string",
-            enum: ["LOW", "MEDIUM", "HIGH", "VERY_HIGH"],
-            description: "Estimated complexity of the plan",
-          },
-          preserveExistingTasks: {
-            type: "boolean",
-            description: "Try to preserve in-progress/completed tasks (default: true)",
-          },
-        },
-        required: ["summary", "approach", "tasks", "estimatedComplexity"],
-      },
-    },
-    {
-      name: "get_plan",
-      description: "Get the active plan for an issue with tasks",
-      inputSchema: {
-        type: "object",
-        properties: {
-          issueId: {
-            type: "string",
-            description: "Issue UUID",
-          },
-          issueNumber: {
-            type: "number",
-            description: "Issue number (e.g., 123 for #123) - alternative to issueId",
-          },
-        },
-      },
-    },
-    {
-      name: "update_issue",
-      description: "Update an issue. Optionally regenerate plan after update (you'll need to call generate_plan separately if needed).",
-      inputSchema: {
-        type: "object",
-        properties: {
-          issueId: {
-            type: "string",
-            description: "Issue UUID",
-          },
-          issueNumber: {
-            type: "number",
-            description: "Issue number (e.g., 123 for #123) - alternative to issueId",
-          },
-          updates: {
-            type: "object",
-            properties: {
-              title: { type: "string" },
-              description: { type: "string" },
-              acceptanceCriteria: {
-                type: "array",
-                items: { type: "string" },
-              },
-              type: {
-                type: "string",
-                enum: ["FEATURE", "BUG", "ENHANCEMENT", "TASK"],
-              },
-              priority: {
-                type: "string",
-                enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
-              },
-              status: {
-                type: "string",
-                enum: ["OPEN", "IN_PROGRESS", "CLOSED"],
-              },
-              labels: {
-                type: "array",
-                items: { type: "string" },
-              },
-            },
-            description: "Fields to update on the issue",
-          },
-          regeneratePlan: {
-            type: "boolean",
-            description: "Automatically regenerate plan after update (default: false)",
-          },
-        },
-        required: ["updates"],
-      },
-    },
-    {
-      name: "update_task_status",
-      description: "Update task status. Records change in history without creating snapshot.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          taskId: {
-            type: "string",
-            description: "Task UUID",
-          },
-          status: {
-            type: "string",
-            enum: ["PENDING", "IN_PROGRESS", "COMPLETED", "ABANDONED"],
-            description: "New status for the task",
-          },
-          notes: {
-            type: "string",
-            description: "Optional notes about status change",
-          },
-        },
-        required: ["taskId", "status"],
-      },
-    },
-    {
-      name: "get_snapshot_history",
-      description: "Get version history for an issue showing all snapshots",
-      inputSchema: {
-        type: "object",
-        properties: {
-          issueId: {
-            type: "string",
-            description: "Issue UUID",
-          },
-          issueNumber: {
-            type: "number",
-            description: "Issue number (e.g., 123 for #123) - alternative to issueId",
-          },
-        },
-      },
-    },
-    {
-      name: "revert_to_snapshot",
-      description: "Revert issue to a previous version snapshot. Creates new snapshot based on old data.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          issueNumber: {
-            type: "number",
-            description: "Issue number (e.g., 123 for #123)",
-          },
-          version: {
-            type: "number",
-            description: "Version number to revert to",
-          },
-          notes: {
-            type: "string",
-            description: "Reason for reversion",
-          },
-        },
-        required: ["issueNumber", "version"],
-      },
-    },
-    {
-      name: "start_task_session",
-      description: "Start working on a task in the current Claude session. Automatically updates status to IN_PROGRESS and runs pre/post-start hooks.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          taskId: {
-            type: "string",
-            description: "Task UUID",
-          },
-          sessionId: {
-            type: "string",
-            description: "Claude session ID",
-          },
-          skipHooks: {
-            type: "boolean",
-            description: "Skip lifecycle hooks (default: false)",
-          },
-        },
-        required: ["taskId", "sessionId"],
-      },
-    },
-    {
-      name: "complete_task_session",
-      description: "Complete the current task. Runs pre-complete hooks (must pass) then marks task as COMPLETED.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          taskId: {
-            type: "string",
-            description: "Task UUID",
-          },
-          sessionId: {
-            type: "string",
-            description: "Claude session ID",
-          },
-          notes: {
-            type: "string",
-            description: "Completion notes",
-          },
-          skipHooks: {
-            type: "boolean",
-            description: "Skip lifecycle hooks (default: false)",
-          },
-        },
-        required: ["taskId", "sessionId"],
-      },
-    },
-    {
-      name: "abandon_task_session",
-      description: "Abandon the current task. Runs on-abandon hooks and marks task as ABANDONED.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          taskId: {
-            type: "string",
-            description: "Task UUID",
-          },
-          sessionId: {
-            type: "string",
-            description: "Claude session ID",
-          },
-          reason: {
-            type: "string",
-            description: "Reason for abandonment",
-          },
-        },
-        required: ["taskId", "sessionId"],
-      },
-    },
-    {
-      name: "get_task_for_session",
-      description: "Get full task details for execution in session. Includes title, description, acceptance criteria, hook config labels.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          taskId: {
-            type: "string",
-            description: "Task UUID",
-          },
-          includeContext: {
-            type: "boolean",
-            description: "Include related issue and plan context (default: true)",
-          },
-        },
-        required: ["taskId"],
-      },
-    },
-    {
-      name: "list_available_tasks",
-      description: "List tasks available to work on (PENDING status, not locked by another session).",
-      inputSchema: {
-        type: "object",
-        properties: {
-          planId: {
-            type: "string",
-            description: "Filter by plan UUID",
-          },
-          issueNumber: {
-            type: "number",
-            description: "Filter by issue number",
-          },
-        },
-      },
-    },
-    {
-      name: "update_task_hook_configs",
-      description: "Update hook configuration labels for a task. Allows UI to dynamically change which hook configs are associated with a task.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          taskId: {
-            type: "string",
-            description: "Task UUID",
-          },
-          hookConfigLabels: {
-            type: "array",
-            items: { type: "string" },
-            description: "Array of hook config labels (e.g., [\"db-migration\", \"e2e-tests\"])",
-          },
-        },
-        required: ["taskId", "hookConfigLabels"],
-      },
-    },
-    {
-      name: "list_hook_configs",
-      description: "List all available hook configurations.",
-      inputSchema: {
-        type: "object",
-        properties: {},
-      },
-    },
-    {
-      name: "add_manual_task",
-      description: "Add a user-created task to a plan. Manual tasks are preserved during plan regeneration.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          issueNumber: {
-            type: "number",
-            description: "Issue number (e.g., 123 for #123)",
-          },
-          title: {
-            type: "string",
-            description: "Task title",
-          },
-          description: {
-            type: "string",
-            description: "Task description",
-          },
-          acceptanceCriteria: {
-            type: "array",
-            items: { type: "string" },
-            description: "Acceptance criteria for the task",
-          },
-          estimatedMinutes: {
-            type: "number",
-            description: "Estimated time in minutes",
-          },
-          insertAfterTaskId: {
-            type: "string",
-            description: "Optional: Task ID to insert after (for ordering)",
-          },
-        },
-        required: ["issueNumber", "title", "description"],
-      },
-    },
-    {
-      name: "delete_task",
-      description: "Delete a task (soft delete). Only PENDING tasks can be deleted.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          taskId: {
-            type: "string",
-            description: "Task UUID",
-          },
-        },
-        required: ["taskId"],
-      },
-    },
-    {
-      name: "view_snapshot",
-      description: "View the complete state of an issue at a specific version (time travel, read-only).",
-      inputSchema: {
-        type: "object",
-        properties: {
-          issueNumber: {
-            type: "number",
-            description: "Issue number",
-          },
-          version: {
-            type: "number",
-            description: "Version number to view",
-          },
-        },
-        required: ["issueNumber", "version"],
-      },
-    },
-    {
-      name: "update_task",
-      description: "Update a task's properties. Use for tuning task details before execution.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          taskId: {
-            type: "string",
-            description: "Task UUID",
-          },
-          title: {
-            type: "string",
-            description: "New task title",
-          },
-          description: {
-            type: "string",
-            description: "New task description",
-          },
-          acceptanceCriteria: {
-            type: "array",
-            items: { type: "string" },
-            description: "New acceptance criteria",
-          },
-          contextInstructions: {
-            type: "string",
-            description: "Custom instructions for subagent execution (e.g., 'use existing auth pattern in src/auth')",
-          },
-          estimatedMinutes: {
-            type: "number",
-            description: "Estimated time in minutes",
-          },
-          hookConfigLabels: {
-            type: "array",
-            items: { type: "string" },
-            description: "Hook configuration labels",
-          },
-        },
-        required: ["taskId"],
-      },
-    },
-    {
-      name: "get_task_execution_prompt",
-      description: "Generate a prompt for spawning a subagent to execute a task. Returns prompt-ready text with full context.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          taskId: {
-            type: "string",
-            description: "Task UUID",
-          },
-        },
-        required: ["taskId"],
-      },
-    },
-    {
-      name: "log_task_progress",
-      description: "Log progress during task execution (for subagent audit trail). Call this to record what you're doing.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          taskId: {
-            type: "string",
-            description: "Task UUID",
-          },
-          sessionId: {
-            type: "string",
-            description: "Session ID executing the task",
-          },
-          message: {
-            type: "string",
-            description: "What was done (e.g., 'Created user model in src/models/user.ts')",
-          },
-          filesModified: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional list of files touched",
-          },
-        },
-        required: ["taskId", "sessionId", "message"],
-      },
-    },
-    {
-      name: "get_task_execution_log",
-      description: "Get the execution log for a task. Use after subagent completion to see what was done.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          taskId: {
-            type: "string",
-            description: "Task UUID",
-          },
-        },
-        required: ["taskId"],
-      },
-    },
+    ...issueToolDefinitions,
+    ...planToolDefinitions,
+    ...taskToolDefinitions,
+    ...snapshotToolDefinitions,
   ],
 }));
 
-// Handle tool calls
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
+// Handle tool calls - route to appropriate handler
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> => {
   const { name, arguments: args } = request.params;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const a = args as any;
 
   try {
+    // Issue tools
     if (name === "create_issue") {
-      const {
-        title,
-        description,
-        acceptanceCriteria = [],
-        type,
-        priority = "MEDIUM",
-        labels = [],
-        useTemplate = true,
-      } = args as any;
-
-      // Select template if requested and use metadata
-      let templateUsed: string | undefined;
-      let finalType = type;
-      let finalPriority = priority;
-      let finalLabels = labels;
-
-      if (useTemplate) {
-        try {
-          const template = await templateService.selectTemplate(description);
-          templateUsed = template.filename;
-
-          // Use template metadata as defaults (if not explicitly provided)
-          if (!finalType) {
-            finalType = template.metadata.type;
-          }
-          if (priority === "MEDIUM") {
-            // Only override if using default priority
-            finalPriority = template.metadata.priority;
-          }
-          if (labels.length === 0) {
-            // Only override if no labels provided
-            finalLabels = [...template.metadata.labels];
-          }
-        } catch (error) {
-          // Log error but continue without template
-          console.error("Failed to select template:", error);
-        }
-      }
-
-      // Create issue using repository
-      const issue = issueRepository.create({
-        title,
-        description,
-        acceptanceCriteria,
-        type: finalType || "FEATURE",
-        priority: finalPriority,
-        status: "OPEN",
-        labels: finalLabels,
-        templateUsed,
-        createdBy: "claude-code",
-      });
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                success: true,
-                issue: {
-                  id: issue.id,
-                  number: issue.number,
-                  title: issue.title,
-                  type: issue.type,
-                  priority: issue.priority,
-                  templateUsed: issue.templateUsed,
-                  url: `http://localhost:3000/issues/${issue.number}`,
-                },
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return await handleCreateIssue(issueToolContext, a);
     }
-
     if (name === "get_issue") {
-      const { id, number } = args as any;
-
-      const issue = id
-        ? issueRepository.findById(id)
-        : issueRepository.findByNumber(number);
-
-      if (!issue) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                success: false,
-                error: "Issue not found",
-              }),
-            },
-          ],
-        };
-      }
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(issue, null, 2),
-          },
-        ],
-      };
+      return handleGetIssue(issueToolContext, a);
     }
-
     if (name === "list_issues") {
-      const { status, type, labels: filterLabels } = args as any;
-
-      const filtered = issueRepository.findMany({
-        status,
-        type,
-        labels: filterLabels,
-      });
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(filtered, null, 2),
-          },
-        ],
-      };
+      return handleListIssues(issueToolContext, a);
     }
-
     if (name === "list_templates") {
-      try {
-        const templates = await templateService.getAvailableTemplates();
-        const discovery = await templateService.discoverTemplates();
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  available: templates,
-                  details: discovery.merged.map((t) => ({
-                    filename: t.filename,
-                    type: t.metadata.type,
-                    priority: t.metadata.priority,
-                    labels: t.metadata.labels,
-                    source: t.isUserDefined ? "user" : "default",
-                  })),
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  success: false,
-                  error: error instanceof Error ? error.message : String(error),
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      }
+      return await handleListTemplates(issueToolContext);
     }
-
-    if (name === "generate_plan") {
-      const {
-        issueId,
-        issueNumber,
-        summary,
-        approach,
-        tasks,
-        estimatedComplexity,
-        preserveExistingTasks = true,
-      } = args as any;
-
-      // Resolve issue ID from number if needed
-      let resolvedIssueId = issueId;
-      if (!resolvedIssueId && issueNumber) {
-        const issue = issueRepository.findByNumber(issueNumber);
-        if (!issue) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  success: false,
-                  error: `Issue not found: #${issueNumber}`,
-                }),
-              },
-            ],
-          };
-        }
-        resolvedIssueId = issue.id;
-      }
-
-      const result = planningService.generatePlan({
-        issueId: resolvedIssueId,
-        summary,
-        approach,
-        tasks,
-        estimatedComplexity,
-        generatedBy: "claude-agent",
-        preserveExistingTasks,
-      });
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    }
-
-    if (name === "get_plan") {
-      const { issueId, issueNumber } = args as any;
-
-      // Resolve issue ID from number if needed
-      let resolvedIssueId = issueId;
-      if (!resolvedIssueId && issueNumber) {
-        const issue = issueRepository.findByNumber(issueNumber);
-        if (!issue) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  success: false,
-                  error: `Issue not found: #${issueNumber}`,
-                }),
-              },
-            ],
-          };
-        }
-        resolvedIssueId = issue.id;
-      }
-
-      const plan = planRepository.findByIssueId(resolvedIssueId);
-      if (!plan) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                success: false,
-                error: "No plan found for this issue",
-              }),
-            },
-          ],
-        };
-      }
-
-      const tasks = taskRepository.findByPlanId(plan.id);
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({ plan, tasks }, null, 2),
-          },
-        ],
-      };
-    }
-
     if (name === "update_issue") {
-      const { issueId, issueNumber, updates, regeneratePlan = false } = args as any;
-
-      // Resolve issue ID from number if needed
-      let resolvedIssueId = issueId;
-      if (!resolvedIssueId && issueNumber) {
-        const issue = issueRepository.findByNumber(issueNumber);
-        if (!issue) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  success: false,
-                  error: `Issue not found: #${issueNumber}`,
-                }),
-              },
-            ],
-          };
-        }
-        resolvedIssueId = issue.id;
-      }
-
-      const result = planningService.updateIssue(
-        resolvedIssueId,
-        updates,
-        regeneratePlan
-      );
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return handleUpdateIssue(issueToolContext, a);
     }
 
+    // Plan tools
+    if (name === "generate_plan") {
+      return handleGeneratePlan(planToolContext, a);
+    }
+    if (name === "get_plan") {
+      return handleGetPlan(planToolContext, a);
+    }
+
+    // Task tools
     if (name === "update_task_status") {
-      const { taskId, status, notes } = args as any;
-
-      const updatedTask = taskRepository.updateStatus(
-        taskId,
-        status,
-        "claude-agent",
-        notes
-      );
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(updatedTask, null, 2),
-          },
-        ],
-      };
+      return handleUpdateTaskStatus(taskToolContext, a);
     }
-
-    if (name === "get_snapshot_history") {
-      const { issueId, issueNumber } = args as any;
-
-      // Resolve issue number from ID if needed
-      let resolvedIssueNumber = issueNumber;
-      if (!resolvedIssueNumber && issueId) {
-        const issue = issueRepository.findById(issueId);
-        if (!issue) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  success: false,
-                  error: `Issue not found: ${issueId}`,
-                }),
-              },
-            ],
-          };
-        }
-        resolvedIssueNumber = issue.number;
-      }
-
-      const history = versioningService.getSnapshotHistory(resolvedIssueNumber);
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(history, null, 2),
-          },
-        ],
-      };
-    }
-
-    if (name === "revert_to_snapshot") {
-      const { issueNumber, version, notes } = args as any;
-
-      const result = versioningService.revertToSnapshot(
-        issueNumber,
-        version,
-        "claude-agent",
-        notes
-      );
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    }
-
     if (name === "start_task_session") {
-      const { taskId, sessionId, skipHooks = false } = args as any;
-
-      const result = await taskSessionService.startTaskSession({
-        taskId,
-        sessionId,
-        skipHooks,
-      });
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              success: true,
-              task: result.task,
-              sessionId: result.sessionId,
-              startedAt: result.startedAt,
-              hookResults: result.hookResults,
-            }, null, 2),
-          },
-        ],
-      };
+      return await handleStartTaskSession(taskToolContext, a);
     }
-
     if (name === "complete_task_session") {
-      const { taskId, sessionId, notes, skipHooks = false } = args as any;
-
-      const task = await taskSessionService.completeTaskSession({
-        taskId,
-        sessionId,
-        notes,
-        skipHooks,
-      });
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              success: true,
-              task,
-            }, null, 2),
-          },
-        ],
-      };
+      return await handleCompleteTaskSession(taskToolContext, a);
     }
-
     if (name === "abandon_task_session") {
-      const { taskId, sessionId, reason } = args as any;
-
-      const task = await taskSessionService.abandonTaskSession(
-        taskId,
-        sessionId,
-        reason
-      );
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              success: true,
-              task,
-            }, null, 2),
-          },
-        ],
-      };
+      return await handleAbandonTaskSession(taskToolContext, a);
     }
-
     if (name === "get_task_for_session") {
-      const { taskId, includeContext = true } = args as any;
-
-      const task = taskRepository.findById(taskId);
-      if (!task) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                success: false,
-                error: `Task not found: ${taskId}`,
-              }),
-            },
-          ],
-        };
-      }
-
-      const result: any = { task };
-
-      if (includeContext) {
-        const plan = planRepository.findById(task.planId);
-        if (plan) {
-          result.plan = plan;
-          const issue = issueRepository.findById(plan.issueId);
-          if (issue) {
-            result.issue = issue;
-          }
-        }
-      }
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return handleGetTaskForSession(taskToolContext, a);
     }
-
     if (name === "list_available_tasks") {
-      const { planId, issueNumber } = args as any;
-
-      let tasks: any[] = [];
-
-      if (planId) {
-        tasks = taskRepository.findByPlanId(planId);
-      } else if (issueNumber) {
-        const issue = issueRepository.findByNumber(issueNumber);
-        if (issue) {
-          const plan = planRepository.findByIssueId(issue.id);
-          if (plan) {
-            tasks = taskRepository.findByPlanId(plan.id);
-          }
-        }
-      } else {
-        tasks = taskRepository.findMany();
-      }
-
-      // Filter to only available tasks
-      const availableTasks = [];
-      for (const task of tasks) {
-        const isAvailable = await taskSessionService.isTaskAvailable(task.id);
-        if (isAvailable) {
-          availableTasks.push(task);
-        }
-      }
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              success: true,
-              tasks: availableTasks,
-            }, null, 2),
-          },
-        ],
-      };
+      return await handleListAvailableTasks(taskToolContext, a);
     }
-
     if (name === "update_task_hook_configs") {
-      const { taskId, hookConfigLabels } = args as any;
-
-      const task = taskRepository.updateHookConfigLabels(taskId, hookConfigLabels);
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              success: true,
-              task,
-            }, null, 2),
-          },
-        ],
-      };
+      return handleUpdateTaskHookConfigs(taskToolContext, a);
     }
-
     if (name === "list_hook_configs") {
-      const configs = await hookConfigService.listConfigs();
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              success: true,
-              configs,
-            }, null, 2),
-          },
-        ],
-      };
+      return await handleListHookConfigs(taskToolContext);
     }
-
     if (name === "add_manual_task") {
-      const {
-        issueNumber,
-        title,
-        description,
-        acceptanceCriteria,
-        estimatedMinutes,
-        insertAfterTaskId,
-      } = args as any;
-
-      const task = taskManagementService.addManualTask({
-        issueNumber,
-        title,
-        description,
-        acceptanceCriteria,
-        estimatedMinutes,
-        insertAfterTaskId,
-      });
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              success: true,
-              task,
-            }, null, 2),
-          },
-        ],
-      };
+      return handleAddManualTask(taskToolContext, a);
     }
-
     if (name === "delete_task") {
-      const { taskId } = args as any;
-
-      const task = taskManagementService.deleteTask(taskId, "claude-agent");
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              success: true,
-              task,
-            }, null, 2),
-          },
-        ],
-      };
+      return handleDeleteTask(taskToolContext, a);
     }
-
-    if (name === "view_snapshot") {
-      const { issueNumber, version } = args as any;
-
-      const snapshotData = versioningService.viewSnapshot(issueNumber, version);
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(snapshotData, null, 2),
-          },
-        ],
-      };
-    }
-
     if (name === "update_task") {
-      const {
-        taskId,
-        title,
-        description,
-        acceptanceCriteria,
-        contextInstructions,
-        estimatedMinutes,
-        hookConfigLabels,
-      } = args as any;
-
-      const task = taskRepository.findById(taskId);
-      if (!task) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                success: false,
-                error: `Task not found: ${taskId}`,
-              }),
-            },
-          ],
-        };
-      }
-
-      // Build update object with only provided fields
-      const updates: Record<string, unknown> = {};
-      if (title !== undefined) updates.title = title;
-      if (description !== undefined) updates.description = description;
-      if (acceptanceCriteria !== undefined) updates.acceptanceCriteria = acceptanceCriteria;
-      if (contextInstructions !== undefined) updates.contextInstructions = contextInstructions;
-      if (estimatedMinutes !== undefined) updates.estimatedMinutes = estimatedMinutes;
-      if (hookConfigLabels !== undefined) updates.hookConfigLabels = hookConfigLabels;
-
-      const updatedTask = taskRepository.update(taskId, updates);
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              success: true,
-              task: updatedTask,
-            }, null, 2),
-          },
-        ],
-      };
+      return handleUpdateTask(taskToolContext, a);
     }
-
     if (name === "get_task_execution_prompt") {
-      const { taskId } = args as any;
-
-      const task = taskRepository.findById(taskId);
-      if (!task) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                success: false,
-                error: `Task not found: ${taskId}`,
-              }),
-            },
-          ],
-        };
-      }
-
-      // Get parent context
-      const plan = planRepository.findById(task.planId);
-      if (!plan) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                success: false,
-                error: `Plan not found for task: ${taskId}`,
-              }),
-            },
-          ],
-        };
-      }
-
-      const issue = issueRepository.findById(plan.issueId);
-      if (!issue) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                success: false,
-                error: `Issue not found for plan: ${plan.id}`,
-              }),
-            },
-          ],
-        };
-      }
-
-      // Generate session ID for the subagent
-      const sessionId = crypto.randomUUID();
-
-      // Build the execution prompt
-      const issueAcceptanceCriteria = issue.acceptanceCriteria
-        .map((c) => `- [ ] ${c}`)
-        .join("\n");
-      const taskAcceptanceCriteria = task.acceptanceCriteria
-        .map((c) => `- [ ] ${c}`)
-        .join("\n");
-
-      const prompt = `# Task Execution
-
-You are executing task #${task.order} for issue #${issue.number}.
-
-## Issue: ${issue.title}
-${issue.description}
-
-**Issue Acceptance Criteria:**
-${issueAcceptanceCriteria || "- None specified"}
-
-## Plan Approach
-${plan.approach}
-
-## Your Task: ${task.title}
-${task.description}
-
-**Task Acceptance Criteria:**
-${taskAcceptanceCriteria || "- None specified"}
-
-${task.contextInstructions ? `## Additional Instructions\n${task.contextInstructions}\n` : ""}
-## Execution Instructions
-
-1. Implement the task following the plan's approach
-2. Ensure all acceptance criteria are met
-3. Use \`log_task_progress\` to record significant steps (for audit trail)
-4. When complete: call \`complete_task_session\` with:
-   - taskId: "${taskId}"
-   - sessionId: "${sessionId}"
-5. If blocked: call \`abandon_task_session\` with:
-   - taskId: "${taskId}"
-   - sessionId: "${sessionId}"
-   - reason: (explain why)
-
-**Important:** You have access to dev-workflow-tracker MCP tools for task lifecycle management.`;
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              success: true,
-              taskId,
-              sessionId,
-              prompt,
-            }, null, 2),
-          },
-        ],
-      };
+      return handleGetTaskExecutionPrompt(taskToolContext, a);
     }
-
     if (name === "log_task_progress") {
-      const { taskId, sessionId, message, filesModified } = args as any;
-
-      const task = taskRepository.findById(taskId);
-      if (!task) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                success: false,
-                error: `Task not found: ${taskId}`,
-              }),
-            },
-          ],
-        };
-      }
-
-      // Insert execution log entry
-      const db = dbService.getDb();
-      const logId = crypto.randomUUID();
-      const now = new Date().toISOString();
-
-      db.insert(schema.taskExecutionLogs)
-        .values({
-          id: logId,
-          taskId,
-          sessionId,
-          message,
-          filesModified: filesModified || null,
-          createdAt: now,
-        })
-        .run();
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              success: true,
-              logId,
-              taskId,
-              message,
-            }, null, 2),
-          },
-        ],
-      };
+      return handleLogTaskProgress(taskToolContext, a);
     }
-
     if (name === "get_task_execution_log") {
-      const { taskId } = args as any;
-
-      const task = taskRepository.findById(taskId);
-      if (!task) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                success: false,
-                error: `Task not found: ${taskId}`,
-              }),
-            },
-          ],
-        };
-      }
-
-      // Get all execution log entries for this task
-      const db = dbService.getDb();
-      const logs = db
-        .select()
-        .from(schema.taskExecutionLogs)
-        .where(eq(schema.taskExecutionLogs.taskId, taskId))
-        .orderBy(asc(schema.taskExecutionLogs.createdAt))
-        .all();
-
-      const entries = logs.map((log: schema.TaskExecutionLogRow) => ({
-        id: log.id,
-        sessionId: log.sessionId,
-        message: log.message,
-        filesModified: log.filesModified,
-        createdAt: log.createdAt,
-      }));
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              success: true,
-              taskId,
-              entries,
-            }, null, 2),
-          },
-        ],
-      };
+      return handleGetTaskExecutionLog(taskToolContext, a);
     }
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            success: false,
-            error: `Unknown tool: ${name}`,
-          }),
-        },
-      ],
-    };
+    // Snapshot tools
+    if (name === "get_snapshot_history") {
+      return handleGetSnapshotHistory(snapshotToolContext, a);
+    }
+    if (name === "revert_to_snapshot") {
+      return handleRevertToSnapshot(snapshotToolContext, a);
+    }
+    if (name === "view_snapshot") {
+      return handleViewSnapshot(snapshotToolContext, a);
+    }
+
+    return errorResponse(`Unknown tool: ${name}`);
   } catch (error) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-          }),
-        },
-      ],
-    };
+    return errorResponse(error instanceof Error ? error.message : String(error));
   }
 });
 
-// Start server with stdio transport
+/**
+ * Initialize all services and start the server
+ */
 async function main() {
   // Initialize database with automatic native/WASM detection
   // Migrations are run during `dev-workflow init` and `dev-workflow update`, not on server startup
@@ -1564,10 +215,10 @@ async function main() {
 
   // Initialize repositories
   const db = dbService.getDb();
-  issueRepository = new SqliteIssueRepository(db);
-  snapshotRepository = new SqliteSnapshotRepository(db);
-  planRepository = new SqlitePlanRepository(db);
-  taskRepository = new SqliteTaskRepository(db);
+  const issueRepository = new SqliteIssueRepository(db);
+  const snapshotRepository = new SqliteSnapshotRepository(db);
+  const planRepository = new SqlitePlanRepository(db);
+  const taskRepository = new SqliteTaskRepository(db);
 
   // Initialize file system and paths
   const fileSystem = new NodeFileSystem();
@@ -1576,18 +227,18 @@ async function main() {
   const userTemplatesPath = path.join(workingDir, "issues/templates");
   const defaultTemplatesPath = path.resolve(TEMPLATES_PATH);
 
-  // Initialize hook configuration service (needed by PlanningService)
-  hookConfigService = new FileSystemHookConfigService(trackDirectory);
+  // Initialize hook configuration service
+  const hookConfigService = new FileSystemHookConfigService(trackDirectory);
 
-  // Initialize application services (depend on repository interfaces, not implementations)
-  versioningService = new VersioningService(
+  // Initialize application services
+  const versioningService = new VersioningService(
     issueRepository,
     snapshotRepository,
     planRepository,
     taskRepository
   );
 
-  planningService = new PlanningService(
+  const planningService = new PlanningService(
     issueRepository,
     planRepository,
     taskRepository,
@@ -1595,36 +246,65 @@ async function main() {
     versioningService
   );
 
-  // Initialize task management service
-  taskManagementService = new TaskManagementService(
+  const taskManagementService = new TaskManagementService(
     taskRepository,
     planRepository,
     issueRepository
   );
 
-  // Initialize template service
-  templateService = new TemplateService(
+  const templateService = new TemplateService(
     fileSystem,
     userTemplatesPath,
     defaultTemplatesPath
   );
 
-  // Initialize hook executor
-  hookExecutor = new ShellHookExecutor();
+  const hookExecutor = new ShellHookExecutor();
 
-  // Initialize task session service
-  taskSessionService = new TaskSessionService(
+  const taskSessionService = new TaskSessionService(
     taskRepository,
     hookConfigService,
     hookExecutor,
     trackDirectory
   );
 
+  // Create tool contexts
+  issueToolContext = {
+    issueRepository,
+    templateService,
+    planningService,
+  };
+
+  planToolContext = {
+    issueRepository,
+    planRepository,
+    taskRepository,
+    planningService,
+  };
+
+  taskToolContext = {
+    dbService,
+    issueRepository,
+    planRepository,
+    taskRepository,
+    taskSessionService,
+    taskManagementService,
+    hookConfigService,
+    taskExecutionLogsSchema: taskExecutionLogs,
+  };
+
+  snapshotToolContext = {
+    issueRepository,
+    versioningService,
+  };
+
+  // Start server with stdio transport
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("dev-workflow MCP server running on stdio");
   console.error(`Database: ${DATABASE_PATH}`);
-  console.error(`Templates: ${defaultTemplatesPath} (defaults), ${userTemplatesPath} (user)`);
+  console.error(
+    `Templates: ${defaultTemplatesPath} (defaults), ${userTemplatesPath} (user)`
+  );
 }
 
 main().catch((error) => {

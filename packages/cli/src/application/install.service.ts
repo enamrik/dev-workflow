@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
-import { Issue, IssueFactory } from "../domain/issue.js";
+import type { Issue } from "@dev-workflow/core";
 
 export class InstallError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -213,8 +213,8 @@ These values can still be overridden when creating an issue explicitly.
       const dbDir = path.dirname(dbPath);
       await this.fileSystem.mkdir(dbDir, { recursive: true });
 
-      // Import DatabaseService from mcp-server package
-      const { DatabaseService } = await import("@dev-workflow/mcp-server/infrastructure/database.js");
+      // Import DatabaseService from core package
+      const { DatabaseService } = await import("@dev-workflow/core");
 
       // Create database with automatic native/WASM detection and run migrations
       const dbService = await DatabaseService.create(dbPath);
@@ -228,26 +228,52 @@ These values can still be overridden when creating an issue explicitly.
   async createWelcomeIssue(): Promise<Issue> {
     const dbPath = path.join(this.workingDirectory, ".track/data/workflow.db");
 
-    // Import database and repository from mcp-server package
-    const { DatabaseService } = await import("@dev-workflow/mcp-server/infrastructure/database.js");
-    const { SqliteIssueRepository } = await import("@dev-workflow/mcp-server/infrastructure/issue-repository.js");
+    // Import database and repository from core package
+    const { DatabaseService, SqliteIssueRepository } = await import("@dev-workflow/core");
 
     // Create welcome issue and persist to database with automatic native/WASM detection
     const dbService = await DatabaseService.create(dbPath);
     const issueRepository = new SqliteIssueRepository(dbService.getDb());
 
-    const welcomeIssue = IssueFactory.createWelcomeIssue();
-
     const issue = issueRepository.create({
-      title: welcomeIssue.title,
-      description: welcomeIssue.description,
-      acceptanceCriteria: welcomeIssue.acceptanceCriteria,
-      type: welcomeIssue.type,
-      priority: welcomeIssue.priority,
-      status: welcomeIssue.status,
-      labels: welcomeIssue.labels,
-      templateUsed: welcomeIssue.templateUsed,
-      createdBy: welcomeIssue.createdBy,
+      title: "Setup dev-workflow tracking for this repository",
+      description: `This is your first issue created by dev-workflow!
+
+## What is dev-workflow?
+
+dev-workflow is an AI-driven development workflow system that helps you:
+- Track issues and tasks
+- Generate implementation plans
+- Automate development workflows
+- Integrate with GitHub and deployment systems
+
+## Next Steps
+
+1. Try creating a new issue:
+   - Say: "I want to add user authentication"
+   - Or use: \`/issue Add authentication\`
+
+2. Explore the templates in \`.track/config/issues/templates/\`
+
+3. Customize the configuration in \`.track/config.json\`
+
+## Learn More
+
+- Skills are in \`.claude/skills/dev-workflow/\`
+- Subagents are in \`.claude/agents/dev-workflow/\`
+- MCP server registered in \`.claude/config/mcp-servers.json\`
+`,
+      acceptanceCriteria: [
+        "dev-workflow initialized successfully",
+        "Can create issues via Claude Code",
+        "Templates are customizable",
+      ],
+      type: "TASK",
+      priority: "MEDIUM",
+      status: "OPEN",
+      labels: ["setup", "onboarding"],
+      templateUsed: "task.md",
+      createdBy: "dev-workflow-init",
     });
 
     dbService.close();
