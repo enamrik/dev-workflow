@@ -110,6 +110,41 @@ export class SqliteIssueRepository implements IssueRepository {
     return (result?.maxNumber ?? 0) + 1;
   }
 
+  update(
+    id: string,
+    data: Partial<Omit<Issue, "id" | "number" | "createdAt">>
+  ): Issue {
+    const now = new Date().toISOString();
+
+    // Update the issue
+    this.db
+      .update(issues)
+      .set({
+        ...data,
+        updatedAt: now,
+      })
+      .where(eq(issues.id, id))
+      .run();
+
+    // Fetch and return the updated issue
+    const updated = this.findById(id);
+    if (!updated) {
+      throw new Error(`Failed to update issue: ${id}`);
+    }
+
+    return updated;
+  }
+
+  findBySnapshotId(snapshotId: string): Issue | null {
+    const result = this.db
+      .select()
+      .from(issues)
+      .where(eq(issues.snapshotId, snapshotId))
+      .get();
+
+    return result ? this.mapRowToIssue(result) : null;
+  }
+
   /**
    * Map database row to domain Issue object
    *
@@ -128,6 +163,7 @@ export class SqliteIssueRepository implements IssueRepository {
       labels: row.labels,
       templateUsed: row.templateUsed ?? undefined,
       createdBy: row.createdBy ?? undefined,
+      snapshotId: row.snapshotId ?? undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

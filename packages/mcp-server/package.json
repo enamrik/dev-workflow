@@ -14,7 +14,8 @@
     "dev-workflow-mcp": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run copy-migrations",
+    "copy-migrations": "mkdir -p dist/drizzle && cp -r drizzle/* dist/drizzle/",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit"
@@ -23,6 +24,7 @@
     "@modelcontextprotocol/sdk": "^0.5.0",
     "better-sqlite3": "^12.5.0",
     "drizzle-orm": "^0.36.0",
+    "fastest-levenshtein": "^1.0.16",
     "js-yaml": "^4.1.1",
     "sql.js": "^1.10.3"
   },

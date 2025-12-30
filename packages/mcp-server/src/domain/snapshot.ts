@@ -1,0 +1,91 @@
+/**
+ * Domain types for Snapshot entity
+ */
+
+export type SnapshotStatus = "ACTIVE" | "ARCHIVED";
+export type SnapshotType = "MANUAL" | "ISSUE_UPDATE" | "PLAN_REGENERATION";
+
+/**
+ * Snapshot entity
+ *
+ * Groups issue+plan+tasks into a versioned snapshot for complete version tracking.
+ * Only one ACTIVE snapshot should exist per issue at a time.
+ */
+export interface Snapshot {
+  readonly id: string; // UUID
+  readonly issueNumber: number; // Link to issue
+  readonly version: number; // Version number (1, 2, 3...)
+  readonly status: SnapshotStatus;
+  readonly snapshotType: SnapshotType;
+  readonly createdBy: string; // Who/what created this snapshot
+  readonly createdAt: string; // ISO date string
+  readonly notes?: string; // Optional notes about this version
+}
+
+/**
+ * Repository interface for Snapshot persistence
+ *
+ * Follows Repository pattern from DDD - abstracts data access
+ * behind an interface for testability and flexibility.
+ */
+export interface SnapshotRepository {
+  /**
+   * Create a new snapshot
+   *
+   * Automatically assigns version number based on existing snapshots for the issue.
+   *
+   * @param snapshot - Snapshot data (without id, version, createdAt which are generated)
+   * @returns The created snapshot with id, version, and timestamp assigned
+   */
+  create(
+    snapshot: Omit<Snapshot, "id" | "version" | "createdAt">
+  ): Snapshot;
+
+  /**
+   * Find a snapshot by its UUID
+   *
+   * @param id - Snapshot UUID
+   * @returns The snapshot if found, null otherwise
+   */
+  findById(id: string): Snapshot | null;
+
+  /**
+   * Find the active snapshot for an issue
+   *
+   * Returns the latest ACTIVE snapshot for the given issue number.
+   *
+   * @param issueNumber - Issue number
+   * @returns The active snapshot if found, null otherwise
+   */
+  findActiveByIssueNumber(issueNumber: number): Snapshot | null;
+
+  /**
+   * Find all snapshots for an issue (all versions)
+   *
+   * Returns snapshots ordered by version DESC (newest first).
+   *
+   * @param issueNumber - Issue number
+   * @returns Array of all snapshots for the issue
+   */
+  findByIssueNumber(issueNumber: number): Snapshot[];
+
+  /**
+   * Get the next version number for an issue
+   *
+   * Used internally by create() to assign sequential version numbers.
+   *
+   * @param issueNumber - Issue number
+   * @returns The next version number (MAX(version) + 1, or 1 if no snapshots exist)
+   */
+  getNextVersion(issueNumber: number): number;
+
+  /**
+   * Archive the current active snapshot for an issue
+   *
+   * Sets status to ARCHIVED for the active snapshot.
+   * Called before creating a new snapshot to maintain single active snapshot constraint.
+   *
+   * @param issueNumber - Issue number
+   */
+  archiveCurrent(issueNumber: number): void;
+}

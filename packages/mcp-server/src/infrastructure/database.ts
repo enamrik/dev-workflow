@@ -2,6 +2,12 @@ import { drizzle, BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema.js";
 import { DatabaseFactory } from "./database-factory.js";
 import type { DatabaseAdapter } from "./database-adapter.js";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import * as fs from "node:fs";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * DatabaseService manages SQLite database connection and migrations
@@ -47,33 +53,42 @@ export class DatabaseService {
   /**
    * Run database migrations
    *
-   * Creates tables and indexes if they don't exist.
-   * This is a simple migration approach - for production,
-   * consider using drizzle-kit migrations.
+   * Uses drizzle-kit generated migrations from the drizzle/ folder.
+   * Migrations are executed in order based on the journal.
    */
   runMigrations(): void {
-    this.adapter.exec(`
-      CREATE TABLE IF NOT EXISTS issues (
-        id TEXT PRIMARY KEY,
-        number INTEGER NOT NULL UNIQUE,
-        title TEXT NOT NULL,
-        description TEXT NOT NULL,
-        type TEXT NOT NULL,
-        priority TEXT NOT NULL,
-        status TEXT NOT NULL,
-        acceptance_criteria TEXT NOT NULL DEFAULT '[]',
-        labels TEXT NOT NULL DEFAULT '[]',
-        template_used TEXT,
-        created_by TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
+    // Path to drizzle migrations folder (relative to compiled JS in dist/)
+    // In production: dist/infrastructure/database.js -> ../../drizzle/
+    const migrationsPath = path.resolve(__dirname, "../../drizzle");
 
-      -- Indexes for common queries
-      CREATE INDEX IF NOT EXISTS idx_issues_number ON issues(number);
-      CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status);
-      CREATE INDEX IF NOT EXISTS idx_issues_type ON issues(type);
-    `);
+    try {
+      // Read the migration journal to get list of migrations
+      const journalPath = path.join(migrationsPath, "meta/_journal.json");
+      const journal = JSON.parse(fs.readFileSync(journalPath, "utf-8"));
+
+      // Execute each migration in order
+      for (const entry of journal.entries) {
+        const migrationPath = path.join(migrationsPath, `${entry.tag}.sql`);
+        const migrationSQL = fs.readFileSync(migrationPath, "utf-8");
+
+        // Split by statement breakpoints and execute each statement
+        const statements = migrationSQL
+          .split("--> statement-breakpoint")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+
+        for (const statement of statements) {
+          this.adapter.exec(statement);
+        }
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new Error(
+          "Migration files not found. Run 'pnpm drizzle-kit generate' in packages/mcp-server first."
+        );
+      }
+      throw error;
+    }
   }
 
   /**
