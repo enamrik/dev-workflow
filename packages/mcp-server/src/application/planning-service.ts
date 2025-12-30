@@ -1,12 +1,12 @@
 import type { Issue, IssueRepository } from "../domain/issue.js";
 import type { Plan, PlanRepository, PlanComplexity } from "../domain/plan.js";
 import type { Task, TaskRepository } from "../domain/task.js";
-import type { SnapshotRepository, SnapshotType } from "../domain/snapshot.js";
 import {
   TaskMatchingService,
   type TaskDefinition,
 } from "./task-matching-service.js";
 import type { HookConfigService } from "./hook-config-service.js";
+import type { VersioningService } from "./versioning-service.js";
 
 /**
  * Plan with its associated tasks
@@ -43,31 +43,19 @@ export interface IssueUpdates {
 }
 
 /**
- * Complete snapshot data for update operations
- */
-export interface SnapshotData {
-  snapshot: {
-    id: string;
-    issueNumber: number;
-    version: number;
-    status: string;
-    snapshotType: string;
-    createdBy: string;
-    createdAt: string;
-    notes?: string;
-  };
-  issue: Issue;
-  plan?: Plan;
-  tasks: Task[];
-}
-
-/**
  * PlanningService orchestrates plan and task generation with smart matching
+ *
+ * Key changes from previous version:
+ * - No snapshotId references on plan or task creation
+ * - Uses VersioningService for snapshot creation
+ * - Separates manual vs generated tasks during regeneration
+ * - Only soft deletes unmatched generated tasks (preserves manual tasks)
  *
  * Responsibilities:
  * - Generate plans with task definitions
  * - Smart task matching to preserve work
  * - Preserve IN_PROGRESS and COMPLETED tasks when possible
+ * - Preserve manual tasks during regeneration
  * - Coordinate with repositories and services
  *
  * Follows the Dependency Inversion Principle - depends on repository
@@ -78,10 +66,10 @@ export class PlanningService {
 
   constructor(
     private readonly issueRepository: IssueRepository,
-    private readonly snapshotRepository: SnapshotRepository,
     private readonly planRepository: PlanRepository,
     private readonly taskRepository: TaskRepository,
-    private readonly hookConfigService: HookConfigService
+    private readonly hookConfigService: HookConfigService,
+    private readonly versioningService: VersioningService
   ) {
     this.taskMatchingService = new TaskMatchingService();
   }
@@ -89,11 +77,14 @@ export class PlanningService {
   /**
    * Generate a new plan for an issue
    *
-   * Creates new snapshot with smart task matching.
-   * Archives previous active snapshot if one exists.
+   * Creates snapshot before regeneration.
+   * Separates manual vs generated tasks.
+   * Only matches against generated tasks.
+   * Soft deletes unmatched generated tasks.
+   * Preserves all manual tasks.
    *
    * @param request - Plan generation request
-   * @returns Plan with tasks
+   * @returns Plan with tasks (including manual tasks)
    */
   generatePlan(request: GeneratePlanRequest): PlanWithTasks {
     const {
@@ -113,71 +104,84 @@ export class PlanningService {
     }
 
     // Get existing plan and tasks (if any)
-    const existingPlan = this.planRepository.findActiveByIssueId(issueId);
+    const existingPlan = this.planRepository.findByIssueId(issueId);
     const existingTasks = existingPlan
-      ? this.taskRepository.findByPlanId(existingPlan.id)
+      ? this.taskRepository.findByPlanId(existingPlan.id, false) // Exclude deleted
       : [];
 
-    // Archive current active snapshot (if exists)
-    this.snapshotRepository.archiveCurrent(issue.number);
+    // Separate manual and generated tasks
+    const manualTasks = existingTasks.filter((t) => t.source === "manual");
+    const generatedTasks = existingTasks.filter((t) => t.source === "generated");
 
-    // Create new snapshot
-    const snapshot = this.snapshotRepository.create({
-      issueNumber: issue.number,
-      status: "ACTIVE",
-      snapshotType: "PLAN_REGENERATION" as SnapshotType,
-      createdBy: generatedBy,
-      notes: `Generated plan: ${summary}`,
-    });
-
-    // Create new plan
-    const plan = this.planRepository.create({
-      snapshotId: snapshot.id,
-      issueId,
-      summary,
-      approach,
-      estimatedComplexity,
+    // Create snapshot before regeneration (captures current state)
+    this.versioningService.createSnapshot(
+      issue.number,
+      "PLAN_REGENERATION",
       generatedBy,
-    });
+      `Pre-regeneration snapshot`
+    );
 
-    // Update issue to link to new snapshot
-    this.issueRepository.update(issueId, {
-      snapshotId: snapshot.id,
-    });
+    // Create or update plan
+    let plan: Plan;
+    if (existingPlan) {
+      plan = this.planRepository.update(existingPlan.id, {
+        summary,
+        approach,
+        estimatedComplexity,
+        generatedBy,
+      });
+    } else {
+      plan = this.planRepository.create({
+        issueId,
+        summary,
+        approach,
+        estimatedComplexity,
+        generatedBy,
+      });
+    }
 
-    // Match new tasks to existing tasks (if preserving)
-    let tasks: Task[];
-    if (preserveExistingTasks && existingTasks.length > 0) {
-      tasks = this.createTasksWithMatching(
+    // Match new tasks to existing GENERATED tasks only (not manual)
+    let newTasks: Task[];
+    if (preserveExistingTasks && generatedTasks.length > 0) {
+      newTasks = this.createTasksWithMatching(
         plan,
-        snapshot.id,
         newTaskDefs,
-        existingTasks
+        generatedTasks,
+        generatedBy
       );
     } else {
       // No matching - create all new tasks
-      tasks = this.createNewTasks(plan, snapshot.id, newTaskDefs);
+      newTasks = this.createNewTasks(plan, newTaskDefs);
     }
+
+    // Create snapshot after regeneration (captures new state)
+    this.versioningService.createSnapshot(
+      issue.number,
+      "PLAN_REGENERATION",
+      generatedBy,
+      `Generated plan: ${summary}`
+    );
 
     return {
       plan,
-      tasks,
+      // Return all active tasks: new generated tasks + preserved manual tasks
+      tasks: [...newTasks, ...manualTasks],
     };
   }
 
   /**
-   * Update issue and optionally regenerate plan
+   * Update issue and optionally create snapshot
    *
    * @param issueId - Issue UUID
    * @param updates - Partial issue updates
-   * @param regeneratePlan - Whether to trigger plan regeneration
-   * @returns Complete snapshot data
+   * @param createSnapshot - Whether to create a snapshot after update
+   * @returns Updated issue and current plan/tasks
    */
-  updateIssueWithRegeneration(
+  updateIssue(
     issueId: string,
     updates: IssueUpdates,
-    regeneratePlan: boolean
-  ): SnapshotData {
+    createSnapshot = true
+  ): { issue: Issue; plan?: Plan; tasks: Task[] } {
     // Verify issue exists
     const issue = this.issueRepository.findById(issueId);
     if (!issue) {
@@ -187,139 +191,86 @@ export class PlanningService {
     // Update the issue
     const updatedIssue = this.issueRepository.update(issueId, updates);
 
-    // If not regenerating plan, just return current state
-    if (!regeneratePlan) {
-      const plan = this.planRepository.findActiveByIssueId(issueId);
-      const tasks = plan ? this.taskRepository.findByPlanId(plan.id) : [];
-      const snapshot = this.snapshotRepository.findActiveByIssueNumber(
-        issue.number
-      );
+    // Get current plan and tasks
+    const plan = this.planRepository.findByIssueId(issueId);
+    const tasks = plan ? this.taskRepository.findByPlanId(plan.id) : [];
 
-      return {
-        snapshot: snapshot
-          ? {
-              id: snapshot.id,
-              issueNumber: snapshot.issueNumber,
-              version: snapshot.version,
-              status: snapshot.status,
-              snapshotType: snapshot.snapshotType,
-              createdBy: snapshot.createdBy,
-              createdAt: snapshot.createdAt,
-              notes: snapshot.notes,
-            }
-          : {
-              id: "",
-              issueNumber: issue.number,
-              version: 1,
-              status: "ACTIVE",
-              snapshotType: "MANUAL",
-              createdBy: "system",
-              createdAt: new Date().toISOString(),
-            },
-        issue: updatedIssue,
-        plan: plan ?? undefined,
-        tasks,
-      };
+    // Create snapshot if requested
+    if (createSnapshot) {
+      this.versioningService.createSnapshot(
+        issue.number,
+        "ISSUE_UPDATE",
+        "user",
+        "Issue updated"
+      );
     }
 
-    // Archive current active snapshot
-    this.snapshotRepository.archiveCurrent(issue.number);
-
-    // Create new snapshot for the update
-    const snapshot = this.snapshotRepository.create({
-      issueNumber: issue.number,
-      status: "ACTIVE",
-      snapshotType: "ISSUE_UPDATE" as SnapshotType,
-      createdBy: "user",
-      notes: "Issue updated",
-    });
-
-    // Update issue to link to new snapshot
-    this.issueRepository.update(issueId, {
-      snapshotId: snapshot.id,
-    });
-
-    // Get existing plan and tasks
-    const existingPlan = this.planRepository.findActiveByIssueId(issueId);
-    const existingTasks = existingPlan
-      ? this.taskRepository.findByPlanId(existingPlan.id)
-      : [];
-
-    // Note: Actual plan regeneration would require calling an AI service
-    // For now, we return the existing plan/tasks with the new snapshot
-    // The agent will call generate_plan separately if needed
-
     return {
-      snapshot: {
-        id: snapshot.id,
-        issueNumber: snapshot.issueNumber,
-        version: snapshot.version,
-        status: snapshot.status,
-        snapshotType: snapshot.snapshotType,
-        createdBy: snapshot.createdBy,
-        createdAt: snapshot.createdAt,
-        notes: snapshot.notes,
-      },
       issue: updatedIssue,
-      plan: existingPlan ?? undefined,
-      tasks: existingTasks,
+      plan: plan ?? undefined,
+      tasks,
     };
   }
 
   /**
    * Create tasks with smart matching to preserve existing work
+   *
+   * Only matches against GENERATED tasks.
+   * Soft deletes unmatched generated tasks.
    */
   private createTasksWithMatching(
     plan: Plan,
-    snapshotId: string,
     newTaskDefs: TaskDefinition[],
-    existingTasks: Task[]
+    existingGeneratedTasks: Task[],
+    generatedBy: string
   ): Task[] {
-    // Match new tasks to existing tasks
+    // Match new tasks to existing generated tasks
     const matchResults = this.taskMatchingService.matchTasks(
       newTaskDefs,
-      existingTasks
+      existingGeneratedTasks
     );
 
     const tasks: Task[] = [];
+    const matchedTaskIds = new Set<string>();
 
     for (const result of matchResults) {
       if (result.action === "PRESERVE" && result.matchedTask) {
-        // Preserve existing task with its status
-        const task = this.taskRepository.create({
-          snapshotId,
-          planId: plan.id,
+        // Update matched task with new content but preserve status
+        matchedTaskIds.add(result.matchedTask.id);
+        const updatedTask = this.taskRepository.update(result.matchedTask.id, {
           title: result.newTask.title,
           description: result.newTask.description,
           acceptanceCriteria: result.newTask.acceptanceCriteria,
-          status: result.preservedStatus!, // Preserve the status
           estimatedMinutes: result.newTask.estimatedMinutes,
-          matchedFromTaskId: result.matchedTask.id,
           matchConfidence: result.matchConfidence,
-          // Preserve timestamps if task was started/completed
-          startedAt: result.matchedTask.startedAt,
-          completedAt: result.matchedTask.completedAt,
-          abandonedAt: result.matchedTask.abandonedAt,
         });
-        tasks.push(task);
+        tasks.push(updatedTask);
       } else {
-        // Create new task with auto-assigned hook config labels
+        // Create new generated task
         const hookConfigLabels = this.hookConfigService.assignConfigsForTask({
           title: result.newTask.title,
           description: result.newTask.description,
         });
 
         const task = this.taskRepository.create({
-          snapshotId,
           planId: plan.id,
           title: result.newTask.title,
           description: result.newTask.description,
           acceptanceCriteria: result.newTask.acceptanceCriteria,
-          status: "PENDING", // New tasks start as pending
+          status: "PENDING",
+          source: "generated",
           estimatedMinutes: result.newTask.estimatedMinutes,
+          isDeleted: false,
           hookConfigLabels,
         });
         tasks.push(task);
+      }
+    }
+
+    // Soft delete generated tasks that weren't matched
+    for (const task of existingGeneratedTasks) {
+      if (!matchedTaskIds.has(task.id) && task.status === "PENDING") {
+        this.taskRepository.softDelete(task.id, generatedBy);
       }
     }
 
@@ -329,11 +280,7 @@ export class PlanningService {
   /**
    * Create all new tasks without matching
    */
-  private createNewTasks(
-    plan: Plan,
-    snapshotId: string,
-    taskDefs: TaskDefinition[]
-  ): Task[] {
+  private createNewTasks(plan: Plan, taskDefs: TaskDefinition[]): Task[] {
     const taskData = taskDefs.map((def) => {
       // Auto-assign hook config labels based on task content
       const hookConfigLabels = this.hookConfigService.assignConfigsForTask({
@@ -342,12 +289,13 @@ export class PlanningService {
       });
 
       return {
-        snapshotId,
         planId: plan.id,
         title: def.title,
         description: def.description,
         acceptanceCriteria: def.acceptanceCriteria,
         status: "PENDING" as const,
+        source: "generated" as const,
+        isDeleted: false,
         estimatedMinutes: def.estimatedMinutes,
         hookConfigLabels,
       };

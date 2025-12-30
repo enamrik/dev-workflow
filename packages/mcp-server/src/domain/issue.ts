@@ -23,7 +23,6 @@ export interface Issue {
   labels: string[];
   templateUsed?: string;
   createdBy?: string;
-  snapshotId?: string; // Link to snapshot for versioning
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
 }
@@ -96,14 +95,4 @@ export interface IssueRepository {
     id: string,
     data: Partial<Omit<Issue, "id" | "number" | "createdAt">>
   ): Issue;
-
-  /**
-   * Find issue by snapshot ID
-   *
-   * Returns the issue associated with a specific snapshot (version).
-   *
-   * @param snapshotId - Snapshot UUID
-   * @returns The issue if found, null otherwise
-   */
-  findBySnapshotId(snapshotId: string): Issue | null;
 }

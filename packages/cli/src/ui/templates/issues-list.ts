@@ -1,8 +1,18 @@
 import type { Issue } from "@dev-workflow/mcp-server/domain/issue.js";
 import { escapeHtml } from "./layout.js";
 
-export function renderIssuesList(issues: Issue[]): string {
-  const issueCount = issues.length;
+export interface IssueWithPlanInfo {
+  issue: Issue;
+  hasPlan: boolean;
+  taskCounts?: {
+    total: number;
+    completed: number;
+    inProgress: number;
+  };
+}
+
+export function renderIssuesList(issuesWithPlans: IssueWithPlanInfo[]): string {
+  const issueCount = issuesWithPlans.length;
   const issuesWord = issueCount === 1 ? "issue" : "issues";
 
   return `
@@ -12,7 +22,7 @@ export function renderIssuesList(issues: Issue[]): string {
         <span class="issue-count">${issueCount} ${issuesWord}</span>
       </div>
 
-      ${issues.length === 0 ? renderEmpty() : renderTable(issues)}
+      ${issuesWithPlans.length === 0 ? renderEmpty() : renderTable(issuesWithPlans)}
     </div>
   `;
 }
@@ -26,7 +36,7 @@ function renderEmpty(): string {
   `;
 }
 
-function renderTable(issues: Issue[]): string {
+function renderTable(issuesWithPlans: IssueWithPlanInfo[]): string {
   return `
     <table class="issues-table">
       <thead>
@@ -36,17 +46,19 @@ function renderTable(issues: Issue[]): string {
           <th class="col-type">Type</th>
           <th class="col-priority">Priority</th>
           <th class="col-status">Status</th>
+          <th class="col-tasks">Tasks</th>
           <th class="col-labels">Labels</th>
         </tr>
       </thead>
       <tbody>
-        ${issues.map(issue => renderIssueRow(issue)).join("\n")}
+        ${issuesWithPlans.map(item => renderIssueRow(item)).join("\n")}
       </tbody>
     </table>
   `;
 }
 
-function renderIssueRow(issue: Issue): string {
+function renderIssueRow(item: IssueWithPlanInfo): string {
+  const { issue, hasPlan, taskCounts } = item;
   return `
     <tr class="issue-row" onclick="window.location.href='/issues/${issue.number}'">
       <td class="col-number">${issue.number}</td>
@@ -54,8 +66,40 @@ function renderIssueRow(issue: Issue): string {
       <td class="col-type">${renderTypeBadge(issue.type)}</td>
       <td class="col-priority">${renderPriorityBadge(issue.priority)}</td>
       <td class="col-status">${renderStatusBadge(issue.status)}</td>
+      <td class="col-tasks">${renderTasksStatus(issue.number, hasPlan, taskCounts)}</td>
       <td class="col-labels">${renderLabels(issue.labels)}</td>
     </tr>
+  `;
+}
+
+function renderTasksStatus(
+  issueNumber: number,
+  hasPlan: boolean,
+  taskCounts?: { total: number; completed: number; inProgress: number }
+): string {
+  if (!hasPlan) {
+    return '<span class="no-plan">—</span>';
+  }
+
+  if (!taskCounts || taskCounts.total === 0) {
+    return `<a href="/issues/${issueNumber}" class="plan-link" onclick="event.stopPropagation()">View Plan</a>`;
+  }
+
+  const { total, completed, inProgress } = taskCounts;
+  const progressPercent = Math.round((completed / total) * 100);
+
+  return `
+    <div class="plan-info">
+      <a href="/board?issue=${issueNumber}" class="tasks-link" onclick="event.stopPropagation()" title="View tasks on board">
+        <span class="task-progress-mini">
+          <span class="progress-bar-mini">
+            <span class="progress-fill-mini" style="width: ${progressPercent}%"></span>
+          </span>
+          <span class="task-counts">${completed}/${total}</span>
+        </span>
+      </a>
+      ${inProgress > 0 ? `<span class="in-progress-indicator" title="${inProgress} in progress"></span>` : ""}
+    </div>
   `;
 }
 

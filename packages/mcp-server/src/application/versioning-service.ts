@@ -1,26 +1,39 @@
-import type { Snapshot, SnapshotRepository, SnapshotType } from "../domain/snapshot.js";
+import type {
+  Snapshot,
+  SnapshotRepository,
+  SnapshotType,
+  SnapshotIssueState,
+  SnapshotPlanState,
+  SnapshotTaskState,
+} from "../domain/snapshot.js";
 import type { Issue, IssueRepository } from "../domain/issue.js";
 import type { Plan, PlanRepository } from "../domain/plan.js";
 import type { Task, TaskRepository } from "../domain/task.js";
 
 /**
- * Complete snapshot data including all related entities
+ * Complete snapshot data for viewing historical state
  */
 export interface SnapshotData {
   snapshot: Snapshot;
-  issue: Issue;
-  plan?: Plan;
-  tasks: Task[];
+  issue: SnapshotIssueState;
+  plan: SnapshotPlanState | null;
+  tasks: SnapshotTaskState[];
 }
 
 /**
  * VersioningService coordinates snapshot creation and restoration
  *
+ * Key changes from previous version:
+ * - Snapshots now store complete state as JSON (issueState, planState, tasksState)
+ * - No more snapshotId foreign keys on entities
+ * - Single row per entity in live tables
+ * - Revert updates live state from snapshot JSON
+ *
  * Responsibilities:
- * - Create atomic snapshots (issue + plan + tasks)
+ * - Create atomic snapshots capturing complete state
  * - Archive previous active snapshot
- * - Handle snapshot restoration
- * - Coordinate between repositories
+ * - Handle snapshot restoration (revert)
+ * - Provide time travel view of historical state
  *
  * Follows the Dependency Inversion Principle - depends on repository
  * interfaces, not concrete implementations.
@@ -34,7 +47,12 @@ export class VersioningService {
   ) {}
 
   /**
-   * Create a new snapshot of current issue+plan+tasks state
+   * Create a new snapshot capturing current live state
+   *
+   * Captures:
+   * - Issue state
+   * - Plan state (if exists)
+   * - All tasks state (including soft-deleted)
    *
    * Archives the previous active snapshot if one exists.
    *
@@ -42,171 +60,193 @@ export class VersioningService {
    * @param snapshotType - Type of snapshot being created
    * @param createdBy - Who/what created this snapshot
    * @param notes - Optional notes about this version
-   * @returns Complete snapshot data
+   * @returns The created snapshot with captured state
    */
   createSnapshot(
     issueNumber: number,
     snapshotType: SnapshotType,
     createdBy: string,
     notes?: string
-  ): SnapshotData {
-    // Archive current active snapshot if exists
-    this.snapshotRepository.archiveCurrent(issueNumber);
-
-    // Create new snapshot
-    const snapshot = this.snapshotRepository.create({
-      issueNumber,
-      status: "ACTIVE",
-      snapshotType,
-      createdBy,
-      notes,
-    });
-
-    // Get current issue, plan, and tasks for this snapshot
-    const issue = this.findIssueByNumber(issueNumber);
+  ): Snapshot {
+    // Get current live state
+    const issue = this.issueRepository.findByNumber(issueNumber);
     if (!issue) {
       throw new Error(`Issue not found: #${issueNumber}`);
     }
 
-    const plan = this.planRepository.findActiveByIssueId(issue.id);
-    const tasks = plan ? this.taskRepository.findByPlanId(plan.id) : [];
+    const plan = this.planRepository.findByIssueId(issue.id);
+    const tasks = plan
+      ? this.taskRepository.findByPlanId(plan.id, true) // Include deleted
+      : [];
 
-    return {
-      snapshot,
-      issue,
-      plan: plan ?? undefined,
-      tasks,
-    };
+    // Archive current active snapshot (if exists)
+    this.snapshotRepository.archiveCurrent(issueNumber);
+
+    // Create snapshot with captured state
+    const snapshot = this.snapshotRepository.create({
+      issueNumber,
+      status: "ACTIVE",
+      snapshotType,
+      issueState: this.captureIssueState(issue),
+      planState: plan ? this.capturePlanState(plan) : null,
+      tasksState: tasks.map((t) => this.captureTaskState(t)),
+      createdBy,
+      notes,
+    });
+
+    return snapshot;
   }
 
   /**
-   * Revert to a previous version snapshot
+   * Revert to a previous snapshot version
    *
-   * Creates a new snapshot based on old data (doesn't modify the old snapshot).
+   * Restores live state from snapshot JSON.
+   * Creates a new snapshot before reverting (backup).
+   * Creates another snapshot after reverting (records the revert).
    *
    * @param issueNumber - Issue number
    * @param version - Version number to revert to
    * @param createdBy - Who initiated the revert
    * @param notes - Optional notes about why reverting
-   * @returns Complete snapshot data for the new snapshot
+   * @returns The new snapshot created after reverting
    */
   revertToSnapshot(
     issueNumber: number,
     version: number,
     createdBy: string,
     notes?: string
-  ): SnapshotData {
+  ): Snapshot {
     // Find the target snapshot
-    const targetSnapshot = this.findSnapshotByVersion(issueNumber, version);
+    const targetSnapshot = this.snapshotRepository.findByVersion(
+      issueNumber,
+      version
+    );
     if (!targetSnapshot) {
       throw new Error(
         `Snapshot not found: issue #${issueNumber} version ${version}`
       );
     }
 
-    // Get the old data
-    const oldIssue = this.issueRepository.findBySnapshotId(targetSnapshot.id);
-    if (!oldIssue) {
-      throw new Error(`Issue not found for snapshot: ${targetSnapshot.id}`);
-    }
-
-    const oldPlan = this.planRepository.findBySnapshotId(targetSnapshot.id);
-    const oldTasks = this.taskRepository.findBySnapshotId(targetSnapshot.id);
-
-    // Archive current active snapshot
-    this.snapshotRepository.archiveCurrent(issueNumber);
-
-    // Create new snapshot for the revert
-    const newSnapshot = this.snapshotRepository.create({
+    // Create backup snapshot of current state before reverting
+    this.createSnapshot(
       issueNumber,
-      status: "ACTIVE",
-      snapshotType: "MANUAL",
+      "MANUAL",
       createdBy,
-      notes: notes || `Reverted to version ${version}`,
-    });
+      `Pre-revert backup (before reverting to v${version})`
+    );
 
-    // Create new issue based on old data
-    const newIssue = this.issueRepository.create({
-      title: oldIssue.title,
-      description: oldIssue.description,
-      acceptanceCriteria: oldIssue.acceptanceCriteria,
-      type: oldIssue.type,
-      priority: oldIssue.priority,
-      status: oldIssue.status,
-      labels: oldIssue.labels,
-      templateUsed: oldIssue.templateUsed,
-      createdBy: oldIssue.createdBy,
-    });
-
-    // Update new issue to link to snapshot
-    this.issueRepository.update(newIssue.id, {
-      snapshotId: newSnapshot.id,
-    });
-
-    // Create new plan if old one existed
-    let newPlan: Plan | undefined;
-    if (oldPlan) {
-      newPlan = this.planRepository.create({
-        snapshotId: newSnapshot.id,
-        issueId: newIssue.id,
-        summary: oldPlan.summary,
-        approach: oldPlan.approach,
-        estimatedComplexity: oldPlan.estimatedComplexity,
-        generatedBy: oldPlan.generatedBy,
-      });
+    // Get current issue
+    const issue = this.issueRepository.findByNumber(issueNumber);
+    if (!issue) {
+      throw new Error(`Issue not found: #${issueNumber}`);
     }
 
-    // Create new tasks based on old tasks
-    const newTasks: Task[] = [];
-    if (oldPlan && newPlan) {
-      const taskData = oldTasks.map((oldTask) => ({
-        snapshotId: newSnapshot.id,
-        planId: newPlan!.id,
-        title: oldTask.title,
-        description: oldTask.description,
-        acceptanceCriteria: oldTask.acceptanceCriteria,
-        status: oldTask.status,
-        estimatedMinutes: oldTask.estimatedMinutes,
-        matchedFromTaskId: oldTask.id, // Track that this was reverted
-        matchConfidence: 1.0, // Perfect match since it's a revert
-      }));
+    // Restore issue state from snapshot
+    this.issueRepository.update(issue.id, {
+      title: targetSnapshot.issueState.title,
+      description: targetSnapshot.issueState.description,
+      type: targetSnapshot.issueState.type,
+      priority: targetSnapshot.issueState.priority,
+      status: targetSnapshot.issueState.status,
+      acceptanceCriteria: targetSnapshot.issueState.acceptanceCriteria,
+      labels: targetSnapshot.issueState.labels,
+    });
 
-      newTasks.push(...this.taskRepository.createMany(taskData));
+    // Handle plan restoration
+    const currentPlan = this.planRepository.findByIssueId(issue.id);
+    if (targetSnapshot.planState) {
+      if (currentPlan) {
+        // Update existing plan
+        this.planRepository.update(currentPlan.id, {
+          summary: targetSnapshot.planState.summary,
+          approach: targetSnapshot.planState.approach,
+          estimatedComplexity: targetSnapshot.planState.estimatedComplexity,
+          generatedBy: targetSnapshot.planState.generatedBy,
+        });
+      } else {
+        // Create new plan from snapshot
+        this.planRepository.create({
+          issueId: issue.id,
+          summary: targetSnapshot.planState.summary,
+          approach: targetSnapshot.planState.approach,
+          estimatedComplexity: targetSnapshot.planState.estimatedComplexity,
+          generatedBy: targetSnapshot.planState.generatedBy,
+        });
+      }
+    } else if (currentPlan) {
+      // Target had no plan, delete current plan (cascades to tasks)
+      this.planRepository.delete(currentPlan.id);
     }
 
-    return {
-      snapshot: newSnapshot,
-      issue: newIssue,
-      plan: newPlan,
-      tasks: newTasks,
-    };
+    // Handle tasks restoration
+    const plan = this.planRepository.findByIssueId(issue.id);
+    if (plan && targetSnapshot.tasksState.length > 0) {
+      // Soft delete all current tasks
+      const currentTasks = this.taskRepository.findByPlanId(plan.id, false);
+      for (const task of currentTasks) {
+        if (task.status === "PENDING") {
+          this.taskRepository.softDelete(task.id, createdBy);
+        }
+      }
+
+      // Create new tasks from snapshot state
+      for (const taskState of targetSnapshot.tasksState) {
+        // Only restore non-deleted tasks from snapshot
+        if (!taskState.isDeleted) {
+          this.taskRepository.create({
+            planId: plan.id,
+            title: taskState.title,
+            description: taskState.description,
+            status: taskState.status,
+            source: taskState.source,
+            acceptanceCriteria: taskState.acceptanceCriteria,
+            estimatedMinutes: taskState.estimatedMinutes,
+            isDeleted: false,
+            hookConfigLabels: taskState.hookConfigLabels,
+            startedAt: taskState.startedAt,
+            completedAt: taskState.completedAt,
+            abandonedAt: taskState.abandonedAt,
+            matchedFromTaskId: taskState.id, // Track that this was restored
+            matchConfidence: 1.0, // Perfect match (exact restore)
+          });
+        }
+      }
+    }
+
+    // Create snapshot recording the revert
+    return this.createSnapshot(
+      issueNumber,
+      "MANUAL",
+      createdBy,
+      notes || `Reverted to version ${version}`
+    );
   }
 
   /**
-   * Get complete snapshot data
+   * View historical state at a specific version (read-only)
    *
-   * @param snapshotId - Snapshot UUID
-   * @returns Complete snapshot data
+   * Returns the captured state from the snapshot without modifying live state.
+   *
+   * @param issueNumber - Issue number
+   * @param version - Version number to view
+   * @returns Snapshot data with captured state
    */
-  getSnapshot(snapshotId: string): SnapshotData {
-    const snapshot = this.snapshotRepository.findById(snapshotId);
+  viewSnapshot(issueNumber: number, version: number): SnapshotData {
+    const snapshot = this.snapshotRepository.findByVersion(
+      issueNumber,
+      version
+    );
     if (!snapshot) {
-      throw new Error(`Snapshot not found: ${snapshotId}`);
+      throw new Error(
+        `Snapshot not found: issue #${issueNumber} version ${version}`
+      );
     }
-
-    const issue = this.issueRepository.findBySnapshotId(snapshotId);
-    if (!issue) {
-      throw new Error(`Issue not found for snapshot: ${snapshotId}`);
-    }
-
-    const plan = this.planRepository.findBySnapshotId(snapshotId);
-    const tasks = this.taskRepository.findBySnapshotId(snapshotId);
 
     return {
       snapshot,
-      issue,
-      plan: plan ?? undefined,
-      tasks,
+      issue: snapshot.issueState,
+      plan: snapshot.planState,
+      tasks: snapshot.tasksState,
     };
   }
 
@@ -214,28 +254,72 @@ export class VersioningService {
    * Get snapshot history for an issue
    *
    * @param issueNumber - Issue number
-   * @returns Array of snapshots ordered by version DESC
+   * @returns Array of snapshots ordered by version DESC (newest first)
    */
   getSnapshotHistory(issueNumber: number): Snapshot[] {
     return this.snapshotRepository.findByIssueNumber(issueNumber);
   }
 
   /**
-   * Find issue by number (helper method)
+   * Capture issue state for snapshot
    */
-  private findIssueByNumber(issueNumber: number): Issue | null {
-    const allIssues = this.issueRepository.findMany();
-    return allIssues.find((issue) => issue.number === issueNumber) ?? null;
+  private captureIssueState(issue: Issue): SnapshotIssueState {
+    return {
+      id: issue.id,
+      number: issue.number,
+      title: issue.title,
+      description: issue.description,
+      type: issue.type,
+      priority: issue.priority,
+      status: issue.status,
+      acceptanceCriteria: issue.acceptanceCriteria,
+      labels: issue.labels,
+      templateUsed: issue.templateUsed,
+      createdBy: issue.createdBy,
+      createdAt: issue.createdAt,
+      updatedAt: issue.updatedAt,
+    };
   }
 
   /**
-   * Find snapshot by issue number and version (helper method)
+   * Capture plan state for snapshot
    */
-  private findSnapshotByVersion(
-    issueNumber: number,
-    version: number
-  ): Snapshot | null {
-    const snapshots = this.snapshotRepository.findByIssueNumber(issueNumber);
-    return snapshots.find((s) => s.version === version) ?? null;
+  private capturePlanState(plan: Plan): SnapshotPlanState {
+    return {
+      id: plan.id,
+      issueId: plan.issueId,
+      summary: plan.summary,
+      approach: plan.approach,
+      estimatedComplexity: plan.estimatedComplexity,
+      generatedBy: plan.generatedBy,
+      createdAt: plan.createdAt,
+      updatedAt: plan.updatedAt,
+    };
+  }
+
+  /**
+   * Capture task state for snapshot
+   */
+  private captureTaskState(task: Task): SnapshotTaskState {
+    return {
+      id: task.id,
+      planId: task.planId,
+      order: task.order,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      source: task.source,
+      acceptanceCriteria: task.acceptanceCriteria,
+      estimatedMinutes: task.estimatedMinutes,
+      isDeleted: task.isDeleted,
+      deletedAt: task.deletedAt,
+      deletedBy: task.deletedBy,
+      hookConfigLabels: task.hookConfigLabels,
+      startedAt: task.startedAt,
+      completedAt: task.completedAt,
+      abandonedAt: task.abandonedAt,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+    };
   }
 }

@@ -1,6 +1,6 @@
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { plans, snapshots, PlanRow } from "./schema.js";
+import { plans, PlanRow } from "./schema.js";
 import type { Plan, PlanRepository } from "../domain/plan.js";
 import * as schema from "./schema.js";
 
@@ -29,7 +29,6 @@ export class SqlitePlanRepository implements PlanRepository {
       .insert(plans)
       .values({
         id: plan.id,
-        snapshotId: plan.snapshotId,
         issueId: plan.issueId,
         summary: plan.summary,
         approach: plan.approach,
@@ -53,30 +52,41 @@ export class SqlitePlanRepository implements PlanRepository {
     return result ? this.mapRowToPlan(result) : null;
   }
 
-  findActiveByIssueId(issueId: string): Plan | null {
-    // Get plan where snapshot is active for this issue
-    const result = this.db
-      .select({
-        plan: plans,
-      })
-      .from(plans)
-      .innerJoin(snapshots, eq(plans.snapshotId, snapshots.id))
-      .where(
-        and(eq(plans.issueId, issueId), eq(snapshots.status, "ACTIVE"))
-      )
-      .get();
-
-    return result ? this.mapRowToPlan(result.plan) : null;
-  }
-
-  findBySnapshotId(snapshotId: string): Plan | null {
+  findByIssueId(issueId: string): Plan | null {
     const result = this.db
       .select()
       .from(plans)
-      .where(eq(plans.snapshotId, snapshotId))
+      .where(eq(plans.issueId, issueId))
       .get();
 
     return result ? this.mapRowToPlan(result) : null;
+  }
+
+  update(
+    id: string,
+    data: Partial<Omit<Plan, "id" | "issueId" | "createdAt">>
+  ): Plan {
+    const now = new Date().toISOString();
+
+    this.db
+      .update(plans)
+      .set({
+        ...data,
+        updatedAt: now,
+      })
+      .where(eq(plans.id, id))
+      .run();
+
+    const updatedPlan = this.findById(id);
+    if (!updatedPlan) {
+      throw new Error(`Failed to update plan: ${id}`);
+    }
+
+    return updatedPlan;
+  }
+
+  delete(id: string): void {
+    this.db.delete(plans).where(eq(plans.id, id)).run();
   }
 
   /**
@@ -87,7 +97,6 @@ export class SqlitePlanRepository implements PlanRepository {
   private mapRowToPlan(row: PlanRow): Plan {
     return {
       id: row.id,
-      snapshotId: row.snapshotId,
       issueId: row.issueId,
       summary: row.summary,
       approach: row.approach,

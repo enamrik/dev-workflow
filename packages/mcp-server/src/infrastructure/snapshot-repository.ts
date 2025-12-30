@@ -37,6 +37,9 @@ export class SqliteSnapshotRepository implements SnapshotRepository {
         version: snapshot.version,
         status: snapshot.status,
         snapshotType: snapshot.snapshotType,
+        issueState: snapshot.issueState,
+        planState: snapshot.planState,
+        tasksState: snapshot.tasksState,
         createdBy: snapshot.createdBy,
         createdAt: snapshot.createdAt,
         notes: snapshot.notes,
@@ -105,6 +108,21 @@ export class SqliteSnapshotRepository implements SnapshotRepository {
       .run();
   }
 
+  findByVersion(issueNumber: number, version: number): Snapshot | null {
+    const result = this.db
+      .select()
+      .from(snapshots)
+      .where(
+        and(
+          eq(snapshots.issueNumber, issueNumber),
+          eq(snapshots.version, version)
+        )
+      )
+      .get();
+
+    return result ? this.mapRowToSnapshot(result) : null;
+  }
+
   /**
    * Map database row to domain Snapshot object
    *
@@ -117,6 +135,9 @@ export class SqliteSnapshotRepository implements SnapshotRepository {
       version: row.version,
       status: row.status as Snapshot["status"],
       snapshotType: row.snapshotType as Snapshot["snapshotType"],
+      issueState: row.issueState,
+      planState: row.planState ?? null,
+      tasksState: row.tasksState,
       createdBy: row.createdBy,
       createdAt: row.createdAt,
       notes: row.notes ?? undefined,

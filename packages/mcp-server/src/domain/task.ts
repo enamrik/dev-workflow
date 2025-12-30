@@ -5,6 +5,7 @@
 import type { HookResult } from "./hook-config.js";
 
 export type TaskStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
+export type TaskSource = "generated" | "manual";
 
 /**
  * Task entity
@@ -14,16 +15,21 @@ export type TaskStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
  */
 export interface Task {
   readonly id: string; // UUID
-  readonly snapshotId: string; // Foreign key to Snapshot
   readonly planId: string; // Foreign key to Plan
   readonly order: number; // Display order (1, 2, 3, ...)
   readonly title: string; // Short task title
   readonly description: string; // Detailed task description
   readonly acceptanceCriteria: string[]; // How to verify completion
   readonly status: TaskStatus;
+  readonly source: TaskSource; // Whether task was generated or manually created
   readonly estimatedMinutes?: number; // Optional time estimate
   readonly matchedFromTaskId?: string; // If preserved from previous version
   readonly matchConfidence?: number; // 0.0-1.0 matching score
+
+  // Soft delete support
+  readonly isDeleted: boolean; // Whether task is soft deleted
+  readonly deletedAt?: string; // When task was deleted
+  readonly deletedBy?: string; // Who deleted the task
 
   // Session tracking (mutable fields updated in place)
   readonly sessionId?: string; // Current Claude session working on this task
@@ -33,6 +39,9 @@ export interface Task {
   // Hook configuration references (composable, mutable)
   readonly hookConfigLabels?: string[]; // Array of labels, each references .track/issues/tasks/hooks/<label>.yml
   // Hooks are merged together: ["db-migration", "e2e-tests", "security"]
+
+  // Subagent execution context
+  readonly contextInstructions?: string; // Custom instructions for subagent execution (e.g., "use existing auth pattern in src/auth")
 
   readonly startedAt?: string; // When task moved to IN_PROGRESS
   readonly completedAt?: string; // When task moved to COMPLETED
@@ -59,12 +68,29 @@ export interface TaskStatusHistory {
 }
 
 /**
+ * Task execution log entry
+ *
+ * Records progress during subagent execution for audit trail.
+ * Subagents call log_task_progress to record what they're doing,
+ * and the main session can retrieve these logs after completion.
+ */
+export interface TaskExecutionLog {
+  readonly id: string; // UUID
+  readonly taskId: string; // Foreign key to Task
+  readonly sessionId: string; // Which session logged this entry
+  readonly message: string; // What was done (e.g., "Created user model in src/models/user.ts")
+  readonly filesModified?: string[]; // Optional list of files touched
+  readonly createdAt: string; // ISO date string
+}
+
+/**
  * Filters for querying tasks
  */
 export interface TaskFilters {
   planId?: string;
-  snapshotId?: string;
   status?: TaskStatus;
+  source?: TaskSource;
+  includeDeleted?: boolean; // Default: false
 }
 
 /**
@@ -111,21 +137,13 @@ export interface TaskRepository {
    * Find all tasks for a plan
    *
    * Returns tasks ordered by 'order' ASC.
+   * By default, excludes soft-deleted tasks.
    *
    * @param planId - Plan UUID
+   * @param includeDeleted - Whether to include soft-deleted tasks (default: false)
    * @returns Array of tasks for the plan
    */
-  findByPlanId(planId: string): Task[];
-
-  /**
-   * Find all tasks for a snapshot
-   *
-   * Returns tasks ordered by plan and order.
-   *
-   * @param snapshotId - Snapshot UUID
-   * @returns Array of tasks for the snapshot
-   */
-  findBySnapshotId(snapshotId: string): Task[];
+  findByPlanId(planId: string, includeDeleted?: boolean): Task[];
 
   /**
    * Find all tasks matching filters
@@ -204,4 +222,42 @@ export interface TaskRepository {
    * @returns The updated task
    */
   updateHookConfigLabels(taskId: string, labels: string[]): Task;
+
+  /**
+   * Update a task's properties
+   *
+   * General purpose update method for task fields.
+   *
+   * @param id - Task UUID
+   * @param data - Partial task data to update
+   * @returns The updated task
+   */
+  update(
+    id: string,
+    data: Partial<
+      Omit<Task, "id" | "planId" | "order" | "createdAt" | "isDeleted">
+    >
+  ): Task;
+
+  /**
+   * Soft delete a task
+   *
+   * Marks the task as deleted without removing it from the database.
+   * Only PENDING tasks can be soft deleted.
+   *
+   * @param id - Task UUID
+   * @param deletedBy - Who deleted the task
+   * @returns The soft-deleted task
+   */
+  softDelete(id: string, deletedBy?: string): Task;
+
+  /**
+   * Restore a soft-deleted task
+   *
+   * Unmarks the task as deleted.
+   *
+   * @param id - Task UUID
+   * @returns The restored task
+   */
+  restore(id: string): Task;
 }

@@ -10,9 +10,10 @@ export function renderLayout(title: string, content: string): string {
 </head>
 <body>
   <header>
-    <h1>dev-workflow</h1>
+    <a href="/" class="logo-link"><h1>dev-workflow</h1></a>
     <nav>
       <a href="/">Issues</a>
+      <a href="/board">Board</a>
     </nav>
   </header>
   <main>${content}</main>

@@ -12,7 +12,6 @@ export type PlanComplexity = "LOW" | "MEDIUM" | "HIGH" | "VERY_HIGH";
  */
 export interface Plan {
   readonly id: string; // UUID
-  readonly snapshotId: string; // Foreign key to Snapshot
   readonly issueId: string; // Foreign key to Issue
   readonly summary: string; // Brief summary of the plan
   readonly approach: string; // Detailed implementation approach (markdown)
@@ -46,22 +45,31 @@ export interface PlanRepository {
   findById(id: string): Plan | null;
 
   /**
-   * Find the active plan for an issue
+   * Find the plan for an issue
    *
-   * Returns the plan associated with the active snapshot for the issue.
+   * Returns the plan for the issue (one plan per issue).
    *
    * @param issueId - Issue UUID
-   * @returns The active plan if found, null otherwise
-   */
-  findActiveByIssueId(issueId: string): Plan | null;
-
-  /**
-   * Find plan by snapshot ID
-   *
-   * Returns the plan for a specific snapshot (version).
-   *
-   * @param snapshotId - Snapshot UUID
    * @returns The plan if found, null otherwise
    */
-  findBySnapshotId(snapshotId: string): Plan | null;
+  findByIssueId(issueId: string): Plan | null;
+
+  /**
+   * Update an existing plan
+   *
+   * @param id - Plan UUID
+   * @param data - Partial plan data to update
+   * @returns The updated plan
+   */
+  update(
+    id: string,
+    data: Partial<Omit<Plan, "id" | "issueId" | "createdAt">>
+  ): Plan;
+
+  /**
+   * Delete a plan
+   *
+   * @param id - Plan UUID
+   */
+  delete(id: string): void;
 }

@@ -37,16 +37,21 @@ export class SqliteTaskRepository implements TaskRepository {
       .insert(tasks)
       .values({
         id: task.id,
-        snapshotId: task.snapshotId,
         planId: task.planId,
         order: task.order,
         title: task.title,
         description: task.description,
         status: task.status,
+        source: task.source,
         acceptanceCriteria: task.acceptanceCriteria,
         estimatedMinutes: task.estimatedMinutes,
+        isDeleted: task.isDeleted,
+        deletedAt: task.deletedAt,
+        deletedBy: task.deletedBy,
         matchedFromTaskId: task.matchedFromTaskId,
         matchConfidence: task.matchConfidence,
+        hookConfigLabels: task.hookConfigLabels,
+        contextInstructions: task.contextInstructions,
         startedAt: task.startedAt,
         completedAt: task.completedAt,
         abandonedAt: task.abandonedAt,
@@ -90,16 +95,21 @@ export class SqliteTaskRepository implements TaskRepository {
         .insert(tasks)
         .values({
           id: task.id,
-          snapshotId: task.snapshotId,
           planId: task.planId,
           order: task.order,
           title: task.title,
           description: task.description,
           status: task.status,
+          source: task.source,
           acceptanceCriteria: task.acceptanceCriteria,
           estimatedMinutes: task.estimatedMinutes,
+          isDeleted: task.isDeleted,
+          deletedAt: task.deletedAt,
+          deletedBy: task.deletedBy,
           matchedFromTaskId: task.matchedFromTaskId,
           matchConfidence: task.matchConfidence,
+          hookConfigLabels: task.hookConfigLabels,
+          contextInstructions: task.contextInstructions,
           startedAt: task.startedAt,
           completedAt: task.completedAt,
           abandonedAt: task.abandonedAt,
@@ -124,22 +134,17 @@ export class SqliteTaskRepository implements TaskRepository {
     return result ? this.mapRowToTask(result) : null;
   }
 
-  findByPlanId(planId: string): Task[] {
+  findByPlanId(planId: string, includeDeleted = false): Task[] {
+    const conditions = [eq(tasks.planId, planId)];
+
+    if (!includeDeleted) {
+      conditions.push(eq(tasks.isDeleted, false));
+    }
+
     const results = this.db
       .select()
       .from(tasks)
-      .where(eq(tasks.planId, planId))
-      .orderBy(asc(tasks.order))
-      .all();
-
-    return results.map((row) => this.mapRowToTask(row));
-  }
-
-  findBySnapshotId(snapshotId: string): Task[] {
-    const results = this.db
-      .select()
-      .from(tasks)
-      .where(eq(tasks.snapshotId, snapshotId))
+      .where(and(...conditions))
       .orderBy(asc(tasks.order))
       .all();
 
@@ -154,11 +159,15 @@ export class SqliteTaskRepository implements TaskRepository {
     if (filters?.planId) {
       conditions.push(eq(tasks.planId, filters.planId));
     }
-    if (filters?.snapshotId) {
-      conditions.push(eq(tasks.snapshotId, filters.snapshotId));
-    }
     if (filters?.status) {
       conditions.push(eq(tasks.status, filters.status));
+    }
+    if (filters?.source) {
+      conditions.push(eq(tasks.source, filters.source));
+    }
+    // By default, exclude deleted tasks unless includeDeleted is true
+    if (!filters?.includeDeleted) {
+      conditions.push(eq(tasks.isDeleted, false));
     }
 
     if (conditions.length > 0) {
@@ -329,6 +338,86 @@ export class SqliteTaskRepository implements TaskRepository {
     return updatedTask;
   }
 
+  update(
+    id: string,
+    data: Partial<
+      Omit<Task, "id" | "planId" | "order" | "createdAt" | "isDeleted">
+    >
+  ): Task {
+    const now = new Date().toISOString();
+
+    this.db
+      .update(tasks)
+      .set({
+        ...data,
+        updatedAt: now,
+      })
+      .where(eq(tasks.id, id))
+      .run();
+
+    const updatedTask = this.findById(id);
+    if (!updatedTask) {
+      throw new Error(`Failed to update task: ${id}`);
+    }
+
+    return updatedTask;
+  }
+
+  softDelete(id: string, deletedBy?: string): Task {
+    const task = this.findById(id);
+    if (!task) {
+      throw new Error(`Task not found: ${id}`);
+    }
+
+    if (task.status !== "PENDING") {
+      throw new Error(
+        `Cannot delete task with status ${task.status}. Only PENDING tasks can be deleted.`
+      );
+    }
+
+    const now = new Date().toISOString();
+
+    this.db
+      .update(tasks)
+      .set({
+        isDeleted: true,
+        deletedAt: now,
+        deletedBy,
+        updatedAt: now,
+      })
+      .where(eq(tasks.id, id))
+      .run();
+
+    const updatedTask = this.findById(id);
+    if (!updatedTask) {
+      throw new Error(`Failed to soft delete task: ${id}`);
+    }
+
+    return updatedTask;
+  }
+
+  restore(id: string): Task {
+    const now = new Date().toISOString();
+
+    this.db
+      .update(tasks)
+      .set({
+        isDeleted: false,
+        deletedAt: null,
+        deletedBy: null,
+        updatedAt: now,
+      })
+      .where(eq(tasks.id, id))
+      .run();
+
+    const updatedTask = this.findById(id);
+    if (!updatedTask) {
+      throw new Error(`Failed to restore task: ${id}`);
+    }
+
+    return updatedTask;
+  }
+
   /**
    * Map database row to domain Task object
    *
@@ -337,20 +426,24 @@ export class SqliteTaskRepository implements TaskRepository {
   private mapRowToTask(row: TaskRow): Task {
     return {
       id: row.id,
-      snapshotId: row.snapshotId,
       planId: row.planId,
       order: row.order,
       title: row.title,
       description: row.description,
       status: row.status as Task["status"],
+      source: (row.source ?? "generated") as Task["source"],
       acceptanceCriteria: row.acceptanceCriteria,
       estimatedMinutes: row.estimatedMinutes ?? undefined,
+      isDeleted: row.isDeleted ?? false,
+      deletedAt: row.deletedAt ?? undefined,
+      deletedBy: row.deletedBy ?? undefined,
       matchedFromTaskId: row.matchedFromTaskId ?? undefined,
       matchConfidence: row.matchConfidence ?? undefined,
       sessionId: row.sessionId ?? undefined,
       sessionStartedAt: row.sessionStartedAt ?? undefined,
       lastSessionActivityAt: row.lastSessionActivityAt ?? undefined,
       hookConfigLabels: row.hookConfigLabels ?? undefined,
+      contextInstructions: row.contextInstructions ?? undefined,
       startedAt: row.startedAt ?? undefined,
       completedAt: row.completedAt ?? undefined,
       abandonedAt: row.abandonedAt ?? undefined,

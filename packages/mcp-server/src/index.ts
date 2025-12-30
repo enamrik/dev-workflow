@@ -12,6 +12,8 @@ import { SqliteIssueRepository } from "./infrastructure/issue-repository.js";
 import { SqliteSnapshotRepository } from "./infrastructure/snapshot-repository.js";
 import { SqlitePlanRepository } from "./infrastructure/plan-repository.js";
 import { SqliteTaskRepository } from "./infrastructure/task-repository.js";
+import * as schema from "./infrastructure/schema.js";
+import { eq, asc } from "drizzle-orm";
 import { TemplateService } from "./infrastructure/template-service.js";
 import { NodeFileSystem } from "./infrastructure/file-system.js";
 import { VersioningService } from "./application/versioning-service.js";
@@ -19,6 +21,7 @@ import { PlanningService } from "./application/planning-service.js";
 import { FileSystemHookConfigService } from "./application/hook-config-service.js";
 import { ShellHookExecutor } from "./application/hook-executor.js";
 import { TaskSessionService } from "./application/task-session-service.js";
+import { TaskManagementService } from "./application/task-management-service.js";
 
 // Get paths from environment
 const DATABASE_PATH =
@@ -38,6 +41,7 @@ let planningService: PlanningService;
 let hookConfigService: FileSystemHookConfigService;
 let hookExecutor: ShellHookExecutor;
 let taskSessionService: TaskSessionService;
+let taskManagementService: TaskManagementService;
 
 // Create MCP server
 const server = new Server(
@@ -459,6 +463,168 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {},
       },
     },
+    {
+      name: "add_manual_task",
+      description: "Add a user-created task to a plan. Manual tasks are preserved during plan regeneration.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          issueNumber: {
+            type: "number",
+            description: "Issue number (e.g., 123 for #123)",
+          },
+          title: {
+            type: "string",
+            description: "Task title",
+          },
+          description: {
+            type: "string",
+            description: "Task description",
+          },
+          acceptanceCriteria: {
+            type: "array",
+            items: { type: "string" },
+            description: "Acceptance criteria for the task",
+          },
+          estimatedMinutes: {
+            type: "number",
+            description: "Estimated time in minutes",
+          },
+          insertAfterTaskId: {
+            type: "string",
+            description: "Optional: Task ID to insert after (for ordering)",
+          },
+        },
+        required: ["issueNumber", "title", "description"],
+      },
+    },
+    {
+      name: "delete_task",
+      description: "Delete a task (soft delete). Only PENDING tasks can be deleted.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          taskId: {
+            type: "string",
+            description: "Task UUID",
+          },
+        },
+        required: ["taskId"],
+      },
+    },
+    {
+      name: "view_snapshot",
+      description: "View the complete state of an issue at a specific version (time travel, read-only).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          issueNumber: {
+            type: "number",
+            description: "Issue number",
+          },
+          version: {
+            type: "number",
+            description: "Version number to view",
+          },
+        },
+        required: ["issueNumber", "version"],
+      },
+    },
+    {
+      name: "update_task",
+      description: "Update a task's properties. Use for tuning task details before execution.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          taskId: {
+            type: "string",
+            description: "Task UUID",
+          },
+          title: {
+            type: "string",
+            description: "New task title",
+          },
+          description: {
+            type: "string",
+            description: "New task description",
+          },
+          acceptanceCriteria: {
+            type: "array",
+            items: { type: "string" },
+            description: "New acceptance criteria",
+          },
+          contextInstructions: {
+            type: "string",
+            description: "Custom instructions for subagent execution (e.g., 'use existing auth pattern in src/auth')",
+          },
+          estimatedMinutes: {
+            type: "number",
+            description: "Estimated time in minutes",
+          },
+          hookConfigLabels: {
+            type: "array",
+            items: { type: "string" },
+            description: "Hook configuration labels",
+          },
+        },
+        required: ["taskId"],
+      },
+    },
+    {
+      name: "get_task_execution_prompt",
+      description: "Generate a prompt for spawning a subagent to execute a task. Returns prompt-ready text with full context.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          taskId: {
+            type: "string",
+            description: "Task UUID",
+          },
+        },
+        required: ["taskId"],
+      },
+    },
+    {
+      name: "log_task_progress",
+      description: "Log progress during task execution (for subagent audit trail). Call this to record what you're doing.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          taskId: {
+            type: "string",
+            description: "Task UUID",
+          },
+          sessionId: {
+            type: "string",
+            description: "Session ID executing the task",
+          },
+          message: {
+            type: "string",
+            description: "What was done (e.g., 'Created user model in src/models/user.ts')",
+          },
+          filesModified: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional list of files touched",
+          },
+        },
+        required: ["taskId", "sessionId", "message"],
+      },
+    },
+    {
+      name: "get_task_execution_log",
+      description: "Get the execution log for a task. Use after subagent completion to see what was done.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          taskId: {
+            type: "string",
+            description: "Task UUID",
+          },
+        },
+        required: ["taskId"],
+      },
+    },
   ],
 }));
 
@@ -714,7 +880,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         resolvedIssueId = issue.id;
       }
 
-      const plan = planRepository.findActiveByIssueId(resolvedIssueId);
+      const plan = planRepository.findByIssueId(resolvedIssueId);
       if (!plan) {
         return {
           content: [
@@ -722,7 +888,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               type: "text",
               text: JSON.stringify({
                 success: false,
-                error: "No active plan found for this issue",
+                error: "No plan found for this issue",
               }),
             },
           ],
@@ -764,7 +930,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         resolvedIssueId = issue.id;
       }
 
-      const result = planningService.updateIssueWithRegeneration(
+      const result = planningService.updateIssue(
         resolvedIssueId,
         updates,
         regeneratePlan
@@ -976,7 +1142,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       } else if (issueNumber) {
         const issue = issueRepository.findByNumber(issueNumber);
         if (issue) {
-          const plan = planRepository.findActiveByIssueId(issue.id);
+          const plan = planRepository.findByIssueId(issue.id);
           if (plan) {
             tasks = taskRepository.findByPlanId(plan.id);
           }
@@ -1041,6 +1207,329 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
     }
 
+    if (name === "add_manual_task") {
+      const {
+        issueNumber,
+        title,
+        description,
+        acceptanceCriteria,
+        estimatedMinutes,
+        insertAfterTaskId,
+      } = args as any;
+
+      const task = taskManagementService.addManualTask({
+        issueNumber,
+        title,
+        description,
+        acceptanceCriteria,
+        estimatedMinutes,
+        insertAfterTaskId,
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              task,
+            }, null, 2),
+          },
+        ],
+      };
+    }
+
+    if (name === "delete_task") {
+      const { taskId } = args as any;
+
+      const task = taskManagementService.deleteTask(taskId, "claude-agent");
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              task,
+            }, null, 2),
+          },
+        ],
+      };
+    }
+
+    if (name === "view_snapshot") {
+      const { issueNumber, version } = args as any;
+
+      const snapshotData = versioningService.viewSnapshot(issueNumber, version);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(snapshotData, null, 2),
+          },
+        ],
+      };
+    }
+
+    if (name === "update_task") {
+      const {
+        taskId,
+        title,
+        description,
+        acceptanceCriteria,
+        contextInstructions,
+        estimatedMinutes,
+        hookConfigLabels,
+      } = args as any;
+
+      const task = taskRepository.findById(taskId);
+      if (!task) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: false,
+                error: `Task not found: ${taskId}`,
+              }),
+            },
+          ],
+        };
+      }
+
+      // Build update object with only provided fields
+      const updates: Record<string, unknown> = {};
+      if (title !== undefined) updates.title = title;
+      if (description !== undefined) updates.description = description;
+      if (acceptanceCriteria !== undefined) updates.acceptanceCriteria = acceptanceCriteria;
+      if (contextInstructions !== undefined) updates.contextInstructions = contextInstructions;
+      if (estimatedMinutes !== undefined) updates.estimatedMinutes = estimatedMinutes;
+      if (hookConfigLabels !== undefined) updates.hookConfigLabels = hookConfigLabels;
+
+      const updatedTask = taskRepository.update(taskId, updates);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              task: updatedTask,
+            }, null, 2),
+          },
+        ],
+      };
+    }
+
+    if (name === "get_task_execution_prompt") {
+      const { taskId } = args as any;
+
+      const task = taskRepository.findById(taskId);
+      if (!task) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: false,
+                error: `Task not found: ${taskId}`,
+              }),
+            },
+          ],
+        };
+      }
+
+      // Get parent context
+      const plan = planRepository.findById(task.planId);
+      if (!plan) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: false,
+                error: `Plan not found for task: ${taskId}`,
+              }),
+            },
+          ],
+        };
+      }
+
+      const issue = issueRepository.findById(plan.issueId);
+      if (!issue) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: false,
+                error: `Issue not found for plan: ${plan.id}`,
+              }),
+            },
+          ],
+        };
+      }
+
+      // Generate session ID for the subagent
+      const sessionId = crypto.randomUUID();
+
+      // Build the execution prompt
+      const issueAcceptanceCriteria = issue.acceptanceCriteria
+        .map((c) => `- [ ] ${c}`)
+        .join("\n");
+      const taskAcceptanceCriteria = task.acceptanceCriteria
+        .map((c) => `- [ ] ${c}`)
+        .join("\n");
+
+      const prompt = `# Task Execution
+
+You are executing task #${task.order} for issue #${issue.number}.
+
+## Issue: ${issue.title}
+${issue.description}
+
+**Issue Acceptance Criteria:**
+${issueAcceptanceCriteria || "- None specified"}
+
+## Plan Approach
+${plan.approach}
+
+## Your Task: ${task.title}
+${task.description}
+
+**Task Acceptance Criteria:**
+${taskAcceptanceCriteria || "- None specified"}
+
+${task.contextInstructions ? `## Additional Instructions\n${task.contextInstructions}\n` : ""}
+## Execution Instructions
+
+1. Implement the task following the plan's approach
+2. Ensure all acceptance criteria are met
+3. Use \`log_task_progress\` to record significant steps (for audit trail)
+4. When complete: call \`complete_task_session\` with:
+   - taskId: "${taskId}"
+   - sessionId: "${sessionId}"
+5. If blocked: call \`abandon_task_session\` with:
+   - taskId: "${taskId}"
+   - sessionId: "${sessionId}"
+   - reason: (explain why)
+
+**Important:** You have access to dev-workflow-tracker MCP tools for task lifecycle management.`;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              taskId,
+              sessionId,
+              prompt,
+            }, null, 2),
+          },
+        ],
+      };
+    }
+
+    if (name === "log_task_progress") {
+      const { taskId, sessionId, message, filesModified } = args as any;
+
+      const task = taskRepository.findById(taskId);
+      if (!task) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: false,
+                error: `Task not found: ${taskId}`,
+              }),
+            },
+          ],
+        };
+      }
+
+      // Insert execution log entry
+      const db = dbService.getDb();
+      const logId = crypto.randomUUID();
+      const now = new Date().toISOString();
+
+      db.insert(schema.taskExecutionLogs)
+        .values({
+          id: logId,
+          taskId,
+          sessionId,
+          message,
+          filesModified: filesModified || null,
+          createdAt: now,
+        })
+        .run();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              logId,
+              taskId,
+              message,
+            }, null, 2),
+          },
+        ],
+      };
+    }
+
+    if (name === "get_task_execution_log") {
+      const { taskId } = args as any;
+
+      const task = taskRepository.findById(taskId);
+      if (!task) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: false,
+                error: `Task not found: ${taskId}`,
+              }),
+            },
+          ],
+        };
+      }
+
+      // Get all execution log entries for this task
+      const db = dbService.getDb();
+      const logs = db
+        .select()
+        .from(schema.taskExecutionLogs)
+        .where(eq(schema.taskExecutionLogs.taskId, taskId))
+        .orderBy(asc(schema.taskExecutionLogs.createdAt))
+        .all();
+
+      const entries = logs.map((log: schema.TaskExecutionLogRow) => ({
+        id: log.id,
+        sessionId: log.sessionId,
+        message: log.message,
+        filesModified: log.filesModified,
+        createdAt: log.createdAt,
+      }));
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              taskId,
+              entries,
+            }, null, 2),
+          },
+        ],
+      };
+    }
+
     return {
       content: [
         {
@@ -1070,8 +1559,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 // Start server with stdio transport
 async function main() {
   // Initialize database with automatic native/WASM detection
+  // Migrations are run during `dev-workflow init` and `dev-workflow update`, not on server startup
   dbService = await DatabaseService.create(DATABASE_PATH);
-  dbService.runMigrations();
 
   // Initialize repositories
   const db = dbService.getDb();
@@ -1100,10 +1589,17 @@ async function main() {
 
   planningService = new PlanningService(
     issueRepository,
-    snapshotRepository,
     planRepository,
     taskRepository,
-    hookConfigService
+    hookConfigService,
+    versioningService
+  );
+
+  // Initialize task management service
+  taskManagementService = new TaskManagementService(
+    taskRepository,
+    planRepository,
+    issueRepository
   );
 
   // Initialize template service

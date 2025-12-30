@@ -35,12 +35,25 @@ export class UIService {
       const { SqliteIssueRepository } = await import(
         "@dev-workflow/mcp-server/infrastructure/issue-repository.js"
       );
+      const { SqlitePlanRepository } = await import(
+        "@dev-workflow/mcp-server/infrastructure/plan-repository.js"
+      );
+      const { SqliteTaskRepository } = await import(
+        "@dev-workflow/mcp-server/infrastructure/task-repository.js"
+      );
 
       const dbService = await DatabaseService.create(dbPath);
-      const repository = new SqliteIssueRepository(dbService.getDb());
+      const db = dbService.getDb();
+      const issueRepository = new SqliteIssueRepository(db);
+      const planRepository = new SqlitePlanRepository(db);
+      const taskRepository = new SqliteTaskRepository(db);
 
       // Create and start server
-      const server = await createServer(repository);
+      const server = await createServer({
+        issueRepository,
+        planRepository,
+        taskRepository,
+      });
       await server.listen({ port, host: "127.0.0.1" });
 
       const url = `http://127.0.0.1:${port}`;

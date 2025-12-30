@@ -11,14 +11,12 @@ CREATE TABLE `issues` (
 	`template_used` text,
 	`created_by` text,
 	`created_at` text NOT NULL,
-	`updated_at` text NOT NULL,
-	`snapshot_id` text
+	`updated_at` text NOT NULL
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `issues_number_unique` ON `issues` (`number`);--> statement-breakpoint
 CREATE TABLE `plans` (
 	`id` text PRIMARY KEY NOT NULL,
-	`snapshot_id` text NOT NULL,
 	`issue_id` text NOT NULL,
 	`summary` text NOT NULL,
 	`approach` text NOT NULL,
@@ -26,7 +24,6 @@ CREATE TABLE `plans` (
 	`generated_by` text NOT NULL,
 	`created_at` text NOT NULL,
 	`updated_at` text NOT NULL,
-	FOREIGN KEY (`snapshot_id`) REFERENCES `snapshots`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`issue_id`) REFERENCES `issues`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
@@ -36,6 +33,9 @@ CREATE TABLE `snapshots` (
 	`version` integer NOT NULL,
 	`status` text NOT NULL,
 	`snapshot_type` text NOT NULL,
+	`issue_state` text NOT NULL,
+	`plan_state` text,
+	`tasks_state` text DEFAULT '[]' NOT NULL,
 	`created_by` text NOT NULL,
 	`created_at` text NOT NULL,
 	`notes` text
@@ -56,14 +56,17 @@ CREATE TABLE `task_status_history` (
 --> statement-breakpoint
 CREATE TABLE `tasks` (
 	`id` text PRIMARY KEY NOT NULL,
-	`snapshot_id` text NOT NULL,
 	`plan_id` text NOT NULL,
 	`order` integer NOT NULL,
 	`title` text NOT NULL,
 	`description` text NOT NULL,
 	`status` text NOT NULL,
+	`source` text DEFAULT 'generated' NOT NULL,
 	`acceptance_criteria` text DEFAULT '[]' NOT NULL,
 	`estimated_minutes` integer,
+	`is_deleted` integer DEFAULT false NOT NULL,
+	`deleted_at` text,
+	`deleted_by` text,
 	`matched_from_task_id` text,
 	`match_confidence` real,
 	`session_id` text,
@@ -75,6 +78,5 @@ CREATE TABLE `tasks` (
 	`abandoned_at` text,
 	`created_at` text NOT NULL,
 	`updated_at` text NOT NULL,
-	FOREIGN KEY (`snapshot_id`) REFERENCES `snapshots`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`plan_id`) REFERENCES `plans`(`id`) ON UPDATE no action ON DELETE cascade
 );

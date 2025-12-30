@@ -8,7 +8,11 @@
     ".": "./dist/index.js",
     "./infrastructure/database.js": "./dist/infrastructure/database.js",
     "./infrastructure/issue-repository.js": "./dist/infrastructure/issue-repository.js",
-    "./domain/issue.js": "./dist/domain/issue.js"
+    "./infrastructure/plan-repository.js": "./dist/infrastructure/plan-repository.js",
+    "./infrastructure/task-repository.js": "./dist/infrastructure/task-repository.js",
+    "./domain/issue.js": "./dist/domain/issue.js",
+    "./domain/plan.js": "./dist/domain/plan.js",
+    "./domain/task.js": "./dist/domain/task.js"
   },
   "bin": {
     "dev-workflow-mcp": "./dist/index.js"

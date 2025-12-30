@@ -2,8 +2,69 @@
  * Domain types for Snapshot entity
  */
 
+import type { IssueType, IssuePriority, IssueStatus } from "./issue.js";
+import type { PlanComplexity } from "./plan.js";
+import type { TaskStatus, TaskSource } from "./task.js";
+
 export type SnapshotStatus = "ACTIVE" | "ARCHIVED";
 export type SnapshotType = "MANUAL" | "ISSUE_UPDATE" | "PLAN_REGENERATION";
+
+/**
+ * Captured issue state at snapshot time
+ */
+export interface SnapshotIssueState {
+  id: string;
+  number: number;
+  title: string;
+  description: string;
+  type: IssueType;
+  priority: IssuePriority;
+  status: IssueStatus;
+  acceptanceCriteria: string[];
+  labels: string[];
+  templateUsed?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Captured plan state at snapshot time
+ */
+export interface SnapshotPlanState {
+  id: string;
+  issueId: string;
+  summary: string;
+  approach: string;
+  estimatedComplexity: PlanComplexity;
+  generatedBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Captured task state at snapshot time
+ */
+export interface SnapshotTaskState {
+  id: string;
+  planId: string;
+  order: number;
+  title: string;
+  description: string;
+  status: TaskStatus;
+  source: TaskSource;
+  acceptanceCriteria: string[];
+  estimatedMinutes?: number;
+  isDeleted: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
+  hookConfigLabels?: string[];
+  startedAt?: string;
+  completedAt?: string;
+  abandonedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 /**
  * Snapshot entity
@@ -17,6 +78,9 @@ export interface Snapshot {
   readonly version: number; // Version number (1, 2, 3...)
   readonly status: SnapshotStatus;
   readonly snapshotType: SnapshotType;
+  readonly issueState: SnapshotIssueState; // Captured issue state
+  readonly planState: SnapshotPlanState | null; // Captured plan state (null if no plan)
+  readonly tasksState: SnapshotTaskState[]; // Captured tasks state
   readonly createdBy: string; // Who/what created this snapshot
   readonly createdAt: string; // ISO date string
   readonly notes?: string; // Optional notes about this version
@@ -88,4 +152,13 @@ export interface SnapshotRepository {
    * @param issueNumber - Issue number
    */
   archiveCurrent(issueNumber: number): void;
+
+  /**
+   * Find a snapshot by issue number and version
+   *
+   * @param issueNumber - Issue number
+   * @param version - Version number
+   * @returns The snapshot if found, null otherwise
+   */
+  findByVersion(issueNumber: number, version: number): Snapshot | null;
 }

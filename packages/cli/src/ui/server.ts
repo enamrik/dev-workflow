@@ -3,14 +3,13 @@ import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import type { FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
-import type { SqliteIssueRepository } from "@dev-workflow/mcp-server/infrastructure/issue-repository.js";
-import { registerHTMLRoutes } from "./routes/index.route.js";
+import { registerHTMLRoutes, type RepositoryContext } from "./routes/index.route.js";
 import { registerAPIRoutes } from "./routes/api.route.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export async function createServer(
-  repository: SqliteIssueRepository
+  context: RepositoryContext
 ): Promise<FastifyInstance> {
   const server = Fastify({
     logger: false, // Quiet mode for clean CLI output
@@ -23,8 +22,8 @@ export async function createServer(
   });
 
   // Register routes
-  registerHTMLRoutes(server, repository);
-  registerAPIRoutes(server, repository);
+  registerHTMLRoutes(server, context);
+  registerAPIRoutes(server, context.issueRepository);
 
   return server;
 }

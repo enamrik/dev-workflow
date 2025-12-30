@@ -135,16 +135,6 @@ export class SqliteIssueRepository implements IssueRepository {
     return updated;
   }
 
-  findBySnapshotId(snapshotId: string): Issue | null {
-    const result = this.db
-      .select()
-      .from(issues)
-      .where(eq(issues.snapshotId, snapshotId))
-      .get();
-
-    return result ? this.mapRowToIssue(result) : null;
-  }
-
   /**
    * Map database row to domain Issue object
    *
@@ -163,7 +153,6 @@ export class SqliteIssueRepository implements IssueRepository {
       labels: row.labels,
       templateUsed: row.templateUsed ?? undefined,
       createdBy: row.createdBy ?? undefined,
-      snapshotId: row.snapshotId ?? undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
