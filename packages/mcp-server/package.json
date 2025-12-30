@@ -22,7 +22,10 @@
     "copy-migrations": "mkdir -p dist/drizzle && cp -r drizzle/* dist/drizzle/",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.5.0",
@@ -38,7 +41,8 @@
     "@types/node": "^20.10.6",
     "@types/sql.js": "^1.4.9",
     "drizzle-kit": "^0.28.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^2.0.0"
   },
   "engines": {
     "node": ">=20.0.0"
