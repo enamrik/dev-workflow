@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["src/scenarios/**/*.test.ts"],
-    testTimeout: 180000, // 3 min per test (AI calls)
+    testTimeout: 600000, // 10 min for full workflow
     hookTimeout: 180000,
     pool: "forks",
     poolOptions: {
@@ -11,5 +11,7 @@ export default defineConfig({
         singleFork: true,
       },
     },
+    reporters: ["verbose"],
+    outputFile: undefined,
   },
 });

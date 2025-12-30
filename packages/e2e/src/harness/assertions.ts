@@ -39,7 +39,7 @@ interface TaskRow {
   title: string;
   description: string;
   status: string;
-  order_index: number;
+  order: number;
   created_at: string;
   updated_at: string;
 }
@@ -108,7 +108,7 @@ export function assertTasksExist(
   minCount = 1
 ): TaskRow[] {
   const tasks = db
-    .prepare("SELECT * FROM tasks WHERE plan_id = ? ORDER BY order_index")
+    .prepare('SELECT * FROM tasks WHERE plan_id = ? ORDER BY "order"')
     .all(planId) as TaskRow[];
 
   expect(

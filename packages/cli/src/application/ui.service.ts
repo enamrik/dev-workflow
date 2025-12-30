@@ -24,8 +24,10 @@ export class UIService {
 
   async start(): Promise<void> {
     try {
-      // Find available port
-      const port = await findAvailablePort();
+      // Use PORT env var if set, otherwise find available port
+      const port = process.env["PORT"]
+        ? parseInt(process.env["PORT"], 10)
+        : await findAvailablePort();
 
       // Initialize database
       const dbPath = path.join(this.workingDirectory, ".track/data/workflow.db");

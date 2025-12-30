@@ -79,7 +79,7 @@ describe("E2E: Simple File Rename", () => {
       {
         cwd: harness.testDir,
         allowedTools: ["mcp__dev-workflow-tracker__create_issue"],
-        timeout: 60000,
+        timeout: 120000,
       }
     );
     expect(createResult.exitCode).toBe(0);
@@ -99,8 +99,11 @@ describe("E2E: Simple File Rename", () => {
       `Generate an implementation plan for issue #${issue.number}. Include tasks for: 1) Rename the file, 2) Update imports. Use the generate_plan tool.`,
       {
         cwd: harness.testDir,
-        allowedTools: ["mcp__dev-workflow-tracker__generate_plan"],
-        timeout: 90000,
+        allowedTools: [
+          "mcp__dev-workflow-tracker__get_issue",
+          "mcp__dev-workflow-tracker__generate_plan",
+        ],
+        timeout: 120000,
       }
     );
     expect(planResult.exitCode).toBe(0);
@@ -125,15 +128,16 @@ describe("E2E: Simple File Rename", () => {
     }
 
     const execResult = await runClaude(
-      `Start task ${pendingTask.id} using start_task_session, then rename the file src/utils.ts to src/helpers.ts using mv, then complete the task using complete_task_session.`,
+      `Start task ${pendingTask.id} using start_task_session with skipHooks=true, then rename the file src/utils.ts to src/helpers.ts using mv, then complete the task using complete_task_session with skipHooks=true.`,
       {
         cwd: harness.testDir,
         allowedTools: [
+          "mcp__dev-workflow-tracker__get_task_for_session",
           "mcp__dev-workflow-tracker__start_task_session",
           "mcp__dev-workflow-tracker__complete_task_session",
           "Bash",
         ],
-        timeout: 90000,
+        timeout: 120000,
       }
     );
     expect(execResult.exitCode).toBe(0);

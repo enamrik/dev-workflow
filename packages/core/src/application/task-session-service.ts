@@ -95,21 +95,23 @@ export class TaskSessionService {
     const allHookResults: HookResult[] = [];
     const now = new Date().toISOString();
 
-    // Load and merge hook configs
-    const hookConfig = await this.hookConfigService.loadAndMergeConfigs(
-      task.hookConfigLabels ?? []
-    );
+    // Load and merge hook configs (only if not skipping hooks)
+    const hookConfig = skipHooks
+      ? null
+      : await this.hookConfigService.loadAndMergeConfigs(
+          task.hookConfigLabels ?? []
+        );
 
     // Execute pre-start hooks
-    if (!skipHooks && hookConfig.hooks.preStart) {
+    if (!skipHooks && hookConfig?.hooks.preStart) {
       const preStartResults = await this.hookExecutor.executeHooks(
         hookConfig.hooks.preStart,
         {
           taskId: task.id,
           taskTitle: task.title,
           workingDirectory: this.trackDirectory,
-          environment: hookConfig.environment,
-          timeout: hookConfig.timeout,
+          environment: hookConfig?.environment,
+          timeout: hookConfig?.timeout,
         }
       );
 
@@ -143,15 +145,15 @@ export class TaskSessionService {
     );
 
     // Execute post-start hooks
-    if (!skipHooks && hookConfig.hooks.postStart) {
+    if (!skipHooks && hookConfig?.hooks.postStart) {
       const postStartResults = await this.hookExecutor.executeHooks(
         hookConfig.hooks.postStart,
         {
           taskId: task.id,
           taskTitle: task.title,
           workingDirectory: this.trackDirectory,
-          environment: hookConfig.environment,
-          timeout: hookConfig.timeout,
+          environment: hookConfig?.environment,
+          timeout: hookConfig?.timeout,
         }
       );
 
@@ -215,21 +217,23 @@ export class TaskSessionService {
 
     const allHookResults: HookResult[] = [];
 
-    // Load and merge hook configs
-    const hookConfig = await this.hookConfigService.loadAndMergeConfigs(
-      task.hookConfigLabels ?? []
-    );
+    // Load and merge hook configs (only if not skipping hooks)
+    const hookConfig = skipHooks
+      ? null
+      : await this.hookConfigService.loadAndMergeConfigs(
+          task.hookConfigLabels ?? []
+        );
 
     // Execute pre-complete hooks (MUST PASS!)
-    if (!skipHooks && hookConfig.hooks.preComplete) {
+    if (!skipHooks && hookConfig?.hooks.preComplete) {
       const preCompleteResults = await this.hookExecutor.executeHooks(
         hookConfig.hooks.preComplete,
         {
           taskId: task.id,
           taskTitle: task.title,
           workingDirectory: this.trackDirectory,
-          environment: hookConfig.environment,
-          timeout: hookConfig.timeout,
+          environment: hookConfig?.environment,
+          timeout: hookConfig?.timeout,
         }
       );
 
@@ -255,15 +259,15 @@ export class TaskSessionService {
     );
 
     // Execute post-complete hooks
-    if (!skipHooks && hookConfig.hooks.postComplete) {
+    if (!skipHooks && hookConfig?.hooks.postComplete) {
       const postCompleteResults = await this.hookExecutor.executeHooks(
         hookConfig.hooks.postComplete,
         {
           taskId: task.id,
           taskTitle: task.title,
           workingDirectory: this.trackDirectory,
-          environment: hookConfig.environment,
-          timeout: hookConfig.timeout,
+          environment: hookConfig?.environment,
+          timeout: hookConfig?.timeout,
         }
       );
 

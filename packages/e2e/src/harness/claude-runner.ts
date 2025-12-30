@@ -52,9 +52,16 @@ export async function runClaude(
         ...process.env,
         ...options.env,
       },
+      stdio: ["pipe", "pipe", "pipe"],
     };
 
+    console.log(`📍 cwd: ${options.cwd}`);
+    console.log(`📍 args: claude ${args.join(" ")}`);
+
     const proc = spawn("claude", args, spawnOptions);
+
+    // Close stdin immediately to signal no more input
+    proc.stdin?.end();
 
     let stdout = "";
     let stderr = "";
@@ -71,7 +78,11 @@ export async function runClaude(
       const chunk = data.toString();
       stdout += chunk;
       if (streamOutput) {
-        process.stdout.write(chunk);
+        // Use console.log for vitest compatibility (process.stdout.write doesn't show in forks)
+        const lines = chunk.split("\n");
+        for (const line of lines) {
+          if (line.trim()) console.log(line);
+        }
       }
     });
 
@@ -79,7 +90,10 @@ export async function runClaude(
       const chunk = data.toString();
       stderr += chunk;
       if (streamOutput) {
-        process.stderr.write(chunk);
+        const lines = chunk.split("\n");
+        for (const line of lines) {
+          if (line.trim()) console.error(line);
+        }
       }
     });
 
