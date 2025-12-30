@@ -5,7 +5,7 @@ export PNPM_HOME
 export PATH := $(PNPM_HOME):$(PATH)
 DEV_WORKFLOW := $(PNPM_HOME)/dev-workflow
 
-.PHONY: help install build clean reset init dogfood test test-npm-install test-mcp link unlink
+.PHONY: help install build clean reset init dogfood test test-npm-install test-mcp test-e2e link unlink
 
 help:
 	@echo "dev-workflow - Makefile commands"
@@ -19,7 +19,8 @@ help:
 	@echo "  make reset            - Uninstall dev-workflow (run 'dev-workflow uninit')"
 	@echo "  make init             - Initialize dev-workflow in this repository"
 	@echo "  make dogfood          - Full reset + build + global link + init (start dogfooding)"
-	@echo "  make test             - Run all tests"
+	@echo "  make test             - Run unit tests"
+	@echo "  make test-e2e         - Run E2E tests (requires Claude CLI)"
 	@echo "  make test-npm-install - Test npm install scenario (simulates user install)"
 	@echo "  make test-mcp         - Test MCP server startup and migrations"
 
@@ -105,3 +106,7 @@ test-npm-install:
 
 test-mcp:
 	@./scripts/test-mcp-server.sh
+
+test-e2e: build
+	@echo "🧪 Running E2E tests (requires Claude CLI)..."
+	@cd packages/e2e && pnpm test:e2e

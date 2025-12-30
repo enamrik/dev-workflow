@@ -5,7 +5,7 @@
  * Streams output to test stdout for visibility during test runs.
  */
 
-import { spawn, SpawnOptions } from "child_process";
+import { spawn, type SpawnOptions } from "node:child_process";
 
 export interface ClaudeResult {
   stdout: string;

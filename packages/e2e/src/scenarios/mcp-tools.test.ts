@@ -1,36 +1,45 @@
 /**
- * E2E Workflow Tests
+ * E2E: MCP Tools Workflow Tests
  *
- * These tests run actual Claude CLI commands against an isolated test environment.
- * They verify that agent actions produce expected outcomes by checking database state.
+ * Tests the MCP tools via Claude CLI commands.
+ * Migrated from packages/mcp-server/src/test/e2e/workflows.test.ts
  *
  * IMPORTANT:
- * - These tests are slow (use real AI)
+ * - These tests use real AI (Claude CLI)
  * - These tests cost money (API calls)
- * - Run with: pnpm test:e2e
+ * - Run with: pnpm test
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import Database from "better-sqlite3";
-import { E2ETestHarness } from "./test-harness.js";
-import { runClaude, isClaudeAvailable } from "./claude-runner.js";
+import {
+  E2ETestHarness,
+  runClaude,
+  isClaudeAvailable,
+  assertIssueExists,
+  assertPlanExists,
+  assertTasksExist,
+  assertTaskStatus,
+  getTaskByStatus,
+} from "../harness/index.js";
 
-describe("E2E: Full Workflow", () => {
+describe("E2E: MCP Tools Workflow", () => {
   let harness: E2ETestHarness;
   let testPassed = false;
   let claudeAvailable = false;
 
   beforeAll(async () => {
-    // Check if claude CLI is available
     claudeAvailable = await isClaudeAvailable();
     if (!claudeAvailable) {
       console.log("⚠️ Claude CLI not available, E2E tests will be skipped");
       return;
     }
 
-    harness = new E2ETestHarness({ useLocalBuild: true });
+    harness = new E2ETestHarness({
+      useLocalBuild: true,
+      skipSampleProject: true, // Don't need sample project for these tests
+    });
     await harness.setup();
-  }, 180000); // 3 min for setup
+  }, 180000);
 
   afterAll(() => {
     if (harness) {
@@ -44,7 +53,6 @@ describe("E2E: Full Workflow", () => {
       return;
     }
 
-    // Run agent to create issue
     const result = await runClaude(
       "Create an issue titled 'Add user authentication' with description 'Implement OAuth2 login flow'. Use the create_issue tool.",
       {
@@ -56,25 +64,11 @@ describe("E2E: Full Workflow", () => {
 
     expect(result.exitCode).toBe(0);
 
-    // Verify issue in database
-    const db = new Database(harness.dbPath);
+    const db = harness.getDb();
     try {
-      const issues = db.prepare("SELECT * FROM issues").all() as Array<{
-        id: string;
-        number: number;
-        title: string;
-        description: string;
-        status: string;
-      }>;
-
-      expect(issues.length).toBeGreaterThanOrEqual(1);
-
-      const latestIssue = issues[issues.length - 1];
-      expect(latestIssue).toBeDefined();
-      expect(latestIssue.title.toLowerCase()).toContain("authentication");
-      expect(latestIssue.status).toBe("OPEN");
-
-      console.log(`✓ Created issue #${latestIssue.number}: ${latestIssue.title}`);
+      const issue = assertIssueExists(db, "authentication");
+      expect(issue.status).toBe("OPEN");
+      console.log(`✓ Created issue #${issue.number}: ${issue.title}`);
     } finally {
       db.close();
     }
@@ -88,39 +82,16 @@ describe("E2E: Full Workflow", () => {
       return;
     }
 
-    // First, get the issue number
-    const db = new Database(harness.dbPath);
+    // Find the latest issue
+    const db = harness.getDb();
     let issueNumber: number;
     try {
-      const issues = db.prepare("SELECT * FROM issues ORDER BY number DESC LIMIT 1").all() as Array<{
-        id: string;
-        number: number;
-      }>;
-
-      if (issues.length === 0) {
-        // Create an issue first
-        const createResult = await runClaude(
-          "Create an issue titled 'Test feature' with description 'A test feature to plan'",
-          {
-            cwd: harness.testDir,
-            allowedTools: ["mcp__dev-workflow-tracker__create_issue"],
-            timeout: 60000,
-          }
-        );
-        expect(createResult.exitCode).toBe(0);
-
-        const newIssues = db.prepare("SELECT * FROM issues ORDER BY number DESC LIMIT 1").all() as Array<{
-          number: number;
-        }>;
-        issueNumber = newIssues[0]?.number ?? 1;
-      } else {
-        issueNumber = issues[0]?.number ?? 1;
-      }
+      const issue = assertIssueExists(db, "authentication");
+      issueNumber = issue.number;
     } finally {
       db.close();
     }
 
-    // Run agent to generate plan
     const result = await runClaude(
       `Generate an implementation plan for issue #${issueNumber} with 3 tasks. Use the generate_plan tool.`,
       {
@@ -132,35 +103,17 @@ describe("E2E: Full Workflow", () => {
 
     expect(result.exitCode).toBe(0);
 
-    // Verify plan and tasks in database
-    const db2 = new Database(harness.dbPath);
+    const db2 = harness.getDb();
     try {
-      const plans = db2.prepare("SELECT * FROM plans").all() as Array<{
-        id: string;
-        issue_id: string;
-        summary: string;
-      }>;
-
-      expect(plans.length).toBeGreaterThanOrEqual(1);
-
-      const latestPlan = plans[plans.length - 1];
-      expect(latestPlan).toBeDefined();
-
-      const tasks = db2
-        .prepare("SELECT * FROM tasks WHERE plan_id = ?")
-        .all(latestPlan.id) as Array<{
-          id: string;
-          title: string;
-          status: string;
-        }>;
-
-      expect(tasks.length).toBeGreaterThanOrEqual(1);
-      console.log(`✓ Created plan with ${tasks.length} tasks`);
+      const issue = assertIssueExists(db2, "authentication");
+      const plan = assertPlanExists(db2, issue.id);
+      const tasks = assertTasksExist(db2, plan.id, 1);
 
       // All tasks should start as PENDING
       for (const task of tasks) {
         expect(task.status).toBe("PENDING");
       }
+      console.log(`✓ Created plan with ${tasks.length} tasks`);
     } finally {
       db2.close();
     }
@@ -184,11 +137,10 @@ describe("E2E: Full Workflow", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    // The response should mention the issues we created
     expect(
       result.stdout.toLowerCase().includes("issue") ||
-      result.stdout.toLowerCase().includes("authentication") ||
-      result.stdout.toLowerCase().includes("#1")
+        result.stdout.toLowerCase().includes("authentication") ||
+        result.stdout.toLowerCase().includes("#")
     ).toBe(true);
 
     testPassed = true;
@@ -200,33 +152,20 @@ describe("E2E: Full Workflow", () => {
       return;
     }
 
-    // Get a task ID
-    const db = new Database(harness.dbPath);
+    const db = harness.getDb();
     let taskId: string | undefined;
     try {
-      const tasks = db.prepare("SELECT * FROM tasks WHERE status = 'PENDING' LIMIT 1").all() as Array<{
-        id: string;
-        title: string;
-      }>;
-
-      if (tasks.length === 0) {
+      const task = getTaskByStatus(db, "PENDING");
+      if (!task) {
         console.log("⚠️ No pending tasks found, skipping test");
         testPassed = true;
         return;
       }
-
-      taskId = tasks[0]?.id;
+      taskId = task.id;
     } finally {
       db.close();
     }
 
-    if (!taskId) {
-      console.log("⚠️ No task ID found, skipping test");
-      testPassed = true;
-      return;
-    }
-
-    // Update task status
     const result = await runClaude(
       `Update task ${taskId} status to IN_PROGRESS using the update_task_status tool`,
       {
@@ -238,17 +177,10 @@ describe("E2E: Full Workflow", () => {
 
     expect(result.exitCode).toBe(0);
 
-    // Verify task status changed
-    const db2 = new Database(harness.dbPath);
+    const db2 = harness.getDb();
     try {
-      const task = db2.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId) as {
-        id: string;
-        status: string;
-      } | undefined;
-
-      expect(task).toBeDefined();
-      expect(task?.status).toBe("IN_PROGRESS");
-      console.log(`✓ Task status updated to IN_PROGRESS`);
+      assertTaskStatus(db2, taskId!, "IN_PROGRESS");
+      console.log("✓ Task status updated to IN_PROGRESS");
     } finally {
       db2.close();
     }
@@ -268,7 +200,10 @@ describe("E2E: Error Handling", () => {
       return;
     }
 
-    harness = new E2ETestHarness({ useLocalBuild: true });
+    harness = new E2ETestHarness({
+      useLocalBuild: true,
+      skipSampleProject: true,
+    });
     await harness.setup();
   }, 180000);
 
@@ -298,8 +233,8 @@ describe("E2E: Error Handling", () => {
     // Response should indicate issue not found
     expect(
       result.stdout.toLowerCase().includes("not found") ||
-      result.stdout.toLowerCase().includes("doesn't exist") ||
-      result.stdout.toLowerCase().includes("no issue")
+        result.stdout.toLowerCase().includes("doesn't exist") ||
+        result.stdout.toLowerCase().includes("no issue")
     ).toBe(true);
 
     testPassed = true;

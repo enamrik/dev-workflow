@@ -1,0 +1,21 @@
+{
+  "name": "@dev-workflow/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "vitest run",
+    "test:e2e:watch": "vitest",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@dev-workflow/core": "workspace:*",
+    "@playwright/test": "^1.40.0",
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/node": "^20.10.6",
+    "better-sqlite3": "^12.5.0",
+    "typescript": "^5.3.3",
+    "vitest": "^2.0.0"
+  }
+}

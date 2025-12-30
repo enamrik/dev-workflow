@@ -1,0 +1,28 @@
+/**
+ * E2E Test Harness
+ *
+ * Exports test infrastructure for E2E tests.
+ */
+
+export { E2ETestHarness, type HarnessOptions } from "./test-harness.js";
+export {
+  runClaude,
+  isClaudeAvailable,
+  runClaudeSimple,
+  type ClaudeResult,
+  type ClaudeOptions,
+} from "./claude-runner.js";
+export {
+  assertIssueExists,
+  assertIssueByNumber,
+  assertPlanExists,
+  assertTasksExist,
+  assertTaskStatus,
+  getTaskByStatus,
+  assertFileExists,
+  assertFileNotExists,
+  assertFileContains,
+  countIssues,
+  countTasksByStatus,
+} from "./assertions.js";
+export { UIHarness } from "./ui-harness.js";
