@@ -1,6 +1,6 @@
 ---
 name: dwf-manage-issue
-description: Create or update issues in the task tracker. Auto-invoked when user wants to "create issue", "new feature", "report bug", "update issue", "change requirements", etc.
+description: REQUIRED workflow for creating/updating issues. Separates requirements from implementation details, then AUTO-GENERATES implementation plans with tasks. Use this instead of calling create_issue directly.
 allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:list_templates
 ---
 
