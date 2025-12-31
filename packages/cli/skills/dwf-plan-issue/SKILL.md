@@ -1,5 +1,5 @@
 ---
-name: plan-issue
+name: dwf-plan-issue
 description: Generate implementation plans with properly-scoped tasks. Auto-invoked when user wants to "plan issue", "create implementation plan", "break down into tasks", "plan #N", etc.
 allowed-tools: mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:generate_plan, mcp:dev-workflow-tracker:get_plan
 ---

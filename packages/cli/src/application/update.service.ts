@@ -36,16 +36,29 @@ export class UpdateService {
 
   /**
    * Update skills to latest version from package
+   *
+   * Also migrates from old nested structure (.claude/skills/dev-workflow/*)
+   * to new flat structure (.claude/skills/dwf-*)
    */
   async updateSkills(): Promise<void> {
     try {
-      const skillsDir = path.join(this.workingDirectory, ".claude/skills/dev-workflow");
+      const skillsTarget = path.join(this.workingDirectory, ".claude/skills");
       const skillsSource = path.join(this.packageRoot, "skills");
 
-      // Remove old skills
-      // Note: We don't have a recursive remove in FileSystem interface
-      // For now, we'll copy over which will overwrite
-      await this.fileSystem.copyDirectory(skillsSource, skillsDir);
+      // Migrate: remove old nested structure if it exists
+      const oldSkillsDir = path.join(this.workingDirectory, ".claude/skills/dev-workflow");
+      const oldDirExists = await this.fileSystem.exists(oldSkillsDir);
+      if (oldDirExists) {
+        await this.fileSystem.rmdir(oldSkillsDir, { recursive: true });
+        console.log("  Migrated from old skills structure");
+      }
+
+      // Ensure target directory exists
+      await this.fileSystem.mkdir(skillsTarget, { recursive: true });
+
+      // Copy skill folders directly (flat, no subfolder)
+      // Skills are prefixed with dwf- to avoid conflicts
+      await this.fileSystem.copyDirectory(skillsSource, skillsTarget);
     } catch (error) {
       throw new UpdateError("Failed to update skills", error);
     }
@@ -175,7 +188,7 @@ export class UpdateService {
    */
   async updateTaskSkills(): Promise<void> {
     try {
-      const skillsDir = path.join(this.workingDirectory, ".track/skills");
+      const skillsDir = path.join(this.workingDirectory, ".track/labels/skills");
       const dirExists = await this.fileSystem.exists(skillsDir);
 
       if (!dirExists) {
@@ -194,7 +207,7 @@ files (\`db.md\`, \`api.md\`) are loaded and provided as context.
 
 ## How it works
 
-1. Create a skill file: \`.track/skills/my-skill.md\`
+1. Create a skill file: \`.track/labels/skills/my-skill.md\`
 2. When generating a plan, tasks are automatically labeled based on matching skill names
 3. When starting a task, skills are loaded and provided as guidance
 
@@ -203,7 +216,7 @@ files (\`db.md\`, \`api.md\`) are loaded and provided as context.
 Create any \`.md\` file in this directory. The filename (without extension)
 becomes the skill/label name.
 
-Example: \`.track/skills/testing.md\` creates a "testing" skill that can be
+Example: \`.track/labels/skills/testing.md\` creates a "testing" skill that can be
 assigned to tasks via the \`labels\` field.
 `;
         await this.fileSystem.writeFile(readmePath, readme);

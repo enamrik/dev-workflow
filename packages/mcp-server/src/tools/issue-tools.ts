@@ -6,6 +6,7 @@ import type {
   SqliteIssueRepository,
   TemplateService,
   PlanningService,
+  SkillService,
   IssueType,
   IssuePriority,
   IssueStatus,
@@ -172,6 +173,15 @@ export interface IssueToolContext {
   issueRepository: SqliteIssueRepository;
   templateService: TemplateService;
   planningService: PlanningService;
+  skillService: SkillService;
+}
+
+/**
+ * Assign labels based on content matching available skills
+ */
+function assignLabelsFromContent(content: string, skills: string[]): string[] {
+  const searchText = content.toLowerCase();
+  return skills.filter((skill) => searchText.includes(skill.toLowerCase()));
 }
 
 /**
@@ -204,11 +214,20 @@ export async function handleCreateIssue(
     useTemplate = true,
   } = args;
 
+  // Get available skills for auto-labeling
+  const availableSkills = await ctx.skillService.listAvailableSkills();
+
+  // Auto-detect skill labels from issue content
+  const autoDetectedLabels = assignLabelsFromContent(
+    `${title} ${description}`,
+    availableSkills
+  );
+
   // Select template if requested and use metadata
   let templateUsed: string | undefined;
   let finalType = type;
   let finalPriority = priority;
-  let finalLabels = labels;
+  let templateLabels: string[] = [];
 
   if (useTemplate) {
     try {
@@ -223,15 +242,17 @@ export async function handleCreateIssue(
         // Only override if using default priority
         finalPriority = template.metadata.priority;
       }
-      if (labels.length === 0) {
-        // Only override if no labels provided
-        finalLabels = [...template.metadata.labels];
-      }
+      templateLabels = template.metadata.labels;
     } catch (error) {
       // Log error but continue without template
       console.error("Failed to select template:", error);
     }
   }
+
+  // Merge labels: explicit > auto-detected > template (deduplicated)
+  const finalLabels = [
+    ...new Set([...labels, ...autoDetectedLabels, ...templateLabels]),
+  ];
 
   // Create issue using repository
   const issue = ctx.issueRepository.create({
@@ -254,6 +275,7 @@ export async function handleCreateIssue(
       title: issue.title,
       type: issue.type,
       priority: issue.priority,
+      labels: issue.labels,
       templateUsed: issue.templateUsed,
       url: `http://localhost:3000/issues/${issue.number}`,
     },

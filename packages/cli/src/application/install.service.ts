@@ -1,7 +1,6 @@
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
-import type { Issue } from "@dev-workflow/core";
 
 export class InstallError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -108,11 +107,13 @@ These values can still be overridden when creating an issue explicitly.
 
   async installSkills(): Promise<void> {
     try {
-      const skillsDir = path.join(this.workingDirectory, ".claude/skills/dev-workflow");
-      await this.fileSystem.mkdir(skillsDir, { recursive: true });
+      const skillsTarget = path.join(this.workingDirectory, ".claude/skills");
+      await this.fileSystem.mkdir(skillsTarget, { recursive: true });
 
+      // Copy skill folders directly (flat, no subfolder)
+      // Skills are prefixed with dwf- to avoid conflicts with other packages
       const skillsSource = path.join(this.packageRoot, "skills");
-      await this.fileSystem.copyDirectory(skillsSource, skillsDir);
+      await this.fileSystem.copyDirectory(skillsSource, skillsTarget);
     } catch (error) {
       throw new InstallError("Failed to install skills", error);
     }
@@ -226,7 +227,7 @@ These values can still be overridden when creating an issue explicitly.
   }
 
   /**
-   * Create default task skills in .track/skills/
+   * Create default task skills in .track/labels/skills/
    *
    * Skills are markdown files that provide contextual guidance for tasks.
    * When a task has labels, the corresponding skill files are loaded
@@ -234,7 +235,7 @@ These values can still be overridden when creating an issue explicitly.
    */
   async createTaskSkills(): Promise<void> {
     try {
-      const skillsDir = path.join(this.workingDirectory, ".track/skills");
+      const skillsDir = path.join(this.workingDirectory, ".track/labels/skills");
       await this.fileSystem.mkdir(skillsDir, { recursive: true });
 
       // Create README
@@ -246,7 +247,7 @@ files (\`db.md\`, \`api.md\`) are loaded and provided as context.
 
 ## How it works
 
-1. Create a skill file: \`.track/skills/my-skill.md\`
+1. Create a skill file: \`.track/labels/skills/my-skill.md\`
 2. When generating a plan, tasks are automatically labeled based on matching skill names
 3. When starting a task, skills are loaded and provided as guidance
 
@@ -255,7 +256,7 @@ files (\`db.md\`, \`api.md\`) are loaded and provided as context.
 Create any \`.md\` file in this directory. The filename (without extension)
 becomes the skill/label name.
 
-Example: \`.track/skills/testing.md\` creates a "testing" skill that can be
+Example: \`.track/labels/skills/testing.md\` creates a "testing" skill that can be
 assigned to tasks via the \`labels\` field.
 `;
 
@@ -345,61 +346,5 @@ When working on security-sensitive code:
     } catch (error) {
       throw new InstallError("Failed to create task skills", error);
     }
-  }
-
-  async createWelcomeIssue(): Promise<Issue> {
-    const dbPath = path.join(this.workingDirectory, ".track/data/workflow.db");
-
-    // Import database and repository from core package
-    const { DatabaseService, SqliteIssueRepository } = await import("@dev-workflow/core");
-
-    // Create welcome issue and persist to database with automatic native/WASM detection
-    const dbService = await DatabaseService.create(dbPath);
-    const issueRepository = new SqliteIssueRepository(dbService.getDb());
-
-    const issue = issueRepository.create({
-      title: "Setup dev-workflow tracking for this repository",
-      description: `This is your first issue created by dev-workflow!
-
-## What is dev-workflow?
-
-dev-workflow is an AI-driven development workflow system that helps you:
-- Track issues and tasks
-- Generate implementation plans
-- Automate development workflows
-- Integrate with GitHub and deployment systems
-
-## Next Steps
-
-1. Try creating a new issue:
-   - Say: "I want to add user authentication"
-   - Or use: \`/issue Add authentication\`
-
-2. Explore the templates in \`.track/config/issues/templates/\`
-
-3. Customize the configuration in \`.track/config.json\`
-
-## Learn More
-
-- Skills are in \`.claude/skills/dev-workflow/\`
-- Subagents are in \`.claude/agents/dev-workflow/\`
-- MCP server registered in \`.claude/config/mcp-servers.json\`
-`,
-      acceptanceCriteria: [
-        "dev-workflow initialized successfully",
-        "Can create issues via Claude Code",
-        "Templates are customizable",
-      ],
-      type: "TASK",
-      priority: "MEDIUM",
-      status: "OPEN",
-      labels: ["setup", "onboarding"],
-      templateUsed: "task.md",
-      createdBy: "dev-workflow-init",
-    });
-
-    dbService.close();
-
-    return issue;
   }
 }

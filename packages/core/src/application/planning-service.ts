@@ -109,6 +109,16 @@ export class PlanningService {
   }
 
   /**
+   * Merge issue labels with task-specific labels (deduplicated)
+   *
+   * Issue labels are inherited by all tasks, then task-specific
+   * auto-detected labels are added on top.
+   */
+  private mergeLabels(issueLabels: string[], taskLabels: string[]): string[] {
+    return [...new Set([...issueLabels, ...taskLabels])];
+  }
+
+  /**
    * Generate a new plan for an issue
    *
    * Creates snapshot before regeneration.
@@ -178,6 +188,8 @@ export class PlanningService {
     const availableSkills = await this.getAvailableSkills();
 
     // Match new tasks to existing GENERATED tasks only (not manual)
+    // Issue labels are inherited by all tasks
+    const issueLabels = issue.labels || [];
     let newTasks: Task[];
     if (preserveExistingTasks && generatedTasks.length > 0) {
       newTasks = this.createTasksWithMatching(
@@ -185,11 +197,12 @@ export class PlanningService {
         newTaskDefs,
         generatedTasks,
         generatedBy,
-        availableSkills
+        availableSkills,
+        issueLabels
       );
     } else {
       // No matching - create all new tasks
-      newTasks = this.createNewTasks(plan, newTaskDefs, availableSkills);
+      newTasks = this.createNewTasks(plan, newTaskDefs, availableSkills, issueLabels);
     }
 
     // Create snapshot after regeneration (captures new state)
@@ -255,13 +268,15 @@ export class PlanningService {
    *
    * Only matches against GENERATED tasks.
    * Soft deletes unmatched generated tasks.
+   * Merges issue labels with auto-detected task labels.
    */
   private createTasksWithMatching(
     plan: Plan,
     newTaskDefs: TaskDefinition[],
     existingGeneratedTasks: Task[],
     generatedBy: string,
-    availableSkills: string[]
+    availableSkills: string[],
+    issueLabels: string[]
   ): Task[] {
     // Match new tasks to existing generated tasks
     const matchResults = this.taskMatchingService.matchTasks(
@@ -275,24 +290,36 @@ export class PlanningService {
     for (const result of matchResults) {
       if (result.action === "PRESERVE" && result.matchedTask) {
         // Update matched task with new content but preserve status
+        // Also update labels to include inherited issue labels
         matchedTaskIds.add(result.matchedTask.id);
-        const updatedTask = this.taskRepository.update(result.matchedTask.id, {
-          title: result.newTask.title,
-          description: result.newTask.description,
-          acceptanceCriteria: result.newTask.acceptanceCriteria,
-          estimatedMinutes: result.newTask.estimatedMinutes,
-          matchConfidence: result.matchConfidence,
-        });
-        tasks.push(updatedTask);
-      } else {
-        // Create new generated task
-        const labels = this.assignLabelsForTask(
+        const taskLabels = this.assignLabelsForTask(
           {
             title: result.newTask.title,
             description: result.newTask.description,
           },
           availableSkills
         );
+        const mergedLabels = this.mergeLabels(issueLabels, taskLabels);
+
+        const updatedTask = this.taskRepository.update(result.matchedTask.id, {
+          title: result.newTask.title,
+          description: result.newTask.description,
+          acceptanceCriteria: result.newTask.acceptanceCriteria,
+          estimatedMinutes: result.newTask.estimatedMinutes,
+          matchConfidence: result.matchConfidence,
+          labels: mergedLabels,
+        });
+        tasks.push(updatedTask);
+      } else {
+        // Create new generated task with inherited issue labels + auto-detected
+        const taskLabels = this.assignLabelsForTask(
+          {
+            title: result.newTask.title,
+            description: result.newTask.description,
+          },
+          availableSkills
+        );
+        const mergedLabels = this.mergeLabels(issueLabels, taskLabels);
 
         const task = this.taskRepository.create({
           planId: plan.id,
@@ -303,7 +330,7 @@ export class PlanningService {
           source: "generated",
           estimatedMinutes: result.newTask.estimatedMinutes,
           isDeleted: false,
-          labels,
+          labels: mergedLabels,
         });
         tasks.push(task);
       }
@@ -321,21 +348,26 @@ export class PlanningService {
 
   /**
    * Create all new tasks without matching
+   *
+   * Merges issue labels with auto-detected task labels.
    */
   private createNewTasks(
     plan: Plan,
     taskDefs: TaskDefinition[],
-    availableSkills: string[]
+    availableSkills: string[],
+    issueLabels: string[]
   ): Task[] {
     const taskData = taskDefs.map((def) => {
       // Auto-assign skill labels based on task content
-      const labels = this.assignLabelsForTask(
+      const taskLabels = this.assignLabelsForTask(
         {
           title: def.title,
           description: def.description,
         },
         availableSkills
       );
+      // Merge issue labels (inherited) with task-specific labels
+      const mergedLabels = this.mergeLabels(issueLabels, taskLabels);
 
       return {
         planId: plan.id,
@@ -346,7 +378,7 @@ export class PlanningService {
         source: "generated" as const,
         isDeleted: false,
         estimatedMinutes: def.estimatedMinutes,
-        labels,
+        labels: mergedLabels,
       };
     });
 

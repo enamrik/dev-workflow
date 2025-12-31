@@ -156,7 +156,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "update_task_labels",
     description:
-      "Update skill labels for a task. Labels map to skill files in .track/skills/{label}.md.",
+      "Update skill labels for a task. Labels map to skill files in .track/labels/skills/{label}.md.",
     inputSchema: {
       type: "object",
       properties: {
@@ -176,7 +176,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "list_available_skills",
-    description: "List all available skills. Skills are defined in .track/skills/{name}.md files.",
+    description: "List all available skills. Skills are defined in .track/labels/skills/{name}.md files.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -199,7 +199,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "create_skill",
     description:
-      "Create a new skill. Skills are markdown files in .track/skills/ that provide contextual guidance for tasks.",
+      "Create a new skill. Skills are markdown files in .track/labels/skills/ that provide contextual guidance for tasks.",
     inputSchema: {
       type: "object",
       properties: {
@@ -236,7 +236,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "remove_skill",
-    description: "Remove a skill. This deletes the skill file from .track/skills/.",
+    description: "Remove a skill. This deletes the skill file from .track/labels/skills/.",
     inputSchema: {
       type: "object",
       properties: {
@@ -673,7 +673,7 @@ export async function handleCreateSkill(
   return successResponse({
     success: true,
     skill,
-    message: `Created skill "${name}" at .track/skills/${name}.md`,
+    message: `Created skill "${name}" at .track/labels/skills/${name}.md`,
   });
 }
 

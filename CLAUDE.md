@@ -307,6 +307,35 @@ Our `tsconfig.json` enforces maximum type safety:
 - [ ] Infrastructure concerns separated
 - [ ] TypeScript strict mode compliant
 
+## Skill Systems
+
+This project has TWO separate skill systems - don't confuse them:
+
+### 1. Claude Code Skills (for Claude's behavior)
+
+These guide Claude's behavior during conversations.
+
+- **Location**: `.claude/skills/dwf-*/SKILL.md`
+- **Source**: `packages/cli/skills/dwf-*/SKILL.md`
+- **Discovery**: Auto-discovered by Claude Code at startup via semantic matching on `description` field
+- **Naming**: Must be flat (no nested folders), use `dwf-` prefix for namespacing
+- **Skills**:
+  - `dwf-manage-issue` - Creates/updates issues, auto-generates plans
+  - `dwf-plan-issue` - Generates implementation plans with tasks
+  - `dwf-work-task` - Manages task execution lifecycle
+
+**Key constraint**: Claude Code does NOT support nested skill folders. Skills must be at `.claude/skills/{skill-name}/SKILL.md`, not `.claude/skills/namespace/{skill-name}/SKILL.md`.
+
+### 2. Task Skills (for task execution context)
+
+These provide contextual guidance when executing tasks.
+
+- **Location**: `.track/labels/skills/*.md`
+- **Discovery**: Loaded when a task has matching labels
+- **Skills**: `api`, `db`, `security` (and any custom skills)
+
+When a task has `labels: ["db", "api"]`, the corresponding skill files are loaded and provided as context to the executing agent.
+
 ## References
 
 - **Clean Code** by Robert C. Martin

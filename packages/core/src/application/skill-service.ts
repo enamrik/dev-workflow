@@ -12,7 +12,7 @@ export interface Skill {
 /**
  * SkillService loads and manages skill files
  *
- * Skills are markdown files in .track/skills/{label}.md that provide
+ * Skills are markdown files in .track/labels/skills/{label}.md that provide
  * contextual guidance for task execution. When a task has labels,
  * the corresponding skill files are loaded and returned as context.
  *
@@ -23,13 +23,13 @@ export class SkillService {
   private readonly skillsDirectory: string;
 
   constructor(trackDirectory: string) {
-    this.skillsDirectory = path.join(trackDirectory, "skills");
+    this.skillsDirectory = path.join(trackDirectory, "labels/skills");
   }
 
   /**
    * Load skill files for given labels
    *
-   * Labels map to .track/skills/{label}.md files.
+   * Labels map to .track/labels/skills/{label}.md files.
    * Missing files are silently skipped (not an error).
    *
    * @param labels - Array of skill labels to load

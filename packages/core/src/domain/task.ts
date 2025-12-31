@@ -34,8 +34,8 @@ export interface Task {
   readonly sessionStartedAt?: string; // When current session began
   readonly lastSessionActivityAt?: string; // Last activity in session (for timeout detection)
 
-  // Skill labels (references .track/skills/<label>.md files)
-  readonly labels?: string[]; // Array of labels, each references .track/skills/<label>.md
+  // Skill labels (references .track/labels/skills/<label>.md files)
+  readonly labels?: string[]; // Array of labels, each references .track/labels/skills/<label>.md
 
   // Subagent execution context
   readonly contextInstructions?: string; // Custom instructions for subagent execution (e.g., "use existing auth pattern in src/auth")

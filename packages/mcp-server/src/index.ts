@@ -280,6 +280,7 @@ async function main() {
     issueRepository,
     templateService,
     planningService,
+    skillService,
   };
 
   planToolContext = {

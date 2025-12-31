@@ -153,7 +153,7 @@ export const tasks = sqliteTable("tasks", {
   sessionStartedAt: text("session_started_at"),
   lastSessionActivityAt: text("last_session_activity_at"),
 
-  // Skill labels (references .track/skills/<label>.md files)
+  // Skill labels (references .track/labels/skills/<label>.md files)
   labels: text("labels", { mode: "json" })
     .$type<string[]>()
     .default(sql`'[]'`),

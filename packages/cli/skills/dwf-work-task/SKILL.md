@@ -1,5 +1,5 @@
 ---
-name: work-task
+name: dwf-work-task
 description: Manage task execution lifecycle - start, complete, or abandon tasks. Supports inline execution (full visibility) or subagent execution (parallel/isolated). Auto-invoked when user wants to "start task", "work on task", "complete task", "finish task", "abandon task", "run tasks in parallel", etc.
 allowed-tools: mcp:dev-workflow-tracker:get_task_for_session, mcp:dev-workflow-tracker:start_task_session, mcp:dev-workflow-tracker:complete_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:get_task_execution_prompt, mcp:dev-workflow-tracker:log_task_progress, mcp:dev-workflow-tracker:get_task_execution_log, mcp:dev-workflow-tracker:update_task, Task
 ---

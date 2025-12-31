@@ -57,14 +57,11 @@ async function runInit(): Promise<void> {
     await installer.initializeDatabase();
     console.log("✓ Initialized database");
 
-    const issue = await installer.createWelcomeIssue();
-    console.log(`✓ Created issue #${issue.number}: "${issue.title}"`);
-
     console.log("\n✨ dev-workflow initialized successfully!");
     console.log("\nNext steps:");
-    console.log("1. Open Claude Code in this repository");
-    console.log('2. Say: "Show me issue #1"');
-    console.log('3. Or use: /issue to create new issues');
+    console.log("1. Restart Claude Code to discover skills");
+    console.log('2. Say: "Create an issue for adding user authentication"');
+    console.log("3. A plan with tasks will be auto-generated");
   } catch (error) {
     console.error("Error during initialization:", error);
     process.exit(1);
