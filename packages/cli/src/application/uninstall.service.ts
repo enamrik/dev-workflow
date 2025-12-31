@@ -54,12 +54,6 @@ export class UninstallService {
         }
       }
 
-      // Also remove old nested structure if it exists (migration cleanup)
-      const oldSkillsDir = path.join(this.workingDirectory, ".claude/skills/dev-workflow");
-      const oldExists = await this.fileSystem.exists(oldSkillsDir);
-      if (oldExists) {
-        await this.fileSystem.rmdir(oldSkillsDir, { recursive: true });
-      }
     } catch (error) {
       throw new UninstallError("Failed to remove skills", error);
     }
