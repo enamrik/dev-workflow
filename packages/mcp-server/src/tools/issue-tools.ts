@@ -2,14 +2,15 @@
  * Issue-related MCP tools
  */
 
-import type {
-  SqliteIssueRepository,
-  TemplateService,
-  PlanningService,
-  SkillService,
-  IssueType,
-  IssuePriority,
-  IssueStatus,
+import {
+  EventBus,
+  type SqliteIssueRepository,
+  type TemplateService,
+  type PlanningService,
+  type SkillService,
+  type IssueType,
+  type IssuePriority,
+  type IssueStatus,
 } from "@dev-workflow/core";
 import {
   type ToolDefinition,
@@ -265,6 +266,13 @@ export async function handleCreateIssue(
     labels: finalLabels,
     templateUsed,
     createdBy: "claude-code",
+  });
+
+  // Emit issue:created event for real-time UI updates
+  const eventBus = EventBus.getInstance();
+  eventBus.emit("issue:created", {
+    issueId: issue.id,
+    issueNumber: issue.number,
   });
 
   return successResponse({

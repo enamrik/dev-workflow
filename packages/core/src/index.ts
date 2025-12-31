@@ -11,6 +11,7 @@ export * from "./domain/plan.js";
 export * from "./domain/task.js";
 export * from "./domain/snapshot.js";
 export * from "./domain/template.js";
+export * from "./domain/events.js";
 
 // Application services
 export { PlanningService } from "./application/planning-service.js";
@@ -45,3 +46,6 @@ export { NodeFileSystem } from "./infrastructure/file-system/file-system.js";
 // Infrastructure - Templates
 export { TemplateParser, TemplateParseError } from "./infrastructure/templates/template-parser.js";
 export { TemplateService, TemplateServiceError } from "./infrastructure/templates/template-service.js";
+
+// Infrastructure - Events
+export { EventBus, type DomainEventListener } from "./infrastructure/events/event-bus.js";

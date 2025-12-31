@@ -5,6 +5,7 @@
 import { eq, asc } from "drizzle-orm";
 import {
   taskExecutionLogs,
+  EventBus,
   type DatabaseService,
   type SqliteIssueRepository,
   type SqlitePlanRepository,
@@ -424,12 +425,35 @@ export function handleUpdateTaskStatus(
 ): ToolResponse {
   const { taskId, status, notes } = args;
 
+  // Get current task to capture previous status
+  const currentTask = ctx.taskRepository.findById(taskId);
+  if (!currentTask) {
+    return errorResponse(`Task not found: ${taskId}`);
+  }
+  const fromStatus = currentTask.status;
+
   const updatedTask = ctx.taskRepository.updateStatus(
     taskId,
     status,
     "claude-agent",
     notes
   );
+
+  // Emit task:status_changed event for real-time UI updates
+  const plan = ctx.planRepository.findById(currentTask.planId);
+  if (plan) {
+    const issue = ctx.issueRepository.findById(plan.issueId);
+    if (issue) {
+      const eventBus = EventBus.getInstance();
+      eventBus.emit("task:status_changed", {
+        taskId,
+        planId: currentTask.planId,
+        issueNumber: issue.number,
+        fromStatus,
+        toStatus: status,
+      });
+    }
+  }
 
   return successResponse(updatedTask);
 }

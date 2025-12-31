@@ -7,6 +7,7 @@ import {
 } from "./task-matching-service.js";
 import type { SkillService } from "./skill-service.js";
 import type { VersioningService } from "./versioning-service.js";
+import { EventBus } from "../infrastructure/events/event-bus.js";
 
 /**
  * Plan with its associated tasks
@@ -64,6 +65,7 @@ export interface IssueUpdates {
 export class PlanningService {
   private taskMatchingService: TaskMatchingService;
   private cachedSkills: string[] | null = null;
+  private readonly eventBus: EventBus;
 
   constructor(
     private readonly issueRepository: IssueRepository,
@@ -73,6 +75,7 @@ export class PlanningService {
     private readonly versioningService: VersioningService
   ) {
     this.taskMatchingService = new TaskMatchingService();
+    this.eventBus = EventBus.getInstance();
   }
 
   /**
@@ -213,6 +216,22 @@ export class PlanningService {
       `Generated plan: ${summary}`
     );
 
+    // Emit plan:generated event for real-time UI updates
+    this.eventBus.emit("plan:generated", {
+      planId: plan.id,
+      issueId: issue.id,
+      issueNumber: issue.number,
+    });
+
+    // Emit task:created for each new task
+    for (const task of newTasks) {
+      this.eventBus.emit("task:created", {
+        taskId: task.id,
+        planId: plan.id,
+        issueNumber: issue.number,
+      });
+    }
+
     return {
       plan,
       // Return all active tasks: new generated tasks + preserved manual tasks
@@ -255,6 +274,13 @@ export class PlanningService {
         "Issue updated"
       );
     }
+
+    // Emit issue:updated event for real-time UI updates
+    this.eventBus.emit("issue:updated", {
+      issueId,
+      issueNumber: issue.number,
+      fields: Object.keys(updates),
+    });
 
     return {
       issue: updatedIssue,

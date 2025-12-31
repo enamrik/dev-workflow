@@ -273,7 +273,11 @@ async function main() {
     defaultTemplatesPath
   );
 
-  const taskSessionService = new TaskSessionService(taskRepository);
+  const taskSessionService = new TaskSessionService(
+    taskRepository,
+    planRepository,
+    issueRepository
+  );
 
   // Create tool contexts
   issueToolContext = {

@@ -1,4 +1,7 @@
 import type { Task, TaskRepository } from "../domain/task.js";
+import type { PlanRepository } from "../domain/plan.js";
+import type { IssueRepository } from "../domain/issue.js";
+import { EventBus } from "../infrastructure/events/event-bus.js";
 
 /**
  * Request to start a task session
@@ -37,7 +40,37 @@ export interface TaskSession {
  * - Track session activity for timeout detection
  */
 export class TaskSessionService {
-  constructor(private readonly taskRepository: TaskRepository) {}
+  private readonly eventBus: EventBus;
+
+  constructor(
+    private readonly taskRepository: TaskRepository,
+    private readonly planRepository: PlanRepository,
+    private readonly issueRepository: IssueRepository
+  ) {
+    this.eventBus = EventBus.getInstance();
+  }
+
+  /**
+   * Get the issue number for a task by looking up its plan and issue
+   */
+  private getIssueNumberForTask(taskId: string): number {
+    const task = this.taskRepository.findById(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+
+    const plan = this.planRepository.findById(task.planId);
+    if (!plan) {
+      throw new Error(`Plan not found for task: ${taskId}`);
+    }
+
+    const issue = this.issueRepository.findById(plan.issueId);
+    if (!issue) {
+      throw new Error(`Issue not found for task: ${taskId}`);
+    }
+
+    return issue.number;
+  }
 
   /**
    * Start a new session for a task
@@ -94,6 +127,14 @@ export class TaskSessionService {
     if (!finalTask) {
       throw new Error(`Failed to retrieve updated task: ${taskId}`);
     }
+
+    // Emit session started event for real-time UI updates
+    const issueNumber = this.getIssueNumberForTask(taskId);
+    this.eventBus.emit("task:session_started", {
+      taskId,
+      sessionId,
+      issueNumber,
+    });
 
     return {
       task: finalTask,
@@ -152,6 +193,14 @@ export class TaskSessionService {
       throw new Error(`Failed to retrieve completed task: ${taskId}`);
     }
 
+    // Emit session completed event for real-time UI updates
+    const issueNumber = this.getIssueNumberForTask(taskId);
+    this.eventBus.emit("task:session_completed", {
+      taskId,
+      sessionId,
+      issueNumber,
+    });
+
     return finalTask;
   }
 
@@ -197,6 +246,14 @@ export class TaskSessionService {
     if (!finalTask) {
       throw new Error(`Failed to retrieve abandoned task: ${taskId}`);
     }
+
+    // Emit session abandoned event for real-time UI updates
+    const issueNumber = this.getIssueNumberForTask(taskId);
+    this.eventBus.emit("task:session_abandoned", {
+      taskId,
+      sessionId,
+      issueNumber,
+    });
 
     return finalTask;
   }

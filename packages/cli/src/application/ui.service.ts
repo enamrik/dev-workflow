@@ -36,6 +36,7 @@ export class UIService {
         SqliteIssueRepository,
         SqlitePlanRepository,
         SqliteTaskRepository,
+        EventBus,
       } = await import("@dev-workflow/core");
 
       const dbService = await DatabaseService.create(dbPath);
@@ -44,11 +45,13 @@ export class UIService {
       const planRepository = new SqlitePlanRepository(db);
       const taskRepository = new SqliteTaskRepository(db);
 
-      // Create and start server
+      // Create and start server with real-time updates
+      const eventBus = EventBus.getInstance();
       const server = await createServer({
         issueRepository,
         planRepository,
         taskRepository,
+        eventBus,
       });
       await server.listen({ port, host: "127.0.0.1" });
 

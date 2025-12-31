@@ -18,6 +18,7 @@ export function renderLayout(title: string, content: string): string {
   </header>
   <main>${content}</main>
   <script src="/app.js"></script>
+  <script src="/websocket-client.js"></script>
 </body>
 </html>
   `.trim();
