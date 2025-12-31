@@ -38,11 +38,27 @@ export class UninstallService {
 
   async removeSkills(): Promise<void> {
     try {
-      const skillsDir = path.join(this.workingDirectory, ".claude/skills/dev-workflow");
-      const exists = await this.fileSystem.exists(skillsDir);
+      const skillsBaseDir = path.join(this.workingDirectory, ".claude/skills");
+      const exists = await this.fileSystem.exists(skillsBaseDir);
 
       if (exists) {
-        await this.fileSystem.rmdir(skillsDir, { recursive: true });
+        // Remove dwf-* prefixed skill folders
+        const entries = await this.fileSystem.readdirWithFileTypes(skillsBaseDir);
+        for (const entry of entries) {
+          if (entry.isDirectory() && entry.name.startsWith("dwf-")) {
+            await this.fileSystem.rmdir(
+              path.join(skillsBaseDir, entry.name),
+              { recursive: true }
+            );
+          }
+        }
+      }
+
+      // Also remove old nested structure if it exists (migration cleanup)
+      const oldSkillsDir = path.join(this.workingDirectory, ".claude/skills/dev-workflow");
+      const oldExists = await this.fileSystem.exists(oldSkillsDir);
+      if (oldExists) {
+        await this.fileSystem.rmdir(oldSkillsDir, { recursive: true });
       }
     } catch (error) {
       throw new UninstallError("Failed to remove skills", error);
