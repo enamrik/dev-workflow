@@ -11,6 +11,7 @@
  */
 
 import { execSync, spawnSync } from "node:child_process";
+import * as crypto from "node:crypto";
 import {
   mkdtempSync,
   rmSync,
@@ -19,8 +20,8 @@ import {
   readFileSync,
   mkdirSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
-import { tmpdir } from "node:os";
+import { basename, join, resolve } from "node:path";
+import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 
@@ -38,6 +39,8 @@ export interface HarnessOptions {
 export class E2ETestHarness {
   public readonly testDir: string;
   public dbPath: string;
+  /** Global track directory (~/.track/<project-id>) - set after init */
+  public trackDir: string = "";
   private cleanupOnSuccess: boolean;
   private useLocalBuild: boolean;
   private skipSampleProject: boolean;
@@ -49,7 +52,18 @@ export class E2ETestHarness {
 
     // Create temp directory for this test run
     this.testDir = mkdtempSync(join(tmpdir(), "dev-workflow-e2e-"));
-    this.dbPath = join(this.testDir, ".track", "data", "workflow.db");
+    // dbPath will be updated in setup() after we know the project ID
+    this.dbPath = "";
+  }
+
+  /**
+   * Compute project ID from git root path (matches TrackDirectoryResolver logic)
+   * Format: <repo-folder-name>-<6-char-hash>
+   */
+  private computeProjectId(gitRoot: string): string {
+    const folderName = basename(gitRoot);
+    const hash = crypto.createHash("sha256").update(gitRoot).digest("hex").slice(0, 6);
+    return `${folderName}-${hash}`;
   }
 
   /**
@@ -108,6 +122,16 @@ export class E2ETestHarness {
     });
     console.log("✓ Git repo initialized");
 
+    // Compute the global track directory path (matches TrackDirectoryResolver)
+    // Need to get the resolved git root (may differ from testDir due to symlinks)
+    const gitRoot = execSync("git rev-parse --show-toplevel", {
+      cwd: this.testDir,
+      encoding: "utf-8",
+    }).trim();
+    const projectId = this.computeProjectId(gitRoot);
+    this.trackDir = join(homedir(), ".track", projectId);
+    this.dbPath = join(this.trackDir, "data", "workflow.db");
+
     // 3. Create sample project files
     if (!this.skipSampleProject) {
       await this.createSampleProject();
@@ -145,14 +169,9 @@ export class E2ETestHarness {
       throw error;
     }
 
-    // 6. Verify DB was created
+    // 6. Verify DB was created in global storage
     if (!existsSync(this.dbPath)) {
-      const altPath = join(this.testDir, ".track/data/workflow.db");
-      if (existsSync(altPath)) {
-        this.dbPath = altPath;
-      } else {
-        throw new Error(`Database not created. Expected at: ${this.dbPath}`);
-      }
+      throw new Error(`Database not created. Expected at: ${this.dbPath}`);
     }
     console.log(`✓ Database ready at ${this.dbPath}\n`);
   }
@@ -290,16 +309,22 @@ console.log("Capitalized:", capitalize("hello"));
    */
   cleanup(testPassed: boolean): void {
     if (testPassed && this.cleanupOnSuccess) {
-      console.log("\n🧹 Cleaning up test directory...");
+      console.log("\n🧹 Cleaning up test directories...");
       try {
+        // Clean up local test directory
         rmSync(this.testDir, { recursive: true, force: true });
+        // Clean up global track directory
+        if (this.trackDir && existsSync(this.trackDir)) {
+          rmSync(this.trackDir, { recursive: true, force: true });
+        }
         console.log("✓ Cleanup complete");
       } catch (error) {
         console.warn("⚠️ Cleanup failed:", error);
       }
     } else {
-      console.log("\n⚠️ Test directory preserved for investigation:");
-      console.log(`   ${this.testDir}`);
+      console.log("\n⚠️ Test directories preserved for investigation:");
+      console.log(`   Test dir: ${this.testDir}`);
+      console.log(`   Track dir: ${this.trackDir}`);
       console.log(`   Database: ${this.dbPath}`);
     }
   }
