@@ -36,28 +36,13 @@ export class UpdateService {
 
   /**
    * Update skills to latest version from package
-   *
-   * Also migrates from old nested structure (.claude/skills/dev-workflow/*)
-   * to new flat structure (.claude/skills/dwf-*)
    */
   async updateSkills(): Promise<void> {
     try {
       const skillsTarget = path.join(this.workingDirectory, ".claude/skills");
       const skillsSource = path.join(this.packageRoot, "skills");
 
-      // Migrate: remove old nested structure if it exists
-      const oldSkillsDir = path.join(this.workingDirectory, ".claude/skills/dev-workflow");
-      const oldDirExists = await this.fileSystem.exists(oldSkillsDir);
-      if (oldDirExists) {
-        await this.fileSystem.rmdir(oldSkillsDir, { recursive: true });
-        console.log("  Migrated from old skills structure");
-      }
-
-      // Ensure target directory exists
       await this.fileSystem.mkdir(skillsTarget, { recursive: true });
-
-      // Copy skill folders directly (flat, no subfolder)
-      // Skills are prefixed with dwf- to avoid conflicts
       await this.fileSystem.copyDirectory(skillsSource, skillsTarget);
     } catch (error) {
       throw new UpdateError("Failed to update skills", error);
