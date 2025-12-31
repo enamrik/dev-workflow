@@ -309,17 +309,40 @@ console.log("Capitalized:", capitalize("hello"));
    */
   cleanup(testPassed: boolean): void {
     if (testPassed && this.cleanupOnSuccess) {
-      console.log("\n🧹 Cleaning up test directories...");
+      console.log("\n🧹 Cleaning up test environment...");
       try {
+        // Run uninit to properly unregister MCP server and remove skills/subagents
+        const devWorkflowCmd = this.useLocalBuild
+          ? `node ${this.getCliPath()}`
+          : "dev-workflow";
+        execSync(`${devWorkflowCmd} uninit`, {
+          cwd: this.testDir,
+          stdio: "pipe",
+        });
+        console.log("✓ Ran dev-workflow uninit");
+
         // Clean up local test directory
         rmSync(this.testDir, { recursive: true, force: true });
-        // Clean up global track directory
+        console.log("✓ Removed test directory");
+
+        // Clean up global track directory (uninit should have done this, but ensure it's gone)
         if (this.trackDir && existsSync(this.trackDir)) {
           rmSync(this.trackDir, { recursive: true, force: true });
+          console.log("✓ Removed track directory");
         }
+
         console.log("✓ Cleanup complete");
       } catch (error) {
         console.warn("⚠️ Cleanup failed:", error);
+        // Still try to clean up directories even if uninit failed
+        try {
+          rmSync(this.testDir, { recursive: true, force: true });
+          if (this.trackDir && existsSync(this.trackDir)) {
+            rmSync(this.trackDir, { recursive: true, force: true });
+          }
+        } catch {
+          // Ignore secondary cleanup errors
+        }
       }
     } else {
       console.log("\n⚠️ Test directories preserved for investigation:");
