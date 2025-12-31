@@ -24,6 +24,13 @@ export {
   type TaskMatchResult,
   type TaskDefinition,
 } from "./application/task-matching-service.js";
+export {
+  TrackDirectoryResolver,
+  createTrackDirectoryResolver,
+  listAllProjects,
+  getTrackDirectoryForProject,
+  getDatabasePathForProject,
+} from "./application/track-directory-resolver.js";
 
 // Infrastructure - Database
 export * from "./infrastructure/database/schema.js";

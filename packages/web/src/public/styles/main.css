@@ -1065,6 +1065,97 @@ main {
   text-decoration: underline;
 }
 
+/* Project Filter */
+.project-filter {
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.project-filter label {
+  font-weight: 500;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.project-filter select {
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+  color: #374151;
+  font-size: 0.9rem;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M3 4.5L6 7.5L9 4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+}
+
+.project-filter select:hover {
+  border-color: #d1d5db;
+}
+
+.project-filter select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.board-project-filter {
+  margin-bottom: 1rem;
+}
+
+/* Project Badges */
+.badge-project {
+  background: #ede9fe;
+  color: #7c3aed;
+  font-size: 0.7rem;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge-project-mini {
+  background: #ede9fe;
+  color: #7c3aed;
+  font-size: 0.65rem;
+  padding: 0.15rem 0.35rem;
+  border-radius: 3px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.badge-project-header {
+  background: #ede9fe;
+  color: #7c3aed;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+}
+
+/* Multi-project kanban card */
+.card-project-issue {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+}
+
+/* Project column in table */
+.col-project {
+  width: 100px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   main {

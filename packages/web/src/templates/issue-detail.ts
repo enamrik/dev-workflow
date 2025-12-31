@@ -6,10 +6,11 @@ export interface IssueDetailData {
   plan?: Plan;
   tasks?: Task[];
   activeTab?: "details" | "plan" | "tasks";
+  projectId?: string;
 }
 
 export function renderIssueDetail(data: IssueDetailData): string {
-  const { issue, plan, tasks = [], activeTab = "details" } = data;
+  const { issue, plan, tasks = [], activeTab = "details", projectId } = data;
 
   const taskCounts = {
     total: tasks.length,
@@ -17,11 +18,30 @@ export function renderIssueDetail(data: IssueDetailData): string {
     inProgress: tasks.filter((t) => t.status === "IN_PROGRESS").length,
   };
 
+  // Build URLs based on whether we're in multi-project mode
+  const backUrl = projectId ? `/?project=${encodeURIComponent(projectId)}` : "/";
+  const issueBaseUrl = projectId
+    ? `/projects/${encodeURIComponent(projectId)}/issues/${issue.number}`
+    : `/issues/${issue.number}`;
+  const boardUrl = projectId
+    ? `/board?project=${encodeURIComponent(projectId)}&issue=${issue.number}`
+    : `/board?issue=${issue.number}`;
+
+  // Extract short project name for display
+  const shortProjectName = projectId
+    ? projectId.includes("-")
+      ? projectId.substring(0, projectId.lastIndexOf("-"))
+      : projectId
+    : null;
+
   return `
     <div class="issue-detail-container">
       <div class="issue-detail-header">
-        <a href="/" class="back-link">← Back to Issues</a>
-        <h2>Issue #${issue.number}</h2>
+        <a href="${backUrl}" class="back-link">← Back to Issues</a>
+        <h2>
+          ${projectId ? `<span class="badge badge-project-header" title="${escapeHtml(projectId)}">${escapeHtml(shortProjectName!)}</span>` : ""}
+          Issue #${issue.number}
+        </h2>
       </div>
 
       <div class="issue-title-section">
@@ -35,22 +55,22 @@ export function renderIssueDetail(data: IssueDetailData): string {
 
       <div class="tabs-container">
         <div class="tabs-nav">
-          <a href="/issues/${issue.number}?tab=details" class="tab-link ${activeTab === "details" ? "active" : ""}">Details</a>
-          <a href="/issues/${issue.number}?tab=plan" class="tab-link ${activeTab === "plan" ? "active" : ""}">
+          <a href="${issueBaseUrl}?tab=details" class="tab-link ${activeTab === "details" ? "active" : ""}">Details</a>
+          <a href="${issueBaseUrl}?tab=plan" class="tab-link ${activeTab === "plan" ? "active" : ""}">
             Plan
             ${plan ? '<span class="tab-indicator tab-indicator-success"></span>' : ""}
           </a>
-          <a href="/issues/${issue.number}?tab=tasks" class="tab-link ${activeTab === "tasks" ? "active" : ""}">
+          <a href="${issueBaseUrl}?tab=tasks" class="tab-link ${activeTab === "tasks" ? "active" : ""}">
             Tasks
             ${tasks.length > 0 ? `<span class="tab-badge">${taskCounts.completed}/${taskCounts.total}</span>` : ""}
           </a>
-          ${tasks.length > 0 ? `<a href="/board?issue=${issue.number}" class="tab-link tab-link-external">Board →</a>` : ""}
+          ${tasks.length > 0 ? `<a href="${boardUrl}" class="tab-link tab-link-external">Board →</a>` : ""}
         </div>
 
         <div class="tab-content">
           ${activeTab === "details" ? renderDetailsTab(issue) : ""}
           ${activeTab === "plan" ? renderPlanTab(plan) : ""}
-          ${activeTab === "tasks" ? renderTasksTab(tasks, issue.number) : ""}
+          ${activeTab === "tasks" ? renderTasksTab(tasks, issue.number, projectId) : ""}
         </div>
       </div>
     </div>
@@ -136,7 +156,7 @@ function renderPlanTab(plan?: Plan): string {
   `;
 }
 
-function renderTasksTab(tasks: Task[], issueNumber: number): string {
+function renderTasksTab(tasks: Task[], issueNumber: number, projectId?: string): string {
   if (tasks.length === 0) {
     return `
       <div class="tab-panel">
@@ -153,6 +173,10 @@ function renderTasksTab(tasks: Task[], issueNumber: number): string {
   const totalTasks = tasks.length;
   const progressPercent = Math.round((completedTasks / totalTasks) * 100);
 
+  const boardUrl = projectId
+    ? `/board?project=${encodeURIComponent(projectId)}&issue=${issueNumber}`
+    : `/board?issue=${issueNumber}`;
+
   return `
     <div class="tab-panel">
       <div class="tasks-header-row">
@@ -162,7 +186,7 @@ function renderTasksTab(tasks: Task[], issueNumber: number): string {
             <div class="progress-fill" style="width: ${progressPercent}%"></div>
           </div>
         </div>
-        <a href="/board?issue=${issueNumber}" class="btn btn-small">View on Board →</a>
+        <a href="${boardUrl}" class="btn btn-small">View on Board →</a>
       </div>
 
       <ul class="tasks-list">

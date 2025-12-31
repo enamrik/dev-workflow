@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
+import { TrackDirectoryResolver } from "@dev-workflow/core";
 
 export class InstallError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -21,14 +22,14 @@ export class InstallService {
   constructor(
     private readonly fileSystem: FileSystem,
     private readonly workingDirectory: string,
-    private readonly packageRoot: string
+    private readonly packageRoot: string,
+    private readonly resolver: TrackDirectoryResolver
   ) {}
 
   async createTrackDirectory(): Promise<void> {
     try {
-      const trackDir = path.join(this.workingDirectory, ".track");
-      const defaultTemplatesDir = path.join(trackDir, "config/issues/templates");
-      const userTemplatesDir = path.join(trackDir, "issues/templates");
+      const defaultTemplatesDir = this.resolver.getTemplatesPath();
+      const userTemplatesDir = this.resolver.getUserTemplatesPath();
 
       // Create directory structure
       await this.fileSystem.mkdir(defaultTemplatesDir, { recursive: true });
@@ -51,17 +52,9 @@ export class InstallService {
 This directory is for your custom issue templates.
 
 ## How it works
-- Templates here override default templates in \`.track/config/issues/templates/\`
+- Templates here override default templates in the config/issues/templates/ directory
 - If a template with the same filename exists here, it takes precedence
 - Templates must be markdown files with YAML frontmatter
-
-## Example
-Copy a default template and customize it:
-\`\`\`bash
-cp .track/config/issues/templates/feature.md .track/issues/templates/my-feature.md
-\`\`\`
-
-Then edit \`my-feature.md\` to match your needs.
 
 ## Frontmatter Format
 \`\`\`yaml
@@ -87,19 +80,19 @@ These values can still be overridden when creating an issue explicitly.
       // Create default config
       const config = {
         version: "1.0.0",
+        projectId: this.resolver.getProjectId(),
+        gitRoot: this.resolver.getGitRoot(),
         issueTemplates: {
-          templatesPath: ".track/config/issues/templates/",
-          userTemplatesPath: ".track/issues/templates/",
           defaultTemplate: "feature.md",
         },
       };
 
       await this.fileSystem.writeFile(
-        path.join(trackDir, "config.json"),
+        this.resolver.getConfigPath(),
         JSON.stringify(config, null, 2)
       );
     } catch (error) {
-      throw new InstallError("Failed to create .track directory", error);
+      throw new InstallError("Failed to create track directory", error);
     }
   }
 
@@ -152,8 +145,8 @@ These values can still be overridden when creating an issue explicitly.
         command: "npx",
         args: ["dev-workflow", "mcp"],
         env: {
-          DATABASE_PATH: path.join(this.workingDirectory, ".track/data/workflow.db"),
-          TEMPLATES_PATH: path.join(this.workingDirectory, ".track/config/issues/templates/"),
+          DATABASE_PATH: this.resolver.getDatabasePath(),
+          TEMPLATES_PATH: this.resolver.getTemplatesPath(),
         },
       };
 
@@ -168,8 +161,8 @@ These values can still be overridden when creating an issue explicitly.
 
   private async registerWithClaudeCLI(): Promise<void> {
     try {
-      const dbPath = path.join(this.workingDirectory, ".track/data/workflow.db");
-      const templatesPath = path.join(this.workingDirectory, ".track/config/issues/templates/");
+      const dbPath = this.resolver.getDatabasePath();
+      const templatesPath = this.resolver.getTemplatesPath();
       const cliPath = path.join(this.packageRoot, "dist/index.js");
 
       // Remove existing registration if it exists
@@ -208,8 +201,8 @@ These values can still be overridden when creating an issue explicitly.
 
   async initializeDatabase(): Promise<void> {
     try {
-      const dbPath = path.join(this.workingDirectory, ".track/data/workflow.db");
-      const dbDir = path.dirname(dbPath);
+      const dbPath = this.resolver.getDatabasePath();
+      const dbDir = this.resolver.getDataPath();
       await this.fileSystem.mkdir(dbDir, { recursive: true });
 
       // Import DatabaseService from core package
@@ -225,7 +218,7 @@ These values can still be overridden when creating an issue explicitly.
   }
 
   /**
-   * Create default task labels in .track/labels/
+   * Create default task labels in ~/.track/<project-id>/labels/
    *
    * Labels are markdown files that provide contextual guidance for tasks.
    * When a task has labels, the corresponding label files are loaded
@@ -233,7 +226,7 @@ These values can still be overridden when creating an issue explicitly.
    */
   async createTaskSkills(): Promise<void> {
     try {
-      const labelsDir = path.join(this.workingDirectory, ".track/labels");
+      const labelsDir = this.resolver.getLabelsPath();
       await this.fileSystem.mkdir(labelsDir, { recursive: true });
 
       // Create README

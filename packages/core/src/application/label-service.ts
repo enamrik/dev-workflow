@@ -1,6 +1,5 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import * as os from "node:os";
 
 /**
  * Represents a loaded label with name and content
@@ -13,30 +12,24 @@ export interface Label {
 /**
  * LabelService loads and manages label files
  *
- * Labels are markdown files in .track/labels/{label}.md that provide
+ * Labels are markdown files in ~/.track/<project-id>/labels/{label}.md that provide
  * contextual guidance for task execution. When a task has labels,
  * the corresponding label files are loaded and returned as context.
  *
  * Labels define the vocabulary of available task labels - labels can only
  * be assigned if a corresponding label file exists.
- *
- * Supports both project-local labels (.track/labels/) and global labels
- * (~/.track/labels/). Project labels take precedence over global labels.
  */
 export class LabelService {
-  private readonly projectLabelsDirectory: string;
-  private readonly globalLabelsDirectory: string;
+  private readonly labelsDirectory: string;
 
   constructor(trackDirectory: string) {
-    this.projectLabelsDirectory = path.join(trackDirectory, "labels");
-    this.globalLabelsDirectory = path.join(os.homedir(), ".track", "labels");
+    this.labelsDirectory = path.join(trackDirectory, "labels");
   }
 
   /**
    * Load label files for given labels
    *
-   * Labels map to .track/labels/{label}.md files.
-   * Project labels take precedence over global labels.
+   * Labels map to ~/.track/<project-id>/labels/{label}.md files.
    * Missing files are silently skipped (not an error).
    *
    * @param labels - Array of label names to load
@@ -46,22 +39,14 @@ export class LabelService {
     const loadedLabels: Label[] = [];
 
     for (const label of labels) {
-      // Try project-local first, then global
-      const projectPath = path.join(this.projectLabelsDirectory, `${label}.md`);
-      const globalPath = path.join(this.globalLabelsDirectory, `${label}.md`);
+      const labelPath = path.join(this.labelsDirectory, `${label}.md`);
 
       try {
-        const content = await fs.readFile(projectPath, "utf-8");
+        const content = await fs.readFile(labelPath, "utf-8");
         loadedLabels.push({ name: label, content });
       } catch {
-        // Try global labels
-        try {
-          const content = await fs.readFile(globalPath, "utf-8");
-          loadedLabels.push({ name: label, content });
-        } catch {
-          // Silently skip missing label files
-          continue;
-        }
+        // Silently skip missing label files
+        continue;
       }
     }
 
@@ -71,29 +56,17 @@ export class LabelService {
   /**
    * List all available labels
    *
-   * Scans both project and global labels directories for .md files.
-   * Returns merged list with project labels taking precedence.
+   * Scans the labels directory for .md files.
    *
    * @returns Array of available label names
    */
   async listAvailableLabels(): Promise<string[]> {
-    const projectLabels = await this.listLabelsFromDirectory(this.projectLabelsDirectory);
-    const globalLabels = await this.listLabelsFromDirectory(this.globalLabelsDirectory);
-
-    // Merge with project labels taking precedence (use Set for deduplication)
-    const allLabels = new Set([...projectLabels, ...globalLabels]);
-    return Array.from(allLabels).sort();
-  }
-
-  /**
-   * List labels from a specific directory
-   */
-  private async listLabelsFromDirectory(directory: string): Promise<string[]> {
     try {
-      const files = await fs.readdir(directory);
+      const files = await fs.readdir(this.labelsDirectory);
       return files
         .filter((f) => f.endsWith(".md") && f !== "README.md")
-        .map((f) => f.replace(".md", ""));
+        .map((f) => f.replace(".md", ""))
+        .sort();
     } catch {
       // Directory doesn't exist - return empty array
       return [];
@@ -101,65 +74,51 @@ export class LabelService {
   }
 
   /**
-   * Check if a label exists (in project or global)
+   * Check if a label exists
    *
    * @param label - Label name to check
    * @returns true if the label file exists
    */
   async labelExists(label: string): Promise<boolean> {
-    const projectPath = path.join(this.projectLabelsDirectory, `${label}.md`);
-    const globalPath = path.join(this.globalLabelsDirectory, `${label}.md`);
+    const labelPath = path.join(this.labelsDirectory, `${label}.md`);
 
     try {
-      await fs.access(projectPath);
+      await fs.access(labelPath);
       return true;
     } catch {
-      try {
-        await fs.access(globalPath);
-        return true;
-      } catch {
-        return false;
-      }
+      return false;
     }
   }
 
   /**
-   * Get the full path to a label file (project-local)
+   * Get the full path to a label file
    *
    * @param label - Label name
-   * @returns Full path to the project label file
+   * @returns Full path to the label file
    */
   getLabelPath(label: string): string {
-    return path.join(this.projectLabelsDirectory, `${label}.md`);
+    return path.join(this.labelsDirectory, `${label}.md`);
   }
 
   /**
    * Get a label by name
    *
-   * Checks project labels first, then global labels.
-   *
    * @param name - Label name (without .md extension)
    * @returns Label with name and content, or null if not found
    */
   async getLabel(name: string): Promise<Label | null> {
-    const projectPath = path.join(this.projectLabelsDirectory, `${name}.md`);
-    const globalPath = path.join(this.globalLabelsDirectory, `${name}.md`);
+    const labelPath = path.join(this.labelsDirectory, `${name}.md`);
 
     try {
-      const content = await fs.readFile(projectPath, "utf-8");
+      const content = await fs.readFile(labelPath, "utf-8");
       return { name, content };
     } catch {
-      try {
-        const content = await fs.readFile(globalPath, "utf-8");
-        return { name, content };
-      } catch {
-        return null;
-      }
+      return null;
     }
   }
 
   /**
-   * Create a new label (in project directory)
+   * Create a new label
    *
    * @param name - Label name (without .md extension)
    * @param content - Label content (markdown)
@@ -176,7 +135,7 @@ export class LabelService {
 
     const labelPath = this.getLabelPath(name);
 
-    // Check if label already exists in project
+    // Check if label already exists
     try {
       await fs.access(labelPath);
       throw new Error(`Label "${name}" already exists. Use updateLabel to modify it.`);
@@ -188,7 +147,7 @@ export class LabelService {
     }
 
     // Ensure labels directory exists
-    await fs.mkdir(this.projectLabelsDirectory, { recursive: true });
+    await fs.mkdir(this.labelsDirectory, { recursive: true });
 
     // Write the label file
     await fs.writeFile(labelPath, content, "utf-8");
@@ -197,21 +156,21 @@ export class LabelService {
   }
 
   /**
-   * Update an existing label (project-local only)
+   * Update an existing label
    *
    * @param name - Label name (without .md extension)
    * @param content - New label content (markdown)
    * @returns The updated label
-   * @throws Error if label does not exist in project
+   * @throws Error if label does not exist
    */
   async updateLabel(name: string, content: string): Promise<Label> {
     const labelPath = this.getLabelPath(name);
 
-    // Check if label exists in project
+    // Check if label exists
     try {
       await fs.access(labelPath);
     } catch {
-      throw new Error(`Label "${name}" does not exist in project. Use createLabel to create it.`);
+      throw new Error(`Label "${name}" does not exist. Use createLabel to create it.`);
     }
 
     // Write the updated content
@@ -221,19 +180,19 @@ export class LabelService {
   }
 
   /**
-   * Remove a label (project-local only)
+   * Remove a label
    *
    * @param name - Label name (without .md extension)
-   * @throws Error if label does not exist in project
+   * @throws Error if label does not exist
    */
   async removeLabel(name: string): Promise<void> {
     const labelPath = this.getLabelPath(name);
 
-    // Check if label exists in project
+    // Check if label exists
     try {
       await fs.access(labelPath);
     } catch {
-      throw new Error(`Label "${name}" does not exist in project.`);
+      throw new Error(`Label "${name}" does not exist.`);
     }
 
     // Delete the label file

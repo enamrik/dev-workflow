@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
+import { TrackDirectoryResolver } from "@dev-workflow/core";
 
 export class UninstallError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -20,19 +21,20 @@ interface MCPServerConfig {
 export class UninstallService {
   constructor(
     private readonly fileSystem: FileSystem,
-    private readonly workingDirectory: string
+    private readonly workingDirectory: string,
+    private readonly resolver: TrackDirectoryResolver
   ) {}
 
   async removeTrackDirectory(): Promise<void> {
     try {
-      const trackDir = path.join(this.workingDirectory, ".track");
+      const trackDir = this.resolver.getTrackDirectory();
       const exists = await this.fileSystem.exists(trackDir);
 
       if (exists) {
         await this.fileSystem.rmdir(trackDir, { recursive: true });
       }
     } catch (error) {
-      throw new UninstallError("Failed to remove .track directory", error);
+      throw new UninstallError("Failed to remove track directory", error);
     }
   }
 

@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
+import { TrackDirectoryResolver } from "@dev-workflow/core";
 
 export class UpdateError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -23,14 +24,15 @@ export class UpdateService {
   constructor(
     private readonly fileSystem: FileSystem,
     private readonly workingDirectory: string,
-    private readonly packageRoot: string
+    private readonly packageRoot: string,
+    private readonly resolver: TrackDirectoryResolver
   ) {}
 
   /**
-   * Check if dev-workflow is initialized in the current directory
+   * Check if dev-workflow is initialized for this project
    */
   async isInitialized(): Promise<boolean> {
-    const trackDir = path.join(this.workingDirectory, ".track");
+    const trackDir = this.resolver.getTrackDirectory();
     return await this.fileSystem.exists(trackDir);
   }
 
@@ -85,8 +87,8 @@ export class UpdateService {
         command: "npx",
         args: ["dev-workflow", "mcp"],
         env: {
-          DATABASE_PATH: path.join(this.workingDirectory, ".track/data/workflow.db"),
-          TEMPLATES_PATH: path.join(this.workingDirectory, ".track/config/issues/templates/"),
+          DATABASE_PATH: this.resolver.getDatabasePath(),
+          TEMPLATES_PATH: this.resolver.getTemplatesPath(),
         },
       };
 
@@ -105,8 +107,8 @@ export class UpdateService {
    */
   private async updateClaudeCLI(): Promise<void> {
     try {
-      const dbPath = path.join(this.workingDirectory, ".track/data/workflow.db");
-      const templatesPath = path.join(this.workingDirectory, ".track/config/issues/templates/");
+      const dbPath = this.resolver.getDatabasePath();
+      const templatesPath = this.resolver.getTemplatesPath();
       const cliPath = path.join(this.packageRoot, "dist/index.js");
 
       // Remove existing registration
@@ -147,7 +149,7 @@ export class UpdateService {
    */
   async runMigrations(): Promise<void> {
     try {
-      const dbPath = path.join(this.workingDirectory, ".track/data/workflow.db");
+      const dbPath = this.resolver.getDatabasePath();
 
       // Verify database exists
       const exists = await this.fileSystem.exists(dbPath);
@@ -173,7 +175,7 @@ export class UpdateService {
    */
   async updateTaskSkills(): Promise<void> {
     try {
-      const labelsDir = path.join(this.workingDirectory, ".track/labels");
+      const labelsDir = this.resolver.getLabelsPath();
       const dirExists = await this.fileSystem.exists(labelsDir);
 
       if (!dirExists) {
@@ -287,8 +289,8 @@ When working on security-sensitive code:
    */
   async updateTemplates(): Promise<void> {
     try {
-      const defaultTemplatesDir = path.join(this.workingDirectory, ".track/config/issues/templates");
-      const userTemplatesDir = path.join(this.workingDirectory, ".track/issues/templates");
+      const defaultTemplatesDir = this.resolver.getTemplatesPath();
+      const userTemplatesDir = this.resolver.getUserTemplatesPath();
       const templatesSource = path.join(this.packageRoot, "templates/issues");
       const templates = ["feature.md", "bug.md", "enhancement.md", "task.md"];
 
