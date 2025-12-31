@@ -132,12 +132,7 @@ If user mentions specific priority/urgency:
 2. Only use labels that have a corresponding skill file in `.track/labels/skills/`
 3. If no matching skill exists, do NOT assign that label
 
-Default skills are: `db`, `api`, `security`. Only use labels from available skills.
-
-If user mentions categories that match available skills:
-- "database changes" → labels: ["db"] (if db skill exists)
-- "API endpoint" → labels: ["api"] (if api skill exists)
-- "security concern" → labels: ["security"] (if security skill exists)
+Only use labels from the available skills list. Do not invent labels.
 
 ## After Success
 

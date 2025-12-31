@@ -261,11 +261,7 @@ Before assigning labels to tasks:
 2. Only use labels that have a corresponding skill file in `.track/labels/skills/`
 3. If no matching skill exists, do NOT assign that label
 
-Default skills are: `db`, `api`, `security`. Assign labels based on what the task involves:
-- Task touches database/schema → labels: ["db"]
-- Task creates/modifies API endpoints → labels: ["api"]
-- Task has security implications → labels: ["security"]
-- Task involves multiple areas → labels: ["db", "api"] (combine as needed)
+Only use labels from the available skills list. Do not invent labels.
 
 ## Notes
 
