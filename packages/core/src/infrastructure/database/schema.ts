@@ -40,6 +40,15 @@ export const issues = sqliteTable("issues", {
   // Timestamps (stored as ISO strings)
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+
+  // GitHub sync state columns
+  githubIssueNumber: integer("github_issue_number"),
+  githubUrl: text("github_url"),
+  githubNodeId: text("github_node_id"),
+  githubSyncStatus: text("github_sync_status"), // 'NOT_SYNCED' | 'SYNCED' | 'PUSH_FAILED'
+  githubLastSyncedAt: text("github_last_synced_at"),
+  githubLastSyncError: text("github_last_sync_error"),
+  githubProjectItemId: text("github_project_item_id"),
 });
 
 /**

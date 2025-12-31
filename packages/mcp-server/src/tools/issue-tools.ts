@@ -7,6 +7,8 @@ import {
   type SqliteIssueRepository,
   type TemplateService,
   type PlanningService,
+  type GitHubSyncService,
+  type GitHubSyncState,
   type IssueType,
   type IssuePriority,
   type IssueStatus,
@@ -159,6 +161,8 @@ export interface IssueToolContext {
   issueRepository: SqliteIssueRepository;
   templateService: TemplateService;
   planningService: PlanningService;
+  /** Optional GitHub sync service - present if GitHub integration is enabled */
+  githubSyncService?: GitHubSyncService;
 }
 
 /**
@@ -175,6 +179,9 @@ interface CreateIssueArgs {
 
 /**
  * Handle create_issue tool call
+ *
+ * If GitHub sync is enabled, creates on GitHub FIRST to ensure atomicity.
+ * If GitHub sync fails, the entire operation fails (no partial state).
  */
 export async function handleCreateIssue(
   ctx: IssueToolContext,
@@ -213,16 +220,42 @@ export async function handleCreateIssue(
     }
   }
 
-  // Create issue using repository
+  const resolvedType = finalType || "FEATURE";
+
+  // If GitHub sync is enabled, create on GitHub FIRST (GitHub-first approach)
+  // This ensures atomicity: if GitHub fails, no local issue is created
+  let githubSync: GitHubSyncState | undefined;
+  let githubUrl: string | undefined;
+
+  if (ctx.githubSyncService) {
+    try {
+      const { data, syncState } = await ctx.githubSyncService.createGitHubIssue(
+        title,
+        description,
+        acceptanceCriteria,
+        resolvedType
+      );
+      githubSync = syncState;
+      githubUrl = data.url;
+    } catch (error) {
+      // GitHub sync failed - fail the entire operation
+      return errorResponse(
+        `Failed to create GitHub issue: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  // Create issue using repository (with GitHub sync state if available)
   const issue = ctx.issueRepository.create({
     title,
     description,
     acceptanceCriteria,
-    type: finalType || "FEATURE",
+    type: resolvedType,
     priority: finalPriority,
     status: "OPEN",
     templateUsed,
     createdBy: "claude-code",
+    githubSync,
   });
 
   // Emit issue:created event for real-time UI updates
@@ -242,6 +275,7 @@ export async function handleCreateIssue(
       priority: issue.priority,
       templateUsed: issue.templateUsed,
       url: `http://localhost:3000/issues/${issue.number}`,
+      githubUrl,
     },
   });
 }
@@ -309,8 +343,11 @@ export async function handleListTemplates(
 
 /**
  * Handle update_issue tool call
+ *
+ * If GitHub sync is enabled and issue has a GitHub link, updates GitHub FIRST.
+ * If GitHub sync fails, the entire operation fails (no partial state).
  */
-export function handleUpdateIssue(
+export async function handleUpdateIssue(
   ctx: IssueToolContext,
   args: {
     issueId?: string;
@@ -325,26 +362,52 @@ export function handleUpdateIssue(
     }>;
     regeneratePlan?: boolean;
   }
-): ToolResponse {
+): Promise<ToolResponse> {
   const { issueId, issueNumber, updates, regeneratePlan = false } = args;
 
-  // Resolve issue ID from number if needed
-  let resolvedIssueId = issueId;
-  if (!resolvedIssueId && issueNumber) {
-    const issue = ctx.issueRepository.findByNumber(issueNumber);
-    if (!issue) {
-      return errorResponse(`Issue not found: #${issueNumber}`);
-    }
-    resolvedIssueId = issue.id;
+  // Resolve issue from ID or number
+  let issue = issueId
+    ? ctx.issueRepository.findById(issueId)
+    : issueNumber
+      ? ctx.issueRepository.findByNumber(issueNumber)
+      : null;
+
+  if (!issue) {
+    return errorResponse(
+      issueId
+        ? `Issue not found: ${issueId}`
+        : issueNumber
+          ? `Issue not found: #${issueNumber}`
+          : "Either issueId or issueNumber is required"
+    );
   }
 
-  if (!resolvedIssueId) {
-    return errorResponse("Either issueId or issueNumber is required");
+  // If GitHub sync is enabled and issue has a GitHub link, update GitHub FIRST
+  // This ensures atomicity: if GitHub fails, no local update is made
+  let updatedGithubSync: GitHubSyncState | undefined;
+
+  if (ctx.githubSyncService && issue.githubSync?.githubIssueNumber) {
+    try {
+      updatedGithubSync = await ctx.githubSyncService.updateGitHubIssue(
+        issue,
+        updates
+      );
+    } catch (error) {
+      // GitHub sync failed - fail the entire operation
+      return errorResponse(
+        `Failed to update GitHub issue: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
+
+  // Update locally (with updated GitHub sync state if applicable)
+  const updatesWithSync = updatedGithubSync
+    ? { ...updates, githubSync: updatedGithubSync }
+    : updates;
 
   const result = ctx.planningService.updateIssue(
-    resolvedIssueId,
-    updates,
+    issue.id,
+    updatesWithSync,
     regeneratePlan
   );
 

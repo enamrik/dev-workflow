@@ -2,6 +2,8 @@
  * Domain types for Issue entity
  */
 
+import type { GitHubSyncState } from "./github.js";
+
 export type IssueType = "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
 export type IssuePriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type IssueStatus = "OPEN" | "IN_PROGRESS" | "CLOSED";
@@ -24,6 +26,9 @@ export interface Issue {
   createdBy?: string;
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
+
+  /** GitHub sync state (optional - only present if synced to GitHub) */
+  githubSync?: GitHubSyncState;
 }
 
 /**

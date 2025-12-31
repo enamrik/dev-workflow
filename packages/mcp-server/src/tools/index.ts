@@ -56,3 +56,10 @@ export {
   handleRevertToSnapshot,
   handleViewSnapshot,
 } from "./snapshot-tools.js";
+
+// Settings tools
+export {
+  settingsToolDefinitions,
+  type SettingsToolContext,
+  handleUpdateSettings,
+} from "./settings-tools.js";

@@ -12,6 +12,7 @@ export * from "./domain/task.js";
 export * from "./domain/snapshot.js";
 export * from "./domain/template.js";
 export * from "./domain/events.js";
+export * from "./domain/github.js";
 
 // Application services
 export { PlanningService } from "./application/planning-service.js";
@@ -31,6 +32,20 @@ export {
   getTrackDirectoryForProject,
   getDatabasePathForProject,
 } from "./application/track-directory-resolver.js";
+export {
+  ConfigService,
+  ConfigError,
+  ConfigSchema,
+  GitHubConfigSchema,
+  GitHubLabelsSchema,
+  type Config,
+  type GitHubConfig,
+  type GitHubLabels,
+} from "./application/config-service.js";
+export {
+  GitHubSyncService,
+  GitHubSyncError,
+} from "./application/github-sync-service.js";
 
 // Infrastructure - Database
 export * from "./infrastructure/database/schema.js";
@@ -53,6 +68,14 @@ export { NodeFileSystem } from "./infrastructure/file-system/file-system.js";
 // Infrastructure - Templates
 export { TemplateParser, TemplateParseError } from "./infrastructure/templates/template-parser.js";
 export { TemplateService, TemplateServiceError } from "./infrastructure/templates/template-service.js";
+
+// Infrastructure - GitHub
+export {
+  NodeGitHubCLI,
+  GitHubCLIError,
+  type GitHubCLI,
+  type GitHubCLIResult,
+} from "./infrastructure/github/github-cli.js";
 
 // Infrastructure - Events
 export { EventBus, type DomainEventListener } from "./infrastructure/events/event-bus.js";

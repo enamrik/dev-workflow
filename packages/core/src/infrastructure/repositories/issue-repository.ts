@@ -2,6 +2,7 @@ import { eq, max, and } from "drizzle-orm";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { issues, IssueRow } from "../database/schema.js";
 import type { Issue, IssueFilters, IssueRepository } from "../../domain/issue.js";
+import type { GitHubSyncState, GitHubSyncStatus } from "../../domain/github.js";
 import * as schema from "../database/schema.js";
 
 /**
@@ -42,6 +43,14 @@ export class SqliteIssueRepository implements IssueRepository {
         createdBy: issue.createdBy,
         createdAt: issue.createdAt,
         updatedAt: issue.updatedAt,
+        // GitHub sync fields
+        githubIssueNumber: issue.githubSync?.githubIssueNumber ?? null,
+        githubUrl: issue.githubSync?.githubUrl ?? null,
+        githubNodeId: issue.githubSync?.githubNodeId ?? null,
+        githubSyncStatus: issue.githubSync?.syncStatus ?? null,
+        githubLastSyncedAt: issue.githubSync?.lastSyncedAt ?? null,
+        githubLastSyncError: issue.githubSync?.lastSyncError ?? null,
+        githubProjectItemId: issue.githubSync?.projectItemId ?? null,
       })
       .run();
 
@@ -105,13 +114,28 @@ export class SqliteIssueRepository implements IssueRepository {
   ): Issue {
     const now = new Date().toISOString();
 
+    // Build the update object, mapping githubSync to flat columns
+    const { githubSync, ...restData } = data;
+    const updateData: Record<string, unknown> = {
+      ...restData,
+      updatedAt: now,
+    };
+
+    // Map githubSync fields if provided
+    if (githubSync !== undefined) {
+      updateData["githubIssueNumber"] = githubSync?.githubIssueNumber ?? null;
+      updateData["githubUrl"] = githubSync?.githubUrl ?? null;
+      updateData["githubNodeId"] = githubSync?.githubNodeId ?? null;
+      updateData["githubSyncStatus"] = githubSync?.syncStatus ?? null;
+      updateData["githubLastSyncedAt"] = githubSync?.lastSyncedAt ?? null;
+      updateData["githubLastSyncError"] = githubSync?.lastSyncError ?? null;
+      updateData["githubProjectItemId"] = githubSync?.projectItemId ?? null;
+    }
+
     // Update the issue
     this.db
       .update(issues)
-      .set({
-        ...data,
-        updatedAt: now,
-      })
+      .set(updateData)
       .where(eq(issues.id, id))
       .run();
 
@@ -130,6 +154,9 @@ export class SqliteIssueRepository implements IssueRepository {
    * Handles type conversion and null-to-undefined mapping for optional fields.
    */
   private mapRowToIssue(row: IssueRow): Issue {
+    // Build GitHub sync state if any GitHub fields are present
+    const githubSync = this.mapRowToGitHubSync(row);
+
     return {
       id: row.id,
       number: row.number,
@@ -143,6 +170,29 @@ export class SqliteIssueRepository implements IssueRepository {
       createdBy: row.createdBy ?? undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      githubSync,
+    };
+  }
+
+  /**
+   * Map database row GitHub fields to GitHubSyncState
+   *
+   * Returns undefined if no GitHub data is present.
+   */
+  private mapRowToGitHubSync(row: IssueRow): GitHubSyncState | undefined {
+    // If no sync status, GitHub integration was never used for this issue
+    if (!row.githubSyncStatus) {
+      return undefined;
+    }
+
+    return {
+      githubIssueNumber: row.githubIssueNumber ?? null,
+      githubUrl: row.githubUrl ?? null,
+      githubNodeId: row.githubNodeId ?? null,
+      syncStatus: row.githubSyncStatus as GitHubSyncStatus,
+      lastSyncedAt: row.githubLastSyncedAt ?? null,
+      lastSyncError: row.githubLastSyncError ?? null,
+      projectItemId: row.githubProjectItemId ?? null,
     };
   }
 }

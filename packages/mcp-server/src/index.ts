@@ -30,6 +30,11 @@ import {
   TaskSessionService,
   TaskManagementService,
   taskExecutionLogs,
+  // GitHub integration
+  ConfigService,
+  GitHubSyncService,
+  NodeGitHubCLI,
+  TrackDirectoryResolver,
 } from "@dev-workflow/core";
 
 // Import tools
@@ -71,11 +76,15 @@ import {
   handleGetSnapshotHistory,
   handleRevertToSnapshot,
   handleViewSnapshot,
+  // Settings handlers
+  settingsToolDefinitions,
+  handleUpdateSettings,
   // Types
   type IssueToolContext,
   type PlanToolContext,
   type TaskToolContext,
   type SnapshotToolContext,
+  type SettingsToolContext,
   errorResponse,
 } from "./tools/index.js";
 
@@ -90,6 +99,7 @@ let issueToolContext: IssueToolContext;
 let planToolContext: PlanToolContext;
 let taskToolContext: TaskToolContext;
 let snapshotToolContext: SnapshotToolContext;
+let settingsToolContext: SettingsToolContext;
 
 // Create MCP server
 const server = new Server(
@@ -111,6 +121,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     ...planToolDefinitions,
     ...taskToolDefinitions,
     ...snapshotToolDefinitions,
+    ...settingsToolDefinitions,
   ],
 }));
 
@@ -136,7 +147,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
       return await handleListTemplates(issueToolContext);
     }
     if (name === "update_issue") {
-      return handleUpdateIssue(issueToolContext, a);
+      return await handleUpdateIssue(issueToolContext, a);
     }
 
     // Plan tools
@@ -214,6 +225,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
       return handleViewSnapshot(snapshotToolContext, a);
     }
 
+    // Settings tools
+    if (name === "update_settings") {
+      return await handleUpdateSettings(settingsToolContext, a);
+    }
+
     return errorResponse(`Unknown tool: ${name}`);
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));
@@ -244,6 +260,28 @@ async function main() {
 
   // Initialize skill service
   const skillService = new SkillService(trackDirectory);
+
+  // Initialize GitHub sync service if configured
+  let githubSyncService: GitHubSyncService | undefined;
+  try {
+    // Create resolver from track directory path
+    const resolver = new TrackDirectoryResolver(trackDirectory);
+    const configService = new ConfigService(resolver);
+    const githubConfig = await configService.getGitHubConfig();
+
+    if (githubConfig) {
+      const githubCLI = new NodeGitHubCLI();
+      githubSyncService = new GitHubSyncService(
+        issueRepository,
+        githubCLI,
+        githubConfig
+      );
+      console.error(`GitHub sync enabled for ${githubConfig.owner}/${githubConfig.repo}`);
+    }
+  } catch (error) {
+    // Config doesn't exist or GitHub not configured - that's fine
+    console.error("GitHub sync not configured (this is normal for projects without GitHub integration)");
+  }
 
   // Initialize application services
   const versioningService = new VersioningService(
@@ -284,6 +322,7 @@ async function main() {
     issueRepository,
     templateService,
     planningService,
+    githubSyncService,
   };
 
   planToolContext = {
@@ -307,6 +346,14 @@ async function main() {
   snapshotToolContext = {
     issueRepository,
     versioningService,
+  };
+
+  // Create settings context - always available for configuring GitHub
+  const resolver = new TrackDirectoryResolver(trackDirectory);
+  const configServiceForSettings = new ConfigService(resolver);
+  settingsToolContext = {
+    configService: configServiceForSettings,
+    githubCLI: new NodeGitHubCLI(),
   };
 
   // Start server with stdio transport
