@@ -1,7 +1,7 @@
 ---
 name: dwf-manage-issue
 description: REQUIRED workflow for creating/updating issues. Separates requirements from implementation details, then AUTO-GENERATES implementation plans with tasks. Use this instead of calling create_issue directly.
-allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:list_templates
+allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_skills
 ---
 
 # Manage Issue Skill
@@ -127,10 +127,17 @@ If user mentions specific priority/urgency:
 
 ## Label Extraction
 
-If user mentions categories or tags:
-- "authentication feature" → labels: ["authentication"]
-- "UI bug" → labels: ["ui"]
-- Extract relevant labels from description
+**IMPORTANT: Labels must have matching skills.** Before assigning labels:
+1. Call `list_available_skills` to see what skills exist
+2. Only use labels that have a corresponding skill file in `.track/labels/skills/`
+3. If no matching skill exists, do NOT assign that label
+
+Default skills are: `db`, `api`, `security`. Only use labels from available skills.
+
+If user mentions categories that match available skills:
+- "database changes" → labels: ["db"] (if db skill exists)
+- "API endpoint" → labels: ["api"] (if api skill exists)
+- "security concern" → labels: ["security"] (if security skill exists)
 
 ## After Success
 

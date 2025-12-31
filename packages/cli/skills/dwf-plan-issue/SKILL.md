@@ -1,7 +1,7 @@
 ---
 name: dwf-plan-issue
 description: Generate implementation plans with properly-scoped tasks. Auto-invoked when user wants to "plan issue", "create implementation plan", "break down into tasks", "plan #N", etc.
-allowed-tools: mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:generate_plan, mcp:dev-workflow-tracker:get_plan
+allowed-tools: mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:generate_plan, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:list_available_skills
 ---
 
 # Plan Issue Skill
@@ -251,6 +251,21 @@ If issue not found:
 If issue has no description/acceptance criteria:
 - Ask the user for more context before planning
 - Suggest updating the issue first with manage-issue
+
+## Task Labels (Skills)
+
+**IMPORTANT: Task labels must have matching skills.** Labels map to skill files that provide context during task execution.
+
+Before assigning labels to tasks:
+1. Call `list_available_skills` to see what skills exist
+2. Only use labels that have a corresponding skill file in `.track/labels/skills/`
+3. If no matching skill exists, do NOT assign that label
+
+Default skills are: `db`, `api`, `security`. Assign labels based on what the task involves:
+- Task touches database/schema → labels: ["db"]
+- Task creates/modifies API endpoints → labels: ["api"]
+- Task has security implications → labels: ["security"]
+- Task involves multiple areas → labels: ["db", "api"] (combine as needed)
 
 ## Notes
 
