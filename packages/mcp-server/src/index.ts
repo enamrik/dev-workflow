@@ -57,6 +57,10 @@ import {
   handleListAvailableTasks,
   handleUpdateTaskLabels,
   handleListAvailableSkills,
+  handleGetSkill,
+  handleCreateSkill,
+  handleUpdateSkill,
+  handleRemoveSkill,
   handleAddManualTask,
   handleDeleteTask,
   handleUpdateTask,
@@ -167,6 +171,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     }
     if (name === "list_available_skills") {
       return await handleListAvailableSkills(taskToolContext);
+    }
+    if (name === "get_skill") {
+      return await handleGetSkill(taskToolContext, a);
+    }
+    if (name === "create_skill") {
+      return await handleCreateSkill(taskToolContext, a);
+    }
+    if (name === "update_skill") {
+      return await handleUpdateSkill(taskToolContext, a);
+    }
+    if (name === "remove_skill") {
+      return await handleRemoveSkill(taskToolContext, a);
     }
     if (name === "add_manual_task") {
       return handleAddManualTask(taskToolContext, a);

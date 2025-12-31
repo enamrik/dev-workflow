@@ -99,4 +99,93 @@ export class SkillService {
   getSkillPath(label: string): string {
     return path.join(this.skillsDirectory, `${label}.md`);
   }
+
+  /**
+   * Get a skill by name
+   *
+   * @param name - Skill name (without .md extension)
+   * @returns Skill with name and content, or null if not found
+   */
+  async getSkill(name: string): Promise<Skill | null> {
+    const skillPath = this.getSkillPath(name);
+
+    try {
+      const content = await fs.readFile(skillPath, "utf-8");
+      return { name, content };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Create a new skill
+   *
+   * @param name - Skill name (without .md extension)
+   * @param content - Skill content (markdown)
+   * @returns The created skill
+   * @throws Error if skill already exists
+   */
+  async createSkill(name: string, content: string): Promise<Skill> {
+    // Validate skill name (alphanumeric, hyphens, underscores only)
+    if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+      throw new Error(
+        `Invalid skill name: "${name}". Use only letters, numbers, hyphens, and underscores.`
+      );
+    }
+
+    const skillPath = this.getSkillPath(name);
+
+    // Check if skill already exists
+    if (await this.skillExists(name)) {
+      throw new Error(`Skill "${name}" already exists. Use updateSkill to modify it.`);
+    }
+
+    // Ensure skills directory exists
+    await fs.mkdir(this.skillsDirectory, { recursive: true });
+
+    // Write the skill file
+    await fs.writeFile(skillPath, content, "utf-8");
+
+    return { name, content };
+  }
+
+  /**
+   * Update an existing skill
+   *
+   * @param name - Skill name (without .md extension)
+   * @param content - New skill content (markdown)
+   * @returns The updated skill
+   * @throws Error if skill does not exist
+   */
+  async updateSkill(name: string, content: string): Promise<Skill> {
+    const skillPath = this.getSkillPath(name);
+
+    // Check if skill exists
+    if (!(await this.skillExists(name))) {
+      throw new Error(`Skill "${name}" does not exist. Use createSkill to create it.`);
+    }
+
+    // Write the updated content
+    await fs.writeFile(skillPath, content, "utf-8");
+
+    return { name, content };
+  }
+
+  /**
+   * Remove a skill
+   *
+   * @param name - Skill name (without .md extension)
+   * @throws Error if skill does not exist
+   */
+  async removeSkill(name: string): Promise<void> {
+    const skillPath = this.getSkillPath(name);
+
+    // Check if skill exists
+    if (!(await this.skillExists(name))) {
+      throw new Error(`Skill "${name}" does not exist.`);
+    }
+
+    // Delete the skill file
+    await fs.unlink(skillPath);
+  }
 }

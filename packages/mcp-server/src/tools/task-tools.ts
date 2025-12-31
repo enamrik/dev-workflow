@@ -183,6 +183,72 @@ export const taskToolDefinitions: ToolDefinition[] = [
     },
   },
   {
+    name: "get_skill",
+    description: "Get a skill's content by name. Returns the skill's markdown content.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Skill name (without .md extension)",
+        },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "create_skill",
+    description:
+      "Create a new skill. Skills are markdown files in .track/skills/ that provide contextual guidance for tasks.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description:
+            "Skill name (without .md extension). Use only letters, numbers, hyphens, and underscores.",
+        },
+        content: {
+          type: "string",
+          description: "Skill content in markdown format",
+        },
+      },
+      required: ["name", "content"],
+    },
+  },
+  {
+    name: "update_skill",
+    description: "Update an existing skill's content.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Skill name (without .md extension)",
+        },
+        content: {
+          type: "string",
+          description: "New skill content in markdown format",
+        },
+      },
+      required: ["name", "content"],
+    },
+  },
+  {
+    name: "remove_skill",
+    description: "Remove a skill. This deletes the skill file from .track/skills/.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Skill name (without .md extension)",
+        },
+      },
+      required: ["name"],
+    },
+  },
+  {
     name: "add_manual_task",
     description:
       "Add a user-created task to a plan. Manual tasks are preserved during plan regeneration.",
@@ -570,6 +636,79 @@ export async function handleListAvailableSkills(
     success: true,
     skills,
     description: "Available skills that can be assigned as labels to tasks",
+  });
+}
+
+/**
+ * Handle get_skill tool call
+ */
+export async function handleGetSkill(
+  ctx: TaskToolContext,
+  args: { name: string }
+): Promise<ToolResponse> {
+  const { name } = args;
+
+  const skill = await ctx.skillService.getSkill(name);
+  if (!skill) {
+    return errorResponse(`Skill not found: ${name}`);
+  }
+
+  return successResponse({
+    success: true,
+    skill,
+  });
+}
+
+/**
+ * Handle create_skill tool call
+ */
+export async function handleCreateSkill(
+  ctx: TaskToolContext,
+  args: { name: string; content: string }
+): Promise<ToolResponse> {
+  const { name, content } = args;
+
+  const skill = await ctx.skillService.createSkill(name, content);
+
+  return successResponse({
+    success: true,
+    skill,
+    message: `Created skill "${name}" at .track/skills/${name}.md`,
+  });
+}
+
+/**
+ * Handle update_skill tool call
+ */
+export async function handleUpdateSkill(
+  ctx: TaskToolContext,
+  args: { name: string; content: string }
+): Promise<ToolResponse> {
+  const { name, content } = args;
+
+  const skill = await ctx.skillService.updateSkill(name, content);
+
+  return successResponse({
+    success: true,
+    skill,
+    message: `Updated skill "${name}"`,
+  });
+}
+
+/**
+ * Handle remove_skill tool call
+ */
+export async function handleRemoveSkill(
+  ctx: TaskToolContext,
+  args: { name: string }
+): Promise<ToolResponse> {
+  const { name } = args;
+
+  await ctx.skillService.removeSkill(name);
+
+  return successResponse({
+    success: true,
+    message: `Removed skill "${name}"`,
   });
 }
 
