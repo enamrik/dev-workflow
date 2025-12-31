@@ -156,6 +156,11 @@ export const tasks = sqliteTable("tasks", {
   // Subagent execution context
   contextInstructions: text("context_instructions"),
 
+  // Task dependencies - array of task UUIDs this task depends on
+  dependsOn: text("depends_on", { mode: "json" })
+    .$type<string[]>()
+    .default(sql`'[]'`),
+
   // Status timestamps
   startedAt: text("started_at"),
   completedAt: text("completed_at"),

@@ -48,6 +48,10 @@ export const planToolDefinitions: ToolDefinition[] = [
           items: {
             type: "object",
             properties: {
+              id: {
+                type: "string",
+                description: "Task UUID (required for dependency tracking)",
+              },
               title: { type: "string" },
               description: { type: "string" },
               acceptanceCriteria: {
@@ -55,10 +59,17 @@ export const planToolDefinitions: ToolDefinition[] = [
                 items: { type: "string" },
               },
               estimatedMinutes: { type: "number" },
+              dependsOn: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  "Array of task IDs this task depends on. Dependencies must be completed or abandoned before this task can start.",
+              },
             },
-            required: ["title", "description"],
+            required: ["id", "title", "description"],
           },
-          description: "Array of task definitions",
+          description:
+            "Array of task definitions. Use 'dependsOn' to specify dependencies between tasks.",
         },
         estimatedComplexity: {
           type: "string",
@@ -106,10 +117,12 @@ export interface PlanToolContext {
  * Task definition for plan generation
  */
 interface TaskDefinition {
+  id: string; // Required for dependency tracking
   title: string;
   description: string;
   acceptanceCriteria?: string[];
   estimatedMinutes?: number;
+  dependsOn?: string[]; // Task IDs this task depends on
 }
 
 /**
@@ -153,10 +166,12 @@ export async function handleGeneratePlan(
 
   // Ensure tasks have required fields with defaults
   const normalizedTasks = tasks.map((t) => ({
+    id: t.id,
     title: t.title,
     description: t.description,
     acceptanceCriteria: t.acceptanceCriteria ?? [],
     estimatedMinutes: t.estimatedMinutes,
+    dependsOn: t.dependsOn,
   }));
 
   const result = await ctx.planningService.generatePlan({

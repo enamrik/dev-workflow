@@ -80,6 +80,7 @@ export class TaskManagementService {
 
     // Create the manual task
     const task = this.taskRepository.create({
+      id: crypto.randomUUID(), // Generate ID for manual task
       planId: plan.id,
       title,
       description,

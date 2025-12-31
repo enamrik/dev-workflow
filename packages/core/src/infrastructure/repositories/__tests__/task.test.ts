@@ -23,7 +23,9 @@ describe("SqliteTaskRepository", () => {
 
   describe("create", () => {
     it("should create a task with all fields", () => {
+      const taskId = crypto.randomUUID();
       const task = repos.taskRepository.create({
+        id: taskId,
         planId,
         title: "Test Task",
         description: "Test description",
@@ -34,7 +36,7 @@ describe("SqliteTaskRepository", () => {
         isDeleted: false,
       });
 
-      expect(task.id).toBeDefined();
+      expect(task.id).toBe(taskId);
       expect(task.planId).toBe(planId);
       expect(task.title).toBe("Test Task");
       expect(task.status).toBe("PENDING");
@@ -47,6 +49,7 @@ describe("SqliteTaskRepository", () => {
 
     it("should create manual tasks with source=manual", () => {
       const task = repos.taskRepository.create({
+        id: crypto.randomUUID(),
         planId,
         title: "Manual Task",
         description: "User-created task",

@@ -40,6 +40,9 @@ export interface Task {
   // Subagent execution context
   readonly contextInstructions?: string; // Custom instructions for subagent execution (e.g., "use existing auth pattern in src/auth")
 
+  // Task dependencies - array of task IDs that must be COMPLETED or ABANDONED before this task can start
+  readonly dependsOn?: string[]; // Array of task UUIDs within the same plan
+
   readonly startedAt?: string; // When task moved to IN_PROGRESS
   readonly completedAt?: string; // When task moved to COMPLETED
   readonly abandonedAt?: string; // When task moved to ABANDONED
@@ -100,26 +103,24 @@ export interface TaskRepository {
    * Create a new task
    *
    * Automatically assigns order based on existing tasks for the plan.
+   * Caller must provide task id (for dependency tracking).
    *
-   * @param task - Task data (without id, order, createdAt, updatedAt which are generated)
-   * @returns The created task with id, order, and timestamps assigned
+   * @param task - Task data (without order, createdAt, updatedAt which are generated)
+   * @returns The created task with order and timestamps assigned
    */
-  create(
-    task: Omit<Task, "id" | "order" | "createdAt" | "updatedAt">
-  ): Task;
+  create(task: Omit<Task, "order" | "createdAt" | "updatedAt">): Task;
 
   /**
    * Create multiple tasks for a plan (batch operation)
    *
    * More efficient than creating tasks one by one.
    * Automatically assigns sequential order numbers.
+   * Caller must provide task ids (for dependency tracking).
    *
-   * @param tasks - Array of task data
-   * @returns Array of created tasks with ids, orders, and timestamps assigned
+   * @param tasks - Array of task data with ids
+   * @returns Array of created tasks with orders and timestamps assigned
    */
-  createMany(
-    tasks: Omit<Task, "id" | "order" | "createdAt" | "updatedAt">[]
-  ): Task[];
+  createMany(tasks: Omit<Task, "order" | "createdAt" | "updatedAt">[]): Task[];
 
   /**
    * Find a task by its UUID
@@ -128,6 +129,14 @@ export interface TaskRepository {
    * @returns The task if found, null otherwise
    */
   findById(id: string): Task | null;
+
+  /**
+   * Find multiple tasks by their UUIDs
+   *
+   * @param ids - Array of task UUIDs
+   * @returns Array of found tasks (may be fewer than requested if some not found)
+   */
+  findByIds(ids: string[]): Task[];
 
   /**
    * Find all tasks for a plan

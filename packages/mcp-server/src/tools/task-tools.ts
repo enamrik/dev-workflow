@@ -549,6 +549,27 @@ export async function handleGetTaskForSession(
     }
   }
 
+  // Load dependency information
+  if (task.dependsOn?.length) {
+    const dependencies = ctx.taskRepository.findByIds(task.dependsOn);
+    result.dependencies = dependencies.map((d) => ({
+      id: d.id,
+      title: d.title,
+      status: d.status,
+    }));
+  }
+
+  // Find tasks that depend on this one
+  const allPlanTasks = ctx.taskRepository.findByPlanId(task.planId);
+  const dependents = allPlanTasks.filter((t) => t.dependsOn?.includes(task.id));
+  if (dependents.length > 0) {
+    result.dependents = dependents.map((d) => ({
+      id: d.id,
+      title: d.title,
+      status: d.status,
+    }));
+  }
+
   // Load skills based on labels
   if (task.labels?.length) {
     const skills = await ctx.skillService.loadSkillsForLabels(task.labels);
@@ -593,6 +614,12 @@ function formatTaskRequirements(
 
 /**
  * Handle list_available_tasks tool call
+ *
+ * Returns all PENDING tasks with availability information.
+ * A task is available only if:
+ * - Status is PENDING
+ * - All dependencies are satisfied (COMPLETED or ABANDONED)
+ * - Not locked by another session
  */
 export async function handleListAvailableTasks(
   ctx: TaskToolContext,
@@ -616,12 +643,16 @@ export async function handleListAvailableTasks(
     tasks = ctx.taskRepository.findMany();
   }
 
-  // Filter to only available tasks
+  // Filter to only available tasks and include availability info
   const availableTasks = [];
   for (const task of tasks) {
     const isAvailable = await ctx.taskSessionService.isTaskAvailable(task.id);
     if (isAvailable) {
-      availableTasks.push(task);
+      availableTasks.push({
+        ...task,
+        isAvailable: true,
+        blockedBy: [] as string[],
+      });
     }
   }
 

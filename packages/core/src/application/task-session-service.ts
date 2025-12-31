@@ -2,6 +2,8 @@ import type { Task, TaskRepository } from "../domain/task.js";
 import type { PlanRepository } from "../domain/plan.js";
 import type { IssueRepository } from "../domain/issue.js";
 import { EventBus } from "../infrastructure/events/event-bus.js";
+import { DependencyService } from "./dependency-service.js";
+import { DependencyNotSatisfiedError } from "../domain/errors.js";
 
 /**
  * Request to start a task session
@@ -41,6 +43,7 @@ export interface TaskSession {
  */
 export class TaskSessionService {
   private readonly eventBus: EventBus;
+  private readonly dependencyService: DependencyService;
 
   constructor(
     private readonly taskRepository: TaskRepository,
@@ -48,6 +51,7 @@ export class TaskSessionService {
     private readonly issueRepository: IssueRepository
   ) {
     this.eventBus = EventBus.getInstance();
+    this.dependencyService = new DependencyService(taskRepository);
   }
 
   /**
@@ -90,17 +94,33 @@ export class TaskSessionService {
       throw new Error(`Task not found: ${taskId}`);
     }
 
-    // Check if task is available
-    if (!this.isTaskAvailableSync(task)) {
-      throw new Error(
-        `Task is already in progress by session: ${task.sessionId}`
-      );
-    }
-
     // Only PENDING tasks can be started
     if (task.status !== "PENDING") {
       throw new Error(
         `Task must be PENDING to start session. Current status: ${task.status}`
+      );
+    }
+
+    // Check if dependencies are satisfied
+    if (!this.dependencyService.areDependenciesSatisfied(task)) {
+      const blockingTasks = this.dependencyService.getBlockingDependencies(
+        task
+      );
+      throw new DependencyNotSatisfiedError(
+        taskId,
+        task.title,
+        blockingTasks.map((t) => ({
+          id: t.id,
+          title: t.title,
+          status: t.status,
+        }))
+      );
+    }
+
+    // Check if task is available (not locked by another session)
+    if (!this.isTaskAvailableSync(task)) {
+      throw new Error(
+        `Task is already in progress by session: ${task.sessionId}`
       );
     }
 
@@ -321,11 +341,15 @@ export class TaskSessionService {
 
   /**
    * Check if task is available (synchronous version)
+   *
+   * A task is available if:
+   * - Status is PENDING and dependencies are satisfied
+   * - OR status is IN_PROGRESS but session has timed out (>1 hour inactive)
    */
   private isTaskAvailableSync(task: Task): boolean {
-    // PENDING tasks are always available
+    // PENDING tasks are available if dependencies are satisfied
     if (task.status === "PENDING") {
-      return true;
+      return this.dependencyService.areDependenciesSatisfied(task);
     }
 
     // IN_PROGRESS tasks are available if session has timed out

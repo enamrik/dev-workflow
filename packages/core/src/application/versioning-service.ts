@@ -188,11 +188,31 @@ export class VersioningService {
         }
       }
 
-      // Create new tasks from snapshot state
+      // Build mapping from old task IDs to new IDs
+      // We need new IDs because the original tasks might still exist in the database
+      const idMapping = new Map<string, string>();
+      for (const taskState of targetSnapshot.tasksState) {
+        if (!taskState.isDeleted) {
+          idMapping.set(taskState.id, crypto.randomUUID());
+        }
+      }
+
+      // Create new tasks from snapshot state with remapped dependencies
       for (const taskState of targetSnapshot.tasksState) {
         // Only restore non-deleted tasks from snapshot
         if (!taskState.isDeleted) {
+          const newId = idMapping.get(taskState.id)!;
+
+          // Remap dependencies to use new IDs
+          const remappedDependsOn = taskState.dependsOn?.map((depId) => {
+            const newDepId = idMapping.get(depId);
+            // If dependency was in snapshot, use new ID; otherwise keep original
+            // (shouldn't happen in a valid snapshot, but handle gracefully)
+            return newDepId ?? depId;
+          });
+
           this.taskRepository.create({
+            id: newId,
             planId: plan.id,
             title: taskState.title,
             description: taskState.description,
@@ -202,10 +222,11 @@ export class VersioningService {
             estimatedMinutes: taskState.estimatedMinutes,
             isDeleted: false,
             labels: taskState.labels,
+            dependsOn: remappedDependsOn, // Restore with remapped dependencies
             startedAt: taskState.startedAt,
             completedAt: taskState.completedAt,
             abandonedAt: taskState.abandonedAt,
-            matchedFromTaskId: taskState.id, // Track that this was restored
+            matchedFromTaskId: taskState.id, // Track original task this was restored from
             matchConfidence: 1.0, // Perfect match (exact restore)
           });
         }
@@ -313,6 +334,7 @@ export class VersioningService {
       deletedAt: task.deletedAt,
       deletedBy: task.deletedBy,
       labels: task.labels,
+      dependsOn: task.dependsOn, // Capture task dependencies
       startedAt: task.startedAt,
       completedAt: task.completedAt,
       abandonedAt: task.abandonedAt,

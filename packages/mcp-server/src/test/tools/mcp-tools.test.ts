@@ -112,6 +112,7 @@ async function generatePlanTool(
     summary: string;
     approach: string;
     tasks: Array<{
+      id: string;
       title: string;
       description: string;
       acceptanceCriteria: string[];
@@ -405,9 +406,9 @@ describe("MCP Tool: generate_plan", () => {
       summary: "Test plan summary",
       approach: "Test approach",
       tasks: [
-        { title: "Task 1", description: "Desc 1", acceptanceCriteria: [] },
-        { title: "Task 2", description: "Desc 2", acceptanceCriteria: [] },
-        { title: "Task 3", description: "Desc 3", acceptanceCriteria: [] },
+        { id: crypto.randomUUID(), title: "Task 1", description: "Desc 1", acceptanceCriteria: [] },
+        { id: crypto.randomUUID(), title: "Task 2", description: "Desc 2", acceptanceCriteria: [] },
+        { id: crypto.randomUUID(), title: "Task 3", description: "Desc 3", acceptanceCriteria: [] },
       ],
       estimatedComplexity: "MEDIUM",
     });
@@ -432,7 +433,7 @@ describe("MCP Tool: generate_plan", () => {
       issueNumber: 99999,
       summary: "Test",
       approach: "Test",
-      tasks: [{ title: "Task", description: "Desc", acceptanceCriteria: [] }],
+      tasks: [{ id: crypto.randomUUID(), title: "Task", description: "Desc", acceptanceCriteria: [] }],
       estimatedComplexity: "LOW",
     });
 
@@ -472,7 +473,7 @@ describe("MCP Tool: update_task_status", () => {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
-      tasks: [{ title: "Task 1", description: "Desc 1", acceptanceCriteria: [] }],
+      tasks: [{ id: crypto.randomUUID(), title: "Task 1", description: "Desc 1", acceptanceCriteria: [] }],
       estimatedComplexity: "LOW",
     });
 
@@ -505,7 +506,7 @@ describe("MCP Tool: update_task_status", () => {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
-      tasks: [{ title: "Task 1", description: "Desc 1", acceptanceCriteria: [] }],
+      tasks: [{ id: crypto.randomUUID(), title: "Task 1", description: "Desc 1", acceptanceCriteria: [] }],
       estimatedComplexity: "LOW",
     });
 
@@ -563,7 +564,7 @@ describe("MCP Tool: add_manual_task", () => {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
-      tasks: [{ title: "Generated Task", description: "Generated desc", acceptanceCriteria: [] }],
+      tasks: [{ id: crypto.randomUUID(), title: "Generated Task", description: "Generated desc", acceptanceCriteria: [] }],
       estimatedComplexity: "LOW",
     });
 
@@ -625,7 +626,7 @@ describe("MCP Tool: delete_task", () => {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
-      tasks: [{ title: "Task to Delete", description: "Will be deleted", acceptanceCriteria: [] }],
+      tasks: [{ id: crypto.randomUUID(), title: "Task to Delete", description: "Will be deleted", acceptanceCriteria: [] }],
       estimatedComplexity: "LOW",
     });
 
@@ -659,7 +660,7 @@ describe("MCP Tool: delete_task", () => {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
-      tasks: [{ title: "In Progress Task", description: "Working on it", acceptanceCriteria: [] }],
+      tasks: [{ id: crypto.randomUUID(), title: "In Progress Task", description: "Working on it", acceptanceCriteria: [] }],
       estimatedComplexity: "LOW",
     });
 

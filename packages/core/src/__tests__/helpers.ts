@@ -139,6 +139,7 @@ export function createTestTask(
   }> = {}
 ): Task {
   return repo.create({
+    id: crypto.randomUUID(),
     planId,
     title: overrides.title ?? "Test Task",
     description: overrides.description ?? "Test task description",

@@ -3,12 +3,16 @@ import type { Task, TaskStatus } from "../domain/task.js";
 
 /**
  * Task definition for new tasks being created
+ *
+ * Caller must provide id for dependency tracking between tasks.
  */
 export interface TaskDefinition {
+  id: string; // Required task UUID (for dependency tracking)
   title: string;
   description: string;
   acceptanceCriteria: string[];
   estimatedMinutes?: number;
+  dependsOn?: string[]; // Array of task IDs this task depends on
 }
 
 /**

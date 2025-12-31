@@ -58,6 +58,7 @@ export interface SnapshotTaskState {
   deletedAt?: string;
   deletedBy?: string;
   labels?: string[];
+  dependsOn?: string[]; // Task dependencies
   startedAt?: string;
   completedAt?: string;
   abandonedAt?: string;

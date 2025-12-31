@@ -8,6 +8,7 @@ import {
 import type { LabelService } from "./label-service.js";
 import type { VersioningService } from "./versioning-service.js";
 import { EventBus } from "../infrastructure/events/event-bus.js";
+import { DAGValidationService } from "./dag-validation-service.js";
 
 /**
  * Plan with its associated tasks
@@ -63,6 +64,7 @@ export interface IssueUpdates {
  */
 export class PlanningService {
   private taskMatchingService: TaskMatchingService;
+  private dagValidationService: DAGValidationService;
   private cachedLabels: string[] | null = null;
   private readonly eventBus: EventBus;
 
@@ -74,6 +76,7 @@ export class PlanningService {
     private readonly versioningService: VersioningService
   ) {
     this.taskMatchingService = new TaskMatchingService();
+    this.dagValidationService = new DAGValidationService();
     this.eventBus = EventBus.getInstance();
   }
 
@@ -132,6 +135,16 @@ export class PlanningService {
       generatedBy,
       preserveExistingTasks = true,
     } = request;
+
+    // Validate DAG before any database operations
+    // This throws InvalidDependencyError or DAGCycleError if invalid
+    this.dagValidationService.validateDAG(
+      newTaskDefs.map((t) => ({
+        id: t.id,
+        title: t.title,
+        dependsOn: t.dependsOn,
+      }))
+    );
 
     // Verify issue exists
     const issue = this.issueRepository.findById(issueId);
@@ -280,6 +293,10 @@ export class PlanningService {
    *
    * Only matches against GENERATED tasks.
    * Soft deletes unmatched generated tasks.
+   *
+   * Note: Dependencies are cleared during matching because the ID mapping
+   * between old and new tasks is not preserved. For full dependency support,
+   * use preserveExistingTasks=false to create all new tasks.
    */
   private createTasksWithMatching(
     plan: Plan,
@@ -300,6 +317,7 @@ export class PlanningService {
     for (const result of matchResults) {
       if (result.action === "PRESERVE" && result.matchedTask) {
         // Update matched task with new content but preserve status
+        // Clear dependencies since ID mapping is not preserved
         matchedTaskIds.add(result.matchedTask.id);
         const taskLabels = this.assignLabelsForTask(
           {
@@ -316,10 +334,12 @@ export class PlanningService {
           estimatedMinutes: result.newTask.estimatedMinutes,
           matchConfidence: result.matchConfidence,
           labels: taskLabels,
+          dependsOn: [], // Clear dependencies during matching
         });
         tasks.push(updatedTask);
       } else {
         // Create new generated task with auto-detected labels
+        // Clear dependencies since ID mapping is not preserved
         const taskLabels = this.assignLabelsForTask(
           {
             title: result.newTask.title,
@@ -329,6 +349,7 @@ export class PlanningService {
         );
 
         const task = this.taskRepository.create({
+          id: result.newTask.id, // Use caller-provided ID
           planId: plan.id,
           title: result.newTask.title,
           description: result.newTask.description,
@@ -338,6 +359,7 @@ export class PlanningService {
           estimatedMinutes: result.newTask.estimatedMinutes,
           isDeleted: false,
           labels: taskLabels,
+          dependsOn: [], // Clear dependencies during matching
         });
         tasks.push(task);
       }
@@ -372,6 +394,7 @@ export class PlanningService {
       );
 
       return {
+        id: def.id, // Use caller-provided ID for dependency tracking
         planId: plan.id,
         title: def.title,
         description: def.description,
@@ -381,6 +404,7 @@ export class PlanningService {
         isDeleted: false,
         estimatedMinutes: def.estimatedMinutes,
         labels: taskLabels,
+        dependsOn: def.dependsOn, // Pass through dependencies
       };
     });
 

@@ -1,4 +1,4 @@
-import { eq, max, and, asc } from "drizzle-orm";
+import { eq, max, and, asc, inArray } from "drizzle-orm";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { tasks, taskStatusHistory, TaskRow } from "../database/schema.js";
 import type {
@@ -19,15 +19,13 @@ import * as schema from "../database/schema.js";
 export class SqliteTaskRepository implements TaskRepository {
   constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
 
-  create(data: Omit<Task, "id" | "order" | "createdAt" | "updatedAt">): Task {
-    const id = crypto.randomUUID();
+  create(data: Omit<Task, "order" | "createdAt" | "updatedAt">): Task {
     const order = this.getNextOrder(data.planId);
     const now = new Date().toISOString();
 
     const task: Task = {
-      id,
-      order,
       ...data,
+      order,
       createdAt: now,
       updatedAt: now,
     };
@@ -52,6 +50,7 @@ export class SqliteTaskRepository implements TaskRepository {
         matchConfidence: task.matchConfidence,
         labels: task.labels,
         contextInstructions: task.contextInstructions,
+        dependsOn: task.dependsOn ?? [],
         startedAt: task.startedAt,
         completedAt: task.completedAt,
         abandonedAt: task.abandonedAt,
@@ -64,7 +63,7 @@ export class SqliteTaskRepository implements TaskRepository {
   }
 
   createMany(
-    tasksData: Omit<Task, "id" | "order" | "createdAt" | "updatedAt">[]
+    tasksData: Omit<Task, "order" | "createdAt" | "updatedAt">[]
   ): Task[] {
     if (tasksData.length === 0) {
       return [];
@@ -82,11 +81,9 @@ export class SqliteTaskRepository implements TaskRepository {
     let nextOrder = this.getNextOrder(planId);
 
     for (const data of tasksData) {
-      const id = crypto.randomUUID();
       const task: Task = {
-        id,
-        order: nextOrder++,
         ...data,
+        order: nextOrder++,
         createdAt: now,
         updatedAt: now,
       };
@@ -110,6 +107,7 @@ export class SqliteTaskRepository implements TaskRepository {
           matchConfidence: task.matchConfidence,
           labels: task.labels,
           contextInstructions: task.contextInstructions,
+          dependsOn: task.dependsOn ?? [],
           startedAt: task.startedAt,
           completedAt: task.completedAt,
           abandonedAt: task.abandonedAt,
@@ -132,6 +130,20 @@ export class SqliteTaskRepository implements TaskRepository {
       .get();
 
     return result ? this.mapRowToTask(result) : null;
+  }
+
+  findByIds(ids: string[]): Task[] {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const results = this.db
+      .select()
+      .from(tasks)
+      .where(inArray(tasks.id, ids))
+      .all();
+
+    return results.map((row) => this.mapRowToTask(row));
   }
 
   findByPlanId(planId: string, includeDeleted = false): Task[] {
@@ -444,6 +456,7 @@ export class SqliteTaskRepository implements TaskRepository {
       lastSessionActivityAt: row.lastSessionActivityAt ?? undefined,
       labels: row.labels ?? undefined,
       contextInstructions: row.contextInstructions ?? undefined,
+      dependsOn: row.dependsOn ?? undefined,
       startedAt: row.startedAt ?? undefined,
       completedAt: row.completedAt ?? undefined,
       abandonedAt: row.abandonedAt ?? undefined,
