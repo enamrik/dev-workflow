@@ -41,6 +41,16 @@ CREATE TABLE `snapshots` (
 	`notes` text
 );
 --> statement-breakpoint
+CREATE TABLE `task_execution_logs` (
+	`id` text PRIMARY KEY NOT NULL,
+	`task_id` text NOT NULL,
+	`session_id` text NOT NULL,
+	`message` text NOT NULL,
+	`files_modified` text,
+	`created_at` text NOT NULL,
+	FOREIGN KEY (`task_id`) REFERENCES `tasks`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
 CREATE TABLE `task_status_history` (
 	`id` text PRIMARY KEY NOT NULL,
 	`task_id` text NOT NULL,
@@ -50,7 +60,6 @@ CREATE TABLE `task_status_history` (
 	`changed_at` text NOT NULL,
 	`notes` text,
 	`session_id` text,
-	`hook_results` text,
 	FOREIGN KEY (`task_id`) REFERENCES `tasks`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
@@ -72,7 +81,8 @@ CREATE TABLE `tasks` (
 	`session_id` text,
 	`session_started_at` text,
 	`last_session_activity_at` text,
-	`hook_config_labels` text DEFAULT '[]',
+	`labels` text DEFAULT '[]',
+	`context_instructions` text,
 	`started_at` text,
 	`completed_at` text,
 	`abandoned_at` text,

@@ -41,6 +41,7 @@ export class UIHarness {
       env: {
         ...process.env,
         PORT: String(this.port),
+        NO_OPEN_BROWSER: "true", // Prevent auto-opening browser in E2E tests
       },
       stdio: "pipe",
     });

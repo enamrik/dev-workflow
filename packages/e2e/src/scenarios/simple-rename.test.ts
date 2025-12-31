@@ -128,7 +128,7 @@ describe("E2E: Simple File Rename", () => {
     }
 
     const execResult = await runClaude(
-      `Start task ${pendingTask.id} using start_task_session with skipHooks=true, then rename the file src/utils.ts to src/helpers.ts using mv, then complete the task using complete_task_session with skipHooks=true.`,
+      `Start task ${pendingTask.id} using start_task_session, then rename the file src/utils.ts to src/helpers.ts using mv, then complete the task using complete_task_session.`,
       {
         cwd: harness.testDir,
         allowedTools: [

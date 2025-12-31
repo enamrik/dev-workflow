@@ -58,7 +58,7 @@ export interface SnapshotTaskState {
   isDeleted: boolean;
   deletedAt?: string;
   deletedBy?: string;
-  hookConfigLabels?: string[];
+  labels?: string[];
   startedAt?: string;
   completedAt?: string;
   abandonedAt?: string;

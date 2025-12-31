@@ -153,8 +153,8 @@ export const tasks = sqliteTable("tasks", {
   sessionStartedAt: text("session_started_at"),
   lastSessionActivityAt: text("last_session_activity_at"),
 
-  // Hook configuration references (composable, mutable)
-  hookConfigLabels: text("hook_config_labels", { mode: "json" })
+  // Skill labels (references .track/skills/<label>.md files)
+  labels: text("labels", { mode: "json" })
     .$type<string[]>()
     .default(sql`'[]'`),
 
@@ -194,9 +194,8 @@ export const taskStatusHistory = sqliteTable("task_status_history", {
   changedAt: text("changed_at").notNull(),
   notes: text("notes"),
 
-  // Session and hook execution tracking
+  // Session tracking
   sessionId: text("session_id"),
-  hookResults: text("hook_results", { mode: "json" }),
 });
 
 /**

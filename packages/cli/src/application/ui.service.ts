@@ -56,12 +56,14 @@ export class UIService {
       console.log(`🚀 dev-workflow UI started at ${url}`);
       console.log("\nPress Ctrl+C to stop the server");
 
-      // Open browser
-      try {
-        await open(url);
-      } catch (error) {
-        console.warn("⚠️  Could not open browser automatically.");
-        console.warn(`   Please visit: ${url}`);
+      // Open browser (unless disabled via env var for automation/testing)
+      if (!process.env["NO_OPEN_BROWSER"]) {
+        try {
+          await open(url);
+        } catch (error) {
+          console.warn("⚠️  Could not open browser automatically.");
+          console.warn(`   Please visit: ${url}`);
+        }
       }
 
       // Graceful shutdown

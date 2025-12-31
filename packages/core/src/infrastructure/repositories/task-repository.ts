@@ -50,7 +50,7 @@ export class SqliteTaskRepository implements TaskRepository {
         deletedBy: task.deletedBy,
         matchedFromTaskId: task.matchedFromTaskId,
         matchConfidence: task.matchConfidence,
-        hookConfigLabels: task.hookConfigLabels,
+        labels: task.labels,
         contextInstructions: task.contextInstructions,
         startedAt: task.startedAt,
         completedAt: task.completedAt,
@@ -108,7 +108,7 @@ export class SqliteTaskRepository implements TaskRepository {
           deletedBy: task.deletedBy,
           matchedFromTaskId: task.matchedFromTaskId,
           matchConfidence: task.matchConfidence,
-          hookConfigLabels: task.hookConfigLabels,
+          labels: task.labels,
           contextInstructions: task.contextInstructions,
           startedAt: task.startedAt,
           completedAt: task.completedAt,
@@ -318,13 +318,13 @@ export class SqliteTaskRepository implements TaskRepository {
     return updatedTask;
   }
 
-  updateHookConfigLabels(taskId: string, labels: string[]): Task {
+  updateLabels(taskId: string, labels: string[]): Task {
     const now = new Date().toISOString();
 
     this.db
       .update(tasks)
       .set({
-        hookConfigLabels: labels,
+        labels: labels,
         updatedAt: now,
       })
       .where(eq(tasks.id, taskId))
@@ -332,7 +332,7 @@ export class SqliteTaskRepository implements TaskRepository {
 
     const updatedTask = this.findById(taskId);
     if (!updatedTask) {
-      throw new Error(`Failed to update task hook config labels: ${taskId}`);
+      throw new Error(`Failed to update task labels: ${taskId}`);
     }
 
     return updatedTask;
@@ -442,7 +442,7 @@ export class SqliteTaskRepository implements TaskRepository {
       sessionId: row.sessionId ?? undefined,
       sessionStartedAt: row.sessionStartedAt ?? undefined,
       lastSessionActivityAt: row.lastSessionActivityAt ?? undefined,
-      hookConfigLabels: row.hookConfigLabels ?? undefined,
+      labels: row.labels ?? undefined,
       contextInstructions: row.contextInstructions ?? undefined,
       startedAt: row.startedAt ?? undefined,
       completedAt: row.completedAt ?? undefined,

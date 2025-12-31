@@ -225,6 +225,128 @@ These values can still be overridden when creating an issue explicitly.
     }
   }
 
+  /**
+   * Create default task skills in .track/skills/
+   *
+   * Skills are markdown files that provide contextual guidance for tasks.
+   * When a task has labels, the corresponding skill files are loaded
+   * and provided to Claude as context when executing the task.
+   */
+  async createTaskSkills(): Promise<void> {
+    try {
+      const skillsDir = path.join(this.workingDirectory, ".track/skills");
+      await this.fileSystem.mkdir(skillsDir, { recursive: true });
+
+      // Create README
+      const readme = `# Task Skills
+
+Skills are markdown files that provide contextual guidance for tasks.
+When a task has labels (e.g., \`["db", "api"]\`), the corresponding skill
+files (\`db.md\`, \`api.md\`) are loaded and provided as context.
+
+## How it works
+
+1. Create a skill file: \`.track/skills/my-skill.md\`
+2. When generating a plan, tasks are automatically labeled based on matching skill names
+3. When starting a task, skills are loaded and provided as guidance
+
+## Creating custom skills
+
+Create any \`.md\` file in this directory. The filename (without extension)
+becomes the skill/label name.
+
+Example: \`.track/skills/testing.md\` creates a "testing" skill that can be
+assigned to tasks via the \`labels\` field.
+`;
+
+      await this.fileSystem.writeFile(
+        path.join(skillsDir, "README.md"),
+        readme
+      );
+
+      // Create default db skill
+      const dbSkill = `# Database Changes
+
+When working on database-related tasks:
+
+## Before Making Changes
+- Review existing schema in \`packages/core/src/infrastructure/database/schema.ts\`
+- Check for existing migrations in the \`drizzle/\` directory
+
+## Making Schema Changes
+1. Update the schema file with your changes
+2. Run \`pnpm drizzle-kit generate\` to create a migration
+3. Run the application to apply migrations automatically
+
+## Best Practices
+- Ensure backward compatibility for schema changes when possible
+- Add indexes for frequently queried columns
+- Use foreign keys to maintain referential integrity
+- Document complex relationships in code comments
+`;
+
+      await this.fileSystem.writeFile(
+        path.join(skillsDir, "db.md"),
+        dbSkill
+      );
+
+      // Create default api skill
+      const apiSkill = `# API Development
+
+When working on API endpoints:
+
+## REST Conventions
+- Use appropriate HTTP methods (GET, POST, PUT, DELETE, PATCH)
+- Return appropriate HTTP status codes
+- Use consistent URL patterns
+
+## Response Format
+- Return JSON responses with consistent structure
+- Include meaningful error messages
+- Use pagination for list endpoints
+
+## Documentation
+- Document endpoints with examples
+- Include request/response schemas
+- Note any authentication requirements
+`;
+
+      await this.fileSystem.writeFile(
+        path.join(skillsDir, "api.md"),
+        apiSkill
+      );
+
+      // Create default security skill
+      const securitySkill = `# Security Requirements
+
+When working on security-sensitive code:
+
+## Data Protection
+- Never log sensitive data (passwords, tokens, PII)
+- Encrypt sensitive data at rest
+- Use secure connections for data in transit
+
+## Input Validation
+- Validate all user input at system boundaries
+- Use parameterized queries to prevent SQL injection
+- Sanitize output to prevent XSS attacks
+
+## Authentication & Authorization
+- Use established auth libraries
+- Implement proper session management
+- Follow principle of least privilege
+`;
+
+      await this.fileSystem.writeFile(
+        path.join(skillsDir, "security.md"),
+        securitySkill
+      );
+
+    } catch (error) {
+      throw new InstallError("Failed to create task skills", error);
+    }
+  }
+
   async createWelcomeIssue(): Promise<Issue> {
     const dbPath = path.join(this.workingDirectory, ".track/data/workflow.db");
 

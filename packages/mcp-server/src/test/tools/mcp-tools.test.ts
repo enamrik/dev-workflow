@@ -106,7 +106,7 @@ function listIssuesTool(
 /**
  * Simulate generate_plan tool
  */
-function generatePlanTool(
+async function generatePlanTool(
   planningService: PlanningService,
   issueRepository: SqliteIssueRepository,
   params: {
@@ -123,7 +123,7 @@ function generatePlanTool(
     estimatedComplexity: PlanComplexity;
     preserveExistingTasks?: boolean;
   }
-): ToolResult {
+): Promise<ToolResult> {
   let resolvedIssueId = params.issueId;
   if (!resolvedIssueId && params.issueNumber) {
     const issue = issueRepository.findByNumber(params.issueNumber);
@@ -133,7 +133,7 @@ function generatePlanTool(
     resolvedIssueId = issue.id;
   }
 
-  const result = planningService.generatePlan({
+  const result = await planningService.generatePlan({
     issueId: resolvedIssueId!,
     summary: params.summary,
     approach: params.approach,
@@ -398,14 +398,14 @@ describe("MCP Tool: generate_plan", () => {
     testDb.cleanup();
   });
 
-  it("should generate plan with tasks", () => {
+  it("should generate plan with tasks", async () => {
     // Create an issue first
     createIssueTool(issueRepository, {
       title: "Test Issue",
       description: "Test description",
     });
 
-    const result = generatePlanTool(planningService, issueRepository, {
+    const result = await generatePlanTool(planningService, issueRepository, {
       issueNumber: 1,
       summary: "Test plan summary",
       approach: "Test approach",
@@ -432,8 +432,8 @@ describe("MCP Tool: generate_plan", () => {
     expect(tasks[0]?.status).toBe("PENDING");
   });
 
-  it("should return error for non-existent issue", () => {
-    const result = generatePlanTool(planningService, issueRepository, {
+  it("should return error for non-existent issue", async () => {
+    const result = await generatePlanTool(planningService, issueRepository, {
       issueNumber: 99999,
       summary: "Test",
       approach: "Test",
@@ -467,13 +467,13 @@ describe("MCP Tool: update_task_status", () => {
     testDb.cleanup();
   });
 
-  it("should update task status to IN_PROGRESS", () => {
+  it("should update task status to IN_PROGRESS", async () => {
     // Setup: create issue with plan and tasks
     createIssueTool(issueRepository, {
       title: "Test Issue",
       description: "Test description",
     });
-    generatePlanTool(planningService, issueRepository, {
+    await generatePlanTool(planningService, issueRepository, {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
@@ -500,13 +500,13 @@ describe("MCP Tool: update_task_status", () => {
     expect(updatedTask?.startedAt).toBeDefined();
   });
 
-  it("should update task status to COMPLETED", () => {
+  it("should update task status to COMPLETED", async () => {
     // Setup
     createIssueTool(issueRepository, {
       title: "Test Issue",
       description: "Test description",
     });
-    generatePlanTool(planningService, issueRepository, {
+    await generatePlanTool(planningService, issueRepository, {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
@@ -558,13 +558,13 @@ describe("MCP Tool: add_manual_task", () => {
     testDb.cleanup();
   });
 
-  it("should add manual task to existing plan", () => {
+  it("should add manual task to existing plan", async () => {
     // Setup: create issue with plan
     createIssueTool(issueRepository, {
       title: "Test Issue",
       description: "Test description",
     });
-    generatePlanTool(planningService, issueRepository, {
+    await generatePlanTool(planningService, issueRepository, {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
@@ -620,13 +620,13 @@ describe("MCP Tool: delete_task", () => {
     testDb.cleanup();
   });
 
-  it("should soft delete a PENDING task", () => {
+  it("should soft delete a PENDING task", async () => {
     // Setup
     createIssueTool(issueRepository, {
       title: "Test Issue",
       description: "Test description",
     });
-    generatePlanTool(planningService, issueRepository, {
+    await generatePlanTool(planningService, issueRepository, {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
@@ -654,13 +654,13 @@ describe("MCP Tool: delete_task", () => {
     expect(remainingTasks).toHaveLength(0);
   });
 
-  it("should not delete IN_PROGRESS task", () => {
+  it("should not delete IN_PROGRESS task", async () => {
     // Setup
     createIssueTool(issueRepository, {
       title: "Test Issue",
       description: "Test description",
     });
-    generatePlanTool(planningService, issueRepository, {
+    await generatePlanTool(planningService, issueRepository, {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",

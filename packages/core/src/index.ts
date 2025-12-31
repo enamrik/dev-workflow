@@ -11,17 +11,13 @@ export * from "./domain/plan.js";
 export * from "./domain/task.js";
 export * from "./domain/snapshot.js";
 export * from "./domain/template.js";
-export * from "./domain/hook-config.js";
 
 // Application services
 export { PlanningService } from "./application/planning-service.js";
 export { VersioningService } from "./application/versioning-service.js";
 export { TaskManagementService } from "./application/task-management-service.js";
 export { TaskSessionService } from "./application/task-session-service.js";
-export type { HookConfigService } from "./application/hook-config-service.js";
-export { FileSystemHookConfigService } from "./application/hook-config-service.js";
-export type { HookExecutor } from "./application/hook-executor.js";
-export { ShellHookExecutor } from "./application/hook-executor.js";
+export { SkillService, type Skill } from "./application/skill-service.js";
 export {
   TaskMatchingService,
   type TaskMatchResult,

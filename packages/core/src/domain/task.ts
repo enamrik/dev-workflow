@@ -2,8 +2,6 @@
  * Domain types for Task entity
  */
 
-import type { HookResult } from "./hook-config.js";
-
 export type TaskStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
 export type TaskSource = "generated" | "manual";
 
@@ -36,9 +34,8 @@ export interface Task {
   readonly sessionStartedAt?: string; // When current session began
   readonly lastSessionActivityAt?: string; // Last activity in session (for timeout detection)
 
-  // Hook configuration references (composable, mutable)
-  readonly hookConfigLabels?: string[]; // Array of labels, each references .track/issues/tasks/hooks/<label>.yml
-  // Hooks are merged together: ["db-migration", "e2e-tests", "security"]
+  // Skill labels (references .track/skills/<label>.md files)
+  readonly labels?: string[]; // Array of labels, each references .track/skills/<label>.md
 
   // Subagent execution context
   readonly contextInstructions?: string; // Custom instructions for subagent execution (e.g., "use existing auth pattern in src/auth")
@@ -64,7 +61,6 @@ export interface TaskStatusHistory {
   readonly changedAt: string; // ISO date string
   readonly notes?: string; // Optional notes about the change
   readonly sessionId?: string; // Which session made this change
-  readonly hookResults?: HookResult[]; // Results of hooks that ran during this transition
 }
 
 /**
@@ -213,15 +209,15 @@ export interface TaskRepository {
   clearSession(taskId: string): Task;
 
   /**
-   * Update hook configuration labels for a task
+   * Update skill labels for a task
    *
-   * Allows UI to dynamically change which hook configs are associated with a task.
+   * Allows UI to dynamically change which skills are associated with a task.
    *
    * @param taskId - Task UUID
-   * @param labels - Array of hook config labels (e.g., ["db-migration", "e2e-tests"])
+   * @param labels - Array of skill labels (e.g., ["db", "api", "security"])
    * @returns The updated task
    */
-  updateHookConfigLabels(taskId: string, labels: string[]): Task;
+  updateLabels(taskId: string, labels: string[]): Task;
 
   /**
    * Update a task's properties

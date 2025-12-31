@@ -5,7 +5,7 @@ import {
   TaskMatchingService,
   type TaskDefinition,
 } from "./task-matching-service.js";
-import type { HookConfigService } from "./hook-config-service.js";
+import type { SkillService } from "./skill-service.js";
 import type { VersioningService } from "./versioning-service.js";
 
 /**
@@ -63,15 +63,49 @@ export interface IssueUpdates {
  */
 export class PlanningService {
   private taskMatchingService: TaskMatchingService;
+  private cachedSkills: string[] | null = null;
 
   constructor(
     private readonly issueRepository: IssueRepository,
     private readonly planRepository: PlanRepository,
     private readonly taskRepository: TaskRepository,
-    private readonly hookConfigService: HookConfigService,
+    private readonly skillService: SkillService,
     private readonly versioningService: VersioningService
   ) {
     this.taskMatchingService = new TaskMatchingService();
+  }
+
+  /**
+   * Get available skills (cached)
+   */
+  private async getAvailableSkills(): Promise<string[]> {
+    if (this.cachedSkills === null) {
+      this.cachedSkills = await this.skillService.listAvailableSkills();
+    }
+    return this.cachedSkills;
+  }
+
+  /**
+   * Assign skill labels to a task based on available skills
+   *
+   * Matches skill names against task title and description.
+   * Only assigns labels for skills that actually exist.
+   */
+  private assignLabelsForTask(
+    task: { title: string; description: string },
+    availableSkills: string[]
+  ): string[] {
+    const labels: string[] = [];
+    const searchText = `${task.title} ${task.description}`.toLowerCase();
+
+    for (const skill of availableSkills) {
+      // Match skill name in task content
+      if (searchText.includes(skill.toLowerCase())) {
+        labels.push(skill);
+      }
+    }
+
+    return labels;
   }
 
   /**
@@ -86,7 +120,7 @@ export class PlanningService {
    * @param request - Plan generation request
    * @returns Plan with tasks (including manual tasks)
    */
-  generatePlan(request: GeneratePlanRequest): PlanWithTasks {
+  async generatePlan(request: GeneratePlanRequest): Promise<PlanWithTasks> {
     const {
       issueId,
       summary,
@@ -140,6 +174,9 @@ export class PlanningService {
       });
     }
 
+    // Get available skills for label assignment
+    const availableSkills = await this.getAvailableSkills();
+
     // Match new tasks to existing GENERATED tasks only (not manual)
     let newTasks: Task[];
     if (preserveExistingTasks && generatedTasks.length > 0) {
@@ -147,11 +184,12 @@ export class PlanningService {
         plan,
         newTaskDefs,
         generatedTasks,
-        generatedBy
+        generatedBy,
+        availableSkills
       );
     } else {
       // No matching - create all new tasks
-      newTasks = this.createNewTasks(plan, newTaskDefs);
+      newTasks = this.createNewTasks(plan, newTaskDefs, availableSkills);
     }
 
     // Create snapshot after regeneration (captures new state)
@@ -222,7 +260,8 @@ export class PlanningService {
     plan: Plan,
     newTaskDefs: TaskDefinition[],
     existingGeneratedTasks: Task[],
-    generatedBy: string
+    generatedBy: string,
+    availableSkills: string[]
   ): Task[] {
     // Match new tasks to existing generated tasks
     const matchResults = this.taskMatchingService.matchTasks(
@@ -247,10 +286,13 @@ export class PlanningService {
         tasks.push(updatedTask);
       } else {
         // Create new generated task
-        const hookConfigLabels = this.hookConfigService.assignConfigsForTask({
-          title: result.newTask.title,
-          description: result.newTask.description,
-        });
+        const labels = this.assignLabelsForTask(
+          {
+            title: result.newTask.title,
+            description: result.newTask.description,
+          },
+          availableSkills
+        );
 
         const task = this.taskRepository.create({
           planId: plan.id,
@@ -261,7 +303,7 @@ export class PlanningService {
           source: "generated",
           estimatedMinutes: result.newTask.estimatedMinutes,
           isDeleted: false,
-          hookConfigLabels,
+          labels,
         });
         tasks.push(task);
       }
@@ -280,13 +322,20 @@ export class PlanningService {
   /**
    * Create all new tasks without matching
    */
-  private createNewTasks(plan: Plan, taskDefs: TaskDefinition[]): Task[] {
+  private createNewTasks(
+    plan: Plan,
+    taskDefs: TaskDefinition[],
+    availableSkills: string[]
+  ): Task[] {
     const taskData = taskDefs.map((def) => {
-      // Auto-assign hook config labels based on task content
-      const hookConfigLabels = this.hookConfigService.assignConfigsForTask({
-        title: def.title,
-        description: def.description,
-      });
+      // Auto-assign skill labels based on task content
+      const labels = this.assignLabelsForTask(
+        {
+          title: def.title,
+          description: def.description,
+        },
+        availableSkills
+      );
 
       return {
         planId: plan.id,
@@ -297,7 +346,7 @@ export class PlanningService {
         source: "generated" as const,
         isDeleted: false,
         estimatedMinutes: def.estimatedMinutes,
-        hookConfigLabels,
+        labels,
       };
     });
 

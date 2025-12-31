@@ -1,7 +1,4 @@
 import type { Task, TaskRepository } from "../domain/task.js";
-import type { HookResult } from "../domain/hook-config.js";
-import type { HookConfigService } from "./hook-config-service.js";
-import type { HookExecutor } from "./hook-executor.js";
 
 /**
  * Request to start a task session
@@ -9,7 +6,6 @@ import type { HookExecutor } from "./hook-executor.js";
 export interface StartTaskSessionRequest {
   taskId: string;
   sessionId: string;
-  skipHooks?: boolean;
 }
 
 /**
@@ -19,7 +15,6 @@ export interface CompleteTaskSessionRequest {
   taskId: string;
   sessionId: string;
   notes?: string;
-  skipHooks?: boolean;
 }
 
 /**
@@ -29,48 +24,32 @@ export interface TaskSession {
   task: Task;
   sessionId: string;
   startedAt: string;
-  hookResults: HookResult[];
 }
 
 /**
  * TaskSessionService coordinates task session lifecycle management
  *
  * Responsibilities:
- * - Start task sessions with pre/post-start hooks
- * - Complete task sessions with pre/post-complete hooks
- * - Abandon task sessions with on-abandon hooks
+ * - Start task sessions (update status to IN_PROGRESS)
+ * - Complete task sessions (update status to COMPLETED)
+ * - Abandon task sessions (update status to ABANDONED)
  * - Prevent concurrent sessions on same task
  * - Track session activity for timeout detection
- * - Record hook execution results in history
- *
- * Uses:
- * - HookConfigService to load and merge hook configurations
- * - HookExecutor to run shell commands
- * - TaskRepository to persist task state changes
  */
 export class TaskSessionService {
-  constructor(
-    private readonly taskRepository: TaskRepository,
-    private readonly hookConfigService: HookConfigService,
-    private readonly hookExecutor: HookExecutor,
-    private readonly trackDirectory: string
-  ) {}
+  constructor(private readonly taskRepository: TaskRepository) {}
 
   /**
    * Start a new session for a task
    *
    * Workflow:
    * 1. Validate task is available (not locked by another session)
-   * 2. Load and merge hook configs from task's hookConfigLabels
-   * 3. Execute pre-start hooks
-   * 4. Update task status to IN_PROGRESS with session info
-   * 5. Execute post-start hooks
-   * 6. Record hook results in status history
+   * 2. Update task status to IN_PROGRESS with session info
    */
   async startTaskSession(
     request: StartTaskSessionRequest
   ): Promise<TaskSession> {
-    const { taskId, sessionId, skipHooks } = request;
+    const { taskId, sessionId } = request;
 
     // Get task and validate
     const task = this.taskRepository.findById(taskId);
@@ -92,41 +71,7 @@ export class TaskSessionService {
       );
     }
 
-    const allHookResults: HookResult[] = [];
     const now = new Date().toISOString();
-
-    // Load and merge hook configs (only if not skipping hooks)
-    const hookConfig = skipHooks
-      ? null
-      : await this.hookConfigService.loadAndMergeConfigs(
-          task.hookConfigLabels ?? []
-        );
-
-    // Execute pre-start hooks
-    if (!skipHooks && hookConfig?.hooks.preStart) {
-      const preStartResults = await this.hookExecutor.executeHooks(
-        hookConfig.hooks.preStart,
-        {
-          taskId: task.id,
-          taskTitle: task.title,
-          workingDirectory: this.trackDirectory,
-          environment: hookConfig?.environment,
-          timeout: hookConfig?.timeout,
-        }
-      );
-
-      // Add stage information to results
-      preStartResults.forEach((r) => (r.hookStage = "pre-start"));
-      allHookResults.push(...preStartResults);
-
-      // Check if any pre-start hook failed
-      const failed = preStartResults.find((r) => r.exitCode !== 0);
-      if (failed) {
-        throw new Error(
-          `Pre-start hook failed: ${failed.command}\n\nOutput:\n${failed.output}`
-        );
-      }
-    }
 
     // Update task status to IN_PROGRESS and set session info
     this.taskRepository.updateStatus(
@@ -144,26 +89,6 @@ export class TaskSessionService {
       now // lastSessionActivityAt
     );
 
-    // Execute post-start hooks
-    if (!skipHooks && hookConfig?.hooks.postStart) {
-      const postStartResults = await this.hookExecutor.executeHooks(
-        hookConfig.hooks.postStart,
-        {
-          taskId: task.id,
-          taskTitle: task.title,
-          workingDirectory: this.trackDirectory,
-          environment: hookConfig?.environment,
-          timeout: hookConfig?.timeout,
-        }
-      );
-
-      // Add stage information to results
-      postStartResults.forEach((r) => (r.hookStage = "post-start"));
-      allHookResults.push(...postStartResults);
-
-      // Post-start hook failures are non-fatal (just log)
-    }
-
     // Get final task state
     const finalTask = this.taskRepository.findById(taskId);
     if (!finalTask) {
@@ -174,7 +99,6 @@ export class TaskSessionService {
       task: finalTask,
       sessionId,
       startedAt: now,
-      hookResults: allHookResults,
     };
   }
 
@@ -183,17 +107,13 @@ export class TaskSessionService {
    *
    * Workflow:
    * 1. Validate session ownership
-   * 2. Load and merge hook configs
-   * 3. Execute pre-complete hooks (MUST PASS)
-   * 4. Update task status to COMPLETED
-   * 5. Execute post-complete hooks
-   * 6. Clear session association
-   * 7. Record hook results in history
+   * 2. Update task status to COMPLETED
+   * 3. Clear session association
    */
   async completeTaskSession(
     request: CompleteTaskSessionRequest
   ): Promise<Task> {
-    const { taskId, sessionId, notes, skipHooks } = request;
+    const { taskId, sessionId, notes } = request;
 
     // Get task and validate
     const task = this.taskRepository.findById(taskId);
@@ -215,41 +135,6 @@ export class TaskSessionService {
       );
     }
 
-    const allHookResults: HookResult[] = [];
-
-    // Load and merge hook configs (only if not skipping hooks)
-    const hookConfig = skipHooks
-      ? null
-      : await this.hookConfigService.loadAndMergeConfigs(
-          task.hookConfigLabels ?? []
-        );
-
-    // Execute pre-complete hooks (MUST PASS!)
-    if (!skipHooks && hookConfig?.hooks.preComplete) {
-      const preCompleteResults = await this.hookExecutor.executeHooks(
-        hookConfig.hooks.preComplete,
-        {
-          taskId: task.id,
-          taskTitle: task.title,
-          workingDirectory: this.trackDirectory,
-          environment: hookConfig?.environment,
-          timeout: hookConfig?.timeout,
-        }
-      );
-
-      // Add stage information to results
-      preCompleteResults.forEach((r) => (r.hookStage = "pre-complete"));
-      allHookResults.push(...preCompleteResults);
-
-      // Check if any pre-complete hook failed
-      const failed = preCompleteResults.find((r) => r.exitCode !== 0);
-      if (failed) {
-        throw new Error(
-          `Pre-complete hook failed. Task cannot be completed.\n\nCommand: ${failed.command}\n\nOutput:\n${failed.output}`
-        );
-      }
-    }
-
     // Update task status to COMPLETED
     this.taskRepository.updateStatus(
       taskId,
@@ -257,26 +142,6 @@ export class TaskSessionService {
       sessionId,
       notes ?? "Completed session"
     );
-
-    // Execute post-complete hooks
-    if (!skipHooks && hookConfig?.hooks.postComplete) {
-      const postCompleteResults = await this.hookExecutor.executeHooks(
-        hookConfig.hooks.postComplete,
-        {
-          taskId: task.id,
-          taskTitle: task.title,
-          workingDirectory: this.trackDirectory,
-          environment: hookConfig?.environment,
-          timeout: hookConfig?.timeout,
-        }
-      );
-
-      // Add stage information to results
-      postCompleteResults.forEach((r) => (r.hookStage = "post-complete"));
-      allHookResults.push(...postCompleteResults);
-
-      // Post-complete hook failures are non-fatal (just log)
-    }
 
     // Clear session association
     this.taskRepository.clearSession(taskId);
@@ -295,11 +160,8 @@ export class TaskSessionService {
    *
    * Workflow:
    * 1. Validate session ownership
-   * 2. Load and merge hook configs
-   * 3. Execute on-abandon hooks
-   * 4. Update task status to ABANDONED
-   * 5. Clear session association
-   * 6. Record hook results in history
+   * 2. Update task status to ABANDONED
+   * 3. Clear session association
    */
   async abandonTaskSession(
     taskId: string,
@@ -317,33 +179,6 @@ export class TaskSessionService {
       throw new Error(
         `Task is not associated with session ${sessionId}. Current session: ${task.sessionId}`
       );
-    }
-
-    const allHookResults: HookResult[] = [];
-
-    // Load and merge hook configs
-    const hookConfig = await this.hookConfigService.loadAndMergeConfigs(
-      task.hookConfigLabels ?? []
-    );
-
-    // Execute on-abandon hooks
-    if (hookConfig.hooks.onAbandon) {
-      const abandonResults = await this.hookExecutor.executeHooks(
-        hookConfig.hooks.onAbandon,
-        {
-          taskId: task.id,
-          taskTitle: task.title,
-          workingDirectory: this.trackDirectory,
-          environment: hookConfig.environment,
-          timeout: hookConfig.timeout,
-        }
-      );
-
-      // Add stage information to results
-      abandonResults.forEach((r) => (r.hookStage = "on-abandon"));
-      allHookResults.push(...abandonResults);
-
-      // On-abandon hook failures are non-fatal (just log)
     }
 
     // Update task status to ABANDONED
@@ -424,7 +259,6 @@ export class TaskSessionService {
       task,
       sessionId: task.sessionId,
       startedAt: task.sessionStartedAt,
-      hookResults: [], // Historical hook results not retrieved here
     };
   }
 

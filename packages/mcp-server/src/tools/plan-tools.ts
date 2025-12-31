@@ -115,7 +115,7 @@ interface TaskDefinition {
 /**
  * Handle generate_plan tool call
  */
-export function handleGeneratePlan(
+export async function handleGeneratePlan(
   ctx: PlanToolContext,
   args: {
     issueId?: string;
@@ -126,7 +126,7 @@ export function handleGeneratePlan(
     estimatedComplexity: PlanComplexity;
     preserveExistingTasks?: boolean;
   }
-): ToolResponse {
+): Promise<ToolResponse> {
   const {
     issueId,
     issueNumber,
@@ -159,7 +159,7 @@ export function handleGeneratePlan(
     estimatedMinutes: t.estimatedMinutes,
   }));
 
-  const result = ctx.planningService.generatePlan({
+  const result = await ctx.planningService.generatePlan({
     issueId: resolvedIssueId,
     summary,
     approach,

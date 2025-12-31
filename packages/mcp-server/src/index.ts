@@ -26,8 +26,7 @@ import {
   NodeFileSystem,
   VersioningService,
   PlanningService,
-  FileSystemHookConfigService,
-  ShellHookExecutor,
+  SkillService,
   TaskSessionService,
   TaskManagementService,
   taskExecutionLogs,
@@ -56,8 +55,8 @@ import {
   handleAbandonTaskSession,
   handleGetTaskForSession,
   handleListAvailableTasks,
-  handleUpdateTaskHookConfigs,
-  handleListHookConfigs,
+  handleUpdateTaskLabels,
+  handleListAvailableSkills,
   handleAddManualTask,
   handleDeleteTask,
   handleUpdateTask,
@@ -138,7 +137,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
 
     // Plan tools
     if (name === "generate_plan") {
-      return handleGeneratePlan(planToolContext, a);
+      return await handleGeneratePlan(planToolContext, a);
     }
     if (name === "get_plan") {
       return handleGetPlan(planToolContext, a);
@@ -158,16 +157,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
       return await handleAbandonTaskSession(taskToolContext, a);
     }
     if (name === "get_task_for_session") {
-      return handleGetTaskForSession(taskToolContext, a);
+      return await handleGetTaskForSession(taskToolContext, a);
     }
     if (name === "list_available_tasks") {
       return await handleListAvailableTasks(taskToolContext, a);
     }
-    if (name === "update_task_hook_configs") {
-      return handleUpdateTaskHookConfigs(taskToolContext, a);
+    if (name === "update_task_labels") {
+      return handleUpdateTaskLabels(taskToolContext, a);
     }
-    if (name === "list_hook_configs") {
-      return await handleListHookConfigs(taskToolContext);
+    if (name === "list_available_skills") {
+      return await handleListAvailableSkills(taskToolContext);
     }
     if (name === "add_manual_task") {
       return handleAddManualTask(taskToolContext, a);
@@ -227,8 +226,8 @@ async function main() {
   const userTemplatesPath = path.join(workingDir, "issues/templates");
   const defaultTemplatesPath = path.resolve(TEMPLATES_PATH);
 
-  // Initialize hook configuration service
-  const hookConfigService = new FileSystemHookConfigService(trackDirectory);
+  // Initialize skill service
+  const skillService = new SkillService(trackDirectory);
 
   // Initialize application services
   const versioningService = new VersioningService(
@@ -242,7 +241,7 @@ async function main() {
     issueRepository,
     planRepository,
     taskRepository,
-    hookConfigService,
+    skillService,
     versioningService
   );
 
@@ -258,14 +257,7 @@ async function main() {
     defaultTemplatesPath
   );
 
-  const hookExecutor = new ShellHookExecutor();
-
-  const taskSessionService = new TaskSessionService(
-    taskRepository,
-    hookConfigService,
-    hookExecutor,
-    trackDirectory
-  );
+  const taskSessionService = new TaskSessionService(taskRepository);
 
   // Create tool contexts
   issueToolContext = {
@@ -288,7 +280,7 @@ async function main() {
     taskRepository,
     taskSessionService,
     taskManagementService,
-    hookConfigService,
+    skillService,
     taskExecutionLogsSchema: taskExecutionLogs,
   };
 

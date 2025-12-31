@@ -11,7 +11,8 @@ import {
   type SqliteTaskRepository,
   type TaskSessionService,
   type TaskManagementService,
-  type FileSystemHookConfigService,
+  type SkillService,
+  type Skill,
   type TaskStatus,
   type TaskExecutionLogRow,
 } from "@dev-workflow/core";
@@ -53,7 +54,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "start_task_session",
     description:
-      "Start working on a task in the current Claude session. Automatically updates status to IN_PROGRESS and runs pre/post-start hooks.",
+      "Start working on a task in the current Claude session. Automatically updates status to IN_PROGRESS.",
     inputSchema: {
       type: "object",
       properties: {
@@ -65,10 +66,6 @@ export const taskToolDefinitions: ToolDefinition[] = [
           type: "string",
           description: "Claude session ID",
         },
-        skipHooks: {
-          type: "boolean",
-          description: "Skip lifecycle hooks (default: false)",
-        },
       },
       required: ["taskId", "sessionId"],
     },
@@ -76,7 +73,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "complete_task_session",
     description:
-      "Complete the current task. Runs pre-complete hooks (must pass) then marks task as COMPLETED.",
+      "Complete the current task. Marks task as COMPLETED.",
     inputSchema: {
       type: "object",
       properties: {
@@ -92,10 +89,6 @@ export const taskToolDefinitions: ToolDefinition[] = [
           type: "string",
           description: "Completion notes",
         },
-        skipHooks: {
-          type: "boolean",
-          description: "Skip lifecycle hooks (default: false)",
-        },
       },
       required: ["taskId", "sessionId"],
     },
@@ -103,7 +96,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "abandon_task_session",
     description:
-      "Abandon the current task. Runs on-abandon hooks and marks task as ABANDONED.",
+      "Abandon the current task. Marks task as ABANDONED.",
     inputSchema: {
       type: "object",
       properties: {
@@ -126,7 +119,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "get_task_for_session",
     description:
-      "Get full task details for execution in session. Includes title, description, acceptance criteria, hook config labels.",
+      "Get full task details for execution in session. Includes title, description, acceptance criteria, and loaded skills for task labels.",
     inputSchema: {
       type: "object",
       properties: {
@@ -161,9 +154,9 @@ export const taskToolDefinitions: ToolDefinition[] = [
     },
   },
   {
-    name: "update_task_hook_configs",
+    name: "update_task_labels",
     description:
-      "Update hook configuration labels for a task. Allows UI to dynamically change which hook configs are associated with a task.",
+      "Update skill labels for a task. Labels map to skill files in .track/skills/{label}.md.",
     inputSchema: {
       type: "object",
       properties: {
@@ -171,19 +164,19 @@ export const taskToolDefinitions: ToolDefinition[] = [
           type: "string",
           description: "Task UUID",
         },
-        hookConfigLabels: {
+        labels: {
           type: "array",
           items: { type: "string" },
           description:
-            'Array of hook config labels (e.g., ["db-migration", "e2e-tests"])',
+            'Array of skill labels (e.g., ["db", "api", "security"])',
         },
       },
-      required: ["taskId", "hookConfigLabels"],
+      required: ["taskId", "labels"],
     },
   },
   {
-    name: "list_hook_configs",
-    description: "List all available hook configurations.",
+    name: "list_available_skills",
+    description: "List all available skills. Skills are defined in .track/skills/{name}.md files.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -272,10 +265,10 @@ export const taskToolDefinitions: ToolDefinition[] = [
           type: "number",
           description: "Estimated time in minutes",
         },
-        hookConfigLabels: {
+        labels: {
           type: "array",
           items: { type: "string" },
-          description: "Hook configuration labels",
+          description: "Skill labels",
         },
       },
       required: ["taskId"],
@@ -352,7 +345,7 @@ export interface TaskToolContext {
   taskRepository: SqliteTaskRepository;
   taskSessionService: TaskSessionService;
   taskManagementService: TaskManagementService;
-  hookConfigService: FileSystemHookConfigService;
+  skillService: SkillService;
   taskExecutionLogsSchema: typeof taskExecutionLogs;
 }
 
@@ -380,14 +373,13 @@ export function handleUpdateTaskStatus(
  */
 export async function handleStartTaskSession(
   ctx: TaskToolContext,
-  args: { taskId: string; sessionId: string; skipHooks?: boolean }
+  args: { taskId: string; sessionId: string }
 ): Promise<ToolResponse> {
-  const { taskId, sessionId, skipHooks = false } = args;
+  const { taskId, sessionId } = args;
 
   const result = await ctx.taskSessionService.startTaskSession({
     taskId,
     sessionId,
-    skipHooks,
   });
 
   return successResponse({
@@ -395,7 +387,6 @@ export async function handleStartTaskSession(
     task: result.task,
     sessionId: result.sessionId,
     startedAt: result.startedAt,
-    hookResults: result.hookResults,
   });
 }
 
@@ -404,15 +395,14 @@ export async function handleStartTaskSession(
  */
 export async function handleCompleteTaskSession(
   ctx: TaskToolContext,
-  args: { taskId: string; sessionId: string; notes?: string; skipHooks?: boolean }
+  args: { taskId: string; sessionId: string; notes?: string }
 ): Promise<ToolResponse> {
-  const { taskId, sessionId, notes, skipHooks = false } = args;
+  const { taskId, sessionId, notes } = args;
 
   const task = await ctx.taskSessionService.completeTaskSession({
     taskId,
     sessionId,
     notes,
-    skipHooks,
   });
 
   return successResponse({
@@ -445,10 +435,10 @@ export async function handleAbandonTaskSession(
 /**
  * Handle get_task_for_session tool call
  */
-export function handleGetTaskForSession(
+export async function handleGetTaskForSession(
   ctx: TaskToolContext,
   args: { taskId: string; includeContext?: boolean }
-): ToolResponse {
+): Promise<ToolResponse> {
   const { taskId, includeContext = true } = args;
 
   const task = ctx.taskRepository.findById(taskId);
@@ -469,7 +459,46 @@ export function handleGetTaskForSession(
     }
   }
 
+  // Load skills based on labels
+  if (task.labels?.length) {
+    const skills = await ctx.skillService.loadSkillsForLabels(task.labels);
+    if (skills.length > 0) {
+      result.loadedSkills = skills;
+    }
+  }
+
+  // Format task requirements prominently
+  if (task.contextInstructions || result.loadedSkills) {
+    result.taskRequirements = formatTaskRequirements(
+      task.contextInstructions,
+      result.loadedSkills as Skill[] | undefined
+    );
+  }
+
   return successResponse(result);
+}
+
+/**
+ * Format task requirements for Claude consumption
+ */
+function formatTaskRequirements(
+  contextInstructions: string | undefined,
+  skills: Skill[] | undefined
+): string {
+  const parts: string[] = [];
+
+  if (contextInstructions) {
+    parts.push("## Task-Specific Instructions\n" + contextInstructions);
+  }
+
+  if (skills?.length) {
+    parts.push("## Required Practices\n");
+    for (const skill of skills) {
+      parts.push(`### ${skill.name}\n${skill.content}\n`);
+    }
+  }
+
+  return parts.join("\n\n");
 }
 
 /**
@@ -513,15 +542,15 @@ export async function handleListAvailableTasks(
 }
 
 /**
- * Handle update_task_hook_configs tool call
+ * Handle update_task_labels tool call
  */
-export function handleUpdateTaskHookConfigs(
+export function handleUpdateTaskLabels(
   ctx: TaskToolContext,
-  args: { taskId: string; hookConfigLabels: string[] }
+  args: { taskId: string; labels: string[] }
 ): ToolResponse {
-  const { taskId, hookConfigLabels } = args;
+  const { taskId, labels } = args;
 
-  const task = ctx.taskRepository.updateHookConfigLabels(taskId, hookConfigLabels);
+  const task = ctx.taskRepository.updateLabels(taskId, labels);
 
   return successResponse({
     success: true,
@@ -530,16 +559,17 @@ export function handleUpdateTaskHookConfigs(
 }
 
 /**
- * Handle list_hook_configs tool call
+ * Handle list_available_skills tool call
  */
-export async function handleListHookConfigs(
+export async function handleListAvailableSkills(
   ctx: TaskToolContext
 ): Promise<ToolResponse> {
-  const configs = await ctx.hookConfigService.listConfigs();
+  const skills = await ctx.skillService.listAvailableSkills();
 
   return successResponse({
     success: true,
-    configs,
+    skills,
+    description: "Available skills that can be assigned as labels to tasks",
   });
 }
 
@@ -610,7 +640,7 @@ export function handleUpdateTask(
     acceptanceCriteria?: string[];
     contextInstructions?: string;
     estimatedMinutes?: number;
-    hookConfigLabels?: string[];
+    labels?: string[];
   }
 ): ToolResponse {
   const {
@@ -620,7 +650,7 @@ export function handleUpdateTask(
     acceptanceCriteria,
     contextInstructions,
     estimatedMinutes,
-    hookConfigLabels,
+    labels,
   } = args;
 
   const task = ctx.taskRepository.findById(taskId);
@@ -637,7 +667,7 @@ export function handleUpdateTask(
   if (contextInstructions !== undefined)
     updates.contextInstructions = contextInstructions;
   if (estimatedMinutes !== undefined) updates.estimatedMinutes = estimatedMinutes;
-  if (hookConfigLabels !== undefined) updates.hookConfigLabels = hookConfigLabels;
+  if (labels !== undefined) updates.labels = labels;
 
   const updatedTask = ctx.taskRepository.update(taskId, updates);
 
