@@ -195,6 +195,21 @@ describe("Issue", () => {
 - Use real implementations where possible
 - Clean up after tests (database, files)
 
+## Development Commands
+
+Useful Make commands for development:
+
+```bash
+make flatten-migrations  # Delete all migrations and regenerate from scratch
+make dogfood            # Full reset + build + link + init
+make test               # Run unit tests
+make test-e2e           # Run E2E tests (requires Claude CLI)
+```
+
+**`make flatten-migrations`**: Deletes all existing Drizzle migrations and regenerates from the current schema. Use this when making schema changes during development. After running, you'll need to `make dogfood` to reset your local database.
+
+**Note**: This is for development only - in production we'd need proper migration files.
+
 ## TypeScript Guidelines
 
 ### Type Safety
@@ -307,34 +322,36 @@ Our `tsconfig.json` enforces maximum type safety:
 - [ ] Infrastructure concerns separated
 - [ ] TypeScript strict mode compliant
 
-## Skill Systems
+## Claude Code Skills vs Task Labels
 
-This project has TWO separate skill systems - don't confuse them:
+This project has TWO separate systems - don't confuse them:
 
 ### 1. Claude Code Skills (for Claude's behavior)
 
-These guide Claude's behavior during conversations.
+These guide Claude's behavior during conversations. Claude decides when to activate them.
 
 - **Location**: `.claude/skills/dwf-*/SKILL.md`
 - **Source**: `packages/cli/skills/dwf-*/SKILL.md`
 - **Discovery**: Auto-discovered by Claude Code at startup via semantic matching on `description` field
 - **Naming**: Must be flat (no nested folders), use `dwf-` prefix for namespacing
 - **Skills**:
-  - `dwf-manage-issue` - Creates/updates issues, auto-generates plans
-  - `dwf-plan-issue` - Generates implementation plans with tasks
+  - `dwf-manage-issue` - Creates/updates issues, separates requirements from implementation
+  - `dwf-plan-issue` - Generates implementation plans with deployable task units
   - `dwf-work-task` - Manages task execution lifecycle
 
 **Key constraint**: Claude Code does NOT support nested skill folders. Skills must be at `.claude/skills/{skill-name}/SKILL.md`, not `.claude/skills/namespace/{skill-name}/SKILL.md`.
 
-### 2. Task Skills (for task execution context)
+### 2. Task Labels (for task execution context)
 
-These provide contextual guidance when executing tasks.
+These provide contextual text returned from MCP tools during task execution.
 
-- **Location**: `.track/labels/skills/*.md`
-- **Discovery**: Loaded when a task has matching labels
-- **Skills**: `api`, `db`, `security` (and any custom skills)
+- **Project labels**: `.track/labels/<label>.md` (per-project)
+- **Global labels**: `~/.track/labels/<label>.md` (shared across projects)
+- **Discovery**: Returned when calling `get_task_for_session` for tasks with matching labels
+- **Validation**: MCP tools validate labels exist before assignment
+- **Examples**: `api`, `db`, `security` (and any custom labels)
 
-When a task has `labels: ["db", "api"]`, the corresponding skill files are loaded and provided as context to the executing agent.
+When a task has `labels: ["db", "api"]`, the corresponding label files are loaded and provided as context when retrieving the task for execution. Project labels take precedence over global labels with the same name.
 
 ## References
 

@@ -47,7 +47,6 @@ function renderTable(issuesWithPlans: IssueWithPlanInfo[]): string {
           <th class="col-priority">Priority</th>
           <th class="col-status">Status</th>
           <th class="col-tasks">Tasks</th>
-          <th class="col-labels">Labels</th>
         </tr>
       </thead>
       <tbody>
@@ -67,7 +66,6 @@ function renderIssueRow(item: IssueWithPlanInfo): string {
       <td class="col-priority">${renderPriorityBadge(issue.priority)}</td>
       <td class="col-status">${renderStatusBadge(issue.status)}</td>
       <td class="col-tasks">${renderTasksStatus(issue.number, hasPlan, taskCounts)}</td>
-      <td class="col-labels">${renderLabels(issue.labels)}</td>
     </tr>
   `;
 }
@@ -114,15 +112,6 @@ function renderPriorityBadge(priority: string): string {
 function renderStatusBadge(status: string): string {
   const statusClass = status.toLowerCase().replace("_", "-");
   return `<span class="badge badge-status badge-${statusClass}">${status.replace("_", " ")}</span>`;
-}
-
-function renderLabels(labels: string[]): string {
-  if (labels.length === 0) {
-    return '<span class="no-labels">—</span>';
-  }
-  return labels.map(label =>
-    `<span class="badge badge-label">${escapeHtml(label)}</span>`
-  ).join(" ");
 }
 
 export function render404(): string {

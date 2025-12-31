@@ -21,7 +21,6 @@ export interface SnapshotIssueState {
   priority: IssuePriority;
   status: IssueStatus;
   acceptanceCriteria: string[];
-  labels: string[];
   templateUsed?: string;
   createdBy?: string;
   createdAt: string;

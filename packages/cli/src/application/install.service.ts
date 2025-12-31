@@ -68,7 +68,6 @@ Then edit \`my-feature.md\` to match your needs.
 ---
 type: FEATURE | BUG | ENHANCEMENT | TASK
 priority: LOW | MEDIUM | HIGH | CRITICAL
-labels: [label1, label2]
 ---
 \`\`\`
 
@@ -76,7 +75,6 @@ labels: [label1, label2]
 When a template is selected, its frontmatter values will be used as defaults for creating issues:
 - \`type\`: Issue type (FEATURE, BUG, ENHANCEMENT, or TASK)
 - \`priority\`: Issue priority (LOW, MEDIUM, HIGH, or CRITICAL)
-- \`labels\`: Array of labels to apply to the issue
 
 These values can still be overridden when creating an issue explicitly.
 `;
@@ -227,46 +225,46 @@ These values can still be overridden when creating an issue explicitly.
   }
 
   /**
-   * Create default task skills in .track/labels/skills/
+   * Create default task labels in .track/labels/
    *
-   * Skills are markdown files that provide contextual guidance for tasks.
-   * When a task has labels, the corresponding skill files are loaded
+   * Labels are markdown files that provide contextual guidance for tasks.
+   * When a task has labels, the corresponding label files are loaded
    * and provided to Claude as context when executing the task.
    */
   async createTaskSkills(): Promise<void> {
     try {
-      const skillsDir = path.join(this.workingDirectory, ".track/labels/skills");
-      await this.fileSystem.mkdir(skillsDir, { recursive: true });
+      const labelsDir = path.join(this.workingDirectory, ".track/labels");
+      await this.fileSystem.mkdir(labelsDir, { recursive: true });
 
       // Create README
-      const readme = `# Task Skills
+      const readme = `# Task Labels
 
-Skills are markdown files that provide contextual guidance for tasks.
-When a task has labels (e.g., \`["db", "api"]\`), the corresponding skill
+Labels are markdown files that provide contextual guidance for tasks.
+When a task has labels (e.g., \`["db", "api"]\`), the corresponding label
 files (\`db.md\`, \`api.md\`) are loaded and provided as context.
 
 ## How it works
 
-1. Create a skill file: \`.track/labels/skills/my-skill.md\`
-2. When generating a plan, tasks are automatically labeled based on matching skill names
-3. When starting a task, skills are loaded and provided as guidance
+1. Create a label file: \`.track/labels/my-label.md\`
+2. When generating a plan, tasks are automatically labeled based on matching label names
+3. When starting a task, labels are loaded and provided as guidance
 
-## Creating custom skills
+## Creating custom labels
 
 Create any \`.md\` file in this directory. The filename (without extension)
-becomes the skill/label name.
+becomes the label name.
 
-Example: \`.track/labels/skills/testing.md\` creates a "testing" skill that can be
+Example: \`.track/labels/testing.md\` creates a "testing" label that can be
 assigned to tasks via the \`labels\` field.
 `;
 
       await this.fileSystem.writeFile(
-        path.join(skillsDir, "README.md"),
+        path.join(labelsDir, "README.md"),
         readme
       );
 
-      // Create default db skill
-      const dbSkill = `# Database Changes
+      // Create default db label
+      const dbLabel = `# Database Changes
 
 When working on database-related tasks:
 
@@ -287,12 +285,12 @@ When working on database-related tasks:
 `;
 
       await this.fileSystem.writeFile(
-        path.join(skillsDir, "db.md"),
-        dbSkill
+        path.join(labelsDir, "db.md"),
+        dbLabel
       );
 
-      // Create default api skill
-      const apiSkill = `# API Development
+      // Create default api label
+      const apiLabel = `# API Development
 
 When working on API endpoints:
 
@@ -313,12 +311,12 @@ When working on API endpoints:
 `;
 
       await this.fileSystem.writeFile(
-        path.join(skillsDir, "api.md"),
-        apiSkill
+        path.join(labelsDir, "api.md"),
+        apiLabel
       );
 
-      // Create default security skill
-      const securitySkill = `# Security Requirements
+      // Create default security label
+      const securityLabel = `# Security Requirements
 
 When working on security-sensitive code:
 
@@ -339,12 +337,12 @@ When working on security-sensitive code:
 `;
 
       await this.fileSystem.writeFile(
-        path.join(skillsDir, "security.md"),
-        securitySkill
+        path.join(labelsDir, "security.md"),
+        securityLabel
       );
 
     } catch (error) {
-      throw new InstallError("Failed to create task skills", error);
+      throw new InstallError("Failed to create task labels", error);
     }
   }
 }

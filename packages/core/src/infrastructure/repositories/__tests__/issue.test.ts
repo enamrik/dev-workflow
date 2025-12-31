@@ -24,7 +24,6 @@ describe("SqliteIssueRepository", () => {
         priority: "HIGH",
         status: "OPEN",
         acceptanceCriteria: ["Criterion 1", "Criterion 2"],
-        labels: ["label1", "label2"],
         createdBy: "test-user",
       });
 
@@ -36,7 +35,6 @@ describe("SqliteIssueRepository", () => {
       expect(issue.priority).toBe("HIGH");
       expect(issue.status).toBe("OPEN");
       expect(issue.acceptanceCriteria).toEqual(["Criterion 1", "Criterion 2"]);
-      expect(issue.labels).toEqual(["label1", "label2"]);
       expect(issue.createdBy).toBe("test-user");
       expect(issue.createdAt).toBeDefined();
       expect(issue.updatedAt).toBeDefined();
@@ -136,7 +134,6 @@ describe("SqliteIssueRepository", () => {
     it("should preserve unchanged fields", () => {
       const created = createTestIssue(repos.issueRepository, {
         priority: "HIGH",
-        labels: ["important"],
       });
 
       const updated = repos.issueRepository.update(created.id, {
@@ -144,7 +141,6 @@ describe("SqliteIssueRepository", () => {
       });
 
       expect(updated.priority).toBe("HIGH");
-      expect(updated.labels).toEqual(["important"]);
     });
   });
 

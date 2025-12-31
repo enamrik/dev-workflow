@@ -5,7 +5,7 @@ export PNPM_HOME
 export PATH := $(PNPM_HOME):$(PATH)
 DEV_WORKFLOW := $(PNPM_HOME)/dev-workflow
 
-.PHONY: help install build clean reset init dogfood test test-npm-install test-mcp test-e2e test-e2e-rename link unlink
+.PHONY: help install build clean reset init dogfood test test-npm-install test-mcp test-e2e test-e2e-rename link unlink flatten-migrations
 
 help:
 	@echo "dev-workflow - Makefile commands"
@@ -24,6 +24,7 @@ help:
 	@echo "  make test-e2e-rename  - Run simple-rename E2E test (main test)"
 	@echo "  make test-npm-install - Test npm install scenario (simulates user install)"
 	@echo "  make test-mcp         - Test MCP server startup and migrations"
+	@echo "  make flatten-migrations - Delete all migrations and regenerate (dev only)"
 
 install:
 	@echo "📦 Installing dependencies..."
@@ -115,3 +116,13 @@ test-e2e: build
 test-e2e-rename: build
 	@echo "🧪 Running simple-rename E2E test (requires Claude CLI)..."
 	@cd packages/e2e && pnpm test:e2e src/scenarios/simple-rename.test.ts
+
+flatten-migrations:
+	@echo "🗑️  Flattening database migrations..."
+	@rm -rf packages/core/drizzle/*
+	@cd packages/core && pnpm drizzle-kit generate
+	@echo "✓ Migrations regenerated from scratch"
+	@echo ""
+	@echo "⚠️  WARNING: This is for development only!"
+	@echo "   - All existing databases will need to be recreated"
+	@echo "   - Run 'make dogfood' to reset your local dev-workflow setup"

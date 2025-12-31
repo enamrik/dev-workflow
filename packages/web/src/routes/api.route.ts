@@ -4,7 +4,6 @@ import type { SqliteIssueRepository, IssueFilters } from "@dev-workflow/core";
 interface IssuesQuerystring {
   status?: string;
   type?: string;
-  label?: string | string[];
 }
 
 interface IssueParams {
@@ -17,7 +16,7 @@ export function registerAPIRoutes(
 ): void {
   // GET /api/issues - List all issues with optional filters
   server.get<{ Querystring: IssuesQuerystring }>("/api/issues", async (request) => {
-    const { status, type, label } = request.query;
+    const { status, type } = request.query;
 
     const filters: IssueFilters = {};
 
@@ -27,10 +26,6 @@ export function registerAPIRoutes(
 
     if (type) {
       filters.type = type as any;
-    }
-
-    if (label) {
-      filters.labels = Array.isArray(label) ? label : [label];
     }
 
     const issues = repository.findMany(filters);

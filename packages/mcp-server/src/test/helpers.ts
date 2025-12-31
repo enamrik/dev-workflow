@@ -46,8 +46,12 @@ export function createRepositories(db: TestDatabase["db"]) {
  * Create all services from repositories
  */
 export function createServices(repos: ReturnType<typeof createRepositories>) {
-  // Mock SkillService that returns no skills (for testing)
-  const mockSkillService = {
+  // Mock LabelService that returns no labels (for testing)
+  const mockLabelService = {
+    // New API
+    loadLabelsForTask: async () => [],
+    listAvailableLabels: async () => [],
+    // Legacy API (backward compatibility)
     loadSkillsForLabels: async () => [],
     listAvailableSkills: async () => [],
   };
@@ -63,7 +67,7 @@ export function createServices(repos: ReturnType<typeof createRepositories>) {
     repos.issueRepository,
     repos.planRepository,
     repos.taskRepository,
-    mockSkillService as any,
+    mockLabelService as any,
     versioningService
   );
 
@@ -92,7 +96,6 @@ export function createTestIssue(
     priority: IssuePriority;
     status: IssueStatus;
     acceptanceCriteria: string[];
-    labels: string[];
   }> = {}
 ): Issue {
   return repo.create({
@@ -102,7 +105,6 @@ export function createTestIssue(
     priority: overrides.priority ?? "MEDIUM",
     status: overrides.status ?? "OPEN",
     acceptanceCriteria: overrides.acceptanceCriteria ?? [],
-    labels: overrides.labels ?? [],
     createdBy: "test",
   });
 }

@@ -168,47 +168,47 @@ export class UpdateService {
   }
 
   /**
-   * Update task skills
+   * Update task labels
    * (Creates defaults if missing, preserves user customizations)
    */
   async updateTaskSkills(): Promise<void> {
     try {
-      const skillsDir = path.join(this.workingDirectory, ".track/labels/skills");
-      const dirExists = await this.fileSystem.exists(skillsDir);
+      const labelsDir = path.join(this.workingDirectory, ".track/labels");
+      const dirExists = await this.fileSystem.exists(labelsDir);
 
       if (!dirExists) {
-        await this.fileSystem.mkdir(skillsDir, { recursive: true });
+        await this.fileSystem.mkdir(labelsDir, { recursive: true });
       }
 
       // Create README if missing
-      const readmePath = path.join(skillsDir, "README.md");
+      const readmePath = path.join(labelsDir, "README.md");
       const readmeExists = await this.fileSystem.exists(readmePath);
       if (!readmeExists) {
-        const readme = `# Task Skills
+        const readme = `# Task Labels
 
-Skills are markdown files that provide contextual guidance for tasks.
-When a task has labels (e.g., \`["db", "api"]\`), the corresponding skill
+Labels are markdown files that provide contextual guidance for tasks.
+When a task has labels (e.g., \`["db", "api"]\`), the corresponding label
 files (\`db.md\`, \`api.md\`) are loaded and provided as context.
 
 ## How it works
 
-1. Create a skill file: \`.track/labels/skills/my-skill.md\`
-2. When generating a plan, tasks are automatically labeled based on matching skill names
-3. When starting a task, skills are loaded and provided as guidance
+1. Create a label file: \`.track/labels/my-label.md\`
+2. When generating a plan, tasks are automatically labeled based on matching label names
+3. When starting a task, labels are loaded and provided as guidance
 
-## Creating custom skills
+## Creating custom labels
 
 Create any \`.md\` file in this directory. The filename (without extension)
-becomes the skill/label name.
+becomes the label name.
 
-Example: \`.track/labels/skills/testing.md\` creates a "testing" skill that can be
+Example: \`.track/labels/testing.md\` creates a "testing" label that can be
 assigned to tasks via the \`labels\` field.
 `;
         await this.fileSystem.writeFile(readmePath, readme);
       }
 
-      // Create default skills only if they don't exist
-      const defaultSkills = {
+      // Create default labels only if they don't exist
+      const defaultLabels = {
         "db.md": `# Database Changes
 
 When working on database-related tasks:
@@ -268,16 +268,16 @@ When working on security-sensitive code:
 `,
       };
 
-      for (const [filename, content] of Object.entries(defaultSkills)) {
-        const skillPath = path.join(skillsDir, filename);
-        const exists = await this.fileSystem.exists(skillPath);
+      for (const [filename, content] of Object.entries(defaultLabels)) {
+        const labelPath = path.join(labelsDir, filename);
+        const exists = await this.fileSystem.exists(labelPath);
         if (!exists) {
-          await this.fileSystem.writeFile(skillPath, content);
+          await this.fileSystem.writeFile(labelPath, content);
           console.log(`  Created ${filename}`);
         }
       }
     } catch (error) {
-      throw new UpdateError("Failed to update task skills", error);
+      throw new UpdateError("Failed to update task labels", error);
     }
   }
 

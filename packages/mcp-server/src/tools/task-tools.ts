@@ -176,74 +176,74 @@ export const taskToolDefinitions: ToolDefinition[] = [
     },
   },
   {
-    name: "list_available_skills",
-    description: "List all available skills. Skills are defined in .track/labels/skills/{name}.md files.",
+    name: "list_available_task_labels",
+    description: "List all available task labels. Labels are defined in .track/labels/{name}.md files.",
     inputSchema: {
       type: "object",
       properties: {},
     },
   },
   {
-    name: "get_skill",
-    description: "Get a skill's content by name. Returns the skill's markdown content.",
+    name: "get_task_label",
+    description: "Get a task label's content by name. Returns the label's markdown content.",
     inputSchema: {
       type: "object",
       properties: {
         name: {
           type: "string",
-          description: "Skill name (without .md extension)",
+          description: "Label name (without .md extension)",
         },
       },
       required: ["name"],
     },
   },
   {
-    name: "create_skill",
+    name: "create_task_label",
     description:
-      "Create a new skill. Skills are markdown files in .track/labels/skills/ that provide contextual guidance for tasks.",
+      "Create a new task label. Labels are markdown files in .track/labels/ that provide contextual guidance for tasks.",
     inputSchema: {
       type: "object",
       properties: {
         name: {
           type: "string",
           description:
-            "Skill name (without .md extension). Use only letters, numbers, hyphens, and underscores.",
+            "Label name (without .md extension). Use only letters, numbers, hyphens, and underscores.",
         },
         content: {
           type: "string",
-          description: "Skill content in markdown format",
+          description: "Label content in markdown format",
         },
       },
       required: ["name", "content"],
     },
   },
   {
-    name: "update_skill",
-    description: "Update an existing skill's content.",
+    name: "update_task_label",
+    description: "Update an existing task label's content.",
     inputSchema: {
       type: "object",
       properties: {
         name: {
           type: "string",
-          description: "Skill name (without .md extension)",
+          description: "Label name (without .md extension)",
         },
         content: {
           type: "string",
-          description: "New skill content in markdown format",
+          description: "New label content in markdown format",
         },
       },
       required: ["name", "content"],
     },
   },
   {
-    name: "remove_skill",
-    description: "Remove a skill. This deletes the skill file from .track/labels/skills/.",
+    name: "remove_task_label",
+    description: "Remove a task label. This deletes the label file from .track/labels/.",
     inputSchema: {
       type: "object",
       properties: {
         name: {
           type: "string",
-          description: "Skill name (without .md extension)",
+          description: "Label name (without .md extension)",
         },
       },
       required: ["name"],
@@ -634,11 +634,25 @@ export async function handleListAvailableTasks(
 /**
  * Handle update_task_labels tool call
  */
-export function handleUpdateTaskLabels(
+export async function handleUpdateTaskLabels(
   ctx: TaskToolContext,
   args: { taskId: string; labels: string[] }
-): ToolResponse {
+): Promise<ToolResponse> {
   const { taskId, labels } = args;
+
+  // Validate labels exist
+  if (labels.length > 0) {
+    const available = await ctx.skillService.listAvailableSkills();
+    const availableSet = new Set(available);
+    const invalidLabels = labels.filter((l) => !availableSet.has(l));
+
+    if (invalidLabels.length > 0) {
+      return errorResponse(
+        `Invalid labels: [${invalidLabels.join(", ")}]. ` +
+          `Available: [${available.join(", ")}]`
+      );
+    }
+  }
 
   const task = ctx.taskRepository.updateLabels(taskId, labels);
 
@@ -649,80 +663,80 @@ export function handleUpdateTaskLabels(
 }
 
 /**
- * Handle list_available_skills tool call
+ * Handle list_available_task_labels tool call
  */
-export async function handleListAvailableSkills(
+export async function handleListAvailableTaskLabels(
   ctx: TaskToolContext
 ): Promise<ToolResponse> {
-  const skills = await ctx.skillService.listAvailableSkills();
+  const labels = await ctx.skillService.listAvailableSkills();
 
   return successResponse({
     success: true,
-    skills,
-    description: "Available skills that can be assigned as labels to tasks",
+    labels,
+    description: "Available labels that can be assigned to tasks",
   });
 }
 
 /**
- * Handle get_skill tool call
+ * Handle get_task_label tool call
  */
-export async function handleGetSkill(
+export async function handleGetTaskLabel(
   ctx: TaskToolContext,
   args: { name: string }
 ): Promise<ToolResponse> {
   const { name } = args;
 
-  const skill = await ctx.skillService.getSkill(name);
-  if (!skill) {
-    return errorResponse(`Skill not found: ${name}`);
+  const label = await ctx.skillService.getSkill(name);
+  if (!label) {
+    return errorResponse(`Label not found: ${name}`);
   }
 
   return successResponse({
     success: true,
-    skill,
+    label,
   });
 }
 
 /**
- * Handle create_skill tool call
+ * Handle create_task_label tool call
  */
-export async function handleCreateSkill(
+export async function handleCreateTaskLabel(
   ctx: TaskToolContext,
   args: { name: string; content: string }
 ): Promise<ToolResponse> {
   const { name, content } = args;
 
-  const skill = await ctx.skillService.createSkill(name, content);
+  const label = await ctx.skillService.createSkill(name, content);
 
   return successResponse({
     success: true,
-    skill,
-    message: `Created skill "${name}" at .track/labels/skills/${name}.md`,
+    label,
+    message: `Created label "${name}" at .track/labels/${name}.md`,
   });
 }
 
 /**
- * Handle update_skill tool call
+ * Handle update_task_label tool call
  */
-export async function handleUpdateSkill(
+export async function handleUpdateTaskLabel(
   ctx: TaskToolContext,
   args: { name: string; content: string }
 ): Promise<ToolResponse> {
   const { name, content } = args;
 
-  const skill = await ctx.skillService.updateSkill(name, content);
+  const label = await ctx.skillService.updateSkill(name, content);
 
   return successResponse({
     success: true,
-    skill,
-    message: `Updated skill "${name}"`,
+    label,
+    message: `Updated label "${name}"`,
   });
 }
 
 /**
- * Handle remove_skill tool call
+ * Handle remove_task_label tool call
  */
-export async function handleRemoveSkill(
+export async function handleRemoveTaskLabel(
   ctx: TaskToolContext,
   args: { name: string }
 ): Promise<ToolResponse> {
@@ -732,7 +746,7 @@ export async function handleRemoveSkill(
 
   return successResponse({
     success: true,
-    message: `Removed skill "${name}"`,
+    message: `Removed label "${name}"`,
   });
 }
 
@@ -794,7 +808,7 @@ export function handleDeleteTask(
 /**
  * Handle update_task tool call
  */
-export function handleUpdateTask(
+export async function handleUpdateTask(
   ctx: TaskToolContext,
   args: {
     taskId: string;
@@ -805,7 +819,7 @@ export function handleUpdateTask(
     estimatedMinutes?: number;
     labels?: string[];
   }
-): ToolResponse {
+): Promise<ToolResponse> {
   const {
     taskId,
     title,
@@ -819,6 +833,20 @@ export function handleUpdateTask(
   const task = ctx.taskRepository.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
+  }
+
+  // Validate labels if provided
+  if (labels !== undefined && labels.length > 0) {
+    const available = await ctx.skillService.listAvailableSkills();
+    const availableSet = new Set(available);
+    const invalidLabels = labels.filter((l) => !availableSet.has(l));
+
+    if (invalidLabels.length > 0) {
+      return errorResponse(
+        `Invalid labels: [${invalidLabels.join(", ")}]. ` +
+          `Available: [${available.join(", ")}]`
+      );
+    }
   }
 
   // Build update object with only provided fields

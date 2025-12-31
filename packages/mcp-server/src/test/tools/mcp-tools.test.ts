@@ -42,7 +42,6 @@ function createIssueTool(
     description: string;
     type?: IssueType;
     priority?: IssuePriority;
-    labels?: string[];
     acceptanceCriteria?: string[];
   }
 ): ToolResult {
@@ -52,7 +51,6 @@ function createIssueTool(
     type: params.type ?? "FEATURE",
     priority: params.priority ?? "MEDIUM",
     status: "OPEN",
-    labels: params.labels ?? [],
     acceptanceCriteria: params.acceptanceCriteria ?? [],
     createdBy: "test",
   });
@@ -92,12 +90,11 @@ function getIssueTool(
  */
 function listIssuesTool(
   issueRepository: SqliteIssueRepository,
-  params: { status?: IssueStatus; type?: IssueType; labels?: string[] }
+  params: { status?: IssueStatus; type?: IssueType }
 ): ToolResult {
   const issues = issueRepository.findMany({
     status: params.status,
     type: params.type,
-    labels: params.labels,
   });
 
   return { success: true, issues };
@@ -295,7 +292,6 @@ describe("MCP Tool: create_issue", () => {
       description: "Full description",
       type: "BUG",
       priority: "HIGH",
-      labels: ["urgent", "backend"],
       acceptanceCriteria: ["AC1", "AC2"],
     });
 
@@ -307,7 +303,6 @@ describe("MCP Tool: create_issue", () => {
 
     // Verify in database
     const dbIssue = issueRepository.findByNumber(1);
-    expect(dbIssue?.labels).toEqual(["urgent", "backend"]);
     expect(dbIssue?.acceptanceCriteria).toEqual(["AC1", "AC2"]);
   });
 

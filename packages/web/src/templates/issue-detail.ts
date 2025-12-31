@@ -69,8 +69,6 @@ function renderDetailsTab(issue: Issue): string {
 
       ${issue.acceptanceCriteria.length > 0 ? renderAcceptanceCriteria(issue.acceptanceCriteria) : ""}
 
-      ${issue.labels.length > 0 ? renderLabelsSection(issue.labels) : ""}
-
       <div class="issue-metadata">
         <div class="metadata-row">
           <span class="metadata-label">Created:</span>
@@ -201,17 +199,6 @@ function renderAcceptanceCriteria(criteria: string[]): string {
           </li>
         `).join("\n")}
       </ul>
-    </div>
-  `;
-}
-
-function renderLabelsSection(labels: string[]): string {
-  return `
-    <div class="issue-section">
-      <h3>Labels</h3>
-      <div class="labels-list">
-        ${labels.map((label) => `<span class="badge badge-label">${escapeHtml(label)}</span>`).join(" ")}
-      </div>
     </div>
   `;
 }

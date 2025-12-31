@@ -91,12 +91,10 @@ export class TemplateParser {
     // Validate and extract required fields
     const type = this.parseType(data["type"], filename);
     const priority = this.parsePriority(data["priority"], filename);
-    const labels = this.parseLabels(data["labels"], filename);
 
     return {
       type,
       priority,
-      labels,
     };
   }
 
@@ -142,28 +140,4 @@ export class TemplateParser {
     return value as IssuePriority;
   }
 
-  /**
-   * Parse and validate labels field
-   *
-   * @private
-   */
-  private parseLabels(value: unknown, filename: string): string[] {
-    // Labels are optional, default to empty array
-    if (value === undefined || value === null) {
-      return [];
-    }
-
-    if (!Array.isArray(value)) {
-      throw new TemplateParseError("Invalid 'labels' field. Must be an array.", filename);
-    }
-
-    // Validate all labels are strings
-    for (const label of value) {
-      if (typeof label !== "string") {
-        throw new TemplateParseError("Invalid label. All labels must be strings.", filename);
-      }
-    }
-
-    return value as string[];
-  }
 }

@@ -18,7 +18,7 @@ export { PlanningService } from "./application/planning-service.js";
 export { VersioningService } from "./application/versioning-service.js";
 export { TaskManagementService } from "./application/task-management-service.js";
 export { TaskSessionService } from "./application/task-session-service.js";
-export { SkillService, type Skill } from "./application/skill-service.js";
+export { LabelService, SkillService, type Label, type Skill } from "./application/label-service.js";
 export {
   TaskMatchingService,
   type TaskMatchResult,

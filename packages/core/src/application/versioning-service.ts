@@ -149,7 +149,6 @@ export class VersioningService {
       priority: targetSnapshot.issueState.priority,
       status: targetSnapshot.issueState.status,
       acceptanceCriteria: targetSnapshot.issueState.acceptanceCriteria,
-      labels: targetSnapshot.issueState.labels,
     });
 
     // Handle plan restoration
@@ -273,7 +272,6 @@ export class VersioningService {
       priority: issue.priority,
       status: issue.status,
       acceptanceCriteria: issue.acceptanceCriteria,
-      labels: issue.labels,
       templateUsed: issue.templateUsed,
       createdBy: issue.createdBy,
       createdAt: issue.createdAt,

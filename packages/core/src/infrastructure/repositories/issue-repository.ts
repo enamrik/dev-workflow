@@ -38,7 +38,6 @@ export class SqliteIssueRepository implements IssueRepository {
         priority: issue.priority,
         status: issue.status,
         acceptanceCriteria: issue.acceptanceCriteria,
-        labels: issue.labels,
         templateUsed: issue.templateUsed,
         createdBy: issue.createdBy,
         createdAt: issue.createdAt,
@@ -88,17 +87,7 @@ export class SqliteIssueRepository implements IssueRepository {
     const results = query.all();
 
     // Map database rows to domain objects
-    let filtered = results.map((row) => this.mapRowToIssue(row));
-
-    // Filter by labels in memory (since they're in JSON column)
-    // For better performance with many issues, consider using SQLite JSON functions
-    if (filters?.labels && filters.labels.length > 0) {
-      filtered = filtered.filter((issue) =>
-        filters.labels!.some((label) => issue.labels.includes(label))
-      );
-    }
-
-    return filtered;
+    return results.map((row) => this.mapRowToIssue(row));
   }
 
   getNextIssueNumber(): number {
@@ -150,7 +139,6 @@ export class SqliteIssueRepository implements IssueRepository {
       priority: row.priority as Issue["priority"],
       status: row.status as Issue["status"],
       acceptanceCriteria: row.acceptanceCriteria,
-      labels: row.labels,
       templateUsed: row.templateUsed ?? undefined,
       createdBy: row.createdBy ?? undefined,
       createdAt: row.createdAt,

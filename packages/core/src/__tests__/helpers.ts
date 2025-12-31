@@ -88,7 +88,6 @@ export function createTestIssue(
     priority: IssuePriority;
     status: IssueStatus;
     acceptanceCriteria: string[];
-    labels: string[];
   }> = {}
 ): Issue {
   return repo.create({
@@ -98,7 +97,6 @@ export function createTestIssue(
     priority: overrides.priority ?? "MEDIUM",
     status: overrides.status ?? "OPEN",
     acceptanceCriteria: overrides.acceptanceCriteria ?? [],
-    labels: overrides.labels ?? [],
     createdBy: "test",
   });
 }

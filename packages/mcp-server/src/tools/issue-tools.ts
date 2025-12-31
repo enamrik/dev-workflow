@@ -7,7 +7,6 @@ import {
   type SqliteIssueRepository,
   type TemplateService,
   type PlanningService,
-  type SkillService,
   type IssueType,
   type IssuePriority,
   type IssueStatus,
@@ -52,11 +51,6 @@ export const issueToolDefinitions: ToolDefinition[] = [
           enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
           description: "Issue priority",
         },
-        labels: {
-          type: "array",
-          items: { type: "string" },
-          description: "Issue labels/tags",
-        },
         useTemplate: {
           type: "boolean",
           description: "Auto-select template based on description",
@@ -97,11 +91,6 @@ export const issueToolDefinitions: ToolDefinition[] = [
           type: "string",
           enum: ["FEATURE", "BUG", "ENHANCEMENT", "TASK"],
           description: "Filter by type",
-        },
-        labels: {
-          type: "array",
-          items: { type: "string" },
-          description: "Filter by labels",
         },
       },
     },
@@ -150,10 +139,6 @@ export const issueToolDefinitions: ToolDefinition[] = [
               type: "string",
               enum: ["OPEN", "IN_PROGRESS", "CLOSED"],
             },
-            labels: {
-              type: "array",
-              items: { type: "string" },
-            },
           },
           description: "Fields to update on the issue",
         },
@@ -174,15 +159,6 @@ export interface IssueToolContext {
   issueRepository: SqliteIssueRepository;
   templateService: TemplateService;
   planningService: PlanningService;
-  skillService: SkillService;
-}
-
-/**
- * Assign labels based on content matching available skills
- */
-function assignLabelsFromContent(content: string, skills: string[]): string[] {
-  const searchText = content.toLowerCase();
-  return skills.filter((skill) => searchText.includes(skill.toLowerCase()));
 }
 
 /**
@@ -194,7 +170,6 @@ interface CreateIssueArgs {
   acceptanceCriteria?: string[];
   type?: IssueType;
   priority?: IssuePriority;
-  labels?: string[];
   useTemplate?: boolean;
 }
 
@@ -211,24 +186,13 @@ export async function handleCreateIssue(
     acceptanceCriteria = [],
     type,
     priority = "MEDIUM",
-    labels = [],
     useTemplate = true,
   } = args;
-
-  // Get available skills for auto-labeling
-  const availableSkills = await ctx.skillService.listAvailableSkills();
-
-  // Auto-detect skill labels from issue content
-  const autoDetectedLabels = assignLabelsFromContent(
-    `${title} ${description}`,
-    availableSkills
-  );
 
   // Select template if requested and use metadata
   let templateUsed: string | undefined;
   let finalType = type;
   let finalPriority = priority;
-  let templateLabels: string[] = [];
 
   if (useTemplate) {
     try {
@@ -243,17 +207,11 @@ export async function handleCreateIssue(
         // Only override if using default priority
         finalPriority = template.metadata.priority;
       }
-      templateLabels = template.metadata.labels;
     } catch (error) {
       // Log error but continue without template
       console.error("Failed to select template:", error);
     }
   }
-
-  // Merge labels: explicit > auto-detected > template (deduplicated)
-  const finalLabels = [
-    ...new Set([...labels, ...autoDetectedLabels, ...templateLabels]),
-  ];
 
   // Create issue using repository
   const issue = ctx.issueRepository.create({
@@ -263,7 +221,6 @@ export async function handleCreateIssue(
     type: finalType || "FEATURE",
     priority: finalPriority,
     status: "OPEN",
-    labels: finalLabels,
     templateUsed,
     createdBy: "claude-code",
   });
@@ -283,7 +240,6 @@ export async function handleCreateIssue(
       title: issue.title,
       type: issue.type,
       priority: issue.priority,
-      labels: issue.labels,
       templateUsed: issue.templateUsed,
       url: `http://localhost:3000/issues/${issue.number}`,
     },
@@ -315,14 +271,13 @@ export function handleGetIssue(
  */
 export function handleListIssues(
   ctx: IssueToolContext,
-  args: { status?: IssueStatus; type?: IssueType; labels?: string[] }
+  args: { status?: IssueStatus; type?: IssueType }
 ): ToolResponse {
-  const { status, type, labels: filterLabels } = args;
+  const { status, type } = args;
 
   const filtered = ctx.issueRepository.findMany({
     status,
     type,
-    labels: filterLabels,
   });
 
   return successResponse(filtered);
@@ -344,7 +299,6 @@ export async function handleListTemplates(
         filename: t.filename,
         type: t.metadata.type,
         priority: t.metadata.priority,
-        labels: t.metadata.labels,
         source: t.isUserDefined ? "user" : "default",
       })),
     });
@@ -368,7 +322,6 @@ export function handleUpdateIssue(
       type: IssueType;
       priority: IssuePriority;
       status: IssueStatus;
-      labels: string[];
     }>;
     regeneratePlan?: boolean;
   }

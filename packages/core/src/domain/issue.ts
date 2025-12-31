@@ -20,7 +20,6 @@ export interface Issue {
   type: IssueType;
   priority: IssuePriority;
   status: IssueStatus;
-  labels: string[];
   templateUsed?: string;
   createdBy?: string;
   createdAt: string; // ISO date string
@@ -33,7 +32,6 @@ export interface Issue {
 export interface IssueFilters {
   status?: IssueStatus;
   type?: IssueType;
-  labels?: string[];
 }
 
 /**
@@ -70,7 +68,7 @@ export interface IssueRepository {
   /**
    * Find all issues matching the given filters
    *
-   * @param filters - Optional filters for status, type, and labels
+   * @param filters - Optional filters for status and type
    * @returns Array of matching issues
    */
   findMany(filters?: IssueFilters): Issue[];

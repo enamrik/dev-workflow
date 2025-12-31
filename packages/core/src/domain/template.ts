@@ -13,7 +13,6 @@ import type { IssueType, IssuePriority } from "./issue.js";
 export interface TemplateMetadata {
   readonly type: IssueType;
   readonly priority: IssuePriority;
-  readonly labels: string[];
 }
 
 /**

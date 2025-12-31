@@ -7,7 +7,6 @@ CREATE TABLE `issues` (
 	`priority` text NOT NULL,
 	`status` text NOT NULL,
 	`acceptance_criteria` text DEFAULT '[]' NOT NULL,
-	`labels` text DEFAULT '[]' NOT NULL,
 	`template_used` text,
 	`created_by` text,
 	`created_at` text NOT NULL,

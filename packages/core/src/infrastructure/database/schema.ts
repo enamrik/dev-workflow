@@ -11,7 +11,7 @@ import type {
  *
  * Uses hybrid approach:
  * - Scalar fields (id, number, title, type, priority, status) as standard SQLite columns (indexed, queryable)
- * - Array/nested fields (acceptanceCriteria, labels) as JSON columns (flexible, type-safe)
+ * - Array fields (acceptanceCriteria) as JSON columns (flexible, type-safe)
  */
 export const issues = sqliteTable("issues", {
   // Primary key and unique identifier
@@ -29,11 +29,6 @@ export const issues = sqliteTable("issues", {
 
   // JSON columns for arrays (flexible, auto-serialized by Drizzle)
   acceptanceCriteria: text("acceptance_criteria", { mode: "json" })
-    .$type<string[]>()
-    .notNull()
-    .default(sql`'[]'`),
-
-  labels: text("labels", { mode: "json" })
     .$type<string[]>()
     .notNull()
     .default(sql`'[]'`),
@@ -153,7 +148,7 @@ export const tasks = sqliteTable("tasks", {
   sessionStartedAt: text("session_started_at"),
   lastSessionActivityAt: text("last_session_activity_at"),
 
-  // Skill labels (references .track/labels/skills/<label>.md files)
+  // Task labels (references .track/labels/<label>.md files)
   labels: text("labels", { mode: "json" })
     .$type<string[]>()
     .default(sql`'[]'`),

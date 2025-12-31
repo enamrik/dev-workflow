@@ -56,11 +56,11 @@ import {
   handleGetTaskForSession,
   handleListAvailableTasks,
   handleUpdateTaskLabels,
-  handleListAvailableSkills,
-  handleGetSkill,
-  handleCreateSkill,
-  handleUpdateSkill,
-  handleRemoveSkill,
+  handleListAvailableTaskLabels,
+  handleGetTaskLabel,
+  handleCreateTaskLabel,
+  handleUpdateTaskLabel,
+  handleRemoveTaskLabel,
   handleAddManualTask,
   handleDeleteTask,
   handleUpdateTask,
@@ -167,22 +167,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
       return await handleListAvailableTasks(taskToolContext, a);
     }
     if (name === "update_task_labels") {
-      return handleUpdateTaskLabels(taskToolContext, a);
+      return await handleUpdateTaskLabels(taskToolContext, a);
     }
-    if (name === "list_available_skills") {
-      return await handleListAvailableSkills(taskToolContext);
+    if (name === "list_available_task_labels") {
+      return await handleListAvailableTaskLabels(taskToolContext);
     }
-    if (name === "get_skill") {
-      return await handleGetSkill(taskToolContext, a);
+    if (name === "get_task_label") {
+      return await handleGetTaskLabel(taskToolContext, a);
     }
-    if (name === "create_skill") {
-      return await handleCreateSkill(taskToolContext, a);
+    if (name === "create_task_label") {
+      return await handleCreateTaskLabel(taskToolContext, a);
     }
-    if (name === "update_skill") {
-      return await handleUpdateSkill(taskToolContext, a);
+    if (name === "update_task_label") {
+      return await handleUpdateTaskLabel(taskToolContext, a);
     }
-    if (name === "remove_skill") {
-      return await handleRemoveSkill(taskToolContext, a);
+    if (name === "remove_task_label") {
+      return await handleRemoveTaskLabel(taskToolContext, a);
     }
     if (name === "add_manual_task") {
       return handleAddManualTask(taskToolContext, a);
@@ -191,7 +191,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
       return handleDeleteTask(taskToolContext, a);
     }
     if (name === "update_task") {
-      return handleUpdateTask(taskToolContext, a);
+      return await handleUpdateTask(taskToolContext, a);
     }
     if (name === "get_task_execution_prompt") {
       return handleGetTaskExecutionPrompt(taskToolContext, a);
@@ -284,7 +284,6 @@ async function main() {
     issueRepository,
     templateService,
     planningService,
-    skillService,
   };
 
   planToolContext = {
