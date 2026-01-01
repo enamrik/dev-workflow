@@ -69,13 +69,14 @@ export class UIService {
       console.log(`🚀 Starting dev-workflow UI at ${url}`);
       console.log(`   Using Next.js from: ${webPath}`);
 
-      // Spawn Next.js
-      const nextProcess = spawn("npx", ["next", "start", "-p", String(port)], {
+      // Spawn the custom server (includes WebSocket support)
+      const nextProcess = spawn("node", ["dist/server.js"], {
         cwd: webPath,
         stdio: ["ignore", "pipe", "pipe"],
         env: {
           ...process.env,
           PORT: String(port),
+          NODE_ENV: "production",
         },
       });
 
