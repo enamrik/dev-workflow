@@ -195,7 +195,32 @@ async function runUninit(): Promise<void> {
 }
 
 async function runUI(): Promise<void> {
+  const { isPortInUse } = await import("./infrastructure/port-manager.js");
+  const port = process.env["PORT"] ? parseInt(process.env["PORT"], 10) : 3456;
+  const url = `http://127.0.0.1:${port}`;
+
   try {
+    // Check if server is already running
+    const serverRunning = await isPortInUse(port);
+
+    if (serverRunning) {
+      console.log(`✓ dev-workflow UI is already running at ${url}`);
+
+      // Open browser
+      if (!process.env["NO_OPEN_BROWSER"]) {
+        const open = (await import("open")).default;
+        try {
+          await open(url);
+          console.log("  Opening browser...");
+        } catch {
+          console.warn("⚠️  Could not open browser automatically.");
+          console.warn(`   Please visit: ${url}`);
+        }
+      }
+      return;
+    }
+
+    // Server not running, start it
     await UIService.startMultiProject();
   } catch (error) {
     console.error("Error starting UI:", error);
