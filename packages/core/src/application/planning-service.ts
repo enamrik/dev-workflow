@@ -114,6 +114,42 @@ export class PlanningService {
   }
 
   /**
+   * Check if a string looks like a UUID (8-4-4-4-12 format)
+   */
+  private isUUID(id: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(id);
+  }
+
+  /**
+   * Normalize task definitions by converting simple IDs to UUIDs
+   * and maintaining a mapping for dependency resolution.
+   *
+   * @param tasks - Task definitions with potentially simple IDs
+   * @returns Normalized tasks with UUID IDs and resolved dependencies
+   */
+  private normalizeTaskIds(tasks: TaskDefinition[]): TaskDefinition[] {
+    // Create a mapping from simple ID to UUID
+    const idMap = new Map<string, string>();
+
+    // First pass: generate UUIDs for non-UUID IDs
+    for (const task of tasks) {
+      if (!this.isUUID(task.id)) {
+        idMap.set(task.id, crypto.randomUUID());
+      } else {
+        idMap.set(task.id, task.id); // UUID stays the same
+      }
+    }
+
+    // Second pass: normalize IDs and dependencies
+    return tasks.map((task) => ({
+      ...task,
+      id: idMap.get(task.id)!,
+      dependsOn: task.dependsOn?.map((depId) => idMap.get(depId) ?? depId),
+    }));
+  }
+
+  /**
    * Generate a new plan for an issue
    *
    * Creates snapshot before regeneration.
@@ -130,11 +166,14 @@ export class PlanningService {
       issueId,
       summary,
       approach,
-      tasks: newTaskDefs,
+      tasks: rawTaskDefs,
       estimatedComplexity,
       generatedBy,
       preserveExistingTasks = true,
     } = request;
+
+    // Normalize task IDs (convert simple IDs like "task-001" to UUIDs)
+    const newTaskDefs = this.normalizeTaskIds(rawTaskDefs);
 
     // Validate DAG before any database operations
     // This throws InvalidDependencyError or DAGCycleError if invalid

@@ -41,6 +41,8 @@ export class E2ETestHarness {
   public dbPath: string;
   /** Global track directory (~/.track/<project-id>) - set after init */
   public trackDir: string = "";
+  /** Project ID computed from git root - set after setup */
+  public projectId: string = "";
   private cleanupOnSuccess: boolean;
   private useLocalBuild: boolean;
   private skipSampleProject: boolean;
@@ -128,9 +130,10 @@ export class E2ETestHarness {
       cwd: this.testDir,
       encoding: "utf-8",
     }).trim();
-    const projectId = this.computeProjectId(gitRoot);
-    this.trackDir = join(homedir(), ".track", projectId);
-    this.dbPath = join(this.trackDir, "data", "workflow.db");
+    this.projectId = this.computeProjectId(gitRoot);
+    this.trackDir = join(homedir(), ".track", this.projectId);
+    // Global database at ~/.track/workflow.db (single DB for all projects)
+    this.dbPath = join(homedir(), ".track", "workflow.db");
 
     // 3. Create sample project files
     if (!this.skipSampleProject) {

@@ -85,7 +85,7 @@ describe("E2E: Simple File Rename", () => {
     expect(createResult.exitCode).toBe(0);
 
     let db = harness.getDb();
-    const issue = assertIssueExists(db, "rename");
+    const issue = assertIssueExists(db, "rename", harness.projectId);
     expect(issue.status).toBe("OPEN");
     console.log(`✓ Created issue #${issue.number}: ${issue.title}`);
     db.close();
@@ -120,7 +120,7 @@ describe("E2E: Simple File Rename", () => {
     console.log("\n🔧 Step 3: Executing task...");
 
     db = harness.getDb();
-    const pendingTask = getTaskByStatus(db, "PENDING");
+    const pendingTask = getTaskByStatus(db, "PENDING", plan.id);
     db.close();
 
     if (!pendingTask) {
@@ -148,7 +148,7 @@ describe("E2E: Simple File Rename", () => {
     console.log("\n🗄️  Step 4: Verifying database...");
 
     db = harness.getDb();
-    const completedTask = getTaskByStatus(db, "COMPLETED");
+    const completedTask = getTaskByStatus(db, "COMPLETED", plan.id);
     expect(completedTask).toBeDefined();
     console.log(`✓ Task completed: ${completedTask?.title}`);
     db.close();

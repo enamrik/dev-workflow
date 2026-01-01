@@ -11,6 +11,7 @@ import type { E2ETestHarness } from "./test-harness.js";
 // Database row types
 interface IssueRow {
   id: string;
+  project_id: string;
   number: number;
   title: string;
   description: string;
@@ -46,19 +47,27 @@ interface TaskRow {
 
 /**
  * Assert that an issue exists with a title containing the search string
+ * @param db - Database connection
+ * @param titleSearch - Search string to match in title
+ * @param projectId - Optional project ID to filter by (recommended for global DB)
  * @returns The found issue
  */
 export function assertIssueExists(
   db: Database.Database,
-  titleSearch: string
+  titleSearch: string,
+  projectId?: string
 ): IssueRow {
-  const issues = db
-    .prepare("SELECT * FROM issues WHERE LOWER(title) LIKE ?")
-    .all(`%${titleSearch.toLowerCase()}%`) as IssueRow[];
+  const query = projectId
+    ? "SELECT * FROM issues WHERE LOWER(title) LIKE ? AND project_id = ? ORDER BY created_at DESC"
+    : "SELECT * FROM issues WHERE LOWER(title) LIKE ? ORDER BY created_at DESC";
+  const params = projectId
+    ? [`%${titleSearch.toLowerCase()}%`, projectId]
+    : [`%${titleSearch.toLowerCase()}%`];
+  const issues = db.prepare(query).all(...params) as IssueRow[];
 
   expect(
     issues.length,
-    `Expected to find issue with title containing "${titleSearch}"`
+    `Expected to find issue with title containing "${titleSearch}"${projectId ? ` in project ${projectId}` : ""}`
   ).toBeGreaterThan(0);
 
   const issue = issues[0];
@@ -137,15 +146,21 @@ export function assertTaskStatus(
 }
 
 /**
- * Get a task by status
- * @returns The first task with the given status, or undefined
+ * Get a task by status, filtered by plan
+ * @returns The first task with the given status for the plan, or undefined
  */
 export function getTaskByStatus(
   db: Database.Database,
-  status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED"
+  status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED",
+  planId?: string
 ): TaskRow | undefined {
+  if (planId) {
+    return db
+      .prepare("SELECT * FROM tasks WHERE status = ? AND plan_id = ? ORDER BY created_at LIMIT 1")
+      .get(status, planId) as TaskRow | undefined;
+  }
   return db
-    .prepare("SELECT * FROM tasks WHERE status = ? LIMIT 1")
+    .prepare("SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC LIMIT 1")
     .get(status) as TaskRow | undefined;
 }
 
