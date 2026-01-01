@@ -1,5 +1,5 @@
 import { clsx } from "clsx";
-import { Badge } from "../ui";
+import { Badge, Markdown } from "../ui";
 import type { Task } from "../../api";
 
 interface TaskItemProps {
@@ -48,7 +48,9 @@ export function TaskItem({ task }: TaskItemProps) {
 
       <div className="flex-1 min-w-0">
         <div className="font-medium text-gray-800">{task.title}</div>
-        <div className="text-sm text-gray-600 mt-1">{task.description}</div>
+        <div className="text-sm text-gray-600 mt-1">
+          <Markdown>{task.description}</Markdown>
+        </div>
 
         {task.acceptanceCriteria.length > 0 && (
           <ul className="mt-2 text-sm text-gray-600 list-disc list-inside">

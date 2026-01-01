@@ -12,6 +12,7 @@ import {
   LoadingState,
   ErrorState,
   EmptyState,
+  Markdown,
 } from "../components/ui";
 import type { Issue, Plan, Task } from "../api";
 
@@ -131,7 +132,7 @@ function DetailsTab({ issue }: DetailsTabProps) {
         <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">
           Description
         </h3>
-        <div className="text-gray-800 whitespace-pre-wrap">{issue.description}</div>
+        <Markdown>{issue.description}</Markdown>
       </section>
 
       {/* Acceptance Criteria */}
@@ -201,7 +202,7 @@ function PlanTab({ plan }: PlanTabProps) {
         <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">
           Summary
         </h3>
-        <div className="text-gray-800">{plan.summary}</div>
+        <Markdown>{plan.summary}</Markdown>
       </section>
 
       {/* Approach */}
@@ -209,7 +210,7 @@ function PlanTab({ plan }: PlanTabProps) {
         <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">
           Approach
         </h3>
-        <div className="text-gray-800 whitespace-pre-wrap">{plan.approach}</div>
+        <Markdown>{plan.approach}</Markdown>
       </section>
 
       {/* Metadata */}
