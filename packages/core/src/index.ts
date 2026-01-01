@@ -81,3 +81,11 @@ export {
 
 // Infrastructure - Events
 export { EventBus, type DomainEventListener } from "./infrastructure/events/event-bus.js";
+
+// Infrastructure - Port Management
+export {
+  saveDaemonPort,
+  getSavedDaemonPort,
+  clearDaemonPort,
+  getPortFilePath,
+} from "./infrastructure/port-manager.js";

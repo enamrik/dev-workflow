@@ -6,27 +6,14 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as os from "node:os";
 import { chromium, type Browser, type Page } from "@playwright/test";
+import { getSavedDaemonPort } from "@dev-workflow/core";
 import type { E2ETestHarness } from "./test-harness.js";
 
 const DEFAULT_PORT = 3456;
-const PORT_FILE = path.join(os.homedir(), ".track", "ui-port");
 
-/**
- * Get the port of a running daemon from the port file
- */
-export function getDaemonPort(): number | null {
-  try {
-    const content = fs.readFileSync(PORT_FILE, "utf-8").trim();
-    const port = parseInt(content, 10);
-    return isNaN(port) ? null : port;
-  } catch {
-    return null;
-  }
-}
+// Re-export for convenience
+export { getSavedDaemonPort as getDaemonPort } from "@dev-workflow/core";
 
 export class UIHarness {
   private serverProcess: ChildProcess | null = null;
@@ -105,7 +92,7 @@ export class UIHarness {
    * Reads the daemon port from ~/.track/ui-port
    */
   async connectToExistingDaemon(): Promise<void> {
-    const daemonPort = getDaemonPort();
+    const daemonPort = getSavedDaemonPort();
     if (!daemonPort) {
       throw new Error("No daemon port file found. Is the daemon running?");
     }
