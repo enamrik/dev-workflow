@@ -42,6 +42,9 @@ export interface Task {
   contextInstructions: string | null;
   isManual: boolean;
   sessionId: string | null;
+  startedAt?: string;
+  completedAt?: string;
+  abandonedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -80,6 +83,24 @@ export interface ProjectIssueWithTasks {
   tasks: Task[];
   milestoneNumber?: number;
   milestoneTitle?: string;
+}
+
+/**
+ * Completed task with project and issue context for Done column
+ */
+export interface CompletedTask extends Task {
+  projectId: string;
+  issueNumber: number;
+  issueTitle: string;
+  issueStatus: string;
+}
+
+/**
+ * API response for tasks endpoint
+ */
+export interface TasksResponse {
+  issuesWithTasks: ProjectIssueWithTasks[];
+  completedTasks: CompletedTask[];
 }
 
 export interface IssueDetail {

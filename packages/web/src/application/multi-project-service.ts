@@ -37,6 +37,16 @@ export interface ProjectTask extends Task {
 }
 
 /**
+ * Completed task with project and issue context for Done column
+ */
+export interface CompletedTask extends Task {
+  projectId: string;
+  issueNumber: number;
+  issueTitle: string;
+  issueStatus: string;
+}
+
+/**
  * Issue with plan info and project context
  */
 export interface ProjectIssueWithPlanInfo {
@@ -313,6 +323,69 @@ export class MultiProjectService {
     }
 
     return allIssuesWithTasks;
+  }
+
+  /**
+   * List completed tasks for the Done column across all projects.
+   * Returns tasks completed in the last 7 days, limited to 20 tasks.
+   * Includes tasks from closed issues (unlike listTasks which excludes them).
+   */
+  async listCompletedTasks(projectFilter?: string): Promise<CompletedTask[]> {
+    const projects = await this.listProjects();
+    const filteredProjects = projectFilter
+      ? projects.filter((p) => p.id === projectFilter)
+      : projects;
+
+    const { planRepository, taskRepository } = await this.ensureConnection();
+    const allCompletedTasks: CompletedTask[] = [];
+
+    // Calculate cutoff date (7 days ago)
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - 7);
+    const cutoffDateStr = cutoffDate.toISOString();
+
+    for (const project of filteredProjects) {
+      const issueRepository = await this.getIssueRepository(project.id);
+      const issues = issueRepository.findMany({});
+
+      for (const issue of issues) {
+        const plan = planRepository.findByIssueId(issue.id);
+        if (!plan) continue;
+
+        const tasks = taskRepository.findByPlanId(plan.id);
+
+        for (const task of tasks) {
+          // Only include completed or abandoned tasks
+          if (task.status !== "COMPLETED" && task.status !== "ABANDONED") {
+            continue;
+          }
+
+          // Check if completed within the last 7 days
+          const completionDate = task.completedAt ?? task.abandonedAt;
+          if (!completionDate || completionDate < cutoffDateStr) {
+            continue;
+          }
+
+          allCompletedTasks.push({
+            ...task,
+            projectId: issue.projectId,
+            issueNumber: issue.number,
+            issueTitle: issue.title,
+            issueStatus: issue.status,
+          });
+        }
+      }
+    }
+
+    // Sort by completion date descending (most recent first)
+    allCompletedTasks.sort((a, b) => {
+      const dateA = a.completedAt ?? a.abandonedAt ?? "";
+      const dateB = b.completedAt ?? b.abandonedAt ?? "";
+      return dateB.localeCompare(dateA);
+    });
+
+    // Limit to 20 tasks
+    return allCompletedTasks.slice(0, 20);
   }
 
   /**

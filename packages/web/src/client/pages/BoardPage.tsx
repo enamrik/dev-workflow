@@ -12,7 +12,7 @@ export function BoardPage() {
 
   const { data: projects = [], isLoading: projectsLoading } = useProjects();
   const {
-    data: issuesWithTasks = [],
+    data: tasksResponse,
     isLoading: tasksLoading,
     error,
     refetch,
@@ -20,6 +20,9 @@ export function BoardPage() {
     project: projectFilter || undefined,
     issue: issueNumber,
   });
+
+  const issuesWithTasks = tasksResponse?.issuesWithTasks ?? [];
+  const completedTasks = tasksResponse?.completedTasks ?? [];
 
   const isLoading = projectsLoading || tasksLoading;
 
@@ -112,7 +115,10 @@ export function BoardPage() {
       </div>
 
       <div className="p-6 pt-0">
-        <KanbanBoard issuesWithTasks={issuesWithTasks} />
+        <KanbanBoard
+          issuesWithTasks={issuesWithTasks}
+          completedTasks={completedTasks}
+        />
       </div>
     </Card>
   );

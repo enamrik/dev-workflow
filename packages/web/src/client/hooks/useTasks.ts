@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { getTasks, type ProjectIssueWithTasks, type TasksFilters } from "../api";
+import { getTasks, type TasksResponse, type TasksFilters } from "../api";
 
 export function useTasks(filters?: TasksFilters) {
-  return useQuery<ProjectIssueWithTasks[]>({
+  return useQuery<TasksResponse>({
     queryKey: ["tasks", filters],
     queryFn: () => getTasks(filters),
   });

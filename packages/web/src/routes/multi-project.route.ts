@@ -168,7 +168,13 @@ export function registerMultiProjectRoutes(
       filterIssueNumber
     );
 
-    return issuesWithTasks;
+    // Get completed tasks for Done column (max 20, last 7 days, includes closed issues)
+    const completedTasks = await multiProjectService.listCompletedTasks(projectFilter);
+
+    return {
+      issuesWithTasks,
+      completedTasks,
+    };
   });
 
   // API: List milestones

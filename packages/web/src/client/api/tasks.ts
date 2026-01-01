@@ -1,18 +1,16 @@
 import { apiClient, buildQueryString } from "./client";
-import type { ProjectIssueWithTasks } from "./types";
+import type { TasksResponse } from "./types";
 
 export interface TasksFilters {
   project?: string;
   issue?: number;
 }
 
-export function getTasks(
-  filters?: TasksFilters
-): Promise<ProjectIssueWithTasks[]> {
+export function getTasks(filters?: TasksFilters): Promise<TasksResponse> {
   const query = buildQueryString({
     project: filters?.project,
     issue: filters?.issue,
   });
 
-  return apiClient<ProjectIssueWithTasks[]>(`/tasks${query}`);
+  return apiClient<TasksResponse>(`/tasks${query}`);
 }
