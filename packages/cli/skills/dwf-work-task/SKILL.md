@@ -145,17 +145,25 @@ When abandoning a task:
 
 ### To Complete a Task
 
-1. **Verify work is done:**
-   - Review acceptance criteria
-   - Confirm all criteria are met
-   - Ask user to confirm if unclear
+**IMPORTANT: Always ask user for confirmation before completing a task.**
 
-2. **Complete the session:**
+1. **Summarize work done:**
+   - List the key changes made (files modified, features added)
+   - Review acceptance criteria against what was implemented
+   - Show which criteria are met
+
+2. **Ask for confirmation:**
+   - Present summary to user
+   - Ask: "Should I mark this task as complete?"
+   - Wait for explicit user approval before proceeding
+   - Do NOT call `complete_task_session` without user saying yes
+
+3. **Complete the session (only after user confirms):**
    - Call `complete_task_session` with task ID and session ID
    - If pre-complete hooks fail (e.g., tests fail) → explain what failed
    - Pre-complete hooks MUST pass to complete the task
 
-3. **Report completion:**
+4. **Report completion:**
    - Show task is now COMPLETED
    - Suggest next steps (next task, or done with issue)
 
@@ -227,6 +235,32 @@ Ready to begin implementation. Where would you like to start?
 ### Completing a Task
 
 **User:** "I've finished the task, tests are passing"
+
+**Response:**
+```
+Here's a summary of what was completed:
+
+**Task:** Add OAuth2 authentication with Google provider
+
+**Changes made:**
+- Created `src/auth/google-oauth.ts` with OAuth flow
+- Added callback handler in `src/routes/auth.ts`
+- Implemented token storage in `src/services/token-store.ts`
+- Added unit tests (92% coverage)
+- Added integration test for sign-in flow
+
+**Acceptance Criteria:**
+- [x] OAuth callback processes Google auth response correctly
+- [x] Access tokens are securely stored
+- [x] Refresh tokens trigger automatic renewal
+- [x] Auth failures return appropriate error responses
+- [x] Unit tests achieve 80%+ coverage
+- [x] Integration test covers sign-in flow
+
+Should I mark this task as complete?
+```
+
+**User:** "yes"
 
 **Response:**
 ```
