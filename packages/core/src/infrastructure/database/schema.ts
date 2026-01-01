@@ -203,6 +203,11 @@ export const tasks = sqliteTable("tasks", {
   worktreePath: text("worktree_path"),
   branchName: text("branch_name"),
 
+  // GitHub PR integration (for code review workflow)
+  prUrl: text("pr_url"),
+  prNumber: integer("pr_number"),
+  prStatus: text("pr_status"), // DRAFT, OPEN, MERGED, CLOSED
+
   // Status timestamps
   startedAt: text("started_at"),
   completedAt: text("completed_at"),

@@ -101,6 +101,11 @@ import {
   worktreeToolDefinitions,
   handleListWorktrees,
   handlePruneStaleWorktrees,
+  // PR handlers
+  prToolDefinitions,
+  handleCreateTaskPR,
+  handleMergeTaskPR,
+  handleGetTaskPRStatus,
   // Types
   type IssueToolContext,
   type PlanToolContext,
@@ -109,6 +114,7 @@ import {
   type SettingsToolContext,
   type MilestoneToolContext,
   type WorktreeToolContext,
+  type PRToolContext,
   errorResponse,
 } from "./tools/index.js";
 
@@ -134,6 +140,7 @@ let snapshotToolContext: SnapshotToolContext;
 let settingsToolContext: SettingsToolContext;
 let milestoneToolContext: MilestoneToolContext;
 let worktreeToolContext: WorktreeToolContext;
+let prToolContext: PRToolContext;
 
 // Create MCP server
 const server = new Server(
@@ -158,6 +165,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     ...settingsToolDefinitions,
     ...milestoneToolDefinitions,
     ...worktreeToolDefinitions,
+    ...prToolDefinitions,
   ],
 }));
 
@@ -315,6 +323,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
       return await handlePruneStaleWorktrees(a, worktreeToolContext);
     }
 
+    // PR tools
+    if (name === "create_task_pr") {
+      return await handleCreateTaskPR(prToolContext, a);
+    }
+    if (name === "merge_task_pr") {
+      return await handleMergeTaskPR(prToolContext, a);
+    }
+    if (name === "get_task_pr_status") {
+      return await handleGetTaskPRStatus(prToolContext, a);
+    }
+
     return errorResponse(`Unknown tool: ${name}`);
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));
@@ -457,6 +476,14 @@ async function main() {
 
   worktreeToolContext = {
     projectRoot,
+  };
+
+  prToolContext = {
+    configService: configServiceForSettings,
+    githubCLI: new NodeGitHubCLI(),
+    issueRepository,
+    planRepository,
+    taskRepository,
   };
 
   // Start server with stdio transport

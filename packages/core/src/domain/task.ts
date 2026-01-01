@@ -4,6 +4,7 @@
 
 export type TaskStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
 export type TaskSource = "generated" | "manual";
+export type PRStatus = "DRAFT" | "OPEN" | "MERGED" | "CLOSED";
 
 /**
  * Task entity
@@ -47,6 +48,11 @@ export interface Task {
   // Git worktree support (for isolated task execution)
   readonly worktreePath?: string; // Path to worktree directory (e.g., .worktrees/issue-5-task-abc123)
   readonly branchName?: string; // Git branch name (e.g., issue-5/task-1-add-feature)
+
+  // GitHub PR integration (for code review workflow)
+  readonly prUrl?: string; // GitHub PR URL
+  readonly prNumber?: number; // GitHub PR number
+  readonly prStatus?: PRStatus; // PR state
 
   readonly startedAt?: string; // When task moved to IN_PROGRESS
   readonly completedAt?: string; // When task moved to COMPLETED
@@ -255,6 +261,40 @@ export interface TaskRepository {
    * @returns The updated task
    */
   clearWorktreeInfo(taskId: string): Task;
+
+  /**
+   * Update PR information for a task
+   *
+   * Sets prUrl, prNumber, and prStatus for GitHub PR integration.
+   *
+   * @param taskId - Task UUID
+   * @param prUrl - GitHub PR URL
+   * @param prNumber - GitHub PR number
+   * @param prStatus - PR status (DRAFT, OPEN, MERGED, CLOSED)
+   * @returns The updated task
+   */
+  updatePRInfo(taskId: string, prUrl: string, prNumber: number, prStatus: PRStatus): Task;
+
+  /**
+   * Update PR status for a task
+   *
+   * Updates only the prStatus field.
+   *
+   * @param taskId - Task UUID
+   * @param prStatus - New PR status
+   * @returns The updated task
+   */
+  updatePRStatus(taskId: string, prStatus: PRStatus): Task;
+
+  /**
+   * Clear PR information from a task
+   *
+   * Sets prUrl, prNumber, and prStatus to undefined.
+   *
+   * @param taskId - Task UUID
+   * @returns The updated task
+   */
+  clearPRInfo(taskId: string): Task;
 
   /**
    * Update labels for a task

@@ -392,6 +392,75 @@ export class SqliteTaskRepository implements TaskRepository {
     return updatedTask;
   }
 
+  updatePRInfo(
+    taskId: string,
+    prUrl: string,
+    prNumber: number,
+    prStatus: Task["prStatus"]
+  ): Task {
+    const now = new Date().toISOString();
+
+    this.db
+      .update(tasks)
+      .set({
+        prUrl,
+        prNumber,
+        prStatus,
+        updatedAt: now,
+      })
+      .where(eq(tasks.id, taskId))
+      .run();
+
+    const updatedTask = this.findById(taskId);
+    if (!updatedTask) {
+      throw new Error(`Failed to update task PR info: ${taskId}`);
+    }
+
+    return updatedTask;
+  }
+
+  updatePRStatus(taskId: string, prStatus: Task["prStatus"]): Task {
+    const now = new Date().toISOString();
+
+    this.db
+      .update(tasks)
+      .set({
+        prStatus,
+        updatedAt: now,
+      })
+      .where(eq(tasks.id, taskId))
+      .run();
+
+    const updatedTask = this.findById(taskId);
+    if (!updatedTask) {
+      throw new Error(`Failed to update task PR status: ${taskId}`);
+    }
+
+    return updatedTask;
+  }
+
+  clearPRInfo(taskId: string): Task {
+    const now = new Date().toISOString();
+
+    this.db
+      .update(tasks)
+      .set({
+        prUrl: null,
+        prNumber: null,
+        prStatus: null,
+        updatedAt: now,
+      })
+      .where(eq(tasks.id, taskId))
+      .run();
+
+    const updatedTask = this.findById(taskId);
+    if (!updatedTask) {
+      throw new Error(`Failed to clear task PR info: ${taskId}`);
+    }
+
+    return updatedTask;
+  }
+
   updateLabels(taskId: string, labels: string[]): Task {
     const now = new Date().toISOString();
 
@@ -522,6 +591,9 @@ export class SqliteTaskRepository implements TaskRepository {
       dependsOn: row.dependsOn ?? undefined,
       worktreePath: row.worktreePath ?? undefined,
       branchName: row.branchName ?? undefined,
+      prUrl: row.prUrl ?? undefined,
+      prNumber: row.prNumber ?? undefined,
+      prStatus: (row.prStatus as Task["prStatus"]) ?? undefined,
       startedAt: row.startedAt ?? undefined,
       completedAt: row.completedAt ?? undefined,
       abandonedAt: row.abandonedAt ?? undefined,

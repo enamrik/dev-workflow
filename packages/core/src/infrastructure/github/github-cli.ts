@@ -8,7 +8,11 @@
  */
 
 import { spawn } from "node:child_process";
-import type { GitHubIssueData } from "../../domain/github.js";
+import type {
+  GitHubIssueData,
+  GitHubPRData,
+  GitHubMergeStrategy,
+} from "../../domain/github.js";
 
 /**
  * Result from a GitHub CLI command
@@ -117,6 +121,56 @@ export interface GitHubCLI {
    * Check if a GitHub Project exists and is accessible
    */
   checkProject(projectId: string): Promise<boolean>;
+
+  /**
+   * Create a new pull request
+   *
+   * @param owner - Repository owner
+   * @param repo - Repository name
+   * @param headBranch - Source branch for the PR
+   * @param baseBranch - Target branch for the PR
+   * @param title - PR title
+   * @param body - PR body/description
+   * @param draft - Whether to create as draft PR
+   * @returns PR data including number and URL
+   */
+  createPR(
+    owner: string,
+    repo: string,
+    headBranch: string,
+    baseBranch: string,
+    title: string,
+    body: string,
+    draft?: boolean
+  ): Promise<GitHubPRData>;
+
+  /**
+   * Merge a pull request
+   *
+   * @param owner - Repository owner
+   * @param repo - Repository name
+   * @param prNumber - PR number to merge
+   * @param strategy - Merge strategy (merge, squash, rebase)
+   * @param commitTitle - Optional custom commit title for squash/merge
+   * @returns Updated PR data
+   */
+  mergePR(
+    owner: string,
+    repo: string,
+    prNumber: number,
+    strategy?: GitHubMergeStrategy,
+    commitTitle?: string
+  ): Promise<GitHubPRData>;
+
+  /**
+   * Get pull request details
+   *
+   * @param owner - Repository owner
+   * @param repo - Repository name
+   * @param prNumber - PR number
+   * @returns PR data or null if not found
+   */
+  getPR(owner: string, repo: string, prNumber: number): Promise<GitHubPRData | null>;
 
   /**
    * Run arbitrary gh CLI command
@@ -455,6 +509,120 @@ export class NodeGitHubCLI implements GitHubCLI {
     }
   }
 
+  async createPR(
+    owner: string,
+    repo: string,
+    headBranch: string,
+    baseBranch: string,
+    title: string,
+    body: string,
+    draft = false
+  ): Promise<GitHubPRData> {
+    const args = [
+      "pr",
+      "create",
+      "-R",
+      `${owner}/${repo}`,
+      "--head",
+      headBranch,
+      "--base",
+      baseBranch,
+      "--title",
+      title,
+      "--body",
+      body,
+    ];
+
+    if (draft) {
+      args.push("--draft");
+    }
+
+    // Get JSON output
+    args.push(
+      "--json",
+      "number,url,id,title,body,state,isDraft,headRefName,baseRefName,merged,mergeable"
+    );
+
+    const result = await this.run(args);
+    if (!result.success) {
+      throw new GitHubCLIError(
+        `Failed to create PR: ${result.stderr}`,
+        result.exitCode,
+        result.stderr
+      );
+    }
+
+    const data = JSON.parse(result.stdout) as Record<string, unknown>;
+    return this.mapPRData(data);
+  }
+
+  async mergePR(
+    owner: string,
+    repo: string,
+    prNumber: number,
+    strategy: GitHubMergeStrategy = "squash",
+    commitTitle?: string
+  ): Promise<GitHubPRData> {
+    const args = [
+      "pr",
+      "merge",
+      String(prNumber),
+      "-R",
+      `${owner}/${repo}`,
+      `--${strategy}`,
+    ];
+
+    if (commitTitle) {
+      args.push("--subject", commitTitle);
+    }
+
+    const result = await this.run(args);
+    if (!result.success) {
+      throw new GitHubCLIError(
+        `Failed to merge PR: ${result.stderr}`,
+        result.exitCode,
+        result.stderr
+      );
+    }
+
+    // Fetch updated PR data after merge
+    const pr = await this.getPR(owner, repo, prNumber);
+    if (!pr) {
+      throw new GitHubCLIError("PR not found after merge");
+    }
+    return pr;
+  }
+
+  async getPR(
+    owner: string,
+    repo: string,
+    prNumber: number
+  ): Promise<GitHubPRData | null> {
+    const result = await this.run([
+      "pr",
+      "view",
+      String(prNumber),
+      "-R",
+      `${owner}/${repo}`,
+      "--json",
+      "number,url,id,title,body,state,isDraft,headRefName,baseRefName,merged,mergeable",
+    ]);
+
+    if (!result.success) {
+      if (result.stderr.includes("not found") || result.stderr.includes("Could not resolve")) {
+        return null;
+      }
+      throw new GitHubCLIError(
+        `Failed to get PR: ${result.stderr}`,
+        result.exitCode,
+        result.stderr
+      );
+    }
+
+    const data = JSON.parse(result.stdout) as Record<string, unknown>;
+    return this.mapPRData(data);
+  }
+
   async run(args: string[]): Promise<GitHubCLIResult> {
     return new Promise((resolve) => {
       const process = spawn("gh", args, {
@@ -503,6 +671,30 @@ export class NodeGitHubCLI implements GitHubCLI {
       body: (data["body"] as string) ?? "",
       state: data["state"] as "OPEN" | "CLOSED",
       labels: labels?.map((l) => l.name) ?? [],
+    };
+  }
+
+  private mapPRData(data: Record<string, unknown>): GitHubPRData {
+    // Determine the state based on merged and state fields
+    let state: GitHubPRData["state"];
+    if (data["merged"] === true) {
+      state = "MERGED";
+    } else {
+      state = data["state"] as "OPEN" | "CLOSED";
+    }
+
+    return {
+      number: data["number"] as number,
+      url: data["url"] as string,
+      nodeId: data["id"] as string,
+      title: data["title"] as string,
+      body: (data["body"] as string) ?? "",
+      state,
+      isDraft: (data["isDraft"] as boolean) ?? false,
+      headBranch: data["headRefName"] as string,
+      baseBranch: data["baseRefName"] as string,
+      merged: (data["merged"] as boolean) ?? false,
+      mergeable: (data["mergeable"] as GitHubPRData["mergeable"]) ?? "UNKNOWN",
     };
   }
 }

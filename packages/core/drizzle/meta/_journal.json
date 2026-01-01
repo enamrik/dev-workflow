@@ -15,6 +15,13 @@
       "when": 1767285045090,
       "tag": "0001_loose_may_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1767286881146,
+      "tag": "0002_large_khan",
+      "breakpoints": true
     }
   ]
 }

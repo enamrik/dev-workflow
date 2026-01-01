@@ -90,3 +90,12 @@ export {
   handleListWorktrees,
   handlePruneStaleWorktrees,
 } from "./worktree-tools.js";
+
+// PR tools
+export {
+  prToolDefinitions,
+  type PRToolContext,
+  handleCreateTaskPR,
+  handleMergeTaskPR,
+  handleGetTaskPRStatus,
+} from "./pr-tools.js";
