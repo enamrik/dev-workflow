@@ -66,7 +66,7 @@ export function KanbanColumn({
       </div>
 
       {/* Column content */}
-      <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[calc(100vh-280px)]">
+      <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[calc(100vh-280px)] scrollbar-auto-hide">
         {tasks.length > 0 ? (
           tasks.map((task) => (
             <KanbanCard
