@@ -50,6 +50,10 @@ import {
   handleGetIssue,
   handleListIssues,
   handleListTemplates,
+  handleGetTemplate,
+  handleCreateTemplate,
+  handleUpdateTemplate,
+  handleDeleteTemplate,
   handleUpdateIssue,
   handleDeleteIssue,
   handleRestoreIssue,
@@ -168,6 +172,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     }
     if (name === "list_templates") {
       return await handleListTemplates(issueToolContext);
+    }
+    if (name === "get_template") {
+      return await handleGetTemplate(issueToolContext, a);
+    }
+    if (name === "create_template") {
+      return await handleCreateTemplate(issueToolContext, a);
+    }
+    if (name === "update_template") {
+      return await handleUpdateTemplate(issueToolContext, a);
+    }
+    if (name === "delete_template") {
+      return await handleDeleteTemplate(issueToolContext, a);
     }
     if (name === "update_issue") {
       return await handleUpdateIssue(issueToolContext, a);

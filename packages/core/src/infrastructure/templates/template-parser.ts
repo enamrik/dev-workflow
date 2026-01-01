@@ -60,6 +60,7 @@ export class TemplateParser {
     return {
       filename,
       content: body.trim(),
+      rawContent: content,
       metadata,
       isUserDefined,
     };

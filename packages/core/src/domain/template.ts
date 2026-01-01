@@ -24,7 +24,8 @@ export interface TemplateMetadata {
  */
 export interface Template {
   readonly filename: string;
-  readonly content: string;
+  readonly content: string; // Markdown body (without frontmatter)
+  readonly rawContent: string; // Full file content (with frontmatter)
   readonly metadata: TemplateMetadata;
   readonly isUserDefined: boolean; // true if from user templates, false if default
 }

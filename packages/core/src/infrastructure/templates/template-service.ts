@@ -195,6 +195,155 @@ export class TemplateService {
   }
 
   /**
+   * Get a single template with source information
+   *
+   * @param filename - Template filename (e.g., "feature.md")
+   * @returns Template with source info, or null if not found
+   */
+  async getTemplate(filename: string): Promise<{ template: Template; source: "user" | "default" } | null> {
+    const discovery = await this.discoverTemplates();
+
+    // Check user templates first
+    const userTemplate = discovery.userTemplates.find((t) => t.filename === filename);
+    if (userTemplate) {
+      return { template: userTemplate, source: "user" };
+    }
+
+    // Check default templates
+    const defaultTemplate = discovery.defaultTemplates.find((t) => t.filename === filename);
+    if (defaultTemplate) {
+      return { template: defaultTemplate, source: "default" };
+    }
+
+    return null;
+  }
+
+  /**
+   * Create a new user template
+   *
+   * @param filename - Template filename (must end with .md)
+   * @param content - Template content (markdown with YAML frontmatter)
+   * @returns The created Template
+   * @throws TemplateServiceError if template already exists or creation fails
+   */
+  async createTemplate(filename: string, content: string): Promise<Template> {
+    if (!filename.endsWith(".md")) {
+      throw new TemplateServiceError("Template filename must end with .md");
+    }
+
+    // Check if user template already exists
+    const existing = await this.getTemplate(filename);
+    if (existing?.source === "user") {
+      throw new TemplateServiceError(`User template '${filename}' already exists. Use updateTemplate to modify it.`);
+    }
+
+    try {
+      // Ensure user templates directory exists
+      const dirExists = await this.fileSystem.exists(this.userTemplatesPath);
+      if (!dirExists) {
+        await this.fileSystem.mkdir(this.userTemplatesPath, { recursive: true });
+      }
+
+      // Validate content by parsing it
+      const template = this.parser.parse(filename, content, true);
+
+      // Write the file
+      const filePath = path.join(this.userTemplatesPath, filename);
+      await this.fileSystem.writeFile(filePath, content);
+
+      // Clear cache to reflect new template
+      this.clearCache();
+
+      return template;
+    } catch (error) {
+      if (error instanceof TemplateServiceError) {
+        throw error;
+      }
+      if (error instanceof TemplateParseError) {
+        throw new TemplateServiceError(`Invalid template format: ${error.message}`, error);
+      }
+      throw new TemplateServiceError(`Failed to create template '${filename}'`, error);
+    }
+  }
+
+  /**
+   * Update an existing user template
+   *
+   * @param filename - Template filename
+   * @param content - New template content
+   * @returns The updated Template
+   * @throws TemplateServiceError if template doesn't exist or is a default template
+   */
+  async updateTemplate(filename: string, content: string): Promise<Template> {
+    const existing = await this.getTemplate(filename);
+
+    if (!existing) {
+      throw new TemplateServiceError(`Template '${filename}' not found`);
+    }
+
+    if (existing.source === "default") {
+      throw new TemplateServiceError(
+        `Cannot modify default template '${filename}'. Create a user template with the same name to override it.`
+      );
+    }
+
+    try {
+      // Validate content by parsing it
+      const template = this.parser.parse(filename, content, true);
+
+      // Write the file
+      const filePath = path.join(this.userTemplatesPath, filename);
+      await this.fileSystem.writeFile(filePath, content);
+
+      // Clear cache to reflect changes
+      this.clearCache();
+
+      return template;
+    } catch (error) {
+      if (error instanceof TemplateServiceError) {
+        throw error;
+      }
+      if (error instanceof TemplateParseError) {
+        throw new TemplateServiceError(`Invalid template format: ${error.message}`, error);
+      }
+      throw new TemplateServiceError(`Failed to update template '${filename}'`, error);
+    }
+  }
+
+  /**
+   * Delete a user template
+   *
+   * @param filename - Template filename
+   * @throws TemplateServiceError if template doesn't exist or is a default template
+   */
+  async deleteTemplate(filename: string): Promise<void> {
+    const existing = await this.getTemplate(filename);
+
+    if (!existing) {
+      throw new TemplateServiceError(`Template '${filename}' not found`);
+    }
+
+    if (existing.source === "default") {
+      throw new TemplateServiceError(
+        `Cannot delete default template '${filename}'. Default templates are part of the package.`
+      );
+    }
+
+    try {
+      const filePath = path.join(this.userTemplatesPath, filename);
+      await this.fileSystem.unlink(filePath);
+
+      // Clear cache to reflect deletion
+      this.clearCache();
+    } catch (error) {
+      if (error instanceof TemplateServiceError) {
+        throw error;
+      }
+      throw new TemplateServiceError(`Failed to delete template '${filename}'`, error);
+    }
+  }
+
+  /**
    * Load templates from a directory
    *
    * @private

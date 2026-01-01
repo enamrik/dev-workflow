@@ -139,10 +139,79 @@ export const issueToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "list_templates",
-    description: "List available issue templates",
+    description: "List available issue templates. Returns both user-defined and default templates with their metadata.",
     inputSchema: {
       type: "object",
       properties: {},
+    },
+  },
+  {
+    name: "get_template",
+    description: "Get a single issue template by filename with its full content and source information.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filename: {
+          type: "string",
+          description: "Template filename (e.g., 'feature.md', 'bug.md')",
+        },
+      },
+      required: ["filename"],
+    },
+  },
+  {
+    name: "create_template",
+    description:
+      "Create a new user-defined issue template. Templates use markdown with YAML frontmatter for metadata. Cannot create a template if a user template with the same name already exists.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filename: {
+          type: "string",
+          description: "Template filename (must end with .md)",
+        },
+        content: {
+          type: "string",
+          description:
+            "Template content in markdown with YAML frontmatter. Example: '---\\ntype: FEATURE\\npriority: MEDIUM\\n---\\n# Description\\n...'",
+        },
+      },
+      required: ["filename", "content"],
+    },
+  },
+  {
+    name: "update_template",
+    description:
+      "Update an existing user-defined template. Cannot modify default templates - create a user template with the same name to override it instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filename: {
+          type: "string",
+          description: "Template filename",
+        },
+        content: {
+          type: "string",
+          description:
+            "New template content in markdown with YAML frontmatter",
+        },
+      },
+      required: ["filename", "content"],
+    },
+  },
+  {
+    name: "delete_template",
+    description:
+      "Delete a user-defined template. Cannot delete default templates. If the user template was overriding a default, the default will become active again.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filename: {
+          type: "string",
+          description: "Template filename to delete",
+        },
+      },
+      required: ["filename"],
     },
   },
   {
@@ -477,6 +546,112 @@ export async function handleListTemplates(
         priority: t.metadata.priority,
         source: t.isUserDefined ? "user" : "default",
       })),
+    });
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Handle get_template tool call
+ */
+export async function handleGetTemplate(
+  ctx: IssueToolContext,
+  args: { filename: string }
+): Promise<ToolResponse> {
+  const { filename } = args;
+
+  try {
+    const result = await ctx.templateService.getTemplate(filename);
+
+    if (!result) {
+      return errorResponse(`Template '${filename}' not found`);
+    }
+
+    return successResponse({
+      filename: result.template.filename,
+      source: result.source,
+      content: result.template.rawContent,
+      metadata: {
+        type: result.template.metadata.type,
+        priority: result.template.metadata.priority,
+      },
+      isUserDefined: result.template.isUserDefined,
+    });
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Handle create_template tool call
+ */
+export async function handleCreateTemplate(
+  ctx: IssueToolContext,
+  args: { filename: string; content: string }
+): Promise<ToolResponse> {
+  const { filename, content } = args;
+
+  try {
+    const template = await ctx.templateService.createTemplate(filename, content);
+
+    return successResponse({
+      success: true,
+      message: `Template '${filename}' created successfully`,
+      template: {
+        filename: template.filename,
+        type: template.metadata.type,
+        priority: template.metadata.priority,
+        isUserDefined: template.isUserDefined,
+      },
+    });
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Handle update_template tool call
+ */
+export async function handleUpdateTemplate(
+  ctx: IssueToolContext,
+  args: { filename: string; content: string }
+): Promise<ToolResponse> {
+  const { filename, content } = args;
+
+  try {
+    const template = await ctx.templateService.updateTemplate(filename, content);
+
+    return successResponse({
+      success: true,
+      message: `Template '${filename}' updated successfully`,
+      template: {
+        filename: template.filename,
+        type: template.metadata.type,
+        priority: template.metadata.priority,
+        isUserDefined: template.isUserDefined,
+      },
+    });
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Handle delete_template tool call
+ */
+export async function handleDeleteTemplate(
+  ctx: IssueToolContext,
+  args: { filename: string }
+): Promise<ToolResponse> {
+  const { filename } = args;
+
+  try {
+    await ctx.templateService.deleteTemplate(filename);
+
+    return successResponse({
+      success: true,
+      message: `Template '${filename}' deleted successfully`,
     });
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));
