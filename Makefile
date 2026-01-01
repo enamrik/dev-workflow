@@ -136,6 +136,7 @@ ui: ui-stop build
 	@$(DEV_WORKFLOW) ui
 
 ui-dev:
+	@-lsof -ti :3457 | xargs kill 2>/dev/null || true
 	@echo "🔥 Starting UI in dev mode (hot reload enabled)..."
 	@echo "   http://localhost:3457"
 	@(cd packages/web && npx wait-on tcp:3457 && open http://localhost:3457) &
