@@ -29,8 +29,41 @@ export function registerHTMLRoutes(
 ): void {
   const { issueRepository, planRepository, taskRepository } = context;
 
-  // Home page - issues list with plan info
-  server.get("/", async (_request, reply) => {
+  // Home page - kanban board showing tasks
+  server.get<{ Querystring: BoardQuerystring }>("/", async (request, reply) => {
+    const { issue: issueFilter } = request.query;
+    const filterIssueNumber = issueFilter ? parseInt(issueFilter, 10) : undefined;
+
+    // Get issues (filtered or all)
+    let issues = issueRepository.findMany();
+    if (filterIssueNumber) {
+      issues = issues.filter((i) => i.number === filterIssueNumber);
+    }
+
+    const issuesWithTasks: Array<{
+      issue: typeof issues[0];
+      plan: ReturnType<typeof planRepository.findByIssueId>;
+      tasks: ReturnType<typeof taskRepository.findByPlanId>;
+    }> = [];
+
+    for (const issue of issues) {
+      const plan = planRepository.findByIssueId(issue.id);
+      if (plan) {
+        const tasks = taskRepository.findByPlanId(plan.id);
+        if (tasks.length > 0) {
+          issuesWithTasks.push({ issue, plan, tasks });
+        }
+      }
+    }
+
+    const content = renderKanbanBoard(issuesWithTasks, filterIssueNumber);
+    const pageTitle = filterIssueNumber ? `Tasks for Issue #${filterIssueNumber}` : "Task Board";
+    const html = renderLayout(pageTitle, content);
+    reply.type("text/html").send(html);
+  });
+
+  // Issues list page
+  server.get("/issues", async (_request, reply) => {
     const issues = issueRepository.findMany();
 
     // Enrich with plan and task info
@@ -91,36 +124,4 @@ export function registerHTMLRoutes(
     }
   );
 
-  // Kanban board page - shows tasks, optionally filtered by issue
-  server.get<{ Querystring: BoardQuerystring }>("/board", async (request, reply) => {
-    const { issue: issueFilter } = request.query;
-    const filterIssueNumber = issueFilter ? parseInt(issueFilter, 10) : undefined;
-
-    // Get issues (filtered or all)
-    let issues = issueRepository.findMany();
-    if (filterIssueNumber) {
-      issues = issues.filter((i) => i.number === filterIssueNumber);
-    }
-
-    const issuesWithTasks: Array<{
-      issue: typeof issues[0];
-      plan: ReturnType<typeof planRepository.findByIssueId>;
-      tasks: ReturnType<typeof taskRepository.findByPlanId>;
-    }> = [];
-
-    for (const issue of issues) {
-      const plan = planRepository.findByIssueId(issue.id);
-      if (plan) {
-        const tasks = taskRepository.findByPlanId(plan.id);
-        if (tasks.length > 0) {
-          issuesWithTasks.push({ issue, plan, tasks });
-        }
-      }
-    }
-
-    const content = renderKanbanBoard(issuesWithTasks, filterIssueNumber);
-    const pageTitle = filterIssueNumber ? `Tasks for Issue #${filterIssueNumber}` : "Task Board";
-    const html = renderLayout(pageTitle, content);
-    reply.type("text/html").send(html);
-  });
 }
