@@ -38,6 +38,8 @@ import {
   TrackDirectoryResolver,
   // Git worktree support
   NodeGitWorktreeService,
+  // Conflict detection
+  ConflictDetectionService,
 } from "@dev-workflow/core";
 
 // Import tools
@@ -82,6 +84,7 @@ import {
   handleGetTaskExecutionPrompt,
   handleLogTaskProgress,
   handleGetTaskExecutionLog,
+  handleCheckTaskConflicts,
   // Snapshot handlers
   handleGetSnapshotHistory,
   handleRevertToSnapshot,
@@ -278,6 +281,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     if (name === "get_task_execution_log") {
       return handleGetTaskExecutionLog(taskToolContext, a);
     }
+    if (name === "check_task_conflicts") {
+      return handleCheckTaskConflicts(taskToolContext, a);
+    }
 
     // Snapshot tools
     if (name === "get_snapshot_history") {
@@ -423,11 +429,18 @@ async function main() {
   const projectRoot = path.dirname(trackDirectory);
   const gitWorktreeService = new NodeGitWorktreeService(projectRoot);
 
+  // Initialize conflict detection service
+  const conflictDetectionService = new ConflictDetectionService(
+    db,
+    taskRepository
+  );
+
   const taskSessionService = new TaskSessionService(
     taskRepository,
     planRepository,
     issueRepository,
-    gitWorktreeService
+    gitWorktreeService,
+    conflictDetectionService
   );
 
   // Create tool contexts
@@ -454,6 +467,7 @@ async function main() {
     taskManagementService,
     labelService,
     taskExecutionLogsSchema: taskExecutionLogs,
+    conflictDetectionService,
   };
 
   snapshotToolContext = {

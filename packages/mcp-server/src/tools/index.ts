@@ -53,6 +53,7 @@ export {
   handleGetTaskExecutionPrompt,
   handleLogTaskProgress,
   handleGetTaskExecutionLog,
+  handleCheckTaskConflicts,
 } from "./task-tools.js";
 
 // Snapshot tools

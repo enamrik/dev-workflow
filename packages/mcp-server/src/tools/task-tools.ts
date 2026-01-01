@@ -16,6 +16,8 @@ import {
   type Label,
   type TaskStatus,
   type TaskExecutionLogRow,
+  type ConflictDetectionService,
+  type ConflictWarning,
 } from "@dev-workflow/core";
 import {
   type ToolDefinition,
@@ -427,6 +429,21 @@ export const taskToolDefinitions: ToolDefinition[] = [
       required: ["taskId"],
     },
   },
+  {
+    name: "check_task_conflicts",
+    description:
+      "Check for potential file conflicts before starting a task. Returns warnings about files modified by prior completed tasks in the same plan. This is a dry-run that doesn't start the task.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: {
+          type: "string",
+          description: "Task UUID to check for conflicts",
+        },
+      },
+      required: ["taskId"],
+    },
+  },
 ];
 
 /**
@@ -441,6 +458,7 @@ export interface TaskToolContext {
   taskManagementService: TaskManagementService;
   labelService: LabelService;
   taskExecutionLogsSchema: typeof taskExecutionLogs;
+  conflictDetectionService?: ConflictDetectionService;
 }
 
 /**
@@ -513,7 +531,29 @@ export async function handleStartTaskSession(
     response.branchName = result.branchName;
   }
 
+  // Include conflict warnings if any were detected
+  if (result.conflictWarnings && result.conflictWarnings.length > 0) {
+    response.conflictWarnings = result.conflictWarnings;
+    response.conflictWarningMessage = formatConflictWarnings(result.conflictWarnings);
+  }
+
   return successResponse(response);
+}
+
+/**
+ * Format conflict warnings into a human-readable message
+ */
+function formatConflictWarnings(warnings: ConflictWarning[]): string {
+  const lines = ["⚠️ Potential file conflicts detected:"];
+  for (const warning of warnings) {
+    const modifiers = warning.modifiedBy
+      .map((m) => `Task #${m.taskNumber} (${m.taskTitle})`)
+      .join(", ");
+    lines.push(`  - ${warning.filePath} was modified by: ${modifiers}`);
+  }
+  lines.push("");
+  lines.push("These files were touched by prior tasks. Review carefully when making changes.");
+  return lines.join("\n");
 }
 
 /**
@@ -1159,4 +1199,63 @@ export function handleGetTaskExecutionLog(
     taskId,
     entries,
   });
+}
+
+/**
+ * Handle check_task_conflicts tool call
+ *
+ * Dry-run conflict detection without starting the task.
+ * Useful for previewing potential issues before committing to start.
+ */
+export function handleCheckTaskConflicts(
+  ctx: TaskToolContext,
+  args: { taskId: string }
+): ToolResponse {
+  const { taskId } = args;
+
+  // Verify task exists
+  const task = ctx.taskRepository.findById(taskId);
+  if (!task) {
+    return errorResponse(`Task not found: ${taskId}`);
+  }
+
+  // Check if conflict detection service is available
+  if (!ctx.conflictDetectionService) {
+    return successResponse({
+      success: true,
+      taskId,
+      hasConflicts: false,
+      warnings: [],
+      message: "Conflict detection is not configured",
+    });
+  }
+
+  // Run conflict detection
+  const result = ctx.conflictDetectionService.detectConflicts(taskId);
+
+  // Build response
+  const response: Record<string, unknown> = {
+    success: true,
+    taskId,
+    taskTitle: task.title,
+    hasConflicts: result.hasConflicts,
+    warnings: result.warnings,
+  };
+
+  if (result.hasConflicts) {
+    response.warningMessage = formatConflictWarnings(result.warnings);
+  } else {
+    response.message = "No potential conflicts detected with prior tasks";
+  }
+
+  // Include summary of all files modified by prior tasks for context
+  if (result.priorTaskFiles.size > 0) {
+    const filesModifiedByPriorTasks: string[] = [];
+    for (const filePath of result.priorTaskFiles.keys()) {
+      filesModifiedByPriorTasks.push(filePath);
+    }
+    response.priorTaskFiles = filesModifiedByPriorTasks;
+  }
+
+  return successResponse(response);
 }

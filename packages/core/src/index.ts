@@ -20,6 +20,12 @@ export { PlanningService } from "./application/planning-service.js";
 export { VersioningService } from "./application/versioning-service.js";
 export { TaskManagementService } from "./application/task-management-service.js";
 export { TaskSessionService } from "./application/task-session-service.js";
+export {
+  ConflictDetectionService,
+  type ConflictWarning,
+  type ConflictDetectionResult,
+  type FileModification,
+} from "./application/conflict-detection-service.js";
 export { LabelService, type Label } from "./application/label-service.js";
 export {
   TaskMatchingService,

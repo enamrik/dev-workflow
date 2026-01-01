@@ -6,6 +6,10 @@ import { DependencyService } from "./dependency-service.js";
 import { DependencyNotSatisfiedError } from "../domain/errors.js";
 import type { GitWorktreeService } from "../infrastructure/git/git-worktree-service.js";
 import { generateWorktreeNames } from "../infrastructure/git/git-worktree-service.js";
+import type {
+  ConflictDetectionService,
+  ConflictWarning,
+} from "./conflict-detection-service.js";
 
 /**
  * Request to start a task session
@@ -37,6 +41,8 @@ export interface TaskSession {
   worktreePath?: string;
   /** Git branch name if worktree was created */
   branchName?: string;
+  /** Conflict warnings for files modified by prior tasks (non-blocking) */
+  conflictWarnings?: ConflictWarning[];
 }
 
 /**
@@ -58,7 +64,8 @@ export class TaskSessionService {
     private readonly taskRepository: TaskRepository,
     private readonly planRepository: PlanRepository,
     private readonly issueRepository: IssueRepository,
-    private readonly gitWorktreeService?: GitWorktreeService
+    private readonly gitWorktreeService?: GitWorktreeService,
+    private readonly conflictDetectionService?: ConflictDetectionService
   ) {
     this.eventBus = EventBus.getInstance();
     this.dependencyService = new DependencyService(taskRepository);
@@ -138,6 +145,20 @@ export class TaskSessionService {
     const now = new Date().toISOString();
     const issueNumber = this.getIssueNumberForTask(taskId);
 
+    // Run conflict detection if service available (non-blocking)
+    let conflictWarnings: ConflictWarning[] | undefined;
+    if (this.conflictDetectionService) {
+      try {
+        const result = this.conflictDetectionService.detectConflicts(taskId);
+        if (result.hasConflicts) {
+          conflictWarnings = result.warnings;
+        }
+      } catch {
+        // Conflict detection failures should not block task start
+        console.warn(`Conflict detection failed for task ${taskId}`);
+      }
+    }
+
     // Create worktree for isolated execution (only if requested and service available)
     let worktreePath: string | undefined;
     let branchName: string | undefined;
@@ -189,6 +210,7 @@ export class TaskSessionService {
       startedAt: now,
       worktreePath,
       branchName,
+      conflictWarnings,
     };
   }
 
