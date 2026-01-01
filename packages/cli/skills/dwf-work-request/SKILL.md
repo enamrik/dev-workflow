@@ -25,7 +25,9 @@ This skill should activate whenever the user describes work to be done:
 | "We need better error handling" | Enhancement |
 | "Refactor the API layer" | Technical task |
 | "Make the search faster" | Performance improvement |
-| "Look into why X is slow" | Investigation |
+| "Look into why X is slow" | Investigation (likely a bug) |
+| "X isn't working as expected" | Bug investigation |
+| "We need to investigate Y" | Bug investigation |
 | "Build a dashboard for..." | Feature request |
 | "Update the form to include..." | Enhancement |
 
@@ -43,7 +45,19 @@ Skip issue creation only when:
 - User explicitly says "don't create an issue" or "just do it quick"
 - It's a trivial one-line fix AND user wants it done immediately
 - User is just asking questions, not requesting work
-- User is exploring/reading code, not changing it
+- **Pure exploration** - User is exploring/reading code to understand how it works (e.g., "how does the auth system work?", "explain this code")
+
+## Bug Investigations Need Issues
+
+**Important distinction:** If the user reports unexpected behavior or asks you to investigate something that isn't working correctly, this is bug investigation - NOT pure exploration.
+
+- **Pure exploration** (no issue): "How does the routing work?" / "Explain this function"
+- **Bug investigation** (needs issue): "The UI is showing stale data" / "Why isn't X working?" / "We need to investigate this"
+
+For bug investigations:
+1. Start investigating to confirm the issue exists
+2. **Once you confirm it's a bug**, create an issue to track it
+3. Continue investigation and fix as part of that issue
 
 When in doubt, create the issue. It takes seconds and prevents lost work.
 

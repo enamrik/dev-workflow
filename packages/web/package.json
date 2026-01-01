@@ -11,9 +11,10 @@
     }
   },
   "scripts": {
-    "build": "pnpm build:client && pnpm build:server",
+    "build": "pnpm build:client && pnpm build:server && pnpm build:assets",
     "build:client": "vite build",
     "build:server": "tsc -p tsconfig.server.json",
+    "build:assets": "rm -rf dist/public && cp -r src/public dist/public",
     "dev": "tsx watch --ignore 'vite.config.ts.*' src/dev.ts",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.client.json",
