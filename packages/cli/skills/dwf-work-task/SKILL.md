@@ -158,12 +158,30 @@ When abandoning a task:
    - Wait for explicit user approval before proceeding
    - Do NOT call `complete_task_session` without user saying yes
 
-3. **Complete the session (only after user confirms):**
+3. **Re-ask after addressing concerns:**
+   - If user reports an issue or gives feedback, fix it first
+   - After fixing, **always re-summarize and ask again** if task should be marked complete
+   - Do NOT wait silently after addressing concerns — proactively re-ask
+   - Continue this cycle until user explicitly approves completion
+
+4. **Run validation steps:**
+   - Check context (CLAUDE.md, task labels, project docs) for required validation
+   - Run any tests, linting, build, or other quality checks mentioned
+   - Common validations: `make test`, `pnpm test`, `pnpm typecheck`, `pnpm lint`
+   - If validation fails → fix issues and re-ask (go back to step 3)
+
+5. **Create git commit:**
+   - Stage all changes related to the task
+   - Create a commit with a clear message describing the work done
+   - Include task context in commit message (e.g., "Implement X for issue #N")
+   - This ensures all task work is properly committed before completion
+
+6. **Complete the session (only after user confirms and validation passes):**
    - Call `complete_task_session` with task ID and session ID
    - If pre-complete hooks fail (e.g., tests fail) → explain what failed
    - Pre-complete hooks MUST pass to complete the task
 
-4. **Report completion:**
+7. **Report completion:**
    - Show task is now COMPLETED
    - Suggest next steps (next task, or done with issue)
 
@@ -275,6 +293,78 @@ All hooks passed!
 Task "Add OAuth2 authentication with Google provider" is now COMPLETED.
 
 Next available task: "Add session management and user profile"
+Would you like to start working on it?
+```
+
+### Completing After Fixing Issues (Re-ask Flow)
+
+**User:** "I think I'm done"
+
+**Response:**
+```
+Here's a summary of what was completed:
+
+**Task:** Add form validation for user registration
+
+**Changes made:**
+- Added validation rules in `src/validators/user.ts`
+- Added error display component in `src/components/FormError.tsx`
+- Added unit tests
+
+**Acceptance Criteria:**
+- [x] Email format validation
+- [x] Password strength requirements
+- [x] Error messages display inline
+- [ ] Form disables submit while validating
+
+Should I mark this task as complete?
+```
+
+**User:** "Actually the submit button doesn't disable, can you fix that?"
+
+**Response:**
+```
+Good catch! Let me fix that.
+
+[Makes changes to disable submit button during validation]
+
+Done! I've updated `src/components/RegisterForm.tsx` to disable the
+submit button while validation is in progress.
+
+Here's the updated summary:
+
+**Changes made:**
+- Added validation rules in `src/validators/user.ts`
+- Added error display component in `src/components/FormError.tsx`
+- Updated `RegisterForm.tsx` to disable submit during validation
+- Added unit tests
+
+**Acceptance Criteria:**
+- [x] Email format validation
+- [x] Password strength requirements
+- [x] Error messages display inline
+- [x] Form disables submit while validating
+
+All criteria now met. Should I mark this task as complete?
+```
+
+**User:** "yes looks good"
+
+**Response:**
+```
+Running validation steps from project context...
+  - pnpm typecheck: PASSED
+  - pnpm test: PASSED
+
+Creating git commit...
+  [main abc1234] Add form validation for user registration (#12)
+   4 files changed, 156 insertions(+)
+
+Completing task session...
+
+Task "Add form validation for user registration" is now COMPLETED.
+
+Next available task: "Add password reset flow"
 Would you like to start working on it?
 ```
 
