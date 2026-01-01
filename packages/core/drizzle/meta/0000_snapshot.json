@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "593a31f1-087c-4bc6-8abb-4521761ab320",
+  "id": "76142eb1-2f6f-4a82-826e-2df54e89f622",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "issues": {
@@ -150,6 +150,28 @@
         },
         "milestone_id": {
           "name": "milestone_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "is_deleted": {
+          "name": "is_deleted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deleted_by": {
+          "name": "deleted_by",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

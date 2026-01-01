@@ -14,6 +14,8 @@ export {
   handleListIssues,
   handleListTemplates,
   handleUpdateIssue,
+  handleDeleteIssue,
+  handleRestoreIssue,
 } from "./issue-tools.js";
 
 // Plan tools

@@ -19,7 +19,10 @@ CREATE TABLE `issues` (
 	`github_last_synced_at` text,
 	`github_last_sync_error` text,
 	`github_project_item_id` text,
-	`milestone_id` text
+	`milestone_id` text,
+	`is_deleted` integer DEFAULT false NOT NULL,
+	`deleted_at` text,
+	`deleted_by` text
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `issues_project_number_idx` ON `issues` (`project_id`,`number`);--> statement-breakpoint

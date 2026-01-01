@@ -158,4 +158,89 @@ describe("SqliteIssueRepository", () => {
       expect(nextNumber).toBe(3);
     });
   });
+
+  describe("delete (soft delete)", () => {
+    it("should soft delete an issue", () => {
+      const created = createTestIssue(repos.issueRepository);
+
+      const deleted = repos.issueRepository.delete(created.id, "test-user");
+
+      expect(deleted.isDeleted).toBe(true);
+      expect(deleted.deletedAt).toBeDefined();
+      expect(deleted.deletedBy).toBe("test-user");
+    });
+
+    it("should exclude deleted issues from findMany by default", () => {
+      const issue1 = createTestIssue(repos.issueRepository);
+      const issue2 = createTestIssue(repos.issueRepository);
+
+      repos.issueRepository.delete(issue1.id, "test-user");
+
+      const issues = repos.issueRepository.findMany();
+      expect(issues).toHaveLength(1);
+      expect(issues[0]?.id).toBe(issue2.id);
+    });
+
+    it("should include deleted issues when includeDeleted is true", () => {
+      const issue1 = createTestIssue(repos.issueRepository);
+      createTestIssue(repos.issueRepository);
+
+      repos.issueRepository.delete(issue1.id, "test-user");
+
+      const issues = repos.issueRepository.findMany({ includeDeleted: true });
+      expect(issues).toHaveLength(2);
+    });
+
+    it("should throw when deleting non-existent issue", () => {
+      expect(() => repos.issueRepository.delete("non-existent", "test-user")).toThrow(
+        "Issue not found"
+      );
+    });
+
+    it("should throw when deleting already deleted issue", () => {
+      const created = createTestIssue(repos.issueRepository);
+      repos.issueRepository.delete(created.id, "test-user");
+
+      expect(() => repos.issueRepository.delete(created.id, "test-user")).toThrow(
+        "Issue is already deleted"
+      );
+    });
+  });
+
+  describe("restore", () => {
+    it("should restore a soft-deleted issue", () => {
+      const created = createTestIssue(repos.issueRepository);
+      repos.issueRepository.delete(created.id, "test-user");
+
+      const restored = repos.issueRepository.restore(created.id);
+
+      expect(restored.isDeleted).toBe(false);
+      expect(restored.deletedAt).toBeUndefined();
+      expect(restored.deletedBy).toBeUndefined();
+    });
+
+    it("should make restored issue appear in findMany", () => {
+      const issue1 = createTestIssue(repos.issueRepository);
+      repos.issueRepository.delete(issue1.id, "test-user");
+
+      // Before restore
+      let issues = repos.issueRepository.findMany();
+      expect(issues).toHaveLength(0);
+
+      // After restore
+      repos.issueRepository.restore(issue1.id);
+      issues = repos.issueRepository.findMany();
+      expect(issues).toHaveLength(1);
+    });
+
+    it("should throw when restoring non-existent issue", () => {
+      expect(() => repos.issueRepository.restore("non-existent")).toThrow("Issue not found");
+    });
+
+    it("should throw when restoring non-deleted issue", () => {
+      const created = createTestIssue(repos.issueRepository);
+
+      expect(() => repos.issueRepository.restore(created.id)).toThrow("Issue is not deleted");
+    });
+  });
 });

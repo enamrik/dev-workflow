@@ -51,6 +51,8 @@ import {
   handleListIssues,
   handleListTemplates,
   handleUpdateIssue,
+  handleDeleteIssue,
+  handleRestoreIssue,
   // Plan handlers
   handleGeneratePlan,
   handleGetPlan,
@@ -168,6 +170,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     }
     if (name === "update_issue") {
       return await handleUpdateIssue(issueToolContext, a);
+    }
+    if (name === "delete_issue") {
+      return handleDeleteIssue(issueToolContext, a);
+    }
+    if (name === "restore_issue") {
+      return handleRestoreIssue(issueToolContext, a);
     }
 
     // Plan tools

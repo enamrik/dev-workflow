@@ -124,15 +124,7 @@ test-e2e: build
 	@cd packages/e2e && pnpm test:e2e
 
 flatten-migrations:
-	@echo "🗑️  Flattening database migrations..."
-	@rm -rf packages/core/drizzle/*
-	@cd packages/core && pnpm drizzle-kit generate
-	@echo "✓ Migrations regenerated from scratch"
-	@echo ""
-	@echo "⚠️  WARNING: This is for development only!"
-	@echo "   - All existing databases will need to be recreated"
-	@echo "   - Run 'make reset && make dogfood' to reset your local dev-workflow setup"
-	@echo "   - Or 'make dogfood' to attempt migration (may fail if incompatible)"
+	@./scripts/flatten-migrations.sh
 
 ui-stop:
 	@echo "🛑 Stopping UI server..."

@@ -34,6 +34,11 @@ export interface Issue {
 
   /** Milestone this issue belongs to (optional) */
   milestoneId?: string;
+
+  /** Soft delete fields */
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 /**
@@ -46,6 +51,8 @@ export interface IssueFilters {
   labels?: string[];
   /** Filter by milestone */
   milestoneId?: string;
+  /** Include soft-deleted issues in results (default: false) */
+  includeDeleted?: boolean;
 }
 
 /**
@@ -109,4 +116,26 @@ export interface IssueRepository {
     id: string,
     data: Partial<Omit<Issue, "id" | "number" | "createdAt">>
   ): Issue;
+
+  /**
+   * Soft delete an issue
+   *
+   * Sets isDeleted=true and records deletion metadata.
+   * The issue will be excluded from findMany() by default.
+   *
+   * @param id - Issue UUID
+   * @param deletedBy - Who performed the deletion (e.g., "claude-code")
+   * @returns The deleted issue
+   */
+  delete(id: string, deletedBy: string): Issue;
+
+  /**
+   * Restore a soft-deleted issue
+   *
+   * Clears isDeleted flag and deletion metadata.
+   *
+   * @param id - Issue UUID
+   * @returns The restored issue
+   */
+  restore(id: string): Issue;
 }

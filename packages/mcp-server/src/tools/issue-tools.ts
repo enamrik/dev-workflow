@@ -80,7 +80,7 @@ export const issueToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "list_issues",
-    description: "List issues with optional filters",
+    description: "List issues with optional filters. Excludes deleted issues by default.",
     inputSchema: {
       type: "object",
       properties: {
@@ -93,6 +93,46 @@ export const issueToolDefinitions: ToolDefinition[] = [
           type: "string",
           enum: ["FEATURE", "BUG", "ENHANCEMENT", "TASK"],
           description: "Filter by type",
+        },
+        includeDeleted: {
+          type: "boolean",
+          description: "Include soft-deleted issues in results (default: false)",
+        },
+      },
+    },
+  },
+  {
+    name: "delete_issue",
+    description:
+      "Soft delete an issue. The issue will be excluded from list_issues by default. Use restore_issue to undo. Associated plans and tasks are preserved but become inaccessible.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issueId: {
+          type: "string",
+          description: "Issue UUID",
+        },
+        issueNumber: {
+          type: "number",
+          description: "Issue number (e.g., 123 for #123) - alternative to issueId",
+        },
+      },
+    },
+  },
+  {
+    name: "restore_issue",
+    description:
+      "Restore a soft-deleted issue. The issue will be included in list_issues again. Associated plans and tasks become accessible again.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issueId: {
+          type: "string",
+          description: "Issue UUID",
+        },
+        issueNumber: {
+          type: "number",
+          description: "Issue number (e.g., 123 for #123) - alternative to issueId",
         },
       },
     },
@@ -305,16 +345,118 @@ export function handleGetIssue(
  */
 export function handleListIssues(
   ctx: IssueToolContext,
-  args: { status?: IssueStatus; type?: IssueType }
+  args: { status?: IssueStatus; type?: IssueType; includeDeleted?: boolean }
 ): ToolResponse {
-  const { status, type } = args;
+  const { status, type, includeDeleted } = args;
 
   const filtered = ctx.issueRepository.findMany({
     status,
     type,
+    includeDeleted,
   });
 
   return successResponse(filtered);
+}
+
+/**
+ * Handle delete_issue tool call
+ *
+ * Soft deletes an issue. The issue will be excluded from list_issues by default.
+ */
+export function handleDeleteIssue(
+  ctx: IssueToolContext,
+  args: { issueId?: string; issueNumber?: number }
+): ToolResponse {
+  const { issueId, issueNumber } = args;
+
+  // Resolve issue from ID or number
+  let issue = issueId
+    ? ctx.issueRepository.findById(issueId)
+    : issueNumber !== undefined
+      ? ctx.issueRepository.findByNumber(issueNumber)
+      : null;
+
+  if (!issue) {
+    return errorResponse(
+      issueId
+        ? `Issue not found: ${issueId}`
+        : issueNumber !== undefined
+          ? `Issue not found: #${issueNumber}`
+          : "Either issueId or issueNumber is required"
+    );
+  }
+
+  try {
+    const deleted = ctx.issueRepository.delete(issue.id, "claude-code");
+
+    return successResponse({
+      success: true,
+      message: `Issue #${deleted.number} has been deleted`,
+      issue: {
+        id: deleted.id,
+        number: deleted.number,
+        title: deleted.title,
+        isDeleted: deleted.isDeleted,
+        deletedAt: deleted.deletedAt,
+        deletedBy: deleted.deletedBy,
+      },
+    });
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Handle restore_issue tool call
+ *
+ * Restores a soft-deleted issue. The issue will be included in list_issues again.
+ */
+export function handleRestoreIssue(
+  ctx: IssueToolContext,
+  args: { issueId?: string; issueNumber?: number }
+): ToolResponse {
+  const { issueId, issueNumber } = args;
+
+  // For restore, we need to find including deleted issues
+  // First try to find the issue by looking up with includeDeleted
+  const allIssues = ctx.issueRepository.findMany({ includeDeleted: true });
+  const issue = issueId
+    ? allIssues.find((i) => i.id === issueId)
+    : issueNumber !== undefined
+      ? allIssues.find((i) => i.number === issueNumber)
+      : null;
+
+  if (!issue) {
+    return errorResponse(
+      issueId
+        ? `Issue not found: ${issueId}`
+        : issueNumber !== undefined
+          ? `Issue not found: #${issueNumber}`
+          : "Either issueId or issueNumber is required"
+    );
+  }
+
+  if (!issue.isDeleted) {
+    return errorResponse(`Issue #${issue.number} is not deleted`);
+  }
+
+  try {
+    const restored = ctx.issueRepository.restore(issue.id);
+
+    return successResponse({
+      success: true,
+      message: `Issue #${restored.number} has been restored`,
+      issue: {
+        id: restored.id,
+        number: restored.number,
+        title: restored.title,
+        status: restored.status,
+        isDeleted: restored.isDeleted,
+      },
+    });
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
 }
 
 /**

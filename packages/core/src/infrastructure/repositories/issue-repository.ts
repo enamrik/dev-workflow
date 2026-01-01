@@ -91,6 +91,11 @@ export class SqliteIssueRepository implements IssueRepository {
     // Always filter by project
     const conditions = [eq(issues.projectId, this.projectId)];
 
+    // Exclude deleted issues by default
+    if (!filters?.includeDeleted) {
+      conditions.push(eq(issues.isDeleted, false));
+    }
+
     // Apply additional SQL filters for status, type, and milestone (scalar columns)
     if (filters?.status) {
       conditions.push(eq(issues.status, filters.status));
@@ -162,6 +167,88 @@ export class SqliteIssueRepository implements IssueRepository {
     return updated;
   }
 
+  delete(id: string, deletedBy: string): Issue {
+    const now = new Date().toISOString();
+
+    // Check if issue exists first
+    const existing = this.findByIdIncludingDeleted(id);
+    if (!existing) {
+      throw new Error(`Issue not found: ${id}`);
+    }
+
+    if (existing.isDeleted) {
+      throw new Error(`Issue is already deleted: ${id}`);
+    }
+
+    // Soft delete the issue
+    this.db
+      .update(issues)
+      .set({
+        isDeleted: true,
+        deletedAt: now,
+        deletedBy,
+        updatedAt: now,
+      })
+      .where(and(eq(issues.projectId, this.projectId), eq(issues.id, id)))
+      .run();
+
+    // Fetch and return the deleted issue
+    const deleted = this.findByIdIncludingDeleted(id);
+    if (!deleted) {
+      throw new Error(`Failed to delete issue: ${id}`);
+    }
+
+    return deleted;
+  }
+
+  restore(id: string): Issue {
+    const now = new Date().toISOString();
+
+    // Check if issue exists and is deleted
+    const existing = this.findByIdIncludingDeleted(id);
+    if (!existing) {
+      throw new Error(`Issue not found: ${id}`);
+    }
+
+    if (!existing.isDeleted) {
+      throw new Error(`Issue is not deleted: ${id}`);
+    }
+
+    // Restore the issue
+    this.db
+      .update(issues)
+      .set({
+        isDeleted: false,
+        deletedAt: null,
+        deletedBy: null,
+        updatedAt: now,
+      })
+      .where(and(eq(issues.projectId, this.projectId), eq(issues.id, id)))
+      .run();
+
+    // Fetch and return the restored issue
+    const restored = this.findById(id);
+    if (!restored) {
+      throw new Error(`Failed to restore issue: ${id}`);
+    }
+
+    return restored;
+  }
+
+  /**
+   * Find an issue by ID, including soft-deleted issues
+   * Used internally for delete/restore operations
+   */
+  private findByIdIncludingDeleted(id: string): Issue | null {
+    const result = this.db
+      .select()
+      .from(issues)
+      .where(and(eq(issues.projectId, this.projectId), eq(issues.id, id)))
+      .get();
+
+    return result ? this.mapRowToIssue(result) : null;
+  }
+
   /**
    * Map database row to domain Issue object
    *
@@ -187,6 +274,10 @@ export class SqliteIssueRepository implements IssueRepository {
       updatedAt: row.updatedAt,
       githubSync,
       milestoneId: row.milestoneId ?? undefined,
+      // Soft delete fields
+      isDeleted: row.isDeleted,
+      deletedAt: row.deletedAt ?? undefined,
+      deletedBy: row.deletedBy ?? undefined,
     };
   }
 

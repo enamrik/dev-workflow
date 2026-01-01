@@ -56,6 +56,11 @@ export const issues = sqliteTable("issues", {
 
   // Milestone association (optional)
   milestoneId: text("milestone_id"),
+
+  // Soft delete support
+  isDeleted: integer("is_deleted", { mode: "boolean" }).notNull().default(false),
+  deletedAt: text("deleted_at"),
+  deletedBy: text("deleted_by"),
 }, (table) => ({
   // Issue number must be unique within a project
   projectNumberIdx: uniqueIndex("issues_project_number_idx").on(table.projectId, table.number),
