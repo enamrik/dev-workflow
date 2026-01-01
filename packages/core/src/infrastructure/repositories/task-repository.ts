@@ -54,6 +54,8 @@ export class SqliteTaskRepository implements TaskRepository {
         labels: task.labels,
         contextInstructions: task.contextInstructions,
         dependsOn: task.dependsOn ?? [],
+        worktreePath: task.worktreePath,
+        branchName: task.branchName,
         startedAt: task.startedAt,
         completedAt: task.completedAt,
         abandonedAt: task.abandonedAt,
@@ -114,6 +116,8 @@ export class SqliteTaskRepository implements TaskRepository {
           labels: task.labels,
           contextInstructions: task.contextInstructions,
           dependsOn: task.dependsOn ?? [],
+          worktreePath: task.worktreePath,
+          branchName: task.branchName,
           startedAt: task.startedAt,
           completedAt: task.completedAt,
           abandonedAt: task.abandonedAt,
@@ -346,6 +350,48 @@ export class SqliteTaskRepository implements TaskRepository {
     return updatedTask;
   }
 
+  updateWorktreeInfo(taskId: string, worktreePath: string, branchName: string): Task {
+    const now = new Date().toISOString();
+
+    this.db
+      .update(tasks)
+      .set({
+        worktreePath,
+        branchName,
+        updatedAt: now,
+      })
+      .where(eq(tasks.id, taskId))
+      .run();
+
+    const updatedTask = this.findById(taskId);
+    if (!updatedTask) {
+      throw new Error(`Failed to update task worktree info: ${taskId}`);
+    }
+
+    return updatedTask;
+  }
+
+  clearWorktreeInfo(taskId: string): Task {
+    const now = new Date().toISOString();
+
+    this.db
+      .update(tasks)
+      .set({
+        worktreePath: null,
+        branchName: null,
+        updatedAt: now,
+      })
+      .where(eq(tasks.id, taskId))
+      .run();
+
+    const updatedTask = this.findById(taskId);
+    if (!updatedTask) {
+      throw new Error(`Failed to clear task worktree info: ${taskId}`);
+    }
+
+    return updatedTask;
+  }
+
   updateLabels(taskId: string, labels: string[]): Task {
     const now = new Date().toISOString();
 
@@ -474,6 +520,8 @@ export class SqliteTaskRepository implements TaskRepository {
       labels: row.labels ?? undefined,
       contextInstructions: row.contextInstructions ?? undefined,
       dependsOn: row.dependsOn ?? undefined,
+      worktreePath: row.worktreePath ?? undefined,
+      branchName: row.branchName ?? undefined,
       startedAt: row.startedAt ?? undefined,
       completedAt: row.completedAt ?? undefined,
       abandonedAt: row.abandonedAt ?? undefined,

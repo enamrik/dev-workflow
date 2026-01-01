@@ -191,13 +191,17 @@ export const tasks = sqliteTable("tasks", {
     .$type<string[]>()
     .default(sql`'[]'`),
 
-  // Subagent execution context
+  // Execution context
   contextInstructions: text("context_instructions"),
 
   // Task dependencies - array of task UUIDs this task depends on
   dependsOn: text("depends_on", { mode: "json" })
     .$type<string[]>()
     .default(sql`'[]'`),
+
+  // Git worktree support (for isolated task execution)
+  worktreePath: text("worktree_path"),
+  branchName: text("branch_name"),
 
   // Status timestamps
   startedAt: text("started_at"),
@@ -239,9 +243,9 @@ export const taskStatusHistory = sqliteTable("task_status_history", {
 /**
  * Task execution logs table schema
  *
- * Records progress during subagent execution for audit trail.
- * Subagents call log_task_progress to record what they're doing,
- * and the main session can retrieve these logs after completion.
+ * Records progress during task execution for audit trail.
+ * Sessions call log_task_progress to record what they're doing,
+ * and the logs can be retrieved to see execution history.
  */
 export const taskExecutionLogs = sqliteTable("task_execution_logs", {
   // Primary key

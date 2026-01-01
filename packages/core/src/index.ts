@@ -79,6 +79,16 @@ export {
   type GitHubCLIResult,
 } from "./infrastructure/github/github-cli.js";
 
+// Infrastructure - Git Worktrees
+export {
+  NodeGitWorktreeService,
+  GitWorktreeError,
+  generateWorktreeNames,
+  type GitWorktreeService,
+  type WorktreeInfo,
+  type GitCommandResult,
+} from "./infrastructure/git/git-worktree-service.js";
+
 // Infrastructure - Events
 export { EventBus, type DomainEventListener } from "./infrastructure/events/event-bus.js";
 

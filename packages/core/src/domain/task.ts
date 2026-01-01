@@ -38,11 +38,15 @@ export interface Task {
   // Labels (references .track/labels/<label>.md files)
   readonly labels?: string[]; // Array of labels, each references .track/labels/<label>.md
 
-  // Subagent execution context
-  readonly contextInstructions?: string; // Custom instructions for subagent execution (e.g., "use existing auth pattern in src/auth")
+  // Execution context
+  readonly contextInstructions?: string; // Custom instructions for task execution (e.g., "use existing auth pattern in src/auth")
 
   // Task dependencies - array of task IDs that must be COMPLETED or ABANDONED before this task can start
   readonly dependsOn?: string[]; // Array of task UUIDs within the same plan
+
+  // Git worktree support (for isolated task execution)
+  readonly worktreePath?: string; // Path to worktree directory (e.g., .worktrees/issue-5-task-abc123)
+  readonly branchName?: string; // Git branch name (e.g., issue-5/task-1-add-feature)
 
   readonly startedAt?: string; // When task moved to IN_PROGRESS
   readonly completedAt?: string; // When task moved to COMPLETED
@@ -70,9 +74,9 @@ export interface TaskStatusHistory {
 /**
  * Task execution log entry
  *
- * Records progress during subagent execution for audit trail.
- * Subagents call log_task_progress to record what they're doing,
- * and the main session can retrieve these logs after completion.
+ * Records progress during task execution for audit trail.
+ * Sessions call log_task_progress to record what they're doing,
+ * and the logs can be retrieved to see execution history.
  */
 export interface TaskExecutionLog {
   readonly id: string; // UUID
@@ -228,6 +232,29 @@ export interface TaskRepository {
    * @returns The updated task
    */
   clearSession(taskId: string): Task;
+
+  /**
+   * Update worktree information for a task
+   *
+   * Sets worktreePath and branchName for isolated task execution.
+   *
+   * @param taskId - Task UUID
+   * @param worktreePath - Path to worktree directory
+   * @param branchName - Git branch name
+   * @returns The updated task
+   */
+  updateWorktreeInfo(taskId: string, worktreePath: string, branchName: string): Task;
+
+  /**
+   * Clear worktree information from a task
+   *
+   * Sets worktreePath and branchName to undefined.
+   * Used when task is completed or abandoned.
+   *
+   * @param taskId - Task UUID
+   * @returns The updated task
+   */
+  clearWorktreeInfo(taskId: string): Task;
 
   /**
    * Update labels for a task

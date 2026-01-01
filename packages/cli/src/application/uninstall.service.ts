@@ -61,19 +61,6 @@ export class UninstallService {
     }
   }
 
-  async removeSubagents(): Promise<void> {
-    try {
-      const agentsDir = path.join(this.workingDirectory, ".claude/agents/dev-workflow");
-      const exists = await this.fileSystem.exists(agentsDir);
-
-      if (exists) {
-        await this.fileSystem.rmdir(agentsDir, { recursive: true });
-      }
-    } catch (error) {
-      throw new UninstallError("Failed to remove subagents", error);
-    }
-  }
-
   async unregisterMCPServer(): Promise<void> {
     try {
       const mcpConfigPath = path.join(this.workingDirectory, ".claude/config/mcp-servers.json");

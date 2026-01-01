@@ -36,6 +36,8 @@ import {
   GitHubSyncService,
   NodeGitHubCLI,
   TrackDirectoryResolver,
+  // Git worktree support
+  NodeGitWorktreeService,
 } from "@dev-workflow/core";
 
 // Import tools
@@ -95,6 +97,10 @@ import {
   handleUpdateMilestone,
   handleDeleteMilestone,
   handleAssignIssueToMilestone,
+  // Worktree handlers
+  worktreeToolDefinitions,
+  handleListWorktrees,
+  handlePruneStaleWorktrees,
   // Types
   type IssueToolContext,
   type PlanToolContext,
@@ -102,6 +108,7 @@ import {
   type SnapshotToolContext,
   type SettingsToolContext,
   type MilestoneToolContext,
+  type WorktreeToolContext,
   errorResponse,
 } from "./tools/index.js";
 
@@ -126,6 +133,7 @@ let taskToolContext: TaskToolContext;
 let snapshotToolContext: SnapshotToolContext;
 let settingsToolContext: SettingsToolContext;
 let milestoneToolContext: MilestoneToolContext;
+let worktreeToolContext: WorktreeToolContext;
 
 // Create MCP server
 const server = new Server(
@@ -149,6 +157,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     ...snapshotToolDefinitions,
     ...settingsToolDefinitions,
     ...milestoneToolDefinitions,
+    ...worktreeToolDefinitions,
   ],
 }));
 
@@ -298,6 +307,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
       return handleAssignIssueToMilestone(milestoneToolContext, a);
     }
 
+    // Worktree tools
+    if (name === "list_worktrees") {
+      return await handleListWorktrees(a, worktreeToolContext);
+    }
+    if (name === "prune_stale_worktrees") {
+      return await handlePruneStaleWorktrees(a, worktreeToolContext);
+    }
+
     return errorResponse(`Unknown tool: ${name}`);
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));
@@ -382,10 +399,16 @@ async function main() {
     defaultTemplatesPath
   );
 
+  // Initialize git worktree service for isolated task execution
+  // Project root is the parent of .track directory
+  const projectRoot = path.dirname(trackDirectory);
+  const gitWorktreeService = new NodeGitWorktreeService(projectRoot);
+
   const taskSessionService = new TaskSessionService(
     taskRepository,
     planRepository,
-    issueRepository
+    issueRepository,
+    gitWorktreeService
   );
 
   // Create tool contexts
@@ -430,6 +453,10 @@ async function main() {
   milestoneToolContext = {
     milestoneRepository,
     issueRepository,
+  };
+
+  worktreeToolContext = {
+    projectRoot,
   };
 
   // Start server with stdio transport

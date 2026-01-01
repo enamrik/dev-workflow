@@ -61,9 +61,6 @@ async function runInit(): Promise<void> {
     await installer.installSkills();
     console.log("✓ Installed skills");
 
-    await installer.installSubagents();
-    console.log("✓ Installed subagents");
-
     await installer.registerMCPServer();
     console.log("✓ Registered MCP server");
 
@@ -112,9 +109,6 @@ async function runUpdate(): Promise<void> {
     await updater.updateSkills();
     console.log("✓ Updated skills");
 
-    await updater.updateSubagents();
-    console.log("✓ Updated subagents");
-
     await updater.updateTemplates();
     console.log("✓ Updated templates");
 
@@ -131,7 +125,7 @@ async function runUpdate(): Promise<void> {
 
     console.log("\n✨ dev-workflow updated successfully!");
     console.log("\nChanges:");
-    console.log("- Skills and subagents updated to latest version");
+    console.log("- Skills updated to latest version");
     console.log("- New templates added (existing customizations preserved)");
     console.log("- MCP server registration refreshed");
     console.log("- Database schema updated");
@@ -176,9 +170,6 @@ async function runUninit(): Promise<void> {
 
     await uninstaller.removeSkills();
     console.log("✓ Removed skills");
-
-    await uninstaller.removeSubagents();
-    console.log("✓ Removed subagents");
 
     await uninstaller.unregisterMCPServer();
     console.log("✓ Unregistered MCP server");

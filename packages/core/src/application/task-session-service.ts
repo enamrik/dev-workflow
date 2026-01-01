@@ -4,6 +4,8 @@ import type { IssueRepository } from "../domain/issue.js";
 import { EventBus } from "../infrastructure/events/event-bus.js";
 import { DependencyService } from "./dependency-service.js";
 import { DependencyNotSatisfiedError } from "../domain/errors.js";
+import type { GitWorktreeService } from "../infrastructure/git/git-worktree-service.js";
+import { generateWorktreeNames } from "../infrastructure/git/git-worktree-service.js";
 
 /**
  * Request to start a task session
@@ -11,6 +13,8 @@ import { DependencyNotSatisfiedError } from "../domain/errors.js";
 export interface StartTaskSessionRequest {
   taskId: string;
   sessionId: string;
+  /** Create a git worktree for isolated task execution (default: false) */
+  createWorktree?: boolean;
 }
 
 /**
@@ -29,6 +33,10 @@ export interface TaskSession {
   task: Task;
   sessionId: string;
   startedAt: string;
+  /** Path to worktree if created for isolated execution */
+  worktreePath?: string;
+  /** Git branch name if worktree was created */
+  branchName?: string;
 }
 
 /**
@@ -40,6 +48,7 @@ export interface TaskSession {
  * - Abandon task sessions (update status to ABANDONED)
  * - Prevent concurrent sessions on same task
  * - Track session activity for timeout detection
+ * - Create/cleanup worktrees for isolated task execution
  */
 export class TaskSessionService {
   private readonly eventBus: EventBus;
@@ -48,7 +57,8 @@ export class TaskSessionService {
   constructor(
     private readonly taskRepository: TaskRepository,
     private readonly planRepository: PlanRepository,
-    private readonly issueRepository: IssueRepository
+    private readonly issueRepository: IssueRepository,
+    private readonly gitWorktreeService?: GitWorktreeService
   ) {
     this.eventBus = EventBus.getInstance();
     this.dependencyService = new DependencyService(taskRepository);
@@ -81,12 +91,13 @@ export class TaskSessionService {
    *
    * Workflow:
    * 1. Validate task is available (not locked by another session)
-   * 2. Update task status to IN_PROGRESS with session info
+   * 2. Create a worktree for isolated execution (if createWorktree=true and GitWorktreeService available)
+   * 3. Update task status to IN_PROGRESS with session info
    */
   async startTaskSession(
     request: StartTaskSessionRequest
   ): Promise<TaskSession> {
-    const { taskId, sessionId } = request;
+    const { taskId, sessionId, createWorktree = false } = request;
 
     // Get task and validate
     const task = this.taskRepository.findById(taskId);
@@ -125,6 +136,23 @@ export class TaskSessionService {
     }
 
     const now = new Date().toISOString();
+    const issueNumber = this.getIssueNumberForTask(taskId);
+
+    // Create worktree for isolated execution (only if requested and service available)
+    let worktreePath: string | undefined;
+    let branchName: string | undefined;
+
+    if (createWorktree && this.gitWorktreeService) {
+      const names = generateWorktreeNames(issueNumber, task.number, task.title);
+      branchName = names.branchName;
+      worktreePath = await this.gitWorktreeService.createWorktree(
+        names.worktreePath,
+        branchName
+      );
+
+      // Update task with worktree info
+      this.taskRepository.updateWorktreeInfo(taskId, worktreePath, branchName);
+    }
 
     // Update task status to IN_PROGRESS and set session info
     this.taskRepository.updateStatus(
@@ -149,7 +177,6 @@ export class TaskSessionService {
     }
 
     // Emit session started event for real-time UI updates
-    const issueNumber = this.getIssueNumberForTask(taskId);
     this.eventBus.emit("task:session_started", {
       taskId,
       sessionId,
@@ -160,6 +187,8 @@ export class TaskSessionService {
       task: finalTask,
       sessionId,
       startedAt: now,
+      worktreePath,
+      branchName,
     };
   }
 
@@ -169,7 +198,8 @@ export class TaskSessionService {
    * Workflow:
    * 1. Validate session ownership
    * 2. Update task status to COMPLETED
-   * 3. Clear session association
+   * 3. Cleanup worktree if present
+   * 4. Clear session association
    */
   async completeTaskSession(
     request: CompleteTaskSessionRequest
@@ -194,6 +224,19 @@ export class TaskSessionService {
       throw new Error(
         `Task must be IN_PROGRESS to complete. Current status: ${task.status}`
       );
+    }
+
+    // Cleanup worktree if present
+    if (task.worktreePath && this.gitWorktreeService) {
+      try {
+        // Remove worktree but keep the branch (it has the commits)
+        await this.gitWorktreeService.removeWorktree(task.worktreePath, false);
+      } catch {
+        // Log but don't fail completion if worktree cleanup fails
+        console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
+      }
+      // Clear worktree info from task
+      this.taskRepository.clearWorktreeInfo(taskId);
     }
 
     // Update task status to COMPLETED
@@ -230,7 +273,8 @@ export class TaskSessionService {
    * Workflow:
    * 1. Validate session ownership
    * 2. Update task status to ABANDONED
-   * 3. Clear session association
+   * 3. Cleanup worktree if present (and delete the branch)
+   * 4. Clear session association
    */
   async abandonTaskSession(
     taskId: string,
@@ -248,6 +292,19 @@ export class TaskSessionService {
       throw new Error(
         `Task is not associated with session ${sessionId}. Current session: ${task.sessionId}`
       );
+    }
+
+    // Cleanup worktree if present (delete branch too since task is abandoned)
+    if (task.worktreePath && this.gitWorktreeService) {
+      try {
+        // Remove worktree and delete the branch (abandoned work)
+        await this.gitWorktreeService.removeWorktree(task.worktreePath, true);
+      } catch {
+        // Log but don't fail abandonment if worktree cleanup fails
+        console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
+      }
+      // Clear worktree info from task
+      this.taskRepository.clearWorktreeInfo(taskId);
     }
 
     // Update task status to ABANDONED

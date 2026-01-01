@@ -55,7 +55,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "start_task_session",
     description:
-      "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Starts working on a task in the current Claude session. Automatically updates status to IN_PROGRESS.",
+      "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Starts working on a task in the current Claude session. Automatically updates status to IN_PROGRESS. Optionally creates a git worktree for isolated execution.",
     inputSchema: {
       type: "object",
       properties: {
@@ -66,6 +66,11 @@ export const taskToolDefinitions: ToolDefinition[] = [
         sessionId: {
           type: "string",
           description: "Claude session ID",
+        },
+        createWorktree: {
+          type: "boolean",
+          description:
+            "Create a git worktree for isolated task execution. Creates a new branch and worktree directory. Default: false",
         },
       },
       required: ["taskId", "sessionId"],
@@ -348,7 +353,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
         contextInstructions: {
           type: "string",
           description:
-            "Custom instructions for subagent execution (e.g., 'use existing auth pattern in src/auth')",
+            "Custom instructions for task execution (e.g., 'use existing auth pattern in src/auth')",
         },
         estimatedMinutes: {
           type: "number",
@@ -366,7 +371,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "get_task_execution_prompt",
     description:
-      "Generate a prompt for spawning a subagent to execute a task. Returns prompt-ready text with full context.",
+      "Generate a prompt for executing a task. Returns prompt-ready text with full context including issue, plan, and task details.",
     inputSchema: {
       type: "object",
       properties: {
@@ -381,7 +386,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "log_task_progress",
     description:
-      "Log progress during task execution (for subagent audit trail). Call this to record what you're doing.",
+      "Log progress during task execution (for audit trail). Call this to record what you're doing.",
     inputSchema: {
       type: "object",
       properties: {
@@ -410,7 +415,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "get_task_execution_log",
     description:
-      "Get the execution log for a task. Use after subagent completion to see what was done.",
+      "Get the execution log for a task. Shows recorded progress entries from task execution.",
     inputSchema: {
       type: "object",
       properties: {
@@ -485,21 +490,30 @@ export function handleUpdateTaskStatus(
  */
 export async function handleStartTaskSession(
   ctx: TaskToolContext,
-  args: { taskId: string; sessionId: string }
+  args: { taskId: string; sessionId: string; createWorktree?: boolean }
 ): Promise<ToolResponse> {
-  const { taskId, sessionId } = args;
+  const { taskId, sessionId, createWorktree = false } = args;
 
   const result = await ctx.taskSessionService.startTaskSession({
     taskId,
     sessionId,
+    createWorktree,
   });
 
-  return successResponse({
+  const response: Record<string, unknown> = {
     success: true,
     task: result.task,
     sessionId: result.sessionId,
     startedAt: result.startedAt,
-  });
+  };
+
+  // Include worktree info if created
+  if (result.worktreePath) {
+    response.worktreePath = result.worktreePath;
+    response.branchName = result.branchName;
+  }
+
+  return successResponse(response);
 }
 
 /**

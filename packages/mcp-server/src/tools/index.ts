@@ -82,3 +82,11 @@ export {
   handleDeleteMilestone,
   handleAssignIssueToMilestone,
 } from "./milestone-tools.js";
+
+// Worktree tools
+export {
+  worktreeToolDefinitions,
+  type WorktreeToolContext,
+  handleListWorktrees,
+  handlePruneStaleWorktrees,
+} from "./worktree-tools.js";

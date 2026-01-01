@@ -17,7 +17,6 @@ export class UpdateError extends Error {
  * Responsibilities:
  * - Verify dev-workflow is already initialized
  * - Update skills to latest version
- * - Update subagents to latest version
  * - Update MCP server registration
  * - Run database migrations
  */
@@ -49,20 +48,6 @@ export class UpdateService {
       await this.fileSystem.copyDirectory(skillsSource, skillsTarget);
     } catch (error) {
       throw new UpdateError("Failed to update skills", error);
-    }
-  }
-
-  /**
-   * Update subagents to latest version from package
-   */
-  async updateSubagents(): Promise<void> {
-    try {
-      const agentsDir = path.join(this.workingDirectory, ".claude/agents/dev-workflow");
-      const agentsSource = path.join(this.packageRoot, "agents");
-
-      await this.fileSystem.copyDirectory(agentsSource, agentsDir);
-    } catch (error) {
-      throw new UpdateError("Failed to update subagents", error);
     }
   }
 

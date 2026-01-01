@@ -110,18 +110,6 @@ These values can still be overridden when creating an issue explicitly.
     }
   }
 
-  async installSubagents(): Promise<void> {
-    try {
-      const agentsDir = path.join(this.workingDirectory, ".claude/agents/dev-workflow");
-      await this.fileSystem.mkdir(agentsDir, { recursive: true });
-
-      const agentsSource = path.join(this.packageRoot, "agents");
-      await this.fileSystem.copyDirectory(agentsSource, agentsDir);
-    } catch (error) {
-      throw new InstallError("Failed to install subagents", error);
-    }
-  }
-
   async registerMCPServer(): Promise<void> {
     try {
       const mcpConfigDir = path.join(this.workingDirectory, ".claude/config");

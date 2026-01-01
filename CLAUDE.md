@@ -200,15 +200,21 @@ describe("Issue", () => {
 Useful Make commands for development:
 
 ```bash
-make flatten-migrations  # Delete all migrations and regenerate from scratch
 make dogfood            # Full reset + build + link + init
 make test               # Run unit tests
 make test-e2e           # Run E2E tests (requires Claude CLI)
 ```
 
-**`make flatten-migrations`**: Deletes all existing Drizzle migrations and regenerates from the current schema. Use this when making schema changes during development. After running, you'll need to `make dogfood` to reset your local database.
+### Database Migrations
 
-**Note**: This is for development only - in production we'd need proper migration files.
+**IMPORTANT: NEVER delete `~/.track/workflow.db`!** This file contains all issue tracking data.
+
+When making schema changes:
+1. Update the schema in `packages/core/src/infrastructure/database/schema.ts`
+2. Run `pnpm drizzle-kit generate` in `packages/core` to create an incremental migration
+3. Run `dev-workflow update` to apply the migration
+
+The generated migration will contain only the changes (ALTER TABLE statements), preserving existing data.
 
 ## TypeScript Guidelines
 
