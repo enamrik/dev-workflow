@@ -91,7 +91,11 @@ init: link
 	@echo "  3. Start using dev-workflow to build dev-workflow!"
 	@echo "  4. Or run '$(DEV_WORKFLOW) ui' to open the web UI"
 
-dogfood: install build link
+dogfood: install
+	@echo "🧹 Clearing Next.js cache..."
+	@rm -rf packages/web/.next
+	@$(MAKE) build
+	@$(MAKE) link
 	@echo ""
 	@if [ -d ".track" ]; then \
 		echo "🔄 Updating existing dev-workflow installation..."; \
