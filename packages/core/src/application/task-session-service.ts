@@ -343,10 +343,20 @@ export class TaskSessionService {
    * Check if task is available (synchronous version)
    *
    * A task is available if:
+   * - Parent issue is not CLOSED
    * - Status is PENDING and dependencies are satisfied
    * - OR status is IN_PROGRESS but session has timed out (>1 hour inactive)
    */
   private isTaskAvailableSync(task: Task): boolean {
+    // Check if parent issue is closed
+    const plan = this.planRepository.findById(task.planId);
+    if (plan) {
+      const issue = this.issueRepository.findById(plan.issueId);
+      if (issue && issue.status === "CLOSED") {
+        return false;
+      }
+    }
+
     // PENDING tasks are available if dependencies are satisfied
     if (task.status === "PENDING") {
       return this.dependencyService.areDependenciesSatisfied(task);

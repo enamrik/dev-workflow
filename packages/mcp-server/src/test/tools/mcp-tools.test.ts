@@ -15,6 +15,7 @@ import {
   VersioningService,
   PlanningService,
   TaskManagementService,
+  TaskSessionService,
   type IssueType,
   type IssuePriority,
   type IssueStatus,
@@ -865,5 +866,114 @@ describe("MCP Tool: list_issues", () => {
     const issues = result.issues as Array<{ title: string }>;
     expect(issues).toHaveLength(1);
     expect(issues[0]?.title).toBe("Bug");
+  });
+});
+
+describe("MCP Tool: list_available_tasks", () => {
+  let testDb: TestDatabase;
+  let issueRepository: SqliteIssueRepository;
+  let planRepository: SqlitePlanRepository;
+  let taskRepository: SqliteTaskRepository;
+  let planningService: PlanningService;
+  let taskSessionService: TaskSessionService;
+
+  beforeEach(() => {
+    testDb = createTestDatabase();
+    const repos = createRepositories(testDb.db);
+    issueRepository = repos.issueRepository;
+    planRepository = repos.planRepository;
+    taskRepository = repos.taskRepository;
+    const services = createServices(repos);
+    planningService = services.planningService;
+    taskSessionService = new TaskSessionService(
+      taskRepository,
+      planRepository,
+      issueRepository
+    );
+  });
+
+  afterEach(() => {
+    testDb.cleanup();
+  });
+
+  it("should return PENDING tasks from OPEN issues", async () => {
+    // Create an open issue with a plan and task
+    createIssueTool(issueRepository, {
+      title: "Open Issue",
+      description: "This issue is open",
+    });
+    await generatePlanTool(planningService, issueRepository, {
+      issueNumber: 1,
+      summary: "Test plan",
+      approach: "Test approach",
+      tasks: [{ id: crypto.randomUUID(), title: "Task 1", description: "Desc", acceptanceCriteria: [] }],
+      estimatedComplexity: "LOW",
+    });
+
+    const issue = issueRepository.findByNumber(1);
+    const plan = planRepository.findByIssueId(issue!.id);
+    const tasks = taskRepository.findByPlanId(plan!.id);
+    const task = tasks[0]!;
+
+    // Check task availability
+    const isAvailable = await taskSessionService.isTaskAvailable(task.id);
+
+    expect(isAvailable).toBe(true);
+  });
+
+  it("should NOT return tasks from CLOSED issues", async () => {
+    // Create an issue with a plan and task
+    createIssueTool(issueRepository, {
+      title: "Will Be Closed",
+      description: "This issue will be closed",
+    });
+    await generatePlanTool(planningService, issueRepository, {
+      issueNumber: 1,
+      summary: "Test plan",
+      approach: "Test approach",
+      tasks: [{ id: crypto.randomUUID(), title: "Task 1", description: "Desc", acceptanceCriteria: [] }],
+      estimatedComplexity: "LOW",
+    });
+
+    const issue = issueRepository.findByNumber(1);
+    const plan = planRepository.findByIssueId(issue!.id);
+    const tasks = taskRepository.findByPlanId(plan!.id);
+    const task = tasks[0]!;
+
+    // Close the issue (task remains PENDING)
+    issueRepository.update(issue!.id, { status: "CLOSED" });
+
+    // Check task availability - should be false because issue is closed
+    const isAvailable = await taskSessionService.isTaskAvailable(task.id);
+
+    expect(isAvailable).toBe(false);
+  });
+
+  it("should return tasks from reopened issues", async () => {
+    // Create an issue, close it, then reopen it
+    createIssueTool(issueRepository, {
+      title: "Reopened Issue",
+      description: "This issue was reopened",
+    });
+    await generatePlanTool(planningService, issueRepository, {
+      issueNumber: 1,
+      summary: "Test plan",
+      approach: "Test approach",
+      tasks: [{ id: crypto.randomUUID(), title: "Task 1", description: "Desc", acceptanceCriteria: [] }],
+      estimatedComplexity: "LOW",
+    });
+
+    const issue = issueRepository.findByNumber(1);
+    const plan = planRepository.findByIssueId(issue!.id);
+    const tasks = taskRepository.findByPlanId(plan!.id);
+    const task = tasks[0]!;
+
+    // Close the issue
+    issueRepository.update(issue!.id, { status: "CLOSED" });
+    expect(await taskSessionService.isTaskAvailable(task.id)).toBe(false);
+
+    // Reopen the issue
+    issueRepository.update(issue!.id, { status: "OPEN" });
+    expect(await taskSessionService.isTaskAvailable(task.id)).toBe(true);
   });
 });
