@@ -203,7 +203,7 @@ function renderKanbanCard(task: ProjectKanbanTask): string {
 }
 
 function renderSessionIndicator(task: ProjectKanbanTask): string {
-  if (!task.sessionId) {
+  if (!task.sessionId || task.status !== "IN_PROGRESS") {
     return "";
   }
 

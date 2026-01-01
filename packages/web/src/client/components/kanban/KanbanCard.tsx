@@ -68,7 +68,7 @@ export function KanbanCard({
             <span className="text-gray-500">{task.estimatedMinutes}m</span>
           )}
           {isAbandoned && <Badge variant="status" value="ABANDONED" />}
-          {task.sessionId && (
+          {task.sessionId && isInProgress && (
             <span
               className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium"
               title={`Session: ${task.sessionId}`}
