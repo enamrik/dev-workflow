@@ -5,7 +5,7 @@ export PNPM_HOME
 export PATH := $(PNPM_HOME):$(PATH)
 DEV_WORKFLOW := $(PNPM_HOME)/dev-workflow
 
-.PHONY: help install build clean reset init dogfood test test-npm-install test-mcp test-e2e link unlink flatten-migrations
+.PHONY: help install build clean reset init dogfood test test-npm-install test-mcp test-e2e link unlink flatten-migrations ui ui-dev ui-stop
 
 help:
 	@echo "dev-workflow - Makefile commands"
@@ -18,12 +18,15 @@ help:
 	@echo "  make unlink           - Uninstall global dev-workflow"
 	@echo "  make reset            - Uninstall dev-workflow (run 'dev-workflow uninit')"
 	@echo "  make init             - Initialize dev-workflow in this repository"
-	@echo "  make dogfood          - Full reset + build + global link + init (start dogfooding)"
+	@echo "  make dogfood          - Build + link + update (or init if first time)"
 	@echo "  make test             - Run unit tests"
 	@echo "  make test-e2e         - Run E2E tests (requires Claude CLI)"
 	@echo "  make test-npm-install - Test npm install scenario (simulates user install)"
 	@echo "  make test-mcp         - Test MCP server startup and migrations"
 	@echo "  make flatten-migrations - Delete all migrations and regenerate (dev only)"
+	@echo "  make ui               - Restart UI server (rebuild + restart)"
+	@echo "  make ui-dev           - Start UI in dev mode with hot reload"
+	@echo "  make ui-stop          - Stop running UI server"
 
 install:
 	@echo "📦 Installing dependencies..."
@@ -80,7 +83,7 @@ init: link
 	@echo "🚀 Initializing dev-workflow in current repository..."
 	@$(DEV_WORKFLOW) init
 	@echo ""
-	@echo "✨ Dogfooding setup complete!"
+	@echo "✨ Setup complete!"
 	@echo ""
 	@echo "Next steps:"
 	@echo "  1. Open Claude Code in this repository"
@@ -88,7 +91,15 @@ init: link
 	@echo "  3. Start using dev-workflow to build dev-workflow!"
 	@echo "  4. Or run '$(DEV_WORKFLOW) ui' to open the web UI"
 
-dogfood: reset install build link init
+dogfood: install build link
+	@echo ""
+	@if [ -d ".track" ]; then \
+		echo "🔄 Updating existing dev-workflow installation..."; \
+		$(DEV_WORKFLOW) update; \
+	else \
+		echo "🚀 First-time setup - initializing dev-workflow..."; \
+		$(DEV_WORKFLOW) init; \
+	fi
 	@echo ""
 	@echo "🐕 Ready to dogfood! You can now use dev-workflow anywhere on this machine."
 	@echo ""
@@ -120,4 +131,19 @@ flatten-migrations:
 	@echo ""
 	@echo "⚠️  WARNING: This is for development only!"
 	@echo "   - All existing databases will need to be recreated"
-	@echo "   - Run 'make dogfood' to reset your local dev-workflow setup"
+	@echo "   - Run 'make reset && make dogfood' to reset your local dev-workflow setup"
+	@echo "   - Or 'make dogfood' to attempt migration (may fail if incompatible)"
+
+ui-stop:
+	@echo "🛑 Stopping UI server..."
+	@-lsof -ti :3456 | xargs kill 2>/dev/null || true
+	@echo "✓ UI server stopped"
+
+ui: ui-stop build
+	@echo "🚀 Starting UI server..."
+	@$(DEV_WORKFLOW) ui
+
+ui-dev:
+	@echo "🔥 Starting UI in dev mode (hot reload enabled)..."
+	@echo "   Server on :3457, Client on :5173"
+	@cd packages/web && (npx wait-on tcp:5173 && open http://localhost:5173) & pnpm dev
