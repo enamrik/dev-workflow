@@ -8,6 +8,7 @@ const navItems = [
   { href: "/", label: "Board" },
   { href: "/issues", label: "Issues" },
   { href: "/milestones", label: "Milestones" },
+  { href: "/worktrees", label: "Worktrees" },
 ];
 
 export function Nav() {

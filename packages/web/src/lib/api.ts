@@ -4,6 +4,7 @@ import type {
   IssueDetail,
   TasksResponse,
   MilestoneWithIssues,
+  Worktree,
 } from "./types";
 import { ApiError } from "./types";
 
@@ -101,4 +102,29 @@ export function getMilestones(
   });
 
   return apiClient<MilestoneWithIssues[]>(`/milestones${query}`);
+}
+
+// Worktrees
+export interface WorktreesFilters {
+  project?: string;
+}
+
+export async function getWorktrees(
+  filters?: WorktreesFilters
+): Promise<Worktree[]> {
+  const query = buildQueryString({
+    project: filters?.project,
+  });
+
+  const response = await apiClient<{ worktrees: Worktree[] }>(`/worktrees${query}`);
+  return response.worktrees;
+}
+
+export async function pruneWorktrees(
+  projectId: string
+): Promise<{ success: boolean; pruned: number }> {
+  return apiClient<{ success: boolean; pruned: number }>("/worktrees", {
+    method: "POST",
+    body: JSON.stringify({ action: "prune", projectId }),
+  });
 }

@@ -8,10 +8,12 @@ import {
   SqliteTaskRepository,
   SqliteMilestoneRepository,
   getGlobalDatabasePath,
+  NodeGitWorktreeService,
   type Issue,
   type Plan,
   type Task,
   type Milestone,
+  type WorktreeInfo,
 } from "@dev-workflow/core";
 
 /**
@@ -86,6 +88,24 @@ export interface MilestoneWithIssues {
     closed: number;
     percentage: number;
   };
+}
+
+/**
+ * Worktree with project context and optional task association
+ */
+export interface ProjectWorktree {
+  projectId: string;
+  path: string;
+  branch: string;
+  head: string;
+  isMain: boolean;
+  diskUsageBytes?: number;
+  // Task association (if any)
+  taskId?: string;
+  taskNumber?: number;
+  taskTitle?: string;
+  taskStatus?: string;
+  issueNumber?: number;
 }
 
 /**
@@ -423,6 +443,120 @@ export class MultiProjectService {
     return allMilestones.sort(
       (a, b) => a.milestone.startDate.localeCompare(b.milestone.startDate)
     );
+  }
+
+  /**
+   * List all worktrees across all projects (or filtered by project)
+   */
+  async listWorktrees(projectFilter?: string): Promise<ProjectWorktree[]> {
+    const projects = await this.listProjects();
+    const filteredProjects = projectFilter
+      ? projects.filter((p) => p.id === projectFilter)
+      : projects;
+
+    const { planRepository, taskRepository } = await this.ensureConnection();
+    const allWorktrees: ProjectWorktree[] = [];
+
+    for (const project of filteredProjects) {
+      // Get project root from config
+      const configPath = path.join(project.trackDirectory, "config.json");
+      let projectRoot: string;
+      try {
+        const configContent = await fs.readFile(configPath, "utf-8");
+        const config = JSON.parse(configContent);
+        projectRoot = config.projectRoot;
+        if (!projectRoot) continue;
+      } catch {
+        continue;
+      }
+
+      // Get worktrees from git
+      const worktreeService = new NodeGitWorktreeService(projectRoot);
+      let worktrees: WorktreeInfo[];
+      try {
+        worktrees = await worktreeService.listWorktrees();
+      } catch {
+        continue;
+      }
+
+      // Get all tasks with worktree paths for this project
+      const issueRepository = await this.getIssueRepository(project.id);
+      const issues = issueRepository.findMany({});
+      const tasksByWorktreePath = new Map<string, { task: Task; issueNumber: number }>();
+
+      for (const issue of issues) {
+        const plan = planRepository.findByIssueId(issue.id);
+        if (!plan) continue;
+
+        const tasks = taskRepository.findByPlanId(plan.id);
+        for (const task of tasks) {
+          if (task.worktreePath) {
+            // Resolve worktree path relative to project root
+            const fullPath = path.resolve(projectRoot, task.worktreePath);
+            tasksByWorktreePath.set(fullPath, { task, issueNumber: issue.number });
+          }
+        }
+      }
+
+      // Map worktrees to ProjectWorktree with task associations
+      for (const wt of worktrees) {
+        if (wt.isMain) continue; // Skip main worktree
+
+        const taskInfo = tasksByWorktreePath.get(wt.path);
+        allWorktrees.push({
+          projectId: project.id,
+          path: wt.path,
+          branch: wt.branch,
+          head: wt.head,
+          isMain: wt.isMain,
+          diskUsageBytes: wt.diskUsageBytes,
+          taskId: taskInfo?.task.id,
+          taskNumber: taskInfo?.task.number,
+          taskTitle: taskInfo?.task.title,
+          taskStatus: taskInfo?.task.status,
+          issueNumber: taskInfo?.issueNumber,
+        });
+      }
+    }
+
+    return allWorktrees;
+  }
+
+  /**
+   * Prune stale worktrees for a project
+   */
+  async pruneWorktrees(projectId: string): Promise<{ pruned: number }> {
+    const projects = await this.listProjects();
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
+
+    // Get project root from config
+    const configPath = path.join(project.trackDirectory, "config.json");
+    let projectRoot: string;
+    try {
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+      projectRoot = config.projectRoot;
+      if (!projectRoot) {
+        throw new Error("Project root not configured");
+      }
+    } catch (error) {
+      throw new Error(`Failed to read project config: ${error}`);
+    }
+
+    const worktreeService = new NodeGitWorktreeService(projectRoot);
+
+    // Get worktree count before pruning
+    const beforeCount = (await worktreeService.listWorktrees()).filter((w) => !w.isMain).length;
+
+    await worktreeService.pruneWorktrees();
+
+    // Get worktree count after pruning
+    const afterCount = (await worktreeService.listWorktrees()).filter((w) => !w.isMain).length;
+
+    return { pruned: beforeCount - afterCount };
   }
 
   /**

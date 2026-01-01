@@ -1,6 +1,6 @@
 import { clsx } from "clsx";
 
-type BadgeVariant = "type" | "priority" | "status" | "complexity" | "label";
+type BadgeVariant = "type" | "priority" | "status" | "complexity" | "label" | "prStatus";
 
 interface BadgeProps {
   variant: BadgeVariant;
@@ -39,6 +39,13 @@ const complexityStyles: Record<string, string> = {
   VERY_HIGH: "bg-red-100 text-red-800",
 };
 
+const prStatusStyles: Record<string, string> = {
+  DRAFT: "bg-gray-200 text-gray-700",
+  OPEN: "bg-blue-100 text-blue-800",
+  MERGED: "bg-purple-100 text-purple-800",
+  CLOSED: "bg-red-100 text-red-700",
+};
+
 function getStyleForVariant(variant: BadgeVariant, value: string): string {
   switch (variant) {
     case "type":
@@ -49,6 +56,8 @@ function getStyleForVariant(variant: BadgeVariant, value: string): string {
       return statusStyles[value] ?? "bg-gray-200 text-gray-700";
     case "complexity":
       return complexityStyles[value] ?? "bg-gray-200 text-gray-700";
+    case "prStatus":
+      return prStatusStyles[value] ?? "bg-gray-200 text-gray-700";
     case "label":
       return "bg-blue-100 text-blue-800";
     default:

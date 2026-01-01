@@ -42,6 +42,13 @@ export interface Task {
   contextInstructions: string | null;
   isManual: boolean;
   sessionId: string | null;
+  // Worktree fields
+  worktreePath: string | null;
+  branchName: string | null;
+  // PR fields
+  prUrl: string | null;
+  prNumber: number | null;
+  prStatus: "DRAFT" | "OPEN" | "MERGED" | "CLOSED" | null;
   startedAt?: string;
   completedAt?: string;
   abandonedAt?: string;
@@ -122,6 +129,23 @@ export interface MilestoneWithIssues {
     closed: number;
     percentage: number;
   };
+}
+
+/**
+ * Worktree with project context and optional task association
+ */
+export interface Worktree {
+  projectId: string;
+  path: string;
+  branch: string;
+  head: string;
+  isMain: boolean;
+  diskUsageBytes?: number;
+  taskId?: string;
+  taskNumber?: number;
+  taskTitle?: string;
+  taskStatus?: string;
+  issueNumber?: number;
 }
 
 export class ApiError extends Error {
