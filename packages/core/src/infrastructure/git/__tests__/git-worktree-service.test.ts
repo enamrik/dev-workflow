@@ -39,6 +39,22 @@ describe("generateWorktreeNames", () => {
 
     expect(result.branchName).not.toMatch(/-$/);
   });
+
+  it("should generate absolute worktree path when trackDirectory is provided", () => {
+    const trackDir = "/Users/test/.track/my-project-abc123";
+    const result = generateWorktreeNames(5, 2, "Add feature", trackDir);
+
+    expect(result.branchName).toBe("issue-5/task-2-add-feature");
+    expect(result.worktreePath).toBe(
+      "/Users/test/.track/my-project-abc123/worktrees/issue-5-task-2"
+    );
+  });
+
+  it("should generate relative worktree path when trackDirectory is not provided", () => {
+    const result = generateWorktreeNames(5, 2, "Add feature");
+
+    expect(result.worktreePath).toBe(".worktrees/issue-5-task-2");
+  });
 });
 
 describe("NodeGitWorktreeService", () => {

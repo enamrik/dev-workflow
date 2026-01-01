@@ -100,11 +100,19 @@ export interface GitWorktreeService {
 
 /**
  * Generates branch and worktree names for a task
+ *
+ * @param issueNumber - Issue number
+ * @param taskNumber - Task number within the issue
+ * @param taskTitle - Task title (used to generate slug for branch name)
+ * @param trackDirectory - Optional track directory for absolute worktree path.
+ *                         If provided, worktree path will be absolute: {trackDirectory}/worktrees/issue-N-task-N
+ *                         If not provided, returns relative path: .worktrees/issue-N-task-N
  */
 export function generateWorktreeNames(
   issueNumber: number,
   taskNumber: number,
-  taskTitle: string
+  taskTitle: string,
+  trackDirectory?: string
 ): { branchName: string; worktreePath: string } {
   // Create a slug from the task title (lowercase, replace spaces with dashes, remove special chars)
   const slug = taskTitle
@@ -114,9 +122,14 @@ export function generateWorktreeNames(
     .substring(0, 30)
     .replace(/-+$/, ""); // remove trailing dashes
 
+  const worktreeName = `issue-${issueNumber}-task-${taskNumber}`;
+  const worktreePath = trackDirectory
+    ? path.join(trackDirectory, "worktrees", worktreeName)
+    : `.worktrees/${worktreeName}`;
+
   return {
     branchName: `issue-${issueNumber}/task-${taskNumber}-${slug}`,
-    worktreePath: `.worktrees/issue-${issueNumber}-task-${taskNumber}`,
+    worktreePath,
   };
 }
 

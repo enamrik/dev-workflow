@@ -136,6 +136,7 @@ These values can still be overridden when creating an issue explicitly.
           DATABASE_PATH: this.resolver.getDatabasePath(),
           PROJECT_ID: this.resolver.getProjectId(),
           TEMPLATES_PATH: this.resolver.getTemplatesPath(),
+          GIT_ROOT: this.resolver.getGitRoot(),
         },
       };
 
@@ -153,6 +154,7 @@ These values can still be overridden when creating an issue explicitly.
       const dbPath = this.resolver.getDatabasePath();
       const projectId = this.resolver.getProjectId();
       const templatesPath = this.resolver.getTemplatesPath();
+      const gitRoot = this.resolver.getGitRoot();
       const cliPath = path.join(this.packageRoot, "dist/index.js");
 
       // Remove existing registration if it exists
@@ -176,6 +178,8 @@ These values can still be overridden when creating an issue explicitly.
         `PROJECT_ID=${projectId}`,
         "--env",
         `TEMPLATES_PATH=${templatesPath}`,
+        "--env",
+        `GIT_ROOT=${gitRoot}`,
         "--",
         "node",
         cliPath,

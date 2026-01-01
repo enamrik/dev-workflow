@@ -65,7 +65,8 @@ export class TaskSessionService {
     private readonly planRepository: PlanRepository,
     private readonly issueRepository: IssueRepository,
     private readonly gitWorktreeService?: GitWorktreeService,
-    private readonly conflictDetectionService?: ConflictDetectionService
+    private readonly conflictDetectionService?: ConflictDetectionService,
+    private readonly trackDirectory?: string
   ) {
     this.eventBus = EventBus.getInstance();
     this.dependencyService = new DependencyService(taskRepository);
@@ -164,7 +165,12 @@ export class TaskSessionService {
     let branchName: string | undefined;
 
     if (createWorktree && this.gitWorktreeService) {
-      const names = generateWorktreeNames(issueNumber, task.number, task.title);
+      const names = generateWorktreeNames(
+        issueNumber,
+        task.number,
+        task.title,
+        this.trackDirectory
+      );
       branchName = names.branchName;
       worktreePath = await this.gitWorktreeService.createWorktree(
         names.worktreePath,

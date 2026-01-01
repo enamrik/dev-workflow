@@ -126,10 +126,18 @@ const DATABASE_PATH = process.env["DATABASE_PATH"] || "./data/workflow.db";
 const PROJECT_ID = process.env["PROJECT_ID"];
 const TEMPLATES_PATH =
   process.env["TEMPLATES_PATH"] || "./.track/config/issues/templates/";
+const GIT_ROOT = process.env["GIT_ROOT"];
 
 // PROJECT_ID is required for the MCP server to scope data to the correct project
 if (!PROJECT_ID) {
   console.error("Error: PROJECT_ID environment variable is required");
+  console.error("This should be set by 'dev-workflow init' when registering the MCP server");
+  process.exit(1);
+}
+
+// GIT_ROOT is required for worktree operations
+if (!GIT_ROOT) {
+  console.error("Error: GIT_ROOT environment variable is required");
   console.error("This should be set by 'dev-workflow init' when registering the MCP server");
   process.exit(1);
 }
@@ -366,9 +374,12 @@ async function main() {
 
   // Initialize file system and paths
   const fileSystem = new NodeFileSystem();
-  const workingDir = path.dirname(path.dirname(DATABASE_PATH)); // .track/data -> .track
-  const trackDirectory = workingDir; // .track directory
-  const userTemplatesPath = path.join(workingDir, "issues/templates");
+  // GIT_ROOT is validated at startup so it's guaranteed to be defined here
+  const projectRoot = GIT_ROOT as string;
+  // Track directory is ~/.track/<project-id>/ - global track dir is parent of DATABASE_PATH
+  const globalTrackDir = path.dirname(DATABASE_PATH);
+  const trackDirectory = path.join(globalTrackDir, projectId);
+  const userTemplatesPath = path.join(trackDirectory, "issues/templates");
   const defaultTemplatesPath = path.resolve(TEMPLATES_PATH);
 
   // Initialize label service
@@ -425,8 +436,7 @@ async function main() {
   );
 
   // Initialize git worktree service for isolated task execution
-  // Project root is the parent of .track directory
-  const projectRoot = path.dirname(trackDirectory);
+  // projectRoot comes from GIT_ROOT environment variable (set at startup)
   const gitWorktreeService = new NodeGitWorktreeService(projectRoot);
 
   // Initialize conflict detection service
@@ -440,7 +450,8 @@ async function main() {
     planRepository,
     issueRepository,
     gitWorktreeService,
-    conflictDetectionService
+    conflictDetectionService,
+    trackDirectory
   );
 
   // Create tool contexts
