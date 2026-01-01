@@ -10,3 +10,4 @@ export { SearchInput } from "./SearchInput";
 export { Pagination } from "./Pagination";
 export { Select } from "./Select";
 export { Markdown } from "./Markdown";
+export { Tooltip } from "./Tooltip";
