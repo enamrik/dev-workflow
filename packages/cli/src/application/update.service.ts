@@ -2,6 +2,7 @@ import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
 import { TrackDirectoryResolver } from "@dev-workflow/core";
+import { UIService } from "./ui.service.js";
 
 export class UpdateError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -88,6 +89,7 @@ export class UpdateService {
         args: ["dev-workflow", "mcp"],
         env: {
           DATABASE_PATH: this.resolver.getDatabasePath(),
+          PROJECT_ID: this.resolver.getProjectId(),
           TEMPLATES_PATH: this.resolver.getTemplatesPath(),
         },
       };
@@ -108,6 +110,7 @@ export class UpdateService {
   private async updateClaudeCLI(): Promise<void> {
     try {
       const dbPath = this.resolver.getDatabasePath();
+      const projectId = this.resolver.getProjectId();
       const templatesPath = this.resolver.getTemplatesPath();
       const cliPath = path.join(this.packageRoot, "dist/index.js");
 
@@ -128,6 +131,8 @@ export class UpdateService {
         "dev-workflow-tracker",
         "--env",
         `DATABASE_PATH=${dbPath}`,
+        "--env",
+        `PROJECT_ID=${projectId}`,
         "--env",
         `TEMPLATES_PATH=${templatesPath}`,
         "--",
@@ -354,6 +359,19 @@ These values can still be overridden when creating an issue explicitly.
       console.log("  User templates in .track/issues/templates/ are preserved");
     } catch (error) {
       throw new UpdateError("Failed to update templates", error);
+    }
+  }
+
+  /**
+   * Restart UI daemon if running
+   * (So it picks up any schema/code changes)
+   */
+  async restartUIDaemonIfRunning(): Promise<void> {
+    const isRunning = await UIService.isDaemonRunning();
+    if (isRunning) {
+      console.log("🔄 Restarting UI daemon...");
+      await UIService.restartDaemon();
+      console.log("✓ UI daemon restarted");
     }
   }
 }

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 import type {
   SnapshotIssueState,
@@ -17,8 +17,12 @@ export const issues = sqliteTable("issues", {
   // Primary key and unique identifier
   id: text("id").primaryKey(),
 
-  // Auto-incrementing issue number (e.g., #1, #2, #3)
-  number: integer("number").notNull().unique(),
+  // Project identifier (e.g., "dev-workflow-abc123")
+  projectId: text("project_id").notNull(),
+
+  // Issue number within the project (e.g., #1, #2, #3)
+  // Unique per project, not globally
+  number: integer("number").notNull(),
 
   // Core issue fields
   title: text("title").notNull(),
@@ -49,7 +53,13 @@ export const issues = sqliteTable("issues", {
   githubLastSyncedAt: text("github_last_synced_at"),
   githubLastSyncError: text("github_last_sync_error"),
   githubProjectItemId: text("github_project_item_id"),
-});
+
+  // Milestone association (optional)
+  milestoneId: text("milestone_id"),
+}, (table) => ({
+  // Issue number must be unique within a project
+  projectNumberIdx: uniqueIndex("issues_project_number_idx").on(table.projectId, table.number),
+}));
 
 /**
  * Snapshots table schema
@@ -59,6 +69,9 @@ export const issues = sqliteTable("issues", {
 export const snapshots = sqliteTable("snapshots", {
   // Primary key
   id: text("id").primaryKey(),
+
+  // Project identifier (e.g., "dev-workflow-abc123")
+  projectId: text("project_id").notNull(),
 
   // Link to issue number (not id, for easier querying)
   issueNumber: integer("issue_number").notNull(),
@@ -82,7 +95,14 @@ export const snapshots = sqliteTable("snapshots", {
   createdBy: text("created_by").notNull(),
   createdAt: text("created_at").notNull(),
   notes: text("notes"),
-});
+}, (table) => ({
+  // Snapshot version must be unique within a project and issue
+  projectIssueVersionIdx: uniqueIndex("snapshots_project_issue_version_idx").on(
+    table.projectId,
+    table.issueNumber,
+    table.version
+  ),
+}));
 
 /**
  * Plans table schema
@@ -125,7 +145,11 @@ export const tasks = sqliteTable("tasks", {
     .notNull()
     .references(() => plans.id, { onDelete: "cascade" }),
 
-  // Ordering and content
+  // Task number within the plan (e.g., 1, 2, 3)
+  // Displayed as issue#.task# (e.g., 5.1, 5.2)
+  number: integer("number").notNull(),
+
+  // Ordering for display (can differ from number after reordering)
   order: integer("order").notNull(),
   title: text("title").notNull(),
   description: text("description").notNull(),
@@ -236,6 +260,41 @@ export const taskExecutionLogs = sqliteTable("task_execution_logs", {
   createdAt: text("created_at").notNull(),
 });
 
+/**
+ * Milestones table schema
+ *
+ * Time-bounded collections of issues displayed on a timeline.
+ */
+export const milestones = sqliteTable("milestones", {
+  // Primary key
+  id: text("id").primaryKey(),
+
+  // Project identifier (e.g., "dev-workflow-abc123")
+  projectId: text("project_id").notNull(),
+
+  // Milestone number within the project (e.g., M1, M2, M3)
+  // Unique per project
+  number: integer("number").notNull(),
+
+  // Core milestone fields
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+
+  // Date range (stored as ISO date strings YYYY-MM-DD)
+  startDate: text("start_date").notNull(),
+  endDate: text("end_date").notNull(),
+
+  // Status tracking
+  status: text("status").notNull(), // 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'DELAYED'
+
+  // Timestamps (stored as ISO datetime strings)
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => ({
+  // Milestone number must be unique within a project
+  projectNumberIdx: uniqueIndex("milestones_project_number_idx").on(table.projectId, table.number),
+}));
+
 // Type inference for SELECT operations
 export type IssueRow = typeof issues.$inferSelect;
 export type SnapshotRow = typeof snapshots.$inferSelect;
@@ -243,6 +302,7 @@ export type PlanRow = typeof plans.$inferSelect;
 export type TaskRow = typeof tasks.$inferSelect;
 export type TaskStatusHistoryRow = typeof taskStatusHistory.$inferSelect;
 export type TaskExecutionLogRow = typeof taskExecutionLogs.$inferSelect;
+export type MilestoneRow = typeof milestones.$inferSelect;
 
 // Type inference for INSERT operations
 export type NewIssue = typeof issues.$inferInsert;
@@ -251,3 +311,4 @@ export type NewPlan = typeof plans.$inferInsert;
 export type NewTask = typeof tasks.$inferInsert;
 export type NewTaskStatusHistory = typeof taskStatusHistory.$inferInsert;
 export type NewTaskExecutionLog = typeof taskExecutionLogs.$inferInsert;
+export type NewMilestone = typeof milestones.$inferInsert;

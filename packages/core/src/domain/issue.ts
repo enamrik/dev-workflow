@@ -15,6 +15,8 @@ export type IssueStatus = "OPEN" | "IN_PROGRESS" | "CLOSED";
  */
 export interface Issue {
   id: string;
+  /** Project identifier (e.g., "dev-workflow-abc123") */
+  projectId: string;
   number: number;
   title: string;
   description: string;
@@ -29,6 +31,9 @@ export interface Issue {
 
   /** GitHub sync state (optional - only present if synced to GitHub) */
   githubSync?: GitHubSyncState;
+
+  /** Milestone this issue belongs to (optional) */
+  milestoneId?: string;
 }
 
 /**
@@ -37,6 +42,10 @@ export interface Issue {
 export interface IssueFilters {
   status?: IssueStatus;
   type?: IssueType;
+  /** Filter by labels (not implemented yet) */
+  labels?: string[];
+  /** Filter by milestone */
+  milestoneId?: string;
 }
 
 /**
@@ -44,15 +53,17 @@ export interface IssueFilters {
  *
  * Follows Repository pattern from DDD - abstracts data access
  * behind an interface for testability and flexibility.
+ *
+ * Implementations are scoped to a specific project.
  */
 export interface IssueRepository {
   /**
    * Create a new issue
    *
-   * @param issue - Issue data (without id, number, createdAt, updatedAt which are generated)
-   * @returns The created issue with id, number, and timestamps assigned
+   * @param issue - Issue data (without id, number, projectId, createdAt, updatedAt which are generated)
+   * @returns The created issue with id, number, projectId, and timestamps assigned
    */
-  create(issue: Omit<Issue, "id" | "number" | "createdAt" | "updatedAt">): Issue;
+  create(issue: Omit<Issue, "id" | "number" | "projectId" | "createdAt" | "updatedAt">): Issue;
 
   /**
    * Find an issue by its UUID

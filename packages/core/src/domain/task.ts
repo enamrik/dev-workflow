@@ -14,7 +14,8 @@ export type TaskSource = "generated" | "manual";
 export interface Task {
   readonly id: string; // UUID
   readonly planId: string; // Foreign key to Plan
-  readonly order: number; // Display order (1, 2, 3, ...)
+  readonly number: number; // Task number within plan (1, 2, 3) - stable identifier displayed as issueNumber.taskNumber
+  readonly order: number; // Display order (1, 2, 3, ...) - can differ from number after reordering
   readonly title: string; // Short task title
   readonly description: string; // Detailed task description
   readonly acceptanceCriteria: string[]; // How to verify completion
@@ -102,25 +103,25 @@ export interface TaskRepository {
   /**
    * Create a new task
    *
-   * Automatically assigns order based on existing tasks for the plan.
+   * Automatically assigns number and order based on existing tasks for the plan.
    * Caller must provide task id (for dependency tracking).
    *
-   * @param task - Task data (without order, createdAt, updatedAt which are generated)
-   * @returns The created task with order and timestamps assigned
+   * @param task - Task data (without number, order, createdAt, updatedAt which are generated)
+   * @returns The created task with number, order and timestamps assigned
    */
-  create(task: Omit<Task, "order" | "createdAt" | "updatedAt">): Task;
+  create(task: Omit<Task, "number" | "order" | "createdAt" | "updatedAt">): Task;
 
   /**
    * Create multiple tasks for a plan (batch operation)
    *
    * More efficient than creating tasks one by one.
-   * Automatically assigns sequential order numbers.
+   * Automatically assigns sequential number and order values.
    * Caller must provide task ids (for dependency tracking).
    *
    * @param tasks - Array of task data with ids
-   * @returns Array of created tasks with orders and timestamps assigned
+   * @returns Array of created tasks with numbers, orders and timestamps assigned
    */
-  createMany(tasks: Omit<Task, "order" | "createdAt" | "updatedAt">[]): Task[];
+  createMany(tasks: Omit<Task, "number" | "order" | "createdAt" | "updatedAt">[]): Task[];
 
   /**
    * Find a task by its UUID
@@ -186,6 +187,17 @@ export interface TaskRepository {
    * @returns The next order number (MAX(order) + 1, or 1 if no tasks exist)
    */
   getNextOrder(planId: string): number;
+
+  /**
+   * Get the next task number for a plan
+   *
+   * Used internally by create() to assign sequential task numbers.
+   * Task numbers are stable identifiers that don't change when tasks are reordered.
+   *
+   * @param planId - Plan UUID
+   * @returns The next task number (MAX(number) + 1, or 1 if no tasks exist)
+   */
+  getNextTaskNumber(planId: string): number;
 
   /**
    * Update session information for a task

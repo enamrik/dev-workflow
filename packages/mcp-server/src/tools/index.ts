@@ -63,3 +63,15 @@ export {
   type SettingsToolContext,
   handleUpdateSettings,
 } from "./settings-tools.js";
+
+// Milestone tools
+export {
+  milestoneToolDefinitions,
+  type MilestoneToolContext,
+  handleCreateMilestone,
+  handleGetMilestone,
+  handleListMilestones,
+  handleUpdateMilestone,
+  handleDeleteMilestone,
+  handleAssignIssueToMilestone,
+} from "./milestone-tools.js";

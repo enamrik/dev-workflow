@@ -10,17 +10,24 @@ import * as schema from "../database/schema.js";
  *
  * Uses Drizzle ORM for type-safe queries and automatic JSON serialization.
  * Follows Repository pattern from DDD.
+ *
+ * The repository is scoped to a specific project via projectId.
+ * All queries automatically filter by this project.
  */
 export class SqliteIssueRepository implements IssueRepository {
-  constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
+  constructor(
+    private readonly db: BetterSQLite3Database<typeof schema>,
+    private readonly projectId: string
+  ) {}
 
-  create(data: Omit<Issue, "id" | "number" | "createdAt" | "updatedAt">): Issue {
+  create(data: Omit<Issue, "id" | "number" | "projectId" | "createdAt" | "updatedAt">): Issue {
     const id = crypto.randomUUID();
     const number = this.getNextIssueNumber();
     const now = new Date().toISOString();
 
     const issue: Issue = {
       id,
+      projectId: this.projectId,
       number,
       ...data,
       createdAt: now,
@@ -32,6 +39,7 @@ export class SqliteIssueRepository implements IssueRepository {
       .insert(issues)
       .values({
         id: issue.id,
+        projectId: issue.projectId,
         number: issue.number,
         title: issue.title,
         description: issue.description,
@@ -51,6 +59,8 @@ export class SqliteIssueRepository implements IssueRepository {
         githubLastSyncedAt: issue.githubSync?.lastSyncedAt ?? null,
         githubLastSyncError: issue.githubSync?.lastSyncError ?? null,
         githubProjectItemId: issue.githubSync?.projectItemId ?? null,
+        // Milestone association
+        milestoneId: issue.milestoneId ?? null,
       })
       .run();
 
@@ -61,7 +71,7 @@ export class SqliteIssueRepository implements IssueRepository {
     const result = this.db
       .select()
       .from(issues)
-      .where(eq(issues.id, id))
+      .where(and(eq(issues.projectId, this.projectId), eq(issues.id, id)))
       .get();
 
     return result ? this.mapRowToIssue(result) : null;
@@ -71,29 +81,32 @@ export class SqliteIssueRepository implements IssueRepository {
     const result = this.db
       .select()
       .from(issues)
-      .where(eq(issues.number, number))
+      .where(and(eq(issues.projectId, this.projectId), eq(issues.number, number)))
       .get();
 
     return result ? this.mapRowToIssue(result) : null;
   }
 
   findMany(filters?: IssueFilters): Issue[] {
-    let query = this.db.select().from(issues);
+    // Always filter by project
+    const conditions = [eq(issues.projectId, this.projectId)];
 
-    // Apply SQL filters for status and type (scalar columns)
-    const conditions = [];
+    // Apply additional SQL filters for status, type, and milestone (scalar columns)
     if (filters?.status) {
       conditions.push(eq(issues.status, filters.status));
     }
     if (filters?.type) {
       conditions.push(eq(issues.type, filters.type));
     }
-
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions)) as typeof query;
+    if (filters?.milestoneId) {
+      conditions.push(eq(issues.milestoneId, filters.milestoneId));
     }
 
-    const results = query.all();
+    const results = this.db
+      .select()
+      .from(issues)
+      .where(and(...conditions))
+      .all();
 
     // Map database rows to domain objects
     return results.map((row) => this.mapRowToIssue(row));
@@ -103,6 +116,7 @@ export class SqliteIssueRepository implements IssueRepository {
     const result = this.db
       .select({ maxNumber: max(issues.number) })
       .from(issues)
+      .where(eq(issues.projectId, this.projectId))
       .get();
 
     return (result?.maxNumber ?? 0) + 1;
@@ -110,7 +124,7 @@ export class SqliteIssueRepository implements IssueRepository {
 
   update(
     id: string,
-    data: Partial<Omit<Issue, "id" | "number" | "createdAt">>
+    data: Partial<Omit<Issue, "id" | "number" | "projectId" | "createdAt">>
   ): Issue {
     const now = new Date().toISOString();
 
@@ -132,11 +146,11 @@ export class SqliteIssueRepository implements IssueRepository {
       updateData["githubProjectItemId"] = githubSync?.projectItemId ?? null;
     }
 
-    // Update the issue
+    // Update the issue (scoped to this project)
     this.db
       .update(issues)
       .set(updateData)
-      .where(eq(issues.id, id))
+      .where(and(eq(issues.projectId, this.projectId), eq(issues.id, id)))
       .run();
 
     // Fetch and return the updated issue
@@ -159,6 +173,7 @@ export class SqliteIssueRepository implements IssueRepository {
 
     return {
       id: row.id,
+      projectId: row.projectId,
       number: row.number,
       title: row.title,
       description: row.description,
@@ -171,6 +186,7 @@ export class SqliteIssueRepository implements IssueRepository {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       githubSync,
+      milestoneId: row.milestoneId ?? undefined,
     };
   }
 

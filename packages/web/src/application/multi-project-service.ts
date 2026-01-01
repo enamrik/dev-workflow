@@ -6,26 +6,26 @@ import {
   SqliteIssueRepository,
   SqlitePlanRepository,
   SqliteTaskRepository,
+  SqliteMilestoneRepository,
+  getGlobalDatabasePath,
   type Issue,
   type Plan,
   type Task,
+  type Milestone,
 } from "@dev-workflow/core";
 
 /**
- * Represents a project with its ID and database path
+ * Represents a project with its ID and track directory
  */
 export interface Project {
   readonly id: string;
   readonly trackDirectory: string;
-  readonly databasePath: string;
 }
 
 /**
- * Issue with project context
+ * Issue with project context (projectId is already part of Issue)
  */
-export interface ProjectIssue extends Issue {
-  projectId: string;
-}
+export type ProjectIssue = Issue;
 
 /**
  * Task with project and issue context
@@ -56,23 +56,96 @@ export interface ProjectIssueWithTasks {
   issue: ProjectIssue;
   plan: Plan | null;
   tasks: Task[];
-}
-
-interface ProjectConnection {
-  dbService: DatabaseService;
-  issueRepository: SqliteIssueRepository;
-  planRepository: SqlitePlanRepository;
-  taskRepository: SqliteTaskRepository;
+  milestoneNumber?: number;
+  milestoneTitle?: string;
 }
 
 /**
- * MultiProjectService manages connections to multiple project databases
+ * Milestone with associated issues and progress
+ */
+export interface MilestoneWithIssues {
+  milestone: Milestone;
+  issues: {
+    number: number;
+    title: string;
+    status: string;
+    type: string;
+  }[];
+  progress: {
+    total: number;
+    closed: number;
+    percentage: number;
+  };
+}
+
+/**
+ * MultiProjectService manages access to the global database
  * and provides aggregated views of issues and tasks across all projects.
+ *
+ * Architecture:
+ * - Single global database at ~/.track/workflow.db
+ * - Per-project config directories at ~/.track/<project-id>/
+ * - Data is scoped by project_id column in the database
  */
 export class MultiProjectService {
-  private connections: Map<string, ProjectConnection> = new Map();
+  private dbService: DatabaseService | null = null;
+  private planRepository: SqlitePlanRepository | null = null;
+  private taskRepository: SqliteTaskRepository | null = null;
 
   constructor(private readonly globalTrackDir: string = path.join(os.homedir(), ".track")) {}
+
+  /**
+   * Get the global database path
+   */
+  private getDatabasePath(): string {
+    return getGlobalDatabasePath();
+  }
+
+  /**
+   * Initialize the database connection (lazy)
+   */
+  private async ensureConnection(): Promise<{
+    planRepository: SqlitePlanRepository;
+    taskRepository: SqliteTaskRepository;
+  }> {
+    if (this.dbService && this.planRepository && this.taskRepository) {
+      return { planRepository: this.planRepository, taskRepository: this.taskRepository };
+    }
+
+    const dbPath = this.getDatabasePath();
+
+    // Check if database exists
+    try {
+      await fs.access(dbPath);
+    } catch {
+      throw new Error(`Global database not found at ${dbPath}. Run 'dev-workflow init' first.`);
+    }
+
+    this.dbService = await DatabaseService.create(dbPath);
+    const db = this.dbService.getDb();
+    this.planRepository = new SqlitePlanRepository(db);
+    this.taskRepository = new SqliteTaskRepository(db);
+
+    return { planRepository: this.planRepository, taskRepository: this.taskRepository };
+  }
+
+  /**
+   * Get an issue repository for a specific project
+   */
+  private async getIssueRepository(projectId: string): Promise<SqliteIssueRepository> {
+    await this.ensureConnection();
+    const db = this.dbService!.getDb();
+    return new SqliteIssueRepository(db, projectId);
+  }
+
+  /**
+   * Get a milestone repository for a specific project
+   */
+  private async getMilestoneRepository(projectId: string): Promise<SqliteMilestoneRepository> {
+    await this.ensureConnection();
+    const db = this.dbService!.getDb();
+    return new SqliteMilestoneRepository(db, projectId);
+  }
 
   /**
    * List all projects in the global track directory
@@ -85,17 +158,18 @@ export class MultiProjectService {
 
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
+        // Skip the workflow.db file and hidden directories
+        if (entry.name.startsWith(".") || entry.name === "workflow.db") continue;
 
         const projectId = entry.name;
         const trackDirectory = path.join(this.globalTrackDir, projectId);
-        const databasePath = path.join(trackDirectory, "data", "workflow.db");
 
-        // Verify database exists
+        // Verify config.json exists (indicates valid project)
         try {
-          await fs.access(databasePath);
-          projects.push({ id: projectId, trackDirectory, databasePath });
+          await fs.access(path.join(trackDirectory, "config.json"));
+          projects.push({ id: projectId, trackDirectory });
         } catch {
-          // Skip projects without a valid database
+          // Skip directories without config (not valid projects)
           continue;
         }
       }
@@ -108,32 +182,6 @@ export class MultiProjectService {
   }
 
   /**
-   * Get or create a database connection for a project
-   */
-  private async getConnection(project: Project): Promise<ProjectConnection> {
-    const existing = this.connections.get(project.id);
-    if (existing) {
-      return existing;
-    }
-
-    const dbService = await DatabaseService.create(project.databasePath);
-    const db = dbService.getDb();
-    const issueRepository = new SqliteIssueRepository(db);
-    const planRepository = new SqlitePlanRepository(db);
-    const taskRepository = new SqliteTaskRepository(db);
-
-    const connection: ProjectConnection = {
-      dbService,
-      issueRepository,
-      planRepository,
-      taskRepository,
-    };
-
-    this.connections.set(project.id, connection);
-    return connection;
-  }
-
-  /**
    * List all issues across all projects (or filtered by project)
    */
   async listIssues(projectFilter?: string): Promise<ProjectIssueWithPlanInfo[]> {
@@ -142,18 +190,19 @@ export class MultiProjectService {
       ? projects.filter((p) => p.id === projectFilter)
       : projects;
 
+    const { planRepository, taskRepository } = await this.ensureConnection();
     const allIssues: ProjectIssueWithPlanInfo[] = [];
 
     for (const project of filteredProjects) {
-      const connection = await this.getConnection(project);
-      const issues = connection.issueRepository.findMany({});
+      const issueRepository = await this.getIssueRepository(project.id);
+      const issues = issueRepository.findMany({});
 
       for (const issue of issues) {
-        const plan = connection.planRepository.findByIssueId(issue.id);
+        const plan = planRepository.findByIssueId(issue.id);
         let taskCounts: ProjectIssueWithPlanInfo["taskCounts"];
 
         if (plan) {
-          const tasks = connection.taskRepository.findByPlanId(plan.id);
+          const tasks = taskRepository.findByPlanId(plan.id);
           const completed = tasks.filter((t) => t.status === "COMPLETED").length;
           const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
 
@@ -165,7 +214,7 @@ export class MultiProjectService {
         }
 
         allIssues.push({
-          issue: { ...issue, projectId: project.id },
+          issue,
           hasPlan: !!plan,
           taskCounts,
         });
@@ -188,19 +237,17 @@ export class MultiProjectService {
     projectId: string,
     issueNumber: number
   ): Promise<{ issue: ProjectIssue; plan: Plan | null; tasks: Task[] } | null> {
-    const projects = await this.listProjects();
-    const project = projects.find((p) => p.id === projectId);
-    if (!project) return null;
+    const { planRepository, taskRepository } = await this.ensureConnection();
+    const issueRepository = await this.getIssueRepository(projectId);
 
-    const connection = await this.getConnection(project);
-    const issue = connection.issueRepository.findByNumber(issueNumber);
+    const issue = issueRepository.findByNumber(issueNumber);
     if (!issue) return null;
 
-    const plan = connection.planRepository.findByIssueId(issue.id);
-    const tasks = plan ? connection.taskRepository.findByPlanId(plan.id) : [];
+    const plan = planRepository.findByIssueId(issue.id);
+    const tasks = plan ? taskRepository.findByPlanId(plan.id) : [];
 
     return {
-      issue: { ...issue, projectId },
+      issue,
       plan,
       tasks,
     };
@@ -218,11 +265,13 @@ export class MultiProjectService {
       ? projects.filter((p) => p.id === projectFilter)
       : projects;
 
+    const { planRepository, taskRepository } = await this.ensureConnection();
     const allIssuesWithTasks: ProjectIssueWithTasks[] = [];
 
     for (const project of filteredProjects) {
-      const connection = await this.getConnection(project);
-      const issues = connection.issueRepository.findMany({});
+      const issueRepository = await this.getIssueRepository(project.id);
+      const milestoneRepository = await this.getMilestoneRepository(project.id);
+      const issues = issueRepository.findMany({});
 
       for (const issue of issues) {
         // Apply issue filter if specified
@@ -230,15 +279,29 @@ export class MultiProjectService {
           continue;
         }
 
-        const plan = connection.planRepository.findByIssueId(issue.id);
-        const tasks = plan ? connection.taskRepository.findByPlanId(plan.id) : [];
+        const plan = planRepository.findByIssueId(issue.id);
+        const tasks = plan ? taskRepository.findByPlanId(plan.id) : [];
+
+        // Get milestone info if issue is assigned to one
+        let milestoneNumber: number | undefined;
+        let milestoneTitle: string | undefined;
+
+        if (issue.milestoneId) {
+          const milestone = milestoneRepository.findById(issue.milestoneId);
+          if (milestone) {
+            milestoneNumber = milestone.number;
+            milestoneTitle = milestone.title;
+          }
+        }
 
         // Only include issues that have tasks
         if (tasks.length > 0) {
           allIssuesWithTasks.push({
-            issue: { ...issue, projectId: project.id },
+            issue,
             plan,
             tasks,
+            milestoneNumber,
+            milestoneTitle,
           });
         }
       }
@@ -248,12 +311,58 @@ export class MultiProjectService {
   }
 
   /**
-   * Close all database connections
+   * List all milestones across all projects (or filtered by project)
+   */
+  async listMilestones(projectFilter?: string): Promise<MilestoneWithIssues[]> {
+    const projects = await this.listProjects();
+    const filteredProjects = projectFilter
+      ? projects.filter((p) => p.id === projectFilter)
+      : projects;
+
+    await this.ensureConnection();
+    const allMilestones: MilestoneWithIssues[] = [];
+
+    for (const project of filteredProjects) {
+      const milestoneRepository = await this.getMilestoneRepository(project.id);
+      const issueRepository = await this.getIssueRepository(project.id);
+      const milestones = milestoneRepository.findMany();
+
+      for (const milestone of milestones) {
+        const issues = issueRepository.findMany({ milestoneId: milestone.id });
+        const closedIssues = issues.filter((i) => i.status === "CLOSED").length;
+
+        allMilestones.push({
+          milestone,
+          issues: issues.map((i) => ({
+            number: i.number,
+            title: i.title,
+            status: i.status,
+            type: i.type,
+          })),
+          progress: {
+            total: issues.length,
+            closed: closedIssues,
+            percentage: issues.length > 0 ? Math.round((closedIssues / issues.length) * 100) : 0,
+          },
+        });
+      }
+    }
+
+    // Sort by start date
+    return allMilestones.sort(
+      (a, b) => a.milestone.startDate.localeCompare(b.milestone.startDate)
+    );
+  }
+
+  /**
+   * Close the database connection
    */
   async close(): Promise<void> {
-    for (const connection of this.connections.values()) {
-      connection.dbService.close();
+    if (this.dbService) {
+      this.dbService.close();
+      this.dbService = null;
+      this.planRepository = null;
+      this.taskRepository = null;
     }
-    this.connections.clear();
   }
 }

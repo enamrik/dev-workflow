@@ -6,13 +6,13 @@ import { execSync } from "node:child_process";
 /**
  * TrackDirectoryResolver resolves paths to dev-workflow data storage.
  *
- * All dev-workflow data is stored in ~/.track/<project-id>/ where project-id
- * is derived from the git repository root path. This enables:
- * - Multiple projects tracked independently
- * - Worktree support (all worktrees share the same data)
- * - Multi-project dashboard views
+ * Storage architecture:
+ * - Single global database: ~/.track/workflow.db (all projects share one DB)
+ * - Per-project config: ~/.track/<project-id>/config.json
+ * - Per-project skills: ~/.track/<project-id>/labels/
  *
- * Project ID format: <repo-folder-name>-<6-char-hash>
+ * Project ID is derived from the git repository root path.
+ * Format: <repo-folder-name>-<6-char-hash>
  * Example: "dev-workflow-a1b2c3"
  */
 export class TrackDirectoryResolver {
@@ -63,11 +63,11 @@ export class TrackDirectoryResolver {
   }
 
   /**
-   * Get the database file path.
-   * Returns: ~/.track/<project-id>/data/workflow.db
+   * Get the global database file path.
+   * Returns: ~/.track/workflow.db (single DB for all projects)
    */
   getDatabasePath(): string {
-    return path.join(this.getTrackDirectory(), "data", "workflow.db");
+    return path.join(this.getGlobalTrackDirectory(), "workflow.db");
   }
 
   /**
@@ -102,13 +102,6 @@ export class TrackDirectoryResolver {
     return path.join(this.getTrackDirectory(), "issues", "templates");
   }
 
-  /**
-   * Get the data directory path.
-   * Returns: ~/.track/<project-id>/data/
-   */
-  getDataPath(): string {
-    return path.join(this.getTrackDirectory(), "data");
-  }
 }
 
 /**
@@ -166,11 +159,11 @@ export function getTrackDirectoryForProject(projectId: string): string {
 }
 
 /**
- * Get the database path for a specific project ID.
+ * Get the global database path.
+ * All projects share a single database at ~/.track/workflow.db.
  *
- * @param projectId - Project ID (e.g., "dev-workflow-a1b2c3")
- * @returns Full path to project's database file
+ * @returns Full path to the global database file
  */
-export function getDatabasePathForProject(projectId: string): string {
-  return path.join(os.homedir(), ".track", projectId, "data", "workflow.db");
+export function getGlobalDatabasePath(): string {
+  return path.join(os.homedir(), ".track", "workflow.db");
 }

@@ -146,6 +146,7 @@ These values can still be overridden when creating an issue explicitly.
         args: ["dev-workflow", "mcp"],
         env: {
           DATABASE_PATH: this.resolver.getDatabasePath(),
+          PROJECT_ID: this.resolver.getProjectId(),
           TEMPLATES_PATH: this.resolver.getTemplatesPath(),
         },
       };
@@ -162,6 +163,7 @@ These values can still be overridden when creating an issue explicitly.
   private async registerWithClaudeCLI(): Promise<void> {
     try {
       const dbPath = this.resolver.getDatabasePath();
+      const projectId = this.resolver.getProjectId();
       const templatesPath = this.resolver.getTemplatesPath();
       const cliPath = path.join(this.packageRoot, "dist/index.js");
 
@@ -183,6 +185,8 @@ These values can still be overridden when creating an issue explicitly.
         "--env",
         `DATABASE_PATH=${dbPath}`,
         "--env",
+        `PROJECT_ID=${projectId}`,
+        "--env",
         `TEMPLATES_PATH=${templatesPath}`,
         "--",
         "node",
@@ -202,8 +206,8 @@ These values can still be overridden when creating an issue explicitly.
   async initializeDatabase(): Promise<void> {
     try {
       const dbPath = this.resolver.getDatabasePath();
-      const dbDir = this.resolver.getDataPath();
-      await this.fileSystem.mkdir(dbDir, { recursive: true });
+      const globalTrackDir = this.resolver.getGlobalTrackDirectory();
+      await this.fileSystem.mkdir(globalTrackDir, { recursive: true });
 
       // Import DatabaseService from core package
       const { DatabaseService } = await import("@dev-workflow/core");

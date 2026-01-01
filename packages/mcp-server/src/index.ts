@@ -22,6 +22,7 @@ import {
   SqliteSnapshotRepository,
   SqlitePlanRepository,
   SqliteTaskRepository,
+  SqliteMilestoneRepository,
   TemplateService,
   NodeFileSystem,
   VersioningService,
@@ -79,19 +80,36 @@ import {
   // Settings handlers
   settingsToolDefinitions,
   handleUpdateSettings,
+  // Milestone handlers
+  milestoneToolDefinitions,
+  handleCreateMilestone,
+  handleGetMilestone,
+  handleListMilestones,
+  handleUpdateMilestone,
+  handleDeleteMilestone,
+  handleAssignIssueToMilestone,
   // Types
   type IssueToolContext,
   type PlanToolContext,
   type TaskToolContext,
   type SnapshotToolContext,
   type SettingsToolContext,
+  type MilestoneToolContext,
   errorResponse,
 } from "./tools/index.js";
 
 // Get paths from environment
 const DATABASE_PATH = process.env["DATABASE_PATH"] || "./data/workflow.db";
+const PROJECT_ID = process.env["PROJECT_ID"];
 const TEMPLATES_PATH =
   process.env["TEMPLATES_PATH"] || "./.track/config/issues/templates/";
+
+// PROJECT_ID is required for the MCP server to scope data to the correct project
+if (!PROJECT_ID) {
+  console.error("Error: PROJECT_ID environment variable is required");
+  console.error("This should be set by 'dev-workflow init' when registering the MCP server");
+  process.exit(1);
+}
 
 // Service instances (initialized in main)
 let dbService: DatabaseService;
@@ -100,6 +118,7 @@ let planToolContext: PlanToolContext;
 let taskToolContext: TaskToolContext;
 let snapshotToolContext: SnapshotToolContext;
 let settingsToolContext: SettingsToolContext;
+let milestoneToolContext: MilestoneToolContext;
 
 // Create MCP server
 const server = new Server(
@@ -122,6 +141,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     ...taskToolDefinitions,
     ...snapshotToolDefinitions,
     ...settingsToolDefinitions,
+    ...milestoneToolDefinitions,
   ],
 }));
 
@@ -230,6 +250,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
       return await handleUpdateSettings(settingsToolContext, a);
     }
 
+    // Milestone tools
+    if (name === "create_milestone") {
+      return handleCreateMilestone(milestoneToolContext, a);
+    }
+    if (name === "get_milestone") {
+      return handleGetMilestone(milestoneToolContext, a);
+    }
+    if (name === "list_milestones") {
+      return handleListMilestones(milestoneToolContext, a);
+    }
+    if (name === "update_milestone") {
+      return handleUpdateMilestone(milestoneToolContext, a);
+    }
+    if (name === "delete_milestone") {
+      return handleDeleteMilestone(milestoneToolContext, a);
+    }
+    if (name === "assign_issue_to_milestone") {
+      return handleAssignIssueToMilestone(milestoneToolContext, a);
+    }
+
     return errorResponse(`Unknown tool: ${name}`);
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));
@@ -244,12 +284,15 @@ async function main() {
   // Migrations are run during `dev-workflow init` and `dev-workflow update`, not on server startup
   dbService = await DatabaseService.create(DATABASE_PATH);
 
-  // Initialize repositories
+  // Initialize repositories with project scoping
+  // PROJECT_ID is validated at startup so it's guaranteed to be defined here
   const db = dbService.getDb();
-  const issueRepository = new SqliteIssueRepository(db);
-  const snapshotRepository = new SqliteSnapshotRepository(db);
+  const projectId = PROJECT_ID as string;
+  const issueRepository = new SqliteIssueRepository(db, projectId);
+  const snapshotRepository = new SqliteSnapshotRepository(db, projectId);
   const planRepository = new SqlitePlanRepository(db);
   const taskRepository = new SqliteTaskRepository(db);
+  const milestoneRepository = new SqliteMilestoneRepository(db, projectId);
 
   // Initialize file system and paths
   const fileSystem = new NodeFileSystem();
@@ -354,6 +397,11 @@ async function main() {
   settingsToolContext = {
     configService: configServiceForSettings,
     githubCLI: new NodeGitHubCLI(),
+  };
+
+  milestoneToolContext = {
+    milestoneRepository,
+    issueRepository,
   };
 
   // Start server with stdio transport

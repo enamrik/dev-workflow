@@ -128,6 +128,8 @@ async function runUpdate(): Promise<void> {
     await updater.runMigrations();
     console.log("✓ Ran database migrations");
 
+    await updater.restartUIDaemonIfRunning();
+
     console.log("\n✨ dev-workflow updated successfully!");
     console.log("\nChanges:");
     console.log("- Skills and subagents updated to latest version");

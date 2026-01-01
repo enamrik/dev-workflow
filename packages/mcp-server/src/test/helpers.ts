@@ -29,16 +29,19 @@ import type { TestDatabase } from "./setup.js";
 /** Database type used by repositories */
 type DbType = BetterSQLite3Database<typeof schema>;
 
+/** Default project ID for tests */
+const TEST_PROJECT_ID = "test-project-abc123";
+
 /**
  * Create all repositories from a database connection
  */
-export function createRepositories(db: TestDatabase["db"]) {
+export function createRepositories(db: TestDatabase["db"], projectId: string = TEST_PROJECT_ID) {
   const typedDb = db as DbType;
   return {
-    issueRepository: new SqliteIssueRepository(typedDb),
+    issueRepository: new SqliteIssueRepository(typedDb, projectId),
     planRepository: new SqlitePlanRepository(typedDb),
     taskRepository: new SqliteTaskRepository(typedDb),
-    snapshotRepository: new SqliteSnapshotRepository(typedDb),
+    snapshotRepository: new SqliteSnapshotRepository(typedDb, projectId),
   };
 }
 

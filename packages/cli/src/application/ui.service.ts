@@ -6,7 +6,7 @@ import {
   createMultiProjectServer,
   MultiProjectService,
 } from "@dev-workflow/web";
-import { TrackDirectoryResolver } from "@dev-workflow/core";
+import { TrackDirectoryResolver, EventBus } from "@dev-workflow/core";
 
 export class UIError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -55,7 +55,8 @@ export class UIService {
 
       const dbService = await DatabaseService.create(dbPath);
       const db = dbService.getDb();
-      const issueRepository = new SqliteIssueRepository(db);
+      const projectId = this.resolver.getProjectId();
+      const issueRepository = new SqliteIssueRepository(db, projectId);
       const planRepository = new SqlitePlanRepository(db);
       const taskRepository = new SqliteTaskRepository(db);
 
@@ -115,9 +116,11 @@ export class UIService {
       // Create multi-project service
       const multiProjectService = new MultiProjectService();
 
-      // Create and start multi-project server
+      // Create and start multi-project server with real-time updates
+      const eventBus = EventBus.getInstance();
       const server = await createMultiProjectServer({
         multiProjectService,
+        eventBus,
       });
       await server.listen({ port, host: "127.0.0.1" });
 
@@ -163,5 +166,34 @@ export class UIService {
     } catch (error) {
       throw new UIError("Failed to start multi-project UI server", error);
     }
+  }
+
+  /**
+   * Check if the UI daemon is running via PM2
+   */
+  static async isDaemonRunning(): Promise<boolean> {
+    try {
+      const { execSync } = await import("node:child_process");
+      const output = execSync("npx pm2 jlist", {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const processes = JSON.parse(output) as Array<{
+        name: string;
+        pm2_env?: { status?: string };
+      }>;
+      const uiProcess = processes.find((p) => p.name === "dev-workflow-ui");
+      return uiProcess?.pm2_env?.status === "online";
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Restart the UI daemon via PM2
+   */
+  static async restartDaemon(): Promise<void> {
+    const { execSync } = await import("node:child_process");
+    execSync("npx pm2 restart dev-workflow-ui", { stdio: "inherit" });
   }
 }

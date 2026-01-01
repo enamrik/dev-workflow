@@ -47,6 +47,7 @@ export interface SnapshotPlanState {
 export interface SnapshotTaskState {
   id: string;
   planId: string;
+  number: number; // Task number (stable identifier)
   order: number;
   title: string;
   description: string;
@@ -74,6 +75,8 @@ export interface SnapshotTaskState {
  */
 export interface Snapshot {
   readonly id: string; // UUID
+  /** Project identifier (e.g., "dev-workflow-abc123") */
+  readonly projectId: string;
   readonly issueNumber: number; // Link to issue
   readonly version: number; // Version number (1, 2, 3...)
   readonly status: SnapshotStatus;
@@ -97,12 +100,13 @@ export interface SnapshotRepository {
    * Create a new snapshot
    *
    * Automatically assigns version number based on existing snapshots for the issue.
+   * The projectId is provided by the repository implementation.
    *
-   * @param snapshot - Snapshot data (without id, version, createdAt which are generated)
-   * @returns The created snapshot with id, version, and timestamp assigned
+   * @param snapshot - Snapshot data (without id, projectId, version, createdAt which are generated)
+   * @returns The created snapshot with id, projectId, version, and timestamp assigned
    */
   create(
-    snapshot: Omit<Snapshot, "id" | "version" | "createdAt">
+    snapshot: Omit<Snapshot, "id" | "projectId" | "version" | "createdAt">
   ): Snapshot;
 
   /**

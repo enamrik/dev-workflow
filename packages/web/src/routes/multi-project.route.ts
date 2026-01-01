@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { renderLayout } from "../templates/layout.js";
 import { renderMultiProjectIssuesList } from "../templates/multi-project-issues-list.js";
 import { renderMultiProjectKanbanBoard } from "../templates/multi-project-kanban-board.js";
+import { renderMilestoneTimeline } from "../templates/milestone-timeline.js";
 import { render404 } from "../templates/issues-list.js";
 import { renderIssueDetail } from "../templates/issue-detail.js";
 import type {
@@ -23,6 +24,10 @@ interface IssueQuerystring {
 }
 
 interface IssuesQuerystring {
+  project?: string;
+}
+
+interface MilestonesQuerystring {
   project?: string;
 }
 
@@ -112,6 +117,17 @@ export function registerMultiProjectRoutes(
       ? `Tasks for Issue #${filterIssueNumber}`
       : "Task Board";
     const html = renderLayout(pageTitle, content);
+    reply.type("text/html").send(html);
+  });
+
+  // Milestones timeline page
+  server.get<{ Querystring: MilestonesQuerystring }>("/milestones", async (request, reply) => {
+    const { project: projectFilter } = request.query;
+    const projects = await multiProjectService.listProjects();
+    const milestones = await multiProjectService.listMilestones(projectFilter);
+
+    const content = renderMilestoneTimeline(milestones, projects, projectFilter);
+    const html = renderLayout("Milestones", content);
     reply.type("text/html").send(html);
   });
 

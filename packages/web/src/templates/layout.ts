@@ -11,14 +11,28 @@ export function renderLayout(title: string, content: string): string {
 <body>
   <header>
     <a href="/" class="logo-link"><h1>dev-workflow</h1></a>
-    <nav>
-      <a href="/">Issues</a>
-      <a href="/board">Board</a>
+    <nav class="main-nav">
+      <a href="/" class="nav-link" data-path="/">Issues</a>
+      <a href="/board" class="nav-link" data-path="/board">Board</a>
+      <a href="/milestones" class="nav-link" data-path="/milestones">Milestones</a>
     </nav>
   </header>
   <main>${content}</main>
   <script src="/app.js"></script>
   <script src="/websocket-client.js"></script>
+  <script>
+    // Highlight active nav link
+    (function() {
+      const path = window.location.pathname;
+      const navLinks = document.querySelectorAll('.nav-link');
+      navLinks.forEach(link => {
+        const linkPath = link.getAttribute('data-path');
+        if (path === linkPath || (linkPath !== '/' && path.startsWith(linkPath))) {
+          link.classList.add('active');
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
   `.trim();

@@ -323,6 +323,7 @@ export class VersioningService {
     return {
       id: task.id,
       planId: task.planId,
+      number: task.number,
       order: task.order,
       title: task.title,
       description: task.description,

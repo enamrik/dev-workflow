@@ -13,6 +13,7 @@ export * from "./domain/snapshot.js";
 export * from "./domain/template.js";
 export * from "./domain/events.js";
 export * from "./domain/github.js";
+export * from "./domain/milestone.js";
 
 // Application services
 export { PlanningService } from "./application/planning-service.js";
@@ -30,7 +31,7 @@ export {
   createTrackDirectoryResolver,
   listAllProjects,
   getTrackDirectoryForProject,
-  getDatabasePathForProject,
+  getGlobalDatabasePath,
 } from "./application/track-directory-resolver.js";
 export {
   ConfigService,
@@ -60,6 +61,7 @@ export { SqliteIssueRepository } from "./infrastructure/repositories/issue-repos
 export { SqlitePlanRepository } from "./infrastructure/repositories/plan-repository.js";
 export { SqliteTaskRepository } from "./infrastructure/repositories/task-repository.js";
 export { SqliteSnapshotRepository } from "./infrastructure/repositories/snapshot-repository.js";
+export { SqliteMilestoneRepository } from "./infrastructure/repositories/milestone-repository.js";
 
 // Infrastructure - File System
 export type { FileSystem } from "./infrastructure/file-system/file-system.js";

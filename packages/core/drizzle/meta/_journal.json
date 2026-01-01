@@ -5,22 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1767187317513,
-      "tag": "0000_sparkling_nomad",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1767188984235,
-      "tag": "0001_flat_cloak",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1767194022319,
-      "tag": "0002_funny_the_hunter",
+      "when": 1767230202956,
+      "tag": "0000_optimal_mystique",
       "breakpoints": true
     }
   ]

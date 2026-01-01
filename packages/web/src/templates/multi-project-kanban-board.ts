@@ -8,6 +8,8 @@ interface ProjectKanbanTask extends Task {
   projectId: string;
   issueNumber: number;
   issueTitle: string;
+  milestoneNumber?: number;
+  milestoneTitle?: string;
 }
 
 export function renderMultiProjectKanbanBoard(
@@ -16,15 +18,17 @@ export function renderMultiProjectKanbanBoard(
   projectFilter?: string,
   issueFilter?: number
 ): string {
-  // Flatten all tasks and add project/issue context
+  // Flatten all tasks and add project/issue/milestone context
   const allTasks: ProjectKanbanTask[] = [];
-  for (const { issue, tasks } of issuesWithTasks) {
+  for (const { issue, tasks, milestoneNumber, milestoneTitle } of issuesWithTasks) {
     for (const task of tasks) {
       allTasks.push({
         ...task,
         projectId: issue.projectId,
         issueNumber: issue.number,
         issueTitle: issue.title,
+        milestoneNumber,
+        milestoneTitle,
       });
     }
   }
@@ -168,15 +172,27 @@ function renderKanbanCard(task: ProjectKanbanTask): string {
     ? task.projectId.substring(0, task.projectId.lastIndexOf("-"))
     : task.projectId;
 
+  // Build hierarchy breadcrumb: project → M# → #issue
+  const milestoneLink = task.milestoneNumber
+    ? `<a href="/milestones?project=${encodeURIComponent(task.projectId)}" class="milestone-link" title="${escapeHtml(task.milestoneTitle || "")}">M${task.milestoneNumber}</a><span class="hierarchy-sep">›</span>`
+    : "";
+
+  // Task number display: issue#.task# (e.g., 5.3)
+  const taskNumberDisplay = `${task.issueNumber}.${task.number}`;
+
   return `
     <div class="kanban-card kanban-card-${statusClass}">
-      <div class="card-project-issue">
-        <span class="badge badge-project-mini" title="${escapeHtml(task.projectId)}">${escapeHtml(shortProjectName)}</span>
-        <a href="${issueUrl}" class="issue-link">#${task.issueNumber}</a>
-        <span class="issue-title">${escapeHtml(truncate(task.issueTitle, 25))}</span>
+      <div class="card-hierarchy">
+        <div class="card-breadcrumb">
+          <span class="badge badge-project-mini" title="${escapeHtml(task.projectId)}">${escapeHtml(shortProjectName)}</span>
+          <span class="hierarchy-sep">›</span>
+          ${milestoneLink}
+          <a href="${issueUrl}" class="issue-link">#${task.issueNumber}</a>
+        </div>
+        <span class="card-task-number">${taskNumberDisplay}</span>
       </div>
       <div class="card-title">${escapeHtml(task.title)}</div>
-      <div class="card-description">${escapeHtml(truncate(task.description, 100))}</div>
+      <div class="card-description">${escapeHtml(truncate(task.description, 80))}</div>
       <div class="card-footer">
         ${task.estimatedMinutes ? `<span class="card-estimate">${task.estimatedMinutes}m</span>` : ""}
         ${task.status === "ABANDONED" ? '<span class="badge badge-abandoned">ABANDONED</span>' : ""}

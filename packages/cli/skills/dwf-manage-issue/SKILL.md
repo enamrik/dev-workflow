@@ -1,7 +1,7 @@
 ---
 name: dwf-manage-issue
 description: REQUIRED workflow for creating/updating issues. Separates requirements from implementation details, then AUTO-GENERATES implementation plans with tasks. Use this instead of calling create_issue directly.
-allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_skills
+allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_skills, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone
 ---
 
 # Manage Issue Skill
@@ -124,6 +124,28 @@ If user mentions specific priority/urgency:
 - "high priority bug", "critical issue" → priority: HIGH or CRITICAL
 - "urgent feature", "asap" → priority: CRITICAL
 - "low priority", "nice to have" → priority: LOW
+
+## Milestone Detection
+
+If user mentions a milestone when creating or updating an issue:
+1. **Look for milestone references:**
+   - "for M1", "part of M2", "in milestone 3"
+   - "for the Q1 release", "in the MVP milestone"
+   - "belongs to M1"
+
+2. **Lookup the milestone:**
+   - Call `list_milestones` to find available milestones
+   - Match by number (M1, M2) or title keywords
+
+3. **After issue creation, assign to milestone:**
+   - Call `assign_issue_to_milestone` with the issue number and milestone number
+   - Report the assignment in your response
+
+**Example:**
+User: "Create an issue to add user authentication for M2"
+1. Create the issue normally
+2. Call `assign_issue_to_milestone` with `issueNumber` and `milestoneNumber: 2`
+3. Report: "Created issue #5 and assigned to milestone M2"
 
 ## Label Extraction
 

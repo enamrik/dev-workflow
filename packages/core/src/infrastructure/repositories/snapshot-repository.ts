@@ -12,17 +12,24 @@ import * as schema from "../database/schema.js";
  *
  * Uses Drizzle ORM for type-safe queries.
  * Follows Repository pattern from DDD.
+ *
+ * The repository is scoped to a specific project via projectId.
+ * All queries automatically filter by this project.
  */
 export class SqliteSnapshotRepository implements SnapshotRepository {
-  constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
+  constructor(
+    private readonly db: BetterSQLite3Database<typeof schema>,
+    private readonly projectId: string
+  ) {}
 
-  create(data: Omit<Snapshot, "id" | "version" | "createdAt">): Snapshot {
+  create(data: Omit<Snapshot, "id" | "projectId" | "version" | "createdAt">): Snapshot {
     const id = crypto.randomUUID();
     const version = this.getNextVersion(data.issueNumber);
     const now = new Date().toISOString();
 
     const snapshot: Snapshot = {
       id,
+      projectId: this.projectId,
       version,
       ...data,
       createdAt: now,
@@ -33,6 +40,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository {
       .insert(snapshots)
       .values({
         id: snapshot.id,
+        projectId: snapshot.projectId,
         issueNumber: snapshot.issueNumber,
         version: snapshot.version,
         status: snapshot.status,
@@ -53,7 +61,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository {
     const result = this.db
       .select()
       .from(snapshots)
-      .where(eq(snapshots.id, id))
+      .where(and(eq(snapshots.projectId, this.projectId), eq(snapshots.id, id)))
       .get();
 
     return result ? this.mapRowToSnapshot(result) : null;
@@ -65,6 +73,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository {
       .from(snapshots)
       .where(
         and(
+          eq(snapshots.projectId, this.projectId),
           eq(snapshots.issueNumber, issueNumber),
           eq(snapshots.status, "ACTIVE")
         )
@@ -78,7 +87,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository {
     const results = this.db
       .select()
       .from(snapshots)
-      .where(eq(snapshots.issueNumber, issueNumber))
+      .where(and(eq(snapshots.projectId, this.projectId), eq(snapshots.issueNumber, issueNumber)))
       .orderBy(desc(snapshots.version))
       .all();
 
@@ -89,7 +98,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository {
     const result = this.db
       .select({ maxVersion: max(snapshots.version) })
       .from(snapshots)
-      .where(eq(snapshots.issueNumber, issueNumber))
+      .where(and(eq(snapshots.projectId, this.projectId), eq(snapshots.issueNumber, issueNumber)))
       .get();
 
     return (result?.maxVersion ?? 0) + 1;
@@ -101,6 +110,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository {
       .set({ status: "ARCHIVED" })
       .where(
         and(
+          eq(snapshots.projectId, this.projectId),
           eq(snapshots.issueNumber, issueNumber),
           eq(snapshots.status, "ACTIVE")
         )
@@ -114,6 +124,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository {
       .from(snapshots)
       .where(
         and(
+          eq(snapshots.projectId, this.projectId),
           eq(snapshots.issueNumber, issueNumber),
           eq(snapshots.version, version)
         )
@@ -131,6 +142,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository {
   private mapRowToSnapshot(row: SnapshotRow): Snapshot {
     return {
       id: row.id,
+      projectId: row.projectId,
       issueNumber: row.issueNumber,
       version: row.version,
       status: row.status as Snapshot["status"],

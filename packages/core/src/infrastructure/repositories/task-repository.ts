@@ -19,12 +19,14 @@ import * as schema from "../database/schema.js";
 export class SqliteTaskRepository implements TaskRepository {
   constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
 
-  create(data: Omit<Task, "order" | "createdAt" | "updatedAt">): Task {
+  create(data: Omit<Task, "number" | "order" | "createdAt" | "updatedAt">): Task {
+    const number = this.getNextTaskNumber(data.planId);
     const order = this.getNextOrder(data.planId);
     const now = new Date().toISOString();
 
     const task: Task = {
       ...data,
+      number,
       order,
       createdAt: now,
       updatedAt: now,
@@ -36,6 +38,7 @@ export class SqliteTaskRepository implements TaskRepository {
       .values({
         id: task.id,
         planId: task.planId,
+        number: task.number,
         order: task.order,
         title: task.title,
         description: task.description,
@@ -63,7 +66,7 @@ export class SqliteTaskRepository implements TaskRepository {
   }
 
   createMany(
-    tasksData: Omit<Task, "order" | "createdAt" | "updatedAt">[]
+    tasksData: Omit<Task, "number" | "order" | "createdAt" | "updatedAt">[]
   ): Task[] {
     if (tasksData.length === 0) {
       return [];
@@ -78,11 +81,13 @@ export class SqliteTaskRepository implements TaskRepository {
       throw new Error("Cannot create tasks without planId");
     }
 
+    let nextNumber = this.getNextTaskNumber(planId);
     let nextOrder = this.getNextOrder(planId);
 
     for (const data of tasksData) {
       const task: Task = {
         ...data,
+        number: nextNumber++,
         order: nextOrder++,
         createdAt: now,
         updatedAt: now,
@@ -93,6 +98,7 @@ export class SqliteTaskRepository implements TaskRepository {
         .values({
           id: task.id,
           planId: task.planId,
+          number: task.number,
           order: task.order,
           title: task.title,
           description: task.description,
@@ -268,6 +274,16 @@ export class SqliteTaskRepository implements TaskRepository {
     return (result?.maxOrder ?? 0) + 1;
   }
 
+  getNextTaskNumber(planId: string): number {
+    const result = this.db
+      .select({ maxNumber: max(tasks.number) })
+      .from(tasks)
+      .where(eq(tasks.planId, planId))
+      .get();
+
+    return (result?.maxNumber ?? 0) + 1;
+  }
+
   updateSessionInfo(
     taskId: string,
     sessionId: string,
@@ -439,6 +455,7 @@ export class SqliteTaskRepository implements TaskRepository {
     return {
       id: row.id,
       planId: row.planId,
+      number: row.number,
       order: row.order,
       title: row.title,
       description: row.description,
