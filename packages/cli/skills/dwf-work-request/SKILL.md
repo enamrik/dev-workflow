@@ -1,0 +1,74 @@
+---
+name: dwf-work-request
+description: "ALWAYS invoke when user requests work to be done: 'add X', 'fix Y', 'implement Z', 'we need...', 'can you build...', 'make it...', 'create a...'. Routes all work through issue tracking before implementation begins."
+---
+
+# Work Request Skill
+
+## Purpose
+
+All work should be tracked as issues before implementation begins. This ensures:
+- Requirements are captured and clarified upfront
+- Work is visible and searchable
+- Progress can be tracked
+- Nothing gets forgotten or half-done
+
+## When This Skill Activates
+
+This skill should activate whenever the user describes work to be done:
+
+| User Says | This Is Work |
+|-----------|--------------|
+| "Add a logout button" | Feature request |
+| "Fix the login bug" | Bug report |
+| "Can you implement dark mode?" | Feature request |
+| "We need better error handling" | Enhancement |
+| "Refactor the API layer" | Technical task |
+| "Make the search faster" | Performance improvement |
+| "Look into why X is slow" | Investigation |
+| "Build a dashboard for..." | Feature request |
+| "Update the form to include..." | Enhancement |
+
+## What To Do
+
+When you recognize a work request:
+
+1. **Acknowledge the request** - Show you understand what they want
+2. **Invoke `dwf-manage-issue`** - This skill handles issue creation with proper requirements separation
+3. **Do NOT start coding** - Implementation comes after the issue and plan exist
+
+## Exceptions - When NOT to Track
+
+Skip issue creation only when:
+- User explicitly says "don't create an issue" or "just do it quick"
+- It's a trivial one-line fix AND user wants it done immediately
+- User is just asking questions, not requesting work
+- User is exploring/reading code, not changing it
+
+When in doubt, create the issue. It takes seconds and prevents lost work.
+
+## How to Invoke manage-issue
+
+After this skill activates, immediately invoke the `dwf-manage-issue` skill:
+
+```
+Skill(skill: "dwf-manage-issue")
+```
+
+Pass along any context the user provided - requirements, preferences, constraints. The manage-issue skill will:
+- Separate requirements from implementation details
+- Create the issue with proper structure
+- Chain to planning automatically
+
+## Example Flow
+
+**User:** "Can you add a way for users to export their data as CSV?"
+
+**Your response:**
+```
+I'll track this as an issue so we can plan it properly.
+
+[Invoke dwf-manage-issue skill]
+```
+
+The manage-issue skill takes over from here, creating the issue and then the implementation plan.

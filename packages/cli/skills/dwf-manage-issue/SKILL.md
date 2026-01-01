@@ -1,6 +1,6 @@
 ---
 name: dwf-manage-issue
-description: "PROACTIVELY use this when user describes ANY work to be done: features, bugs, improvements, refactoring, or investigations. Creates tracked issues with implementation plans. Invoke this BEFORE starting work - don't just dive into coding. Examples: 'add dark mode', 'fix the login bug', 'refactor the API', 'improve performance', 'investigate why X happens'."
+description: "Create or update issues in the tracker. Handles requirements separation, template selection, priority/milestone assignment. Invoked by dwf-work-request or directly when user says 'create issue', 'update issue #N', 'add acceptance criteria'."
 allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_skills, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone
 ---
 
@@ -8,11 +8,7 @@ allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:g
 
 ## When to Invoke
 
-**PROACTIVE INVOCATION - Use this skill when the user describes work, even if they don't explicitly ask for an issue:**
-- User describes a feature: "I want to add...", "We need...", "Let's implement..."
-- User reports a problem: "There's a bug...", "X is broken...", "This doesn't work..."
-- User wants improvements: "Can we make X faster?", "Let's refactor...", "Clean up..."
-- User wants to investigate: "Why does X happen?", "Figure out...", "Look into..."
+**This skill is typically invoked by `dwf-work-request`** when the user describes work to be done. It can also be invoked directly for:
 
 **Explicit create operations:**
 - User mentions: "create issue", "new feature", "report bug", "add enhancement", "add task"
@@ -22,12 +18,6 @@ allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:g
 - User mentions: "update issue #N", "change issue", "modify requirements"
 - User wants to edit: "add acceptance criteria to #5", "change the description"
 - User references existing issue: "issue #3 needs more detail"
-
-**When NOT to invoke:**
-- Simple questions: "What does this function do?", "How does X work?"
-- Reading/exploring: "Show me the code for...", "What's in this file?"
-- Trivial one-line fixes the user explicitly wants done immediately
-- User explicitly says "don't create an issue" or "just do it"
 
 ## Information Levels
 
