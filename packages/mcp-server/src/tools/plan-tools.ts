@@ -23,7 +23,7 @@ export const planToolDefinitions: ToolDefinition[] = [
   {
     name: "generate_plan",
     description:
-      "Generate or regenerate an implementation plan for an issue with tasks. Automatically preserves in-progress and completed tasks from previous plan when possible.",
+      "⚠️ Prefer 'dwf-plan-issue' skill for proper workflow. Generates or regenerates an implementation plan for an issue with tasks. Automatically preserves in-progress and completed tasks from previous plan when possible.",
     inputSchema: {
       type: "object",
       properties: {

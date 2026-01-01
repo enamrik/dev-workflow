@@ -26,7 +26,7 @@ import {
 export const issueToolDefinitions: ToolDefinition[] = [
   {
     name: "create_issue",
-    description: "Create a new issue in the task tracker",
+    description: "⚠️ Prefer 'dwf-manage-issue' skill for proper workflow. Creates a new issue in the task tracker.",
     inputSchema: {
       type: "object",
       properties: {
@@ -108,7 +108,7 @@ export const issueToolDefinitions: ToolDefinition[] = [
   {
     name: "update_issue",
     description:
-      "Update an issue. Optionally regenerate plan after update (you'll need to call generate_plan separately if needed).",
+      "⚠️ Prefer 'dwf-manage-issue' skill for proper workflow. Updates an issue. Optionally regenerate plan after update (you'll need to call generate_plan separately if needed).",
     inputSchema: {
       type: "object",
       properties: {

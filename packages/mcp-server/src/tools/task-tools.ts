@@ -55,7 +55,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "start_task_session",
     description:
-      "Start working on a task in the current Claude session. Automatically updates status to IN_PROGRESS.",
+      "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Starts working on a task in the current Claude session. Automatically updates status to IN_PROGRESS.",
     inputSchema: {
       type: "object",
       properties: {
@@ -74,7 +74,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "complete_task_session",
     description:
-      "Complete the current task. Marks task as COMPLETED.",
+      "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Completes the current task. Marks task as COMPLETED.",
     inputSchema: {
       type: "object",
       properties: {
@@ -97,7 +97,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "abandon_task_session",
     description:
-      "Abandon the current task. Marks task as ABANDONED.",
+      "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Abandons the current task. Marks task as ABANDONED.",
     inputSchema: {
       type: "object",
       properties: {
