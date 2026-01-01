@@ -1,6 +1,5 @@
 "use client";
 
-import { use } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { format } from "date-fns";
@@ -22,14 +21,14 @@ import type { Issue, Plan, Task } from "@/lib/types";
 type TabId = "details" | "plan" | "tasks";
 
 interface PageProps {
-  params: Promise<{
+  params: {
     project: string;
     number: string;
-  }>;
+  };
 }
 
 export default function IssueDetailPage({ params }: PageProps) {
-  const { project: projectId, number } = use(params);
+  const { project: projectId, number } = params;
   const searchParams = useSearchParams();
   const router = useRouter();
 

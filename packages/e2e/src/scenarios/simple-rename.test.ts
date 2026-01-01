@@ -165,23 +165,63 @@ describe("E2E: Simple File Rename", () => {
     // ═══════════════════════════════════════════════════════════════════════
     // STEP 6: Verify web UI shows the completed work
     // ═══════════════════════════════════════════════════════════════════════
-    console.log("\n🌐 Step 6: Verifying web UI...");
+    console.log("\n🌐 Step 6: Verifying web UI pages...");
 
     ui = new UIHarness(harness);
     await ui.start();
 
-    // Check issues list
+    // 6a. Check task board (kanban) at /
+    console.log("  6a. Checking task board (/)...");
     await ui.goto("/");
+    await playwrightExpect(ui.page.locator("body")).toContainText("Task Board");
+    await playwrightExpect(ui.page.locator("body")).toContainText("Completed");
+    console.log("  ✓ Task board shows Completed column");
+
+    // 6b. Check issues list at /issues
+    console.log("  6b. Checking issues list (/issues)...");
+    await ui.goto("/issues");
+    await playwrightExpect(ui.page.locator("body")).toContainText("Issues");
     await playwrightExpect(ui.page.locator("body")).toContainText("rename", {
       ignoreCase: true,
     });
-    console.log("✓ Issues list shows the rename issue");
+    console.log("  ✓ Issues list shows the rename issue");
 
-    // Check kanban board has completed task
-    await ui.goto("/board");
-    const pageContent = await ui.page.content();
-    const hasCompletedSection = pageContent.toLowerCase().includes("completed");
-    console.log(`✓ Kanban board loaded (completed section: ${hasCompletedSection})`);
+    // 6c. Check milestones page at /milestones
+    console.log("  6c. Checking milestones page (/milestones)...");
+    await ui.goto("/milestones");
+    await playwrightExpect(ui.page.locator("body")).toContainText("Milestones");
+    console.log("  ✓ Milestones page loads correctly");
+
+    // 6d. Check issue detail page
+    console.log("  6d. Checking issue detail page...");
+    const issueDetailUrl = `/projects/${encodeURIComponent(harness.projectId)}/issues/${issue.number}`;
+    await ui.goto(issueDetailUrl);
+    await playwrightExpect(ui.page.locator("body")).toContainText(`Issue #${issue.number}`);
+    await playwrightExpect(ui.page.locator("body")).toContainText("rename", {
+      ignoreCase: true,
+    });
+    // Check tabs are present
+    await playwrightExpect(ui.page.locator("body")).toContainText("Details");
+    await playwrightExpect(ui.page.locator("body")).toContainText("Plan");
+    await playwrightExpect(ui.page.locator("body")).toContainText("Tasks");
+    console.log("  ✓ Issue detail page shows issue with tabs");
+
+    // 6e. Navigate to Plan tab
+    console.log("  6e. Checking Plan tab...");
+    await ui.goto(`${issueDetailUrl}?tab=plan`);
+    // Should show plan summary or approach
+    const planContent = await ui.page.content();
+    const hasPlanContent = planContent.includes("Summary") || planContent.includes("Approach") || planContent.includes("No Implementation Plan");
+    expect(hasPlanContent).toBe(true);
+    console.log("  ✓ Plan tab loads correctly");
+
+    // 6f. Navigate to Tasks tab
+    console.log("  6f. Checking Tasks tab...");
+    await ui.goto(`${issueDetailUrl}?tab=tasks`);
+    const tasksContent = await ui.page.content();
+    const hasTasksContent = tasksContent.includes("completed") || tasksContent.includes("No Tasks");
+    expect(hasTasksContent).toBe(true);
+    console.log("  ✓ Tasks tab loads correctly");
 
     console.log("\n✨ All verifications passed!");
     testPassed = true;
