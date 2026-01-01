@@ -1,6 +1,6 @@
 ---
 name: dwf-manage-issue
-description: REQUIRED workflow for creating/updating issues. Separates requirements from implementation details, then AUTO-GENERATES implementation plans with tasks. Use this instead of calling create_issue directly.
+description: "PROACTIVELY use this when user describes ANY work to be done: features, bugs, improvements, refactoring, or investigations. Creates tracked issues with implementation plans. Invoke this BEFORE starting work - don't just dive into coding. Examples: 'add dark mode', 'fix the login bug', 'refactor the API', 'improve performance', 'investigate why X happens'."
 allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_skills, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone
 ---
 
@@ -8,15 +8,26 @@ allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:g
 
 ## When to Invoke
 
-**Create operations:**
+**PROACTIVE INVOCATION - Use this skill when the user describes work, even if they don't explicitly ask for an issue:**
+- User describes a feature: "I want to add...", "We need...", "Let's implement..."
+- User reports a problem: "There's a bug...", "X is broken...", "This doesn't work..."
+- User wants improvements: "Can we make X faster?", "Let's refactor...", "Clean up..."
+- User wants to investigate: "Why does X happen?", "Figure out...", "Look into..."
+
+**Explicit create operations:**
 - User mentions: "create issue", "new feature", "report bug", "add enhancement", "add task"
-- User describes work: "I want to add authentication", "There's a bug in the login"
 - User requests tracking: "track this", "make an issue for this"
 
 **Update operations:**
 - User mentions: "update issue #N", "change issue", "modify requirements"
 - User wants to edit: "add acceptance criteria to #5", "change the description"
 - User references existing issue: "issue #3 needs more detail"
+
+**When NOT to invoke:**
+- Simple questions: "What does this function do?", "How does X work?"
+- Reading/exploring: "Show me the code for...", "What's in this file?"
+- Trivial one-line fixes the user explicitly wants done immediately
+- User explicitly says "don't create an issue" or "just do it"
 
 ## Information Levels
 
@@ -158,11 +169,16 @@ Only use labels from the available skills list. Do not invent labels.
 
 ## After Success
 
-After successfully creating or updating an issue, immediately proceed to plan the implementation tasks for this issue.
+**MANDATORY:** After successfully creating or updating an issue, you MUST invoke the `dwf-plan-issue` skill to generate an implementation plan. Do NOT ask the user if they want a plan - just create it.
 
-Say something like: "Now let me create an implementation plan for issue #N with properly-scoped tasks."
+**Required action:** Call the Skill tool with `skill: "dwf-plan-issue"` and pass the issue number.
 
-This ensures every issue gets a plan with deployable task units.
+Example flow:
+1. Create issue → get issue #N
+2. Immediately invoke: `Skill(skill: "dwf-plan-issue", args: "#N")`
+3. The plan skill will generate tasks automatically
+
+This ensures every issue gets a plan with deployable task units. Never skip this step.
 
 ## Error Handling
 

@@ -279,6 +279,11 @@ export class MultiProjectService {
           continue;
         }
 
+        // Skip closed issues - they shouldn't appear in the kanban board
+        if (issue.status === "CLOSED") {
+          continue;
+        }
+
         const plan = planRepository.findByIssueId(issue.id);
         const tasks = plan ? taskRepository.findByPlanId(plan.id) : [];
 
