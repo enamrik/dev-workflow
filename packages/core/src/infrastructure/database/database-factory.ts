@@ -8,14 +8,10 @@ import { WasmAdapter } from './wasm-adapter.js';
  */
 export class DatabaseFactory {
   static async createAdapter(dbPath: string): Promise<DatabaseAdapter> {
-    // Try native first
+    // Try native first, fallback to WASM
     if (await this.isNativeAvailable()) {
-      console.error('ℹ️  Using native SQLite (better-sqlite3)');
       return this.createNativeAdapter(dbPath);
     }
-
-    // Fallback to WASM
-    console.error('ℹ️  Using WebAssembly SQLite (sql.js) - native build unavailable');
     return await this.createWasmAdapter(dbPath);
   }
 

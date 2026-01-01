@@ -68,7 +68,6 @@ async function runInit(): Promise<void> {
     console.log("✓ Registered MCP server");
 
     await installer.initializeDatabase();
-    console.log("✓ Initialized database");
 
     console.log("\n✨ dev-workflow initialized successfully!");
     console.log("\nNext steps:");
