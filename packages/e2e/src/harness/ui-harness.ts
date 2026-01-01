@@ -6,10 +6,27 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
 import { chromium, type Browser, type Page } from "@playwright/test";
 import type { E2ETestHarness } from "./test-harness.js";
 
 const DEFAULT_PORT = 3456;
+const PORT_FILE = path.join(os.homedir(), ".track", "ui-port");
+
+/**
+ * Get the port of a running daemon from the port file
+ */
+export function getDaemonPort(): number | null {
+  try {
+    const content = fs.readFileSync(PORT_FILE, "utf-8").trim();
+    const port = parseInt(content, 10);
+    return isNaN(port) ? null : port;
+  } catch {
+    return null;
+  }
+}
 
 export class UIHarness {
   private serverProcess: ChildProcess | null = null;
@@ -84,10 +101,51 @@ export class UIHarness {
   }
 
   /**
+   * Connect to an already-running daemon instead of starting a new one.
+   * Reads the daemon port from ~/.track/ui-port
+   */
+  async connectToExistingDaemon(): Promise<void> {
+    const daemonPort = getDaemonPort();
+    if (!daemonPort) {
+      throw new Error("No daemon port file found. Is the daemon running?");
+    }
+
+    // Update our port/URL to match the daemon
+    (this as { port: number }).port = daemonPort;
+    (this as { baseURL: string }).baseURL = `http://127.0.0.1:${daemonPort}`;
+
+    console.log(`🌐 Connecting to existing daemon at ${this.baseURL}...`);
+
+    // Wait for server to be ready
+    await this.waitForServer();
+    console.log("✓ Connected to daemon");
+
+    // Launch browser
+    this.browser = await chromium.launch({ headless: true });
+    this._page = await this.browser.newPage();
+    console.log("✓ Browser launched");
+  }
+
+  /**
    * Navigate to a path
    */
   async goto(path: string): Promise<void> {
     await this.page.goto(`${this.baseURL}${path}`);
+  }
+
+  /**
+   * Stop the browser (but not the daemon when using connectToExistingDaemon)
+   */
+  async closeBrowser(): Promise<void> {
+    if (this._page) {
+      await this._page.close();
+      this._page = null;
+    }
+    if (this.browser) {
+      await this.browser.close();
+      this.browser = null;
+    }
+    console.log("✓ Browser closed");
   }
 
   /**

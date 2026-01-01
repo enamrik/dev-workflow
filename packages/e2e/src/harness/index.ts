@@ -25,4 +25,4 @@ export {
   countIssues,
   countTasksByStatus,
 } from "./assertions.js";
-export { UIHarness } from "./ui-harness.js";
+export { UIHarness, getDaemonPort } from "./ui-harness.js";
