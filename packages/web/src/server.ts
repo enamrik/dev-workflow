@@ -10,6 +10,7 @@ import { registerAPIRoutes } from "./routes/api.route.js";
 import { registerMultiProjectRoutes } from "./routes/multi-project.route.js";
 import { WebSocketHandler } from "./infrastructure/websocket/websocket-handler.js";
 import { WebSocketBridge } from "./infrastructure/websocket/websocket-bridge.js";
+import { DatabaseChangeMonitor } from "./infrastructure/database-change-monitor.js";
 import { MultiProjectService } from "./application/multi-project-service.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,6 +28,8 @@ export interface ServerContext extends RepositoryContext {
 export interface MultiProjectServerContext {
   multiProjectService: MultiProjectService;
   eventBus?: EventBus;
+  /** Path to the SQLite database for cross-process change detection */
+  databasePath?: string;
 }
 
 /**
@@ -64,12 +67,21 @@ export async function createServer(
 }
 
 /**
+ * Result of creating a multi-project server
+ */
+export interface MultiProjectServerResult {
+  server: FastifyInstance;
+  /** Cleanup function to stop monitors and bridges */
+  cleanup: () => void;
+}
+
+/**
  * Create a multi-project server (for daemon mode)
  * Shows issues and tasks across all projects
  */
 export async function createMultiProjectServer(
   context: MultiProjectServerContext
-): Promise<FastifyInstance> {
+): Promise<MultiProjectServerResult> {
   const server = Fastify({
     logger: false, // Quiet mode for clean CLI output
   });
@@ -80,19 +92,44 @@ export async function createMultiProjectServer(
     prefix: "/",
   });
 
-  // Register WebSocket plugin and routes if EventBus is provided
+  // Track cleanup functions
+  const cleanupFns: (() => void)[] = [];
+
+  // Register WebSocket plugin
+  await server.register(fastifyWebsocket);
+  const wsHandler = new WebSocketHandler();
+  wsHandler.registerRoutes(server);
+
+  // Set up EventBus bridge if provided (for in-process events)
   if (context.eventBus) {
-    await server.register(fastifyWebsocket);
-
-    const wsHandler = new WebSocketHandler();
-    wsHandler.registerRoutes(server);
-
     const wsBridge = new WebSocketBridge(context.eventBus, wsHandler);
     wsBridge.start();
+    cleanupFns.push(() => wsBridge.stop());
+  }
+
+  // Set up database change monitor for cross-process change detection
+  if (context.databasePath) {
+    const dbMonitor = new DatabaseChangeMonitor(context.databasePath, {
+      pollIntervalMs: 1000, // Check every second
+    });
+
+    dbMonitor.on("change", () => {
+      wsHandler.broadcastDatabaseChange();
+    });
+
+    dbMonitor.start();
+    cleanupFns.push(() => dbMonitor.stop());
   }
 
   // Register multi-project routes
   registerMultiProjectRoutes(server, context);
 
-  return server;
+  return {
+    server,
+    cleanup: () => {
+      for (const fn of cleanupFns) {
+        fn();
+      }
+    },
+  };
 }

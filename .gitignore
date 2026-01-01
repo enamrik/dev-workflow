@@ -34,3 +34,6 @@ data/
 # Dogfooding - our own .track/ and .claude/ for building dev-workflow
 .track/
 .claude/
+
+# Vite temp files
+vite.config.ts.timestamp-*

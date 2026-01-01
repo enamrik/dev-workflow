@@ -83,6 +83,32 @@ export class WebSocketHandler {
   }
 
   /**
+   * Broadcast a database change notification to all clients
+   *
+   * This is used for cross-process change detection via PRAGMA data_version.
+   * Clients should invalidate their caches when receiving this.
+   */
+  broadcastDatabaseChange(): void {
+    // Send a synthetic event that the client recognizes
+    // We use a raw object here since db:changed is not a domain event type
+    const message = {
+      type: "event",
+      payload: {
+        type: "db:changed",
+        timestamp: new Date().toISOString(),
+        payload: {},
+      },
+    };
+    const data = JSON.stringify(message);
+
+    for (const socket of this.connections) {
+      if (socket.readyState === socket.OPEN) {
+        socket.send(data);
+      }
+    }
+  }
+
+  /**
    * Send a message to a specific client
    */
   private send(socket: WebSocket, message: WebSocketMessage): void {

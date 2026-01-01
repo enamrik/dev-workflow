@@ -137,4 +137,44 @@ export function registerMultiProjectRoutes(
     const issues = await multiProjectService.listIssues(projectFilter);
     return issues;
   });
+
+  // API: Get single issue by project and number
+  server.get<{ Params: IssueParams }>("/api/projects/:project/issues/:number", async (request, reply) => {
+    const { project: projectId, number } = request.params;
+    const issueNumber = parseInt(number, 10);
+
+    if (isNaN(issueNumber)) {
+      reply.code(400);
+      return { error: "Invalid issue number" };
+    }
+
+    const result = await multiProjectService.getIssue(projectId, issueNumber);
+
+    if (!result) {
+      reply.code(404);
+      return { error: "Issue not found" };
+    }
+
+    return result;
+  });
+
+  // API: List tasks for kanban board
+  server.get<{ Querystring: BoardQuerystring }>("/api/tasks", async (request) => {
+    const { issue: issueFilter, project: projectFilter } = request.query;
+    const filterIssueNumber = issueFilter ? parseInt(issueFilter, 10) : undefined;
+
+    const issuesWithTasks = await multiProjectService.listTasks(
+      projectFilter,
+      filterIssueNumber
+    );
+
+    return issuesWithTasks;
+  });
+
+  // API: List milestones
+  server.get<{ Querystring: MilestonesQuerystring }>("/api/milestones", async (request) => {
+    const { project: projectFilter } = request.query;
+    const milestones = await multiProjectService.listMilestones(projectFilter);
+    return milestones;
+  });
 }

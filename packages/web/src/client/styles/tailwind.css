@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles */
+@layer base {
+  body {
+    @apply font-sans leading-relaxed text-gray-800 bg-gray-100;
+  }
+}
+
+/* Custom component classes */
+@layer components {
+  .card {
+    @apply bg-white rounded-lg shadow-sm;
+  }
+
+  .page-header {
+    @apply flex items-center justify-between mb-6;
+  }
+
+  .page-title {
+    @apply text-2xl font-semibold text-gray-800;
+  }
+}

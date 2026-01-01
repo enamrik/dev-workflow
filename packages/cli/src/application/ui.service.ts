@@ -6,7 +6,7 @@ import {
   createMultiProjectServer,
   MultiProjectService,
 } from "@dev-workflow/web";
-import { TrackDirectoryResolver, EventBus } from "@dev-workflow/core";
+import { TrackDirectoryResolver, EventBus, getGlobalDatabasePath } from "@dev-workflow/core";
 
 export class UIError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -118,9 +118,11 @@ export class UIService {
 
       // Create and start multi-project server with real-time updates
       const eventBus = EventBus.getInstance();
-      const server = await createMultiProjectServer({
+      const databasePath = getGlobalDatabasePath();
+      const { server, cleanup } = await createMultiProjectServer({
         multiProjectService,
         eventBus,
+        databasePath,
       });
       await server.listen({ port, host: "127.0.0.1" });
 
@@ -154,6 +156,7 @@ export class UIService {
       // Graceful shutdown
       const shutdown = async (signal: string) => {
         console.log(`\n\n📦 Received ${signal}, shutting down gracefully...`);
+        cleanup(); // Stop database monitor and WebSocket bridges
         await server.close();
         await multiProjectService.close();
         console.log("✅ Server closed successfully");
