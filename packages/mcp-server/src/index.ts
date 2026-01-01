@@ -61,6 +61,7 @@ import {
   handleStartTaskSession,
   handleCompleteTaskSession,
   handleAbandonTaskSession,
+  handleGetTask,
   handleGetTaskForSession,
   handleListAvailableTasks,
   handleUpdateTaskLabels,
@@ -198,6 +199,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     }
     if (name === "abandon_task_session") {
       return await handleAbandonTaskSession(taskToolContext, a);
+    }
+    if (name === "get_task") {
+      return handleGetTask(taskToolContext, a);
     }
     if (name === "get_task_for_session") {
       return await handleGetTaskForSession(taskToolContext, a);

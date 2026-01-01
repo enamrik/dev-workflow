@@ -118,9 +118,31 @@ export const taskToolDefinitions: ToolDefinition[] = [
     },
   },
   {
+    name: "get_task",
+    description:
+      "Get task details by ID or number for quick lookups and questions about tasks. Returns task data only without loading execution context. Use get_task_for_session instead when starting work on a task.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: {
+          type: "string",
+          description: "Task UUID",
+        },
+        taskNumber: {
+          type: "number",
+          description: "Task number within the issue (e.g., 1, 2, 3)",
+        },
+        issueNumber: {
+          type: "number",
+          description: "Issue number (required when using taskNumber)",
+        },
+      },
+    },
+  },
+  {
     name: "get_task_for_session",
     description:
-      "Get full task details for execution in session. Includes title, description, acceptance criteria, and loaded labels for task labels.",
+      "Get full task details for execution. Loads complete context including issue, plan, and label content. Use get_task for quick lookups without execution context.",
     inputSchema: {
       type: "object",
       properties: {
@@ -519,6 +541,72 @@ export async function handleAbandonTaskSession(
   return successResponse({
     success: true,
     task,
+  });
+}
+
+/**
+ * Handle get_task tool call
+ *
+ * Lightweight task lookup - returns task data only without loading
+ * execution context (labels, issue, plan).
+ */
+export function handleGetTask(
+  ctx: TaskToolContext,
+  args: { taskId?: string; taskNumber?: number; issueNumber?: number }
+): ToolResponse {
+  const { taskId, taskNumber, issueNumber } = args;
+
+  let task;
+
+  if (taskId) {
+    // Direct lookup by UUID
+    task = ctx.taskRepository.findById(taskId);
+  } else if (taskNumber !== undefined && issueNumber !== undefined) {
+    // Lookup by task number + issue number
+    const issue = ctx.issueRepository.findByNumber(issueNumber);
+    if (!issue) {
+      return errorResponse(`Issue not found: #${issueNumber}`);
+    }
+
+    const plan = ctx.planRepository.findByIssueId(issue.id);
+    if (!plan) {
+      return errorResponse(`No plan found for issue #${issueNumber}`);
+    }
+
+    const tasks = ctx.taskRepository.findByPlanId(plan.id);
+    task = tasks.find((t) => t.number === taskNumber);
+  } else {
+    return errorResponse(
+      "Either taskId or both taskNumber and issueNumber are required"
+    );
+  }
+
+  if (!task) {
+    return errorResponse(
+      taskId
+        ? `Task not found: ${taskId}`
+        : `Task #${taskNumber} not found in issue #${issueNumber}`
+    );
+  }
+
+  // Return minimal task data without loading context
+  return successResponse({
+    id: task.id,
+    planId: task.planId,
+    number: task.number,
+    order: task.order,
+    title: task.title,
+    description: task.description,
+    status: task.status,
+    source: task.source,
+    acceptanceCriteria: task.acceptanceCriteria,
+    estimatedMinutes: task.estimatedMinutes,
+    labels: task.labels, // Just the label names, not loaded content
+    dependsOn: task.dependsOn,
+    startedAt: task.startedAt,
+    completedAt: task.completedAt,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
   });
 }
 

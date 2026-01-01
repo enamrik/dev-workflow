@@ -34,6 +34,7 @@ export {
   handleStartTaskSession,
   handleCompleteTaskSession,
   handleAbandonTaskSession,
+  handleGetTask,
   handleGetTaskForSession,
   handleListAvailableTasks,
   handleUpdateTaskLabels,
