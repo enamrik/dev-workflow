@@ -119,6 +119,27 @@ When creating the issue, mention that implementation details will be captured in
    - Show what was changed
    - If description or acceptance criteria changed, proceed to re-plan implementation tasks
 
+### For Closing Issues
+
+**IMPORTANT: Always ask user for confirmation before closing an issue.**
+
+1. **Verify all tasks are complete:**
+   - Check that all tasks in the plan are COMPLETED or ABANDONED
+   - If tasks remain PENDING or IN_PROGRESS, do not close
+
+2. **Ask for confirmation:**
+   - Summarize what was accomplished
+   - Ask: "Should I close this issue?"
+   - Wait for explicit user approval before proceeding
+   - Do NOT call `update_issue` with `status: "CLOSED"` without user saying yes
+
+3. **Close the issue (only after user confirms):**
+   - Call `update_issue` with `status: "CLOSED"`
+
+4. **Report closure:**
+   - Confirm the issue is now CLOSED
+   - Suggest next steps if applicable (other open issues, new work)
+
 ## Priority Extraction
 
 If user mentions specific priority/urgency:
