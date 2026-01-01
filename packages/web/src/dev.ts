@@ -53,7 +53,7 @@ async function main() {
   dbMonitor.start();
 
   // Register API routes (before Vite catches everything)
-  registerMultiProjectRoutes(server, { multiProjectService, eventBus, databasePath });
+  registerMultiProjectRoutes(server, { multiProjectService });
 
   // Use Vite's middleware for non-API routes only (React app + HMR)
   server.use((req, res, next) => {
