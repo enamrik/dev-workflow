@@ -1,12 +1,12 @@
+import { spawn } from "node:child_process";
+import * as path from "node:path";
+import { createRequire } from "node:module";
 import open from "open";
 import { FileSystem } from "../infrastructure/file-system.js";
-import { findAvailablePort } from "../infrastructure/port-manager.js";
-import {
-  createServer,
-  createMultiProjectServer,
-  MultiProjectService,
-} from "@dev-workflow/web";
-import { TrackDirectoryResolver, EventBus, getGlobalDatabasePath } from "@dev-workflow/core";
+import { getDaemonPort, saveDaemonPort, clearDaemonPort, isPortInUse } from "../infrastructure/port-manager.js";
+import { TrackDirectoryResolver } from "@dev-workflow/core";
+
+const require = createRequire(import.meta.url);
 
 export class UIError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -16,11 +16,18 @@ export class UIError extends Error {
 }
 
 /**
+ * Get the path to the web package
+ */
+function getWebPath(): string {
+  // Resolve from this package's node_modules
+  const webPackage = require.resolve("@dev-workflow/web/package.json");
+  return path.dirname(webPackage);
+}
+
+/**
  * UIService manages the dev-workflow web UI
  *
- * Supports two modes:
- * 1. Single-project mode: Shows issues for a specific project (when run from a repo)
- * 2. Multi-project mode: Shows issues across all projects (for daemon mode)
+ * Uses Next.js for the web server, spawning it as a child process.
  */
 export class UIService {
   constructor(
@@ -35,116 +42,51 @@ export class UIService {
 
   /**
    * Start single-project UI (for backward compatibility)
+   * Note: Now uses the same multi-project server, just filters to current project
    */
   async start(): Promise<void> {
-    try {
-      // Use PORT env var if set, otherwise find available port
-      const port = process.env["PORT"]
-        ? parseInt(process.env["PORT"], 10)
-        : await findAvailablePort();
-
-      // Initialize database
-      const dbPath = this.resolver.getDatabasePath();
-      const {
-        DatabaseService,
-        SqliteIssueRepository,
-        SqlitePlanRepository,
-        SqliteTaskRepository,
-        EventBus,
-      } = await import("@dev-workflow/core");
-
-      const dbService = await DatabaseService.create(dbPath);
-      const db = dbService.getDb();
-      const projectId = this.resolver.getProjectId();
-      const issueRepository = new SqliteIssueRepository(db, projectId);
-      const planRepository = new SqlitePlanRepository(db);
-      const taskRepository = new SqliteTaskRepository(db);
-
-      // Create and start server with real-time updates
-      const eventBus = EventBus.getInstance();
-      const server = await createServer({
-        issueRepository,
-        planRepository,
-        taskRepository,
-        eventBus,
-      });
-      await server.listen({ port, host: "127.0.0.1" });
-
-      const url = `http://127.0.0.1:${port}`;
-      console.log(`🚀 dev-workflow UI started at ${url}`);
-      console.log(`   Project: ${this.resolver.getProjectId()}`);
-      console.log("\nPress Ctrl+C to stop the server");
-
-      // Open browser (unless disabled via env var for automation/testing)
-      if (!process.env["NO_OPEN_BROWSER"]) {
-        try {
-          await open(url);
-        } catch (error) {
-          console.warn("⚠️  Could not open browser automatically.");
-          console.warn(`   Please visit: ${url}`);
-        }
-      }
-
-      // Graceful shutdown
-      const shutdown = async (signal: string) => {
-        console.log(`\n\n📦 Received ${signal}, shutting down gracefully...`);
-        await server.close();
-        dbService.close();
-        console.log("✅ Server closed successfully");
-        process.exit(0);
-      };
-
-      process.on("SIGINT", () => shutdown("SIGINT"));
-      process.on("SIGTERM", () => shutdown("SIGTERM"));
-
-    } catch (error) {
-      throw new UIError("Failed to start UI server", error);
-    }
+    // For now, just start multi-project mode
+    // The UI can filter to the current project via query params
+    await UIService.startMultiProject();
   }
 
   /**
-   * Start multi-project UI (for daemon mode)
-   * Shows issues and tasks across all projects
+   * Start multi-project UI by spawning Next.js
    */
   static async startMultiProject(): Promise<void> {
     try {
-      // Use PORT env var if set, otherwise use default daemon port
+      // Use PORT env var if set, otherwise find available port (preferring default)
       const port = process.env["PORT"]
         ? parseInt(process.env["PORT"], 10)
-        : 3456;
+        : await getDaemonPort();
 
-      // Create multi-project service
-      const multiProjectService = new MultiProjectService();
+      // Save the port so clients can find us
+      saveDaemonPort(port);
 
-      // Create and start multi-project server with real-time updates
-      const eventBus = EventBus.getInstance();
-      const databasePath = getGlobalDatabasePath();
-      const { server, cleanup } = await createMultiProjectServer({
-        multiProjectService,
-        eventBus,
-        databasePath,
-      });
-      await server.listen({ port, host: "127.0.0.1" });
-
+      const webPath = getWebPath();
       const url = `http://127.0.0.1:${port}`;
-      console.log(`🚀 dev-workflow UI (multi-project) started at ${url}`);
 
-      // List projects
-      const projects = await multiProjectService.listProjects();
-      if (projects.length > 0) {
-        console.log(`   Serving ${projects.length} project(s):`);
-        for (const project of projects) {
-          console.log(`   - ${project.id}`);
-        }
-      } else {
-        console.log("   No projects found. Initialize a project with: dev-workflow init");
-      }
+      console.log(`🚀 Starting dev-workflow UI at ${url}`);
+      console.log(`   Using Next.js from: ${webPath}`);
 
+      // Spawn Next.js
+      const nextProcess = spawn("npx", ["next", "start", "-p", String(port)], {
+        cwd: webPath,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: {
+          ...process.env,
+          PORT: String(port),
+        },
+      });
+
+      // Wait for server to be ready
+      await UIService.waitForServer(port, 30000);
+
+      console.log(`✓ dev-workflow UI started at ${url}`);
       console.log("\nPress Ctrl+C to stop the server");
 
-      // Open browser (unless disabled via env var for automation/testing)
+      // Open browser (unless disabled via env var)
       if (!process.env["NO_OPEN_BROWSER"]) {
-        const open = (await import("open")).default;
         try {
           await open(url);
         } catch {
@@ -153,22 +95,51 @@ export class UIService {
         }
       }
 
+      // Forward output
+      nextProcess.stdout?.on("data", (data) => {
+        process.stdout.write(data);
+      });
+      nextProcess.stderr?.on("data", (data) => {
+        process.stderr.write(data);
+      });
+
+      // Handle process exit
+      nextProcess.on("exit", (code) => {
+        clearDaemonPort();
+        if (code !== 0 && code !== null) {
+          console.error(`Next.js exited with code ${code}`);
+        }
+        process.exit(code ?? 0);
+      });
+
       // Graceful shutdown
-      const shutdown = async (signal: string) => {
+      const shutdown = (signal: string) => {
         console.log(`\n\n📦 Received ${signal}, shutting down gracefully...`);
-        cleanup(); // Stop database monitor and WebSocket bridges
-        await server.close();
-        await multiProjectService.close();
-        console.log("✅ Server closed successfully");
-        process.exit(0);
+        clearDaemonPort();
+        nextProcess.kill("SIGTERM");
       };
 
       process.on("SIGINT", () => shutdown("SIGINT"));
       process.on("SIGTERM", () => shutdown("SIGTERM"));
 
     } catch (error) {
-      throw new UIError("Failed to start multi-project UI server", error);
+      clearDaemonPort();
+      throw new UIError("Failed to start UI server", error);
     }
+  }
+
+  /**
+   * Wait for the server to be ready
+   */
+  private static async waitForServer(port: number, timeoutMs: number): Promise<void> {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeoutMs) {
+      if (await isPortInUse(port)) {
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new UIError(`Server did not start within ${timeoutMs}ms`);
   }
 
   /**

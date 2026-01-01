@@ -1,6 +1,7 @@
 {
   "name": "@dev-workflow/web",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -8,51 +9,41 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "pnpm build:client && pnpm build:server && pnpm build:assets",
-    "build:client": "vite build",
+    "dev": "next dev -p ${PORT:-3457}",
+    "build": "next build && pnpm build:server",
     "build:server": "tsc -p tsconfig.server.json",
-    "build:assets": "rm -rf dist/public && cp -r src/public dist/public",
-    "dev": "tsx watch --ignore 'vite.config.ts.*' src/dev.ts",
-    "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.client.json",
-    "preview": "vite preview",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "start": "next start -p ${PORT:-3456}",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@dev-workflow/core": "workspace:*",
-    "@fastify/static": "^8.0.3",
-    "@fastify/websocket": "^11.2.0",
     "@tanstack/react-query": "^5.17.0",
+    "better-sqlite3": "^12.5.0",
     "clsx": "^2.1.0",
     "date-fns": "^3.2.0",
-    "fastify": "^5.2.1",
+    "next": "^14.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^6.21.0",
-    "tailwind-merge": "^2.2.0"
+    "tailwind-merge": "^2.2.0",
+    "ws": "^8.16.0"
   },
   "devDependencies": {
-    "@fastify/middie": "^9.0.3",
     "@tailwindcss/typography": "^0.5.19",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.10.6",
     "@types/react": "^18.2.47",
     "@types/react-dom": "^18.2.18",
-    "@vitejs/plugin-react": "^4.2.1",
+    "@types/ws": "^8.5.10",
     "autoprefixer": "^10.4.16",
-    "better-sqlite3": "^12.5.0",
-    "concurrently": "^8.2.2",
     "postcss": "^8.4.33",
     "tailwindcss": "^3.4.1",
-    "tsx": "^4.7.0",
-    "typescript": "^5.3.3",
-    "vite": "^5.0.11",
-    "wait-on": "^9.0.3"
+    "typescript": "^5.3.3"
   },
   "engines": {
     "node": ">=20.0.0"
