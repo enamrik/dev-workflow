@@ -11,3 +11,4 @@ export { Pagination } from "./Pagination";
 export { Select } from "./Select";
 export { Markdown } from "./Markdown";
 export { Tooltip } from "./Tooltip";
+export { Popover } from "./Popover";

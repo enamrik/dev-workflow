@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { clsx } from "clsx";
-import { Badge } from "../ui";
+import { Badge, Popover, Markdown } from "../ui";
 import type { Task } from "@/lib/types";
 
 interface KanbanCardProps {
@@ -17,23 +17,93 @@ function truncate(text: string, maxLength: number): string {
   return text.slice(0, maxLength - 3) + "...";
 }
 
-export function KanbanCard({
+interface TaskPopoverContentProps {
+  task: Task;
+  issueNumber: number;
+  issueUrl: string;
+}
+
+function TaskPopoverContent({
   task,
   issueNumber,
+  issueUrl,
+}: TaskPopoverContentProps) {
+  return (
+    <div className="p-4">
+      {/* Header: Task number and title */}
+      <div className="font-semibold text-gray-900 text-sm mb-3 pb-2 border-b border-gray-100">
+        <Link
+          href={issueUrl}
+          className="text-blue-600 hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          #{issueNumber}.{task.number}
+        </Link>{" "}
+        {task.title}
+      </div>
+
+      {/* Full description */}
+      {task.description && (
+        <div className="mb-3">
+          <Markdown className="text-sm">{task.description}</Markdown>
+        </div>
+      )}
+
+      {/* Acceptance criteria */}
+      {task.acceptanceCriteria.length > 0 && (
+        <div className="mb-3">
+          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+            Acceptance Criteria
+          </div>
+          <ul className="text-sm text-gray-700 space-y-1">
+            {task.acceptanceCriteria.map((criterion, index) => (
+              <li key={index} className="flex items-start gap-2">
+                <span className="text-gray-400 mt-0.5">-</span>
+                <span>{criterion}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Metadata: estimated time and labels */}
+      <div className="flex items-center gap-3 pt-2 border-t border-gray-100 text-xs">
+        {task.estimatedMinutes && (
+          <span className="text-gray-500">
+            Est: {task.estimatedMinutes} min
+          </span>
+        )}
+        {task.labels.length > 0 && (
+          <div className="flex gap-1 flex-wrap">
+            {task.labels.map((label) => (
+              <Badge key={label} variant="label" value={label} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CardContent({
+  task,
+  issueNumber,
+  issueUrl,
   projectId,
-}: KanbanCardProps) {
+}: {
+  task: Task;
+  issueNumber: number;
+  issueUrl: string;
+  projectId?: string;
+}) {
   const isCompleted = task.status === "COMPLETED";
   const isInProgress = task.status === "IN_PROGRESS";
   const isAbandoned = task.status === "ABANDONED";
 
-  const issueUrl = projectId
-    ? `/projects/${encodeURIComponent(projectId)}/issues/${issueNumber}`
-    : `/issues/${issueNumber}`;
-
   return (
     <div
       className={clsx(
-        "bg-white rounded-lg shadow-sm border p-3",
+        "bg-white rounded-lg shadow-sm border p-3 transition-shadow hover:shadow-md",
         isCompleted && "border-green-200",
         isInProgress && "border-orange-200",
         isAbandoned && "border-red-200 opacity-75",
@@ -85,5 +155,34 @@ export function KanbanCard({
         </div>
       </div>
     </div>
+  );
+}
+
+export function KanbanCard({
+  task,
+  issueNumber,
+  projectId,
+}: KanbanCardProps) {
+  const issueUrl = projectId
+    ? `/projects/${encodeURIComponent(projectId)}/issues/${issueNumber}`
+    : `/issues/${issueNumber}`;
+
+  return (
+    <Popover
+      trigger={
+        <CardContent
+          task={task}
+          issueNumber={issueNumber}
+          issueUrl={issueUrl}
+          projectId={projectId}
+        />
+      }
+    >
+      <TaskPopoverContent
+        task={task}
+        issueNumber={issueNumber}
+        issueUrl={issueUrl}
+      />
+    </Popover>
   );
 }
