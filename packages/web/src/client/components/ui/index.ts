@@ -1,5 +1,8 @@
 export { Badge } from "./Badge";
+export { Checkbox } from "./Checkbox";
+export { Pagination } from "./Pagination";
 export { ProgressBar } from "./ProgressBar";
+export { SearchInput } from "./SearchInput";
 export { Tabs, TabPanel } from "./Tabs";
 export { Card, CardHeader, CardTitle } from "./Card";
 export { LoadingState, LoadingSpinner } from "./LoadingState";

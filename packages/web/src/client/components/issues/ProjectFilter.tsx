@@ -18,7 +18,7 @@ export function ProjectFilter({ projects, value, onChange }: ProjectFilterProps)
   }));
 
   return (
-    <div className="flex items-center gap-2 mb-4">
+    <div className="flex items-center gap-2">
       <label className="text-sm text-gray-600">Project:</label>
       <Select
         options={options}
