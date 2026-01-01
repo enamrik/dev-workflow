@@ -252,16 +252,16 @@ If issue has no description/acceptance criteria:
 - Ask the user for more context before planning
 - Suggest updating the issue first with manage-issue
 
-## Task Labels (Skills)
+## Task Labels
 
-**IMPORTANT: Task labels must have matching skills.** Labels map to skill files that provide context during task execution.
+**IMPORTANT: Task labels must exist before assignment.** Labels are markdown files in `.track/labels/` that provide contextual guidance during task execution.
 
 Before assigning labels to tasks:
-1. Call `list_available_skills` to see what skills exist
-2. Only use labels that have a corresponding skill file in `.track/labels/skills/`
-3. If no matching skill exists, do NOT assign that label
+1. Call `list_available_task_labels` to see what labels exist
+2. Only use labels that have a corresponding file in `.track/labels/`
+3. If no matching label file exists, do NOT assign that label
 
-Only use labels from the available skills list. Do not invent labels.
+Only use labels from the available labels list. Do not invent labels.
 
 ## Notes
 

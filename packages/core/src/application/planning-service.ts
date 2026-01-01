@@ -103,10 +103,10 @@ export class PlanningService {
     const labels: string[] = [];
     const searchText = `${task.title} ${task.description}`.toLowerCase();
 
-    for (const skill of availableLabels) {
-      // Match skill name in task content
-      if (searchText.includes(skill.toLowerCase())) {
-        labels.push(skill);
+    for (const label of availableLabels) {
+      // Match label name in task content
+      if (searchText.includes(label.toLowerCase())) {
+        labels.push(label);
       }
     }
 
@@ -228,7 +228,7 @@ export class PlanningService {
       });
     }
 
-    // Get available skills for label assignment
+    // Get available labels for auto-assignment
     const availableLabels = await this.getAvailableLabels();
 
     // Match new tasks to existing GENERATED tasks only (not manual)
@@ -423,7 +423,7 @@ export class PlanningService {
     availableLabels: string[]
   ): Task[] {
     const taskData = taskDefs.map((def) => {
-      // Auto-assign skill labels based on task content
+      // Auto-assign labels based on task content
       const taskLabels = this.assignLabelsForTask(
         {
           title: def.title,

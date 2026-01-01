@@ -12,8 +12,8 @@ import {
   type SqliteTaskRepository,
   type TaskSessionService,
   type TaskManagementService,
-  type SkillService,
-  type Skill,
+  type LabelService,
+  type Label,
   type TaskStatus,
   type TaskExecutionLogRow,
 } from "@dev-workflow/core";
@@ -120,7 +120,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "get_task_for_session",
     description:
-      "Get full task details for execution in session. Includes title, description, acceptance criteria, and loaded skills for task labels.",
+      "Get full task details for execution in session. Includes title, description, acceptance criteria, and loaded labels for task labels.",
     inputSchema: {
       type: "object",
       properties: {
@@ -157,7 +157,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "update_task_labels",
     description:
-      "Update skill labels for a task. Labels map to skill files in .track/labels/skills/{label}.md.",
+      "Update labels for a task. Labels map to files in .track/labels/{label}.md.",
     inputSchema: {
       type: "object",
       properties: {
@@ -169,7 +169,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
           type: "array",
           items: { type: "string" },
           description:
-            'Array of skill labels (e.g., ["db", "api", "security"])',
+            'Array of labels (e.g., ["db", "api", "security"])',
         },
       },
       required: ["taskId", "labels"],
@@ -335,7 +335,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
         labels: {
           type: "array",
           items: { type: "string" },
-          description: "Skill labels",
+          description: "Labels",
         },
       },
       required: ["taskId"],
@@ -412,7 +412,7 @@ export interface TaskToolContext {
   taskRepository: SqliteTaskRepository;
   taskSessionService: TaskSessionService;
   taskManagementService: TaskManagementService;
-  skillService: SkillService;
+  labelService: LabelService;
   taskExecutionLogsSchema: typeof taskExecutionLogs;
 }
 
@@ -570,19 +570,19 @@ export async function handleGetTaskForSession(
     }));
   }
 
-  // Load skills based on labels
+  // Load label content
   if (task.labels?.length) {
-    const skills = await ctx.skillService.loadSkillsForLabels(task.labels);
-    if (skills.length > 0) {
-      result.loadedSkills = skills;
+    const loadedLabels = await ctx.labelService.loadLabelsForTask(task.labels);
+    if (loadedLabels.length > 0) {
+      result.loadedLabels = loadedLabels;
     }
   }
 
   // Format task requirements prominently
-  if (task.contextInstructions || result.loadedSkills) {
+  if (task.contextInstructions || result.loadedLabels) {
     result.taskRequirements = formatTaskRequirements(
       task.contextInstructions,
-      result.loadedSkills as Skill[] | undefined
+      result.loadedLabels as Label[] | undefined
     );
   }
 
@@ -594,7 +594,7 @@ export async function handleGetTaskForSession(
  */
 function formatTaskRequirements(
   contextInstructions: string | undefined,
-  skills: Skill[] | undefined
+  labels: Label[] | undefined
 ): string {
   const parts: string[] = [];
 
@@ -602,10 +602,10 @@ function formatTaskRequirements(
     parts.push("## Task-Specific Instructions\n" + contextInstructions);
   }
 
-  if (skills?.length) {
+  if (labels?.length) {
     parts.push("## Required Practices\n");
-    for (const skill of skills) {
-      parts.push(`### ${skill.name}\n${skill.content}\n`);
+    for (const label of labels) {
+      parts.push(`### ${label.name}\n${label.content}\n`);
     }
   }
 
@@ -673,7 +673,7 @@ export async function handleUpdateTaskLabels(
 
   // Validate labels exist
   if (labels.length > 0) {
-    const available = await ctx.skillService.listAvailableSkills();
+    const available = await ctx.labelService.listAvailableLabels();
     const availableSet = new Set(available);
     const invalidLabels = labels.filter((l) => !availableSet.has(l));
 
@@ -699,7 +699,7 @@ export async function handleUpdateTaskLabels(
 export async function handleListAvailableTaskLabels(
   ctx: TaskToolContext
 ): Promise<ToolResponse> {
-  const labels = await ctx.skillService.listAvailableSkills();
+  const labels = await ctx.labelService.listAvailableLabels();
 
   return successResponse({
     success: true,
@@ -717,7 +717,7 @@ export async function handleGetTaskLabel(
 ): Promise<ToolResponse> {
   const { name } = args;
 
-  const label = await ctx.skillService.getSkill(name);
+  const label = await ctx.labelService.getLabel(name);
   if (!label) {
     return errorResponse(`Label not found: ${name}`);
   }
@@ -737,7 +737,7 @@ export async function handleCreateTaskLabel(
 ): Promise<ToolResponse> {
   const { name, content } = args;
 
-  const label = await ctx.skillService.createSkill(name, content);
+  const label = await ctx.labelService.createLabel(name, content);
 
   return successResponse({
     success: true,
@@ -755,7 +755,7 @@ export async function handleUpdateTaskLabel(
 ): Promise<ToolResponse> {
   const { name, content } = args;
 
-  const label = await ctx.skillService.updateSkill(name, content);
+  const label = await ctx.labelService.updateLabel(name, content);
 
   return successResponse({
     success: true,
@@ -773,7 +773,7 @@ export async function handleRemoveTaskLabel(
 ): Promise<ToolResponse> {
   const { name } = args;
 
-  await ctx.skillService.removeSkill(name);
+  await ctx.labelService.removeLabel(name);
 
   return successResponse({
     success: true,
@@ -868,7 +868,7 @@ export async function handleUpdateTask(
 
   // Validate labels if provided
   if (labels !== undefined && labels.length > 0) {
-    const available = await ctx.skillService.listAvailableSkills();
+    const available = await ctx.labelService.listAvailableLabels();
     const availableSet = new Set(available);
     const invalidLabels = labels.filter((l) => !availableSet.has(l));
 

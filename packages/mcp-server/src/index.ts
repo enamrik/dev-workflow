@@ -27,7 +27,7 @@ import {
   NodeFileSystem,
   VersioningService,
   PlanningService,
-  SkillService,
+  LabelService,
   TaskSessionService,
   TaskManagementService,
   taskExecutionLogs,
@@ -301,8 +301,8 @@ async function main() {
   const userTemplatesPath = path.join(workingDir, "issues/templates");
   const defaultTemplatesPath = path.resolve(TEMPLATES_PATH);
 
-  // Initialize skill service
-  const skillService = new SkillService(trackDirectory);
+  // Initialize label service
+  const labelService = new LabelService(trackDirectory);
 
   // Initialize GitHub sync service if configured
   let githubSyncService: GitHubSyncService | undefined;
@@ -338,7 +338,7 @@ async function main() {
     issueRepository,
     planRepository,
     taskRepository,
-    skillService,
+    labelService,
     versioningService
   );
 
@@ -382,7 +382,7 @@ async function main() {
     taskRepository,
     taskSessionService,
     taskManagementService,
-    skillService,
+    labelService,
     taskExecutionLogsSchema: taskExecutionLogs,
   };
 

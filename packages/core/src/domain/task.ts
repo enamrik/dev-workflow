@@ -35,8 +35,8 @@ export interface Task {
   readonly sessionStartedAt?: string; // When current session began
   readonly lastSessionActivityAt?: string; // Last activity in session (for timeout detection)
 
-  // Skill labels (references .track/labels/skills/<label>.md files)
-  readonly labels?: string[]; // Array of labels, each references .track/labels/skills/<label>.md
+  // Labels (references .track/labels/<label>.md files)
+  readonly labels?: string[]; // Array of labels, each references .track/labels/<label>.md
 
   // Subagent execution context
   readonly contextInstructions?: string; // Custom instructions for subagent execution (e.g., "use existing auth pattern in src/auth")
@@ -230,12 +230,12 @@ export interface TaskRepository {
   clearSession(taskId: string): Task;
 
   /**
-   * Update skill labels for a task
+   * Update labels for a task
    *
-   * Allows UI to dynamically change which skills are associated with a task.
+   * Allows UI to dynamically change which labels are associated with a task.
    *
    * @param taskId - Task UUID
-   * @param labels - Array of skill labels (e.g., ["db", "api", "security"])
+   * @param labels - Array of labels (e.g., ["db", "api", "security"])
    * @returns The updated task
    */
   updateLabels(taskId: string, labels: string[]): Task;

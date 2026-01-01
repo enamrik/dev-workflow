@@ -51,12 +51,12 @@ export function createRepositories(db: TestDatabase["db"], projectId: string = T
 export function createServices(repos: ReturnType<typeof createRepositories>) {
   // Mock LabelService that returns no labels (for testing)
   const mockLabelService = {
-    // New API
     loadLabelsForTask: async () => [],
     listAvailableLabels: async () => [],
-    // Legacy API (backward compatibility)
-    loadSkillsForLabels: async () => [],
-    listAvailableSkills: async () => [],
+    getLabel: async () => null,
+    createLabel: async () => ({ name: "", content: "" }),
+    updateLabel: async () => ({ name: "", content: "" }),
+    removeLabel: async () => {},
   };
 
   const versioningService = new VersioningService(

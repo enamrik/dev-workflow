@@ -1,7 +1,7 @@
 ---
 name: dwf-manage-issue
 description: "Create or update issues in the tracker. Handles requirements separation, template selection, priority/milestone assignment. Invoked by dwf-work-request or directly when user says 'create issue', 'update issue #N', 'add acceptance criteria'."
-allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_skills, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone
+allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_task_labels, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone
 ---
 
 # Manage Issue Skill
@@ -150,12 +150,12 @@ User: "Create an issue to add user authentication for M2"
 
 ## Label Extraction
 
-**IMPORTANT: Labels must have matching skills.** Before assigning labels:
-1. Call `list_available_skills` to see what skills exist
-2. Only use labels that have a corresponding skill file in `.track/labels/skills/`
-3. If no matching skill exists, do NOT assign that label
+**IMPORTANT: Labels must exist before assignment.** Before assigning labels:
+1. Call `list_available_task_labels` to see what labels exist
+2. Only use labels that have a corresponding file in `.track/labels/`
+3. If no matching label file exists, do NOT assign that label
 
-Only use labels from the available skills list. Do not invent labels.
+Only use labels from the available labels list. Do not invent labels.
 
 ## After Success
 

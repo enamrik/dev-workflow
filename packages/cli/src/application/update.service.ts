@@ -175,10 +175,10 @@ export class UpdateService {
   }
 
   /**
-   * Update task labels
-   * (Creates defaults if missing, preserves user customizations)
+   * Update task labels directory
+   * (Creates README if missing)
    */
-  async updateTaskSkills(): Promise<void> {
+  async updateTaskLabels(): Promise<void> {
     try {
       const labelsDir = this.resolver.getLabelsPath();
       const dirExists = await this.fileSystem.exists(labelsDir);
@@ -212,76 +212,6 @@ Example: \`.track/labels/testing.md\` creates a "testing" label that can be
 assigned to tasks via the \`labels\` field.
 `;
         await this.fileSystem.writeFile(readmePath, readme);
-      }
-
-      // Create default labels only if they don't exist
-      const defaultLabels = {
-        "db.md": `# Database Changes
-
-When working on database-related tasks:
-
-## Before Making Changes
-- Review existing schema in \`packages/core/src/infrastructure/database/schema.ts\`
-- Check for existing migrations in the \`drizzle/\` directory
-
-## Making Schema Changes
-1. Update the schema file with your changes
-2. Run \`pnpm drizzle-kit generate\` to create a migration
-3. Run the application to apply migrations automatically
-
-## Best Practices
-- Ensure backward compatibility for schema changes when possible
-- Add indexes for frequently queried columns
-- Use foreign keys to maintain referential integrity
-- Document complex relationships in code comments
-`,
-        "api.md": `# API Development
-
-When working on API endpoints:
-
-## REST Conventions
-- Use appropriate HTTP methods (GET, POST, PUT, DELETE, PATCH)
-- Return appropriate HTTP status codes
-- Use consistent URL patterns
-
-## Response Format
-- Return JSON responses with consistent structure
-- Include meaningful error messages
-- Use pagination for list endpoints
-
-## Documentation
-- Document endpoints with examples
-- Include request/response schemas
-- Note any authentication requirements
-`,
-        "security.md": `# Security Requirements
-
-When working on security-sensitive code:
-
-## Data Protection
-- Never log sensitive data (passwords, tokens, PII)
-- Encrypt sensitive data at rest
-- Use secure connections for data in transit
-
-## Input Validation
-- Validate all user input at system boundaries
-- Use parameterized queries to prevent SQL injection
-- Sanitize output to prevent XSS attacks
-
-## Authentication & Authorization
-- Use established auth libraries
-- Implement proper session management
-- Follow principle of least privilege
-`,
-      };
-
-      for (const [filename, content] of Object.entries(defaultLabels)) {
-        const labelPath = path.join(labelsDir, filename);
-        const exists = await this.fileSystem.exists(labelPath);
-        if (!exists) {
-          await this.fileSystem.writeFile(labelPath, content);
-          console.log(`  Created ${filename}`);
-        }
       }
     } catch (error) {
       throw new UpdateError("Failed to update task labels", error);

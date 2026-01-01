@@ -9,7 +9,7 @@ import { execSync } from "node:child_process";
  * Storage architecture:
  * - Single global database: ~/.track/workflow.db (all projects share one DB)
  * - Per-project config: ~/.track/<project-id>/config.json
- * - Per-project skills: ~/.track/<project-id>/labels/
+ * - Per-project labels: ~/.track/<project-id>/labels/
  *
  * Project ID is derived from the git repository root path.
  * Format: <repo-folder-name>-<6-char-hash>

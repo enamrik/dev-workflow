@@ -228,7 +228,7 @@ These values can still be overridden when creating an issue explicitly.
    * When a task has labels, the corresponding label files are loaded
    * and provided to Claude as context when executing the task.
    */
-  async createTaskSkills(): Promise<void> {
+  async createTaskLabels(): Promise<void> {
     try {
       const labelsDir = this.resolver.getLabelsPath();
       await this.fileSystem.mkdir(labelsDir, { recursive: true });
@@ -259,85 +259,6 @@ assigned to tasks via the \`labels\` field.
         path.join(labelsDir, "README.md"),
         readme
       );
-
-      // Create default db label
-      const dbLabel = `# Database Changes
-
-When working on database-related tasks:
-
-## Before Making Changes
-- Review existing schema in \`packages/core/src/infrastructure/database/schema.ts\`
-- Check for existing migrations in the \`drizzle/\` directory
-
-## Making Schema Changes
-1. Update the schema file with your changes
-2. Run \`pnpm drizzle-kit generate\` to create a migration
-3. Run the application to apply migrations automatically
-
-## Best Practices
-- Ensure backward compatibility for schema changes when possible
-- Add indexes for frequently queried columns
-- Use foreign keys to maintain referential integrity
-- Document complex relationships in code comments
-`;
-
-      await this.fileSystem.writeFile(
-        path.join(labelsDir, "db.md"),
-        dbLabel
-      );
-
-      // Create default api label
-      const apiLabel = `# API Development
-
-When working on API endpoints:
-
-## REST Conventions
-- Use appropriate HTTP methods (GET, POST, PUT, DELETE, PATCH)
-- Return appropriate HTTP status codes
-- Use consistent URL patterns
-
-## Response Format
-- Return JSON responses with consistent structure
-- Include meaningful error messages
-- Use pagination for list endpoints
-
-## Documentation
-- Document endpoints with examples
-- Include request/response schemas
-- Note any authentication requirements
-`;
-
-      await this.fileSystem.writeFile(
-        path.join(labelsDir, "api.md"),
-        apiLabel
-      );
-
-      // Create default security label
-      const securityLabel = `# Security Requirements
-
-When working on security-sensitive code:
-
-## Data Protection
-- Never log sensitive data (passwords, tokens, PII)
-- Encrypt sensitive data at rest
-- Use secure connections for data in transit
-
-## Input Validation
-- Validate all user input at system boundaries
-- Use parameterized queries to prevent SQL injection
-- Sanitize output to prevent XSS attacks
-
-## Authentication & Authorization
-- Use established auth libraries
-- Implement proper session management
-- Follow principle of least privilege
-`;
-
-      await this.fileSystem.writeFile(
-        path.join(labelsDir, "security.md"),
-        securityLabel
-      );
-
     } catch (error) {
       throw new InstallError("Failed to create task labels", error);
     }

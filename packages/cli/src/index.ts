@@ -55,7 +55,7 @@ async function runInit(): Promise<void> {
     await installer.createTrackDirectory();
     console.log(`✓ Created ${trackDir}`);
 
-    await installer.createTaskSkills();
+    await installer.createTaskLabels();
     console.log("✓ Created task labels");
 
     await installer.installSkills();
@@ -118,7 +118,7 @@ async function runUpdate(): Promise<void> {
     await updater.updateTemplates();
     console.log("✓ Updated templates");
 
-    await updater.updateTaskSkills();
+    await updater.updateTaskLabels();
     console.log("✓ Updated task labels");
 
     await updater.updateMCPServer();

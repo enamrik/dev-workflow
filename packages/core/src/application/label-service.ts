@@ -215,32 +215,4 @@ export class LabelService {
     };
   }
 
-  // Legacy aliases for backward compatibility during migration
-  async loadSkillsForLabels(labels: string[]): Promise<Label[]> {
-    return this.loadLabelsForTask(labels);
-  }
-
-  async listAvailableSkills(): Promise<string[]> {
-    return this.listAvailableLabels();
-  }
-
-  async getSkill(name: string): Promise<Label | null> {
-    return this.getLabel(name);
-  }
-
-  async createSkill(name: string, content: string): Promise<Label> {
-    return this.createLabel(name, content);
-  }
-
-  async updateSkill(name: string, content: string): Promise<Label> {
-    return this.updateLabel(name, content);
-  }
-
-  async removeSkill(name: string): Promise<void> {
-    return this.removeLabel(name);
-  }
 }
-
-// Re-export with legacy name for backward compatibility
-export { LabelService as SkillService };
-export type { Label as Skill };
