@@ -145,5 +145,6 @@ ui: ui-stop build
 
 ui-dev:
 	@echo "🔥 Starting UI in dev mode (hot reload enabled)..."
-	@echo "   Server on :3457, Client on :5173"
-	@cd packages/web && (npx wait-on tcp:5173 && open http://localhost:5173) & pnpm dev
+	@echo "   http://localhost:3457"
+	@(cd packages/web && npx wait-on tcp:3457 && open http://localhost:3457) &
+	@pnpm --filter @dev-workflow/web dev

@@ -14,9 +14,7 @@
     "build": "pnpm build:client && pnpm build:server",
     "build:client": "vite build",
     "build:server": "tsc -p tsconfig.server.json",
-    "dev": "concurrently \"pnpm dev:server\" \"pnpm dev:client\"",
-    "dev:client": "vite",
-    "dev:server": "tsx watch src/index.ts",
+    "dev": "tsx watch --ignore 'vite.config.ts.*' src/dev.ts",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.client.json",
     "preview": "vite preview"
@@ -35,6 +33,7 @@
     "tailwind-merge": "^2.2.0"
   },
   "devDependencies": {
+    "@fastify/middie": "^9.0.3",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.10.6",
     "@types/react": "^18.2.47",
@@ -47,7 +46,8 @@
     "tailwindcss": "^3.4.1",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3",
-    "vite": "^5.0.11"
+    "vite": "^5.0.11",
+    "wait-on": "^9.0.3"
   },
   "engines": {
     "node": ">=20.0.0"
