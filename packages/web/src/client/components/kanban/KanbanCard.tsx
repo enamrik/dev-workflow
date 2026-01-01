@@ -41,47 +41,49 @@ export function KanbanCard({
         !isCompleted && !isInProgress && !isAbandoned && "border-gray-200"
       )}
     >
-      {/* Issue reference */}
-      <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+      {/* Task number and title at top */}
+      <div className="font-medium text-gray-800 text-sm mb-1">
         <Link
           to={issueUrl}
-          className="font-semibold text-blue-600 hover:underline"
+          className="text-blue-600 hover:underline"
           onClick={(e) => e.stopPropagation()}
         >
-          #{issueNumber}
-        </Link>
-        <span className="truncate">{truncate(issueTitle, 30)}</span>
+          #{issueNumber}.{task.number}
+        </Link>{" "}
+        {task.title}
       </div>
-
-      {/* Task title */}
-      <div className="font-medium text-gray-800 text-sm mb-1">{task.title}</div>
 
       {/* Task description */}
       <div className="text-xs text-gray-600 mb-2">
         {truncate(task.description, 100)}
       </div>
 
-      {/* Footer */}
-      <div className="flex items-center gap-2 text-xs">
-        {task.estimatedMinutes && (
-          <span className="text-gray-500">{task.estimatedMinutes}m</span>
+      {/* Footer: project and metadata */}
+      <div className="flex items-center justify-between text-xs">
+        {projectId && (
+          <span className="font-medium text-gray-600">{projectId}</span>
         )}
-        {isAbandoned && <Badge variant="status" value="ABANDONED" />}
-        {task.sessionId && (
-          <span
-            className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium"
-            title={`Session: ${task.sessionId}`}
-          >
-            Active
-          </span>
-        )}
-        {task.labels.length > 0 && (
-          <div className="flex gap-1 flex-wrap">
-            {task.labels.slice(0, 2).map((label) => (
-              <Badge key={label} variant="label" value={label} />
-            ))}
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {task.estimatedMinutes && (
+            <span className="text-gray-500">{task.estimatedMinutes}m</span>
+          )}
+          {isAbandoned && <Badge variant="status" value="ABANDONED" />}
+          {task.sessionId && (
+            <span
+              className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium"
+              title={`Session: ${task.sessionId}`}
+            >
+              Active
+            </span>
+          )}
+          {task.labels.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              {task.labels.slice(0, 2).map((label) => (
+                <Badge key={label} variant="label" value={label} />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

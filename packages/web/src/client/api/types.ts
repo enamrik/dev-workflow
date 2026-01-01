@@ -32,6 +32,7 @@ export interface Plan {
 export interface Task {
   id: string;
   planId: string;
+  number: number;
   title: string;
   description: string;
   status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
