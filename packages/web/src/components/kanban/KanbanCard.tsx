@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { clsx } from "clsx";
-import { Badge, Popover, Markdown } from "../ui";
+import { Badge, Modal, Markdown } from "../ui";
 import type { Task } from "@/lib/types";
 
 interface KanbanCardProps {
@@ -17,17 +17,17 @@ function truncate(text: string, maxLength: number): string {
   return text.slice(0, maxLength - 3) + "...";
 }
 
-interface TaskPopoverContentProps {
+interface TaskModalContentProps {
   task: Task;
   issueNumber: number;
   issueUrl: string;
 }
 
-function TaskPopoverContent({
+function TaskModalContent({
   task,
   issueNumber,
   issueUrl,
-}: TaskPopoverContentProps) {
+}: TaskModalContentProps) {
   return (
     <div className="p-4">
       {/* Header: Task number and title */}
@@ -160,7 +160,7 @@ export function KanbanCard({
     : `/issues/${issueNumber}`;
 
   return (
-    <Popover
+    <Modal
       trigger={
         <CardContent
           task={task}
@@ -170,11 +170,11 @@ export function KanbanCard({
         />
       }
     >
-      <TaskPopoverContent
+      <TaskModalContent
         task={task}
         issueNumber={issueNumber}
         issueUrl={issueUrl}
       />
-    </Popover>
+    </Modal>
   );
 }
