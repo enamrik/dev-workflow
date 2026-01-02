@@ -44,6 +44,7 @@ export {
   listAllProjects,
   getTrackDirectoryForProject,
   getGlobalDatabasePath,
+  resolveGlobalTrackDir,
 } from "./application/track-directory-resolver.js";
 export {
   ConfigService,
