@@ -64,6 +64,20 @@ async function runInit(): Promise<void> {
     await installer.registerMCPServer();
     console.log("✓ Registered MCP server");
 
+    const permResult = await installer.configureClaudePermissions();
+    if (permResult.configured) {
+      console.log("✓ Configured Claude permissions for worktrees");
+      for (const perm of permResult.permissions) {
+        console.log(`  - ${perm}`);
+      }
+    } else {
+      console.log("⚠ Could not configure Claude permissions (claude CLI not available)");
+      console.log("  You can add them manually with:");
+      for (const perm of permResult.permissions) {
+        console.log(`    claude config add allowedTools "${perm}"`);
+      }
+    }
+
     await installer.initializeDatabase();
 
     console.log("\n✨ dev-workflow initialized successfully!");
