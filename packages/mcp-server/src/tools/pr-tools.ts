@@ -242,7 +242,39 @@ export async function handleSubmitForReview(
     );
   }
 
-  // 2. Get issue info for PR title and linking (needed before config check to get projectId)
+  // 2. Check if a PR already exists for this branch (created outside this tool)
+  try {
+    const existingPR = await ctx.githubCLI.findPRByBranch(task.branchName);
+    if (existingPR) {
+      // Adopt the existing PR
+      const prStatus = mapGitHubStateToPRStatus(existingPR.state, existingPR.isDraft);
+      ctx.taskRepository.updatePRInfo(taskId, existingPR.url, existingPR.number, prStatus);
+      ctx.taskRepository.updateStatus(taskId, "PR_REVIEW", undefined, "Adopted existing PR");
+
+      return successResponse({
+        success: true,
+        adopted: true,
+        task: {
+          id: taskId,
+          status: "PR_REVIEW",
+        },
+        pr: {
+          number: existingPR.number,
+          url: existingPR.url,
+          title: existingPR.title,
+          state: existingPR.state,
+          isDraft: existingPR.isDraft,
+          headBranch: existingPR.headBranch,
+          baseBranch: existingPR.baseBranch,
+        },
+        message: `Found existing PR #${existingPR.number} for branch "${task.branchName}". Adopted and transitioned task to PR_REVIEW: ${existingPR.url}`,
+      });
+    }
+  } catch {
+    // Ignore errors when checking for existing PR, we'll try to create one
+  }
+
+  // 3. Get issue info for PR title and linking
   const plan = ctx.planRepository.findById(task.planId);
   if (!plan) {
     return errorResponse(`Plan not found for task: ${taskId}`);

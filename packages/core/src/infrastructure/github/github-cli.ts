@@ -157,6 +157,14 @@ export interface GitHubCLI {
   getPR(prNumber: number): Promise<GitHubPRData | null>;
 
   /**
+   * Find a pull request by head branch name
+   *
+   * @param headBranch - The source branch name
+   * @returns PR data or null if no PR exists for this branch
+   */
+  findPRByBranch(headBranch: string): Promise<GitHubPRData | null>;
+
+  /**
    * Run arbitrary gh CLI command
    */
   run(args: string[]): Promise<GitHubCLIResult>;
@@ -543,6 +551,36 @@ export class NodeGitHubCLI implements GitHubCLI {
 
     const data = JSON.parse(result.stdout) as Record<string, unknown>;
     return this.mapPRData(data);
+  }
+
+  async findPRByBranch(headBranch: string): Promise<GitHubPRData | null> {
+    const result = await this.run([
+      "pr",
+      "list",
+      "--head",
+      headBranch,
+      "--state",
+      "all",
+      "--json",
+      "number,url,id,title,body,state,isDraft,headRefName,baseRefName,mergedAt,mergeable",
+      "--limit",
+      "1",
+    ]);
+
+    if (!result.success) {
+      throw new GitHubCLIError(
+        `Failed to find PR by branch: ${result.stderr}`,
+        result.exitCode,
+        result.stderr
+      );
+    }
+
+    const prs = JSON.parse(result.stdout) as Array<Record<string, unknown>>;
+    if (prs.length === 0) {
+      return null;
+    }
+
+    return this.mapPRData(prs[0]);
   }
 
   async run(args: string[]): Promise<GitHubCLIResult> {
