@@ -197,7 +197,7 @@ function DetailsTab({
       task={task}
       projectId={projectId}
       issueNumber={issueNumber}
-      hideCopyCommand
+      hideActions
       hideTimestamps
     />
   );
