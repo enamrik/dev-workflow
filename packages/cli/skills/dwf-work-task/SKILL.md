@@ -100,9 +100,10 @@ The task lifecycle supports 3 execution modes with a PR-based review flow:
    - Review title, description, and acceptance criteria
 
 3. **Determine execution mode:**
-   - Default: `isolated` (worktree + branch)
-   - If user mentions "branch only", "no worktree" → use `branch`
-   - If user mentions "on main", "direct", "trivial fix" → use `main`
+   - **ALWAYS use `isolated` mode** unless the user explicitly requests otherwise
+   - Only use `branch` if user explicitly says "branch mode", "no worktree", etc.
+   - Only use `main` if user explicitly says "on main", "main mode", "skip PR", etc.
+   - **NEVER autonomously choose a non-default mode** based on task complexity or size
 
 4. **Start the session:**
    - Call `start_task_session` with task ID, session ID, and mode
@@ -217,6 +218,8 @@ When starting with `mode: "isolated"`:
 
 ### Branch Mode
 
+**Only use when the user explicitly requests it** (e.g., "branch mode", "no worktree").
+
 When starting with `mode: "branch"`:
 - A new git branch is created: `issue-{N}/task-{N}-{slug}`
 - Branch is checked out in the main repository
@@ -225,12 +228,13 @@ When starting with `mode: "branch"`:
 - On completion: branch deleted (after merge), checkout main
 - On abandonment: branch deleted, checkout main
 
-**Best for:**
+**Only use when user explicitly requests it for:**
 - Sequential work (one task at a time)
-- When worktree overhead isn't needed
-- Simple features that still need review
+- When user says they don't want a worktree
 
 ### Main Mode
+
+**WARNING: Only use when the user explicitly requests it.** Never autonomously choose this mode.
 
 When starting with `mode: "main"`:
 - No branch created, work directly on main
@@ -238,11 +242,9 @@ When starting with `mode: "main"`:
 - On completion: changes committed directly to main
 - On abandonment: uncommitted changes may be lost
 
-**Best for:**
-- Trivial fixes (typos, small tweaks)
-- Documentation updates
-- Configuration changes
-- Emergency hotfixes (when review would delay too much)
+**Only use when user explicitly requests it for:**
+- Emergency hotfixes where user explicitly skips review
+- Cases where user says "on main", "main mode", "skip PR", "no branch"
 
 ## Example Interactions
 
@@ -501,7 +503,8 @@ Would you like to re-plan issue #5 with a different approach?
 - Session timeout is 1 hour of inactivity
 - Abandoned tasks can inform re-planning
 - Always show acceptance criteria when starting a task
-- Default to isolated mode for feature work
+- **ALWAYS use isolated mode** - never autonomously choose branch or main mode
+- Only use branch/main mode when the user explicitly requests it
 
 ### Task Tuning
 

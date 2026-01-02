@@ -58,9 +58,8 @@ export const taskToolDefinitions: ToolDefinition[] = [
     name: "start_task_session",
     description:
       "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Starts working on a task. " +
-      "Supports 3 modes: 'isolated' (default) creates worktree+branch for parallel work, " +
-      "'branch' creates branch only for single-task focus, " +
-      "'main' works directly on main for quick fixes (skips PR review).",
+      "ALWAYS use 'isolated' mode (default) unless user explicitly requests otherwise. " +
+      "'branch' and 'main' modes require explicit user request - never choose them autonomously.",
     inputSchema: {
       type: "object",
       properties: {
@@ -76,9 +75,9 @@ export const taskToolDefinitions: ToolDefinition[] = [
           type: "string",
           enum: ["isolated", "branch", "main"],
           description:
-            "Execution mode. 'isolated' (default): creates worktree+branch for parallel work. " +
-            "'branch': creates branch only, checks out in main repo. " +
-            "'main': work directly on main branch, skips PR review.",
+            "Execution mode. ALWAYS use 'isolated' (default) unless user explicitly requests otherwise. " +
+            "'branch': only if user says 'branch mode' or 'no worktree'. " +
+            "'main': only if user explicitly says 'on main', 'main mode', or 'skip PR'.",
         },
       },
       required: ["taskId", "sessionId"],
