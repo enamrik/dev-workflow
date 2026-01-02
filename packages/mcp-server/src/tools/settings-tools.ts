@@ -24,7 +24,9 @@ export const settingsToolDefinitions: ToolDefinition[] = [
   {
     name: "update_settings",
     description:
-      "Configure project settings including GitHub integration. Validates gh CLI auth and repository access before enabling.",
+      "Configure project settings including GitHub integration. " +
+      "Repository owner/repo are auto-detected from git remotes. " +
+      "Validates gh CLI auth and repository access before enabling.",
     inputSchema: {
       type: "object",
       properties: {
@@ -37,19 +39,14 @@ export const settingsToolDefinitions: ToolDefinition[] = [
             "configure_github",
           ],
           description:
-            "The settings action to perform: get_settings returns current config, enable_github enables GitHub sync with validation, disable_github disables sync, configure_github updates config without re-validating repo",
+            "The settings action to perform: get_settings returns current config, " +
+            "enable_github enables GitHub sync with validation, " +
+            "disable_github disables sync, " +
+            "configure_github updates labels/projectId config",
         },
         github: {
           type: "object",
           properties: {
-            owner: {
-              type: "string",
-              description: "GitHub organization or username",
-            },
-            repo: {
-              type: "string",
-              description: "Repository name",
-            },
             projectId: {
               type: "string",
               description:
@@ -77,7 +74,7 @@ export const settingsToolDefinitions: ToolDefinition[] = [
               description: "Label configuration for GitHub issues",
             },
           },
-          description: "GitHub configuration (required for enable_github action)",
+          description: "GitHub configuration options (projectId and labels)",
         },
       },
       required: ["action"],
@@ -99,8 +96,6 @@ export interface SettingsToolContext {
 interface UpdateSettingsArgs {
   action: "get_settings" | "enable_github" | "disable_github" | "configure_github";
   github?: {
-    owner?: string;
-    repo?: string;
     projectId?: string;
     labels?: Partial<GitHubLabels>;
   };
@@ -160,20 +155,16 @@ async function handleGetSettings(ctx: SettingsToolContext): Promise<ToolResponse
  * Enable GitHub integration with full validation
  *
  * Validates:
- * 1. Required fields (owner, repo)
- * 2. gh CLI authentication
- * 3. Repository accessibility
- * 4. Project accessibility (if projectId provided)
+ * 1. gh CLI authentication
+ * 2. Current directory is a GitHub repository
+ * 3. Project accessibility (if projectId provided)
+ *
+ * Repository owner/repo are auto-detected from git remotes.
  */
 async function handleEnableGitHub(
   ctx: SettingsToolContext,
   github?: UpdateSettingsArgs["github"]
 ): Promise<ToolResponse> {
-  // Validate required fields
-  if (!github?.owner || !github?.repo) {
-    return errorResponse("enable_github requires github.owner and github.repo");
-  }
-
   // Step 1: Check gh CLI authentication
   const isAuthenticated = await ctx.githubCLI.checkAuth();
   if (!isAuthenticated) {
@@ -182,17 +173,16 @@ async function handleEnableGitHub(
     );
   }
 
-  // Step 2: Verify repository exists and is accessible
-  const repoExists = await ctx.githubCLI.checkRepository(github.owner, github.repo);
-  if (!repoExists) {
+  // Step 2: Verify we're in a GitHub repository
+  const isGitHubRepo = await ctx.githubCLI.checkCurrentRepository();
+  if (!isGitHubRepo) {
     return errorResponse(
-      `Repository ${github.owner}/${github.repo} not found or not accessible. ` +
-        `Check the owner/repo names and ensure you have access.`
+      "Not in a GitHub repository. Ensure this directory is a git repo with a GitHub remote."
     );
   }
 
   // Step 3: Verify project if provided
-  if (github.projectId) {
+  if (github?.projectId) {
     const projectExists = await ctx.githubCLI.checkProject(github.projectId);
     if (!projectExists) {
       return errorResponse(
@@ -205,10 +195,8 @@ async function handleEnableGitHub(
   // Step 4: Build and save config with defaults for missing label config
   const githubConfig: GitHubConfig = {
     enabled: true,
-    owner: github.owner,
-    repo: github.repo,
-    projectId: github.projectId,
-    labels: github.labels
+    projectId: github?.projectId,
+    labels: github?.labels
       ? {
           typeLabels: {
             FEATURE: github.labels.typeLabels?.FEATURE ?? "feature",
@@ -233,9 +221,8 @@ async function handleEnableGitHub(
 
     return successResponse({
       success: true,
-      message: `GitHub integration enabled for ${github.owner}/${github.repo}`,
+      message: "GitHub integration enabled (repository auto-detected from git remotes)",
       config: githubConfig,
-      note: "MCP server restart may be required for sync to take effect.",
     });
   } catch (error) {
     return errorResponse(
@@ -296,8 +283,6 @@ async function handleConfigureGitHub(
     // Merge with existing config (don't allow changing enabled via configure)
     const updatedConfig: GitHubConfig = {
       ...currentConfig.github,
-      owner: github.owner ?? currentConfig.github.owner,
-      repo: github.repo ?? currentConfig.github.repo,
       projectId: github.projectId ?? currentConfig.github.projectId,
       labels: github.labels
         ? {

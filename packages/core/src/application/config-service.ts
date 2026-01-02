@@ -24,11 +24,12 @@ export const GitHubLabelsSchema = z.object({
 
 /**
  * Zod schema for GitHub configuration
+ *
+ * Note: owner/repo are not stored here - they're derived from git remotes at runtime.
+ * This avoids duplication and works correctly in git worktrees.
  */
 export const GitHubConfigSchema = z.object({
   enabled: z.boolean(),
-  owner: z.string(),
-  repo: z.string(),
   projectId: z.string().optional(), // GitHub Project ID (e.g., PVT_kwDO...)
   labels: GitHubLabelsSchema.optional(),
 });

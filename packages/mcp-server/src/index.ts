@@ -400,7 +400,7 @@ async function main() {
         githubCLI,
         githubConfig
       );
-      console.error(`GitHub sync enabled for ${githubConfig.owner}/${githubConfig.repo}`);
+      console.error("GitHub sync enabled (repository auto-detected from git remotes)");
     }
   } catch (error) {
     // Config doesn't exist or GitHub not configured - that's fine
@@ -504,7 +504,6 @@ async function main() {
   };
 
   prToolContext = {
-    configService: configServiceForSettings,
     githubCLI: new NodeGitHubCLI(),
     issueRepository,
     planRepository,

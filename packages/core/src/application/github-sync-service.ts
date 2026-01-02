@@ -71,14 +71,8 @@ export class GitHubSyncService {
     // Build issue body
     const body = this.buildIssueBody(description, acceptanceCriteria);
 
-    // Create on GitHub
-    const data = await this.githubCLI.createIssue(
-      this.config.owner,
-      this.config.repo,
-      title,
-      body,
-      labels
-    );
+    // Create on GitHub (gh CLI auto-detects repo from git remotes)
+    const data = await this.githubCLI.createIssue(title, body, labels);
 
     // Add to project if configured
     let projectItemId: string | null = null;
@@ -144,32 +138,17 @@ export class GitHubSyncService {
     // Build issue body
     const body = this.buildIssueBody(description, acceptanceCriteria);
 
-    // Update on GitHub
-    await this.githubCLI.updateIssue(
-      this.config.owner,
-      this.config.repo,
-      githubNumber,
-      title,
-      body,
-      labels
-    );
+    // Update on GitHub (gh CLI auto-detects repo from git remotes)
+    await this.githubCLI.updateIssue(githubNumber, title, body, labels);
 
     // Handle status change to CLOSED
     if (status === "CLOSED" && issue.status !== "CLOSED") {
-      await this.githubCLI.closeIssue(
-        this.config.owner,
-        this.config.repo,
-        githubNumber
-      );
+      await this.githubCLI.closeIssue(githubNumber);
     }
 
     // Handle reopening (CLOSED -> not CLOSED)
     if (status !== "CLOSED" && issue.status === "CLOSED") {
-      await this.githubCLI.reopenIssue(
-        this.config.owner,
-        this.config.repo,
-        githubNumber
-      );
+      await this.githubCLI.reopenIssue(githubNumber);
     }
 
     return {
@@ -238,12 +217,6 @@ export class GitHubSyncService {
     return this.githubCLI.checkAuth();
   }
 
-  /**
-   * Get the configured repository string
-   */
-  getRepository(): string {
-    return `${this.config.owner}/${this.config.repo}`;
-  }
 
   /**
    * Build labels array from issue type and config
@@ -294,10 +267,8 @@ export class GitHubSyncService {
     if (labels.length === 0) return;
 
     try {
-      const existingLabels = await this.githubCLI.listLabels(
-        this.config.owner,
-        this.config.repo
-      );
+      // gh CLI auto-detects repo from git remotes
+      const existingLabels = await this.githubCLI.listLabels();
       const existingSet = new Set(existingLabels);
 
       // Default colors for different label types
@@ -311,12 +282,7 @@ export class GitHubSyncService {
       for (const label of labels) {
         if (!existingSet.has(label)) {
           const color = labelColors[label.toLowerCase()] ?? "ededed";
-          await this.githubCLI.createLabel(
-            this.config.owner,
-            this.config.repo,
-            label,
-            color
-          );
+          await this.githubCLI.createLabel(label, color);
         }
       }
     } catch (error) {
