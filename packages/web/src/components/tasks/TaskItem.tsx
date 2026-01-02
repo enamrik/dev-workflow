@@ -50,14 +50,8 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
         !isCompleted && !isInProgress && !isPRReview && !isAbandoned && "bg-gray-50 border-gray-200"
       )}
     >
-      {/* Main content (clickable to expand) */}
-      <div
-        className={clsx(
-          "flex gap-4 p-4",
-          canExpand && "cursor-pointer hover:bg-opacity-80"
-        )}
-        onClick={canExpand ? () => setIsExpanded(!isExpanded) : undefined}
-      >
+      {/* Main content */}
+      <div className="flex gap-4 p-4">
         <div
           className={clsx(
             "w-6 h-6 flex items-center justify-center rounded-full text-sm font-bold flex-shrink-0",
@@ -90,10 +84,6 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
                 </span>
               </Tooltip>
             )}
-            {/* Expand indicator */}
-            {canExpand && (
-              <ChevronIcon isExpanded={isExpanded} className="ml-auto text-gray-400" />
-            )}
           </div>
           <div className="text-sm text-gray-600 mt-1">
             <Markdown>{task.description}</Markdown>
@@ -117,7 +107,6 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-                onClick={(e) => e.stopPropagation()}
               >
                 <PRIcon />
                 PR #{task.prNumber}
@@ -140,6 +129,18 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
                 <Badge key={label} variant="label" value={label} />
               ))}
             </div>
+          )}
+
+          {/* Toggle link for details */}
+          {canExpand && (
+            <button
+              type="button"
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="mt-3 text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+            >
+              <span>{isExpanded ? "Hide details" : "Show details"}</span>
+              <ChevronIcon isExpanded={isExpanded} />
+            </button>
           )}
         </div>
 
