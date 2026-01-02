@@ -460,18 +460,18 @@ export class MultiProjectService {
     for (const project of filteredProjects) {
       // Get project root from config
       const configPath = path.join(project.trackDirectory, "config.json");
-      let projectRoot: string;
+      let gitRoot: string;
       try {
         const configContent = await fs.readFile(configPath, "utf-8");
         const config = JSON.parse(configContent);
-        projectRoot = config.projectRoot;
-        if (!projectRoot) continue;
+        gitRoot = config.gitRoot;
+        if (!gitRoot) continue;
       } catch {
         continue;
       }
 
       // Get worktrees from git
-      const worktreeService = new NodeGitWorktreeService(projectRoot);
+      const worktreeService = new NodeGitWorktreeService(gitRoot);
       let worktrees: WorktreeInfo[];
       try {
         worktrees = await worktreeService.listWorktrees();
@@ -491,8 +491,11 @@ export class MultiProjectService {
         const tasks = taskRepository.findByPlanId(plan.id);
         for (const task of tasks) {
           if (task.worktreePath) {
-            // Resolve worktree path relative to project root
-            const fullPath = path.resolve(projectRoot, task.worktreePath);
+            // Worktree paths are stored in ~/.track/{projectId}/worktrees/
+            // They can be absolute or relative to the track directory
+            const fullPath = path.isAbsolute(task.worktreePath)
+              ? task.worktreePath
+              : path.resolve(project.trackDirectory, task.worktreePath);
             tasksByWorktreePath.set(fullPath, { task, issueNumber: issue.number });
           }
         }
@@ -532,21 +535,21 @@ export class MultiProjectService {
       throw new Error(`Project not found: ${projectId}`);
     }
 
-    // Get project root from config
+    // Get git root from config (needed to run git worktree commands)
     const configPath = path.join(project.trackDirectory, "config.json");
-    let projectRoot: string;
+    let gitRoot: string;
     try {
       const configContent = await fs.readFile(configPath, "utf-8");
       const config = JSON.parse(configContent);
-      projectRoot = config.projectRoot;
-      if (!projectRoot) {
-        throw new Error("Project root not configured");
+      gitRoot = config.gitRoot;
+      if (!gitRoot) {
+        throw new Error("Git root not configured");
       }
     } catch (error) {
       throw new Error(`Failed to read project config: ${error}`);
     }
 
-    const worktreeService = new NodeGitWorktreeService(projectRoot);
+    const worktreeService = new NodeGitWorktreeService(gitRoot);
 
     // Get worktree count before pruning
     const beforeCount = (await worktreeService.listWorktrees()).filter((w) => !w.isMain).length;
