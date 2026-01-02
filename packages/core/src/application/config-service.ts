@@ -23,15 +23,24 @@ export const GitHubLabelsSchema = z.object({
 });
 
 /**
+ * Zod schema for GitHub issue sync configuration
+ *
+ * Controls syncing of dev-workflow issues to GitHub Issues.
+ */
+export const GitHubIssueSyncSchema = z.object({
+  enabled: z.boolean(),
+  projectId: z.string().optional(), // GitHub Project ID (e.g., PVT_kwDO...)
+  labels: GitHubLabelsSchema.optional(),
+});
+
+/**
  * Zod schema for GitHub configuration
  *
  * Note: owner/repo are not stored here - they're derived from git remotes at runtime.
  * This avoids duplication and works correctly in git worktrees.
  */
 export const GitHubConfigSchema = z.object({
-  enabled: z.boolean(),
-  projectId: z.string().optional(), // GitHub Project ID (e.g., PVT_kwDO...)
-  labels: GitHubLabelsSchema.optional(),
+  syncIssues: GitHubIssueSyncSchema.optional(),
 });
 
 /**
@@ -57,6 +66,7 @@ export const ConfigSchema = z.object({
  */
 export type Config = z.infer<typeof ConfigSchema>;
 export type GitHubConfig = z.infer<typeof GitHubConfigSchema>;
+export type GitHubIssueSync = z.infer<typeof GitHubIssueSyncSchema>;
 export type GitHubLabels = z.infer<typeof GitHubLabelsSchema>;
 
 /**
@@ -131,25 +141,39 @@ export class ConfigService {
   }
 
   /**
-   * Get GitHub configuration if enabled
+   * Get GitHub issue sync configuration if enabled
    *
-   * @returns GitHub config if enabled, null otherwise
+   * @returns Issue sync config if enabled, null otherwise
    */
-  async getGitHubConfig(): Promise<GitHubConfig | null> {
+  async getGitHubIssueSyncConfig(): Promise<GitHubIssueSync | null> {
     const config = await this.loadConfig();
-    return config.github?.enabled ? config.github : null;
+    return config.github?.syncIssues?.enabled ? config.github.syncIssues : null;
   }
 
   /**
-   * Check if GitHub integration is configured and enabled
+   * Check if GitHub issue sync is configured and enabled
    */
-  async isGitHubEnabled(): Promise<boolean> {
+  async isGitHubIssueSyncEnabled(): Promise<boolean> {
     try {
-      const githubConfig = await this.getGitHubConfig();
-      return githubConfig !== null;
+      const syncConfig = await this.getGitHubIssueSyncConfig();
+      return syncConfig !== null;
     } catch {
       return false;
     }
+  }
+
+  /**
+   * @deprecated Use getGitHubIssueSyncConfig instead
+   */
+  async getGitHubConfig(): Promise<GitHubIssueSync | null> {
+    return this.getGitHubIssueSyncConfig();
+  }
+
+  /**
+   * @deprecated Use isGitHubIssueSyncEnabled instead
+   */
+  async isGitHubEnabled(): Promise<boolean> {
+    return this.isGitHubIssueSyncEnabled();
   }
 
   /**
@@ -178,24 +202,44 @@ export class ConfigService {
   }
 
   /**
-   * Set GitHub configuration
+   * Set GitHub issue sync configuration
    *
-   * @param githubConfig - GitHub configuration to set
+   * @param syncConfig - Issue sync configuration to set
    */
-  async setGitHubConfig(githubConfig: GitHubConfig): Promise<void> {
-    await this.updateConfig({ github: githubConfig });
+  async setGitHubIssueSyncConfig(syncConfig: GitHubIssueSync): Promise<void> {
+    const config = await this.loadConfig();
+    await this.updateConfig({
+      github: { ...config.github, syncIssues: syncConfig },
+    });
   }
 
   /**
-   * Disable GitHub integration
+   * Disable GitHub issue sync
    */
-  async disableGitHub(): Promise<void> {
+  async disableGitHubIssueSync(): Promise<void> {
     const config = await this.loadConfig();
-    if (config.github) {
+    if (config.github?.syncIssues) {
       await this.updateConfig({
-        github: { ...config.github, enabled: false },
+        github: {
+          ...config.github,
+          syncIssues: { ...config.github.syncIssues, enabled: false },
+        },
       });
     }
+  }
+
+  /**
+   * @deprecated Use setGitHubIssueSyncConfig instead
+   */
+  async setGitHubConfig(syncConfig: GitHubIssueSync): Promise<void> {
+    return this.setGitHubIssueSyncConfig(syncConfig);
+  }
+
+  /**
+   * @deprecated Use disableGitHubIssueSync instead
+   */
+  async disableGitHub(): Promise<void> {
+    return this.disableGitHubIssueSync();
   }
 
   /**

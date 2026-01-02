@@ -51,9 +51,11 @@ export {
   ConfigError,
   ConfigSchema,
   GitHubConfigSchema,
+  GitHubIssueSyncSchema,
   GitHubLabelsSchema,
   type Config,
   type GitHubConfig,
+  type GitHubIssueSync,
   type GitHubLabels,
 } from "./application/config-service.js";
 export {
