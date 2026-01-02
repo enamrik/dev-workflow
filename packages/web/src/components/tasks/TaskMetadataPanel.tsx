@@ -6,7 +6,7 @@ import { TimeBreakdown } from "./TimeBreakdown";
 import { TaskDependencies } from "./TaskDependencies";
 import { ExecutionLogList } from "./ExecutionLogList";
 import { CopyTaskCommand } from "./CopyTaskCommand";
-import { Badge } from "../ui";
+import { Badge, CopyButton } from "../ui";
 import { useTaskMetadata } from "@/hooks";
 import type { Task } from "@/lib/types";
 
@@ -86,12 +86,18 @@ export function TaskMetadataPanel({
           <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
             Branch
           </div>
-          <code className="text-sm bg-gray-100 px-2 py-1 rounded font-mono block truncate">
-            {task.branchName}
-          </code>
+          <div className="flex items-center gap-2">
+            <code className="text-sm bg-gray-100 px-2 py-1 rounded font-mono block truncate flex-1">
+              {task.branchName}
+            </code>
+            <CopyButton text={task.branchName} tooltip="Copy branch name" />
+          </div>
           {task.worktreePath && (
-            <div className="mt-2 text-xs text-gray-500 truncate" title={task.worktreePath}>
-              Worktree: {task.worktreePath}
+            <div className="mt-2 flex items-center gap-2">
+              <div className="text-xs text-gray-500 truncate flex-1" title={task.worktreePath}>
+                Worktree: {task.worktreePath}
+              </div>
+              <CopyButton text={task.worktreePath} tooltip="Copy worktree path" />
             </div>
           )}
         </div>
@@ -106,15 +112,18 @@ export function TaskMetadataPanel({
             </div>
             {task.prStatus && <Badge variant="prStatus" value={task.prStatus} />}
           </div>
-          <a
-            href={task.prUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-2 text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-          >
-            <PRIcon />
-            PR #{task.prNumber}
-          </a>
+          <div className="mt-2 flex items-center gap-2">
+            <a
+              href={task.prUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+            >
+              <PRIcon />
+              PR #{task.prNumber}
+            </a>
+            <CopyButton text={task.prUrl} tooltip="Copy PR URL" />
+          </div>
         </div>
       )}
 
