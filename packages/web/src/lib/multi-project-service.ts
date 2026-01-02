@@ -80,10 +80,17 @@ export interface ProjectIssueWithTasks {
 }
 
 /**
+ * Milestone with project name for display
+ */
+export interface MilestoneWithProject extends Milestone {
+  projectName: string;
+}
+
+/**
  * Milestone with associated issues and progress
  */
 export interface MilestoneWithIssues {
-  milestone: Milestone;
+  milestone: MilestoneWithProject;
   issues: {
     number: number;
     title: string;
@@ -451,7 +458,19 @@ export class MultiProjectService {
         const closedIssues = issues.filter((i) => i.status === "CLOSED").length;
 
         allMilestones.push({
-          milestone,
+          milestone: {
+            id: milestone.id,
+            number: milestone.number,
+            title: milestone.title,
+            description: milestone.description,
+            startDate: milestone.startDate,
+            endDate: milestone.endDate,
+            status: milestone.status,
+            projectId: milestone.projectId,
+            projectName: project.name,
+            createdAt: milestone.createdAt,
+            updatedAt: milestone.updatedAt,
+          },
           issues: issues.map((i) => ({
             number: i.number,
             title: i.title,
