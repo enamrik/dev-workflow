@@ -199,9 +199,7 @@ export class NodeGitHubCLI implements GitHubCLI {
       args.push("--label", label);
     }
 
-    // Get JSON output
-    args.push("--json", "number,url,id,title,body,state,labels");
-
+    // gh issue create outputs the URL of the created issue
     const result = await this.run(args);
     if (!result.success) {
       throw new GitHubCLIError(
@@ -211,8 +209,30 @@ export class NodeGitHubCLI implements GitHubCLI {
       );
     }
 
-    const data = JSON.parse(result.stdout) as Record<string, unknown>;
-    return this.mapIssueData(data);
+    // Parse issue number from the URL (e.g., https://github.com/owner/repo/issues/123)
+    const url = result.stdout.trim();
+    const match = url.match(/\/issues\/(\d+)$/);
+    if (!match) {
+      throw new GitHubCLIError(
+        `Failed to parse issue number from URL: ${url}`,
+        0,
+        ""
+      );
+    }
+
+    const issueNumber = parseInt(match[1], 10);
+
+    // Fetch full issue data
+    const issue = await this.getIssue(issueNumber);
+    if (!issue) {
+      throw new GitHubCLIError(
+        `Failed to fetch created issue: ${issueNumber}`,
+        0,
+        ""
+      );
+    }
+
+    return issue;
   }
 
   async updateIssue(

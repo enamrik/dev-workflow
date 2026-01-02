@@ -151,18 +151,27 @@ export async function handleUpdateSettings(
 
 /**
  * Get current settings and gh CLI status
+ *
+ * Re-fetches project from database to ensure we have the latest config
+ * (ctx.project may be stale if settings were updated in this session).
  */
 async function handleGetSettings(ctx: SettingsToolContext): Promise<ToolResponse> {
   try {
+    // Re-fetch project from database to get latest config
+    const project = ctx.projectRepository.findById(ctx.project.id);
+    if (!project) {
+      return errorResponse(`Project not found: ${ctx.project.id}`);
+    }
+
     const isGitHubAuthenticated = await ctx.githubCLI.checkAuth();
 
     return successResponse({
-      projectId: ctx.project.id,
-      projectName: ctx.project.name,
+      projectId: project.id,
+      projectName: project.name,
       gitRoot: ctx.gitRoot,
-      gitRootHash: ctx.project.gitRootHash,
-      github: ctx.project.githubSync
-        ? { syncIssues: ctx.project.githubSync }
+      gitRootHash: project.gitRootHash,
+      github: project.githubSync
+        ? { syncIssues: project.githubSync }
         : null,
       githubCLI: {
         authenticated: isGitHubAuthenticated,
@@ -259,11 +268,17 @@ async function handleEnableGitHub(
  */
 async function handleDisableGitHub(ctx: SettingsToolContext): Promise<ToolResponse> {
   try {
-    const currentSync = ctx.project.githubSync;
+    // Re-fetch project from database to get latest config
+    const project = ctx.projectRepository.findById(ctx.project.id);
+    if (!project) {
+      return errorResponse(`Project not found: ${ctx.project.id}`);
+    }
+
+    const currentSync = project.githubSync;
 
     if (currentSync) {
       // Preserve config but set enabled to false
-      ctx.projectRepository.update(ctx.project.id, {
+      ctx.projectRepository.update(project.id, {
         githubSync: { ...currentSync, enabled: false },
       });
     }
@@ -292,7 +307,13 @@ async function handleConfigureGitHub(
   }
 
   try {
-    const currentSync = ctx.project.githubSync;
+    // Re-fetch project from database to get latest config
+    const project = ctx.projectRepository.findById(ctx.project.id);
+    if (!project) {
+      return errorResponse(`Project not found: ${ctx.project.id}`);
+    }
+
+    const currentSync = project.githubSync;
 
     if (!currentSync) {
       return errorResponse(
@@ -343,7 +364,7 @@ async function handleConfigureGitHub(
     };
 
     // Update project in database
-    ctx.projectRepository.update(ctx.project.id, { githubSync: updatedConfig });
+    ctx.projectRepository.update(project.id, { githubSync: updatedConfig });
 
     return successResponse({
       success: true,
