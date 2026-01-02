@@ -1,7 +1,15 @@
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
-import { TrackDirectoryResolver } from "@dev-workflow/core";
+import {
+  TrackDirectoryResolver,
+  DatabaseService,
+  SqliteProjectRepository,
+  ProjectService,
+  NodeGitOperations,
+  sql,
+  type Project,
+} from "@dev-workflow/core";
 import { UIService } from "./ui.service.js";
 
 export class UpdateError extends Error {
@@ -19,14 +27,98 @@ export class UpdateError extends Error {
  * - Update skills to latest version
  * - Update MCP server registration
  * - Run database migrations
+ * - Register/update project in database
  */
 export class UpdateService {
+  private project: Project | null = null;
+
   constructor(
     private readonly fileSystem: FileSystem,
     private readonly workingDirectory: string,
     private readonly packageRoot: string,
     private readonly resolver: TrackDirectoryResolver
   ) {}
+
+  /**
+   * Register or update the project in the database.
+   *
+   * Uses git's initial commit hash as stable identifier.
+   * Must be called after runMigrations().
+   *
+   * @returns The registered project
+   */
+  async registerProject(): Promise<Project> {
+    const dbPath = this.resolver.getDatabasePath();
+    const dbService = await DatabaseService.create(dbPath);
+
+    try {
+      const projectRepo = new SqliteProjectRepository(dbService.getDb());
+      const gitOps = new NodeGitOperations();
+      const projectService = new ProjectService(projectRepo, gitOps);
+
+      this.project = await projectService.getOrCreateProject(this.workingDirectory);
+      return this.project;
+    } finally {
+      dbService.close();
+    }
+  }
+
+  /**
+   * Get the registered project.
+   * @throws Error if registerProject() hasn't been called
+   */
+  getProject(): Project {
+    if (!this.project) {
+      throw new UpdateError("Project not registered. Call registerProject() first.");
+    }
+    return this.project;
+  }
+
+  /**
+   * Migrate existing issues from old path-based projectId to new UUID-based project.id.
+   *
+   * This handles the transition from the old system where projectId was computed
+   * from the git root path, to the new system where it's a database UUID.
+   *
+   * Must be called after registerProject() and runMigrations().
+   *
+   * @returns Number of issues migrated
+   */
+  async migrateIssues(): Promise<{ migrated: number; oldProjectId: string }> {
+    const project = this.getProject();
+    const dbPath = this.resolver.getDatabasePath();
+    const oldProjectId = this.resolver.getProjectId(); // Path-based ID
+
+    // If old and new projectIds are somehow the same, skip migration
+    if (oldProjectId === project.id) {
+      return { migrated: 0, oldProjectId };
+    }
+
+    const dbService = await DatabaseService.create(dbPath);
+
+    try {
+      const db = dbService.getDb();
+
+      // Update issues with old projectId to use new project.id
+      const result = db.run(
+        sql`UPDATE issues SET project_id = ${project.id} WHERE project_id = ${oldProjectId}`
+      );
+
+      // Also update snapshots
+      db.run(
+        sql`UPDATE snapshots SET project_id = ${project.id} WHERE project_id = ${oldProjectId}`
+      );
+
+      // Also update milestones
+      db.run(
+        sql`UPDATE milestones SET project_id = ${project.id} WHERE project_id = ${oldProjectId}`
+      );
+
+      return { migrated: result.changes ?? 0, oldProjectId };
+    } finally {
+      dbService.close();
+    }
+  }
 
   /**
    * Check if dev-workflow is initialized for this project
@@ -54,9 +146,14 @@ export class UpdateService {
   /**
    * Update MCP server registration
    * (In case paths or environment variables changed)
+   *
+   * Must be called after registerProject().
    */
   async updateMCPServer(): Promise<void> {
     try {
+      // Project must be registered first
+      const project = this.getProject();
+
       const mcpConfigDir = path.join(this.workingDirectory, ".claude/config");
       const mcpConfigPath = path.join(mcpConfigDir, "mcp-servers.json");
 
@@ -69,12 +166,13 @@ export class UpdateService {
       const config = JSON.parse(content);
 
       // Update dev-workflow MCP server registration
+      // Use project.id (UUID) instead of path-based projectId for stable identification
       config.mcpServers["dev-workflow-tracker"] = {
         command: "npx",
         args: ["dev-workflow", "mcp"],
         env: {
           DATABASE_PATH: this.resolver.getDatabasePath(),
-          PROJECT_ID: this.resolver.getProjectId(),
+          PROJECT_ID: project.id, // Use database project ID (UUID)
           TEMPLATES_PATH: this.resolver.getTemplatesPath(),
           GIT_ROOT: this.resolver.getGitRoot(),
         },
@@ -95,8 +193,10 @@ export class UpdateService {
    */
   private async updateClaudeCLI(): Promise<void> {
     try {
+      // Project must be registered first
+      const project = this.getProject();
+
       const dbPath = this.resolver.getDatabasePath();
-      const projectId = this.resolver.getProjectId();
       const templatesPath = this.resolver.getTemplatesPath();
       const gitRoot = this.resolver.getGitRoot();
       const cliPath = path.join(this.packageRoot, "dist/index.js");
@@ -109,6 +209,7 @@ export class UpdateService {
       }
 
       // Re-register
+      // Use project.id (UUID) instead of path-based projectId for stable identification
       const command = [
         "claude",
         "mcp",
@@ -119,7 +220,7 @@ export class UpdateService {
         "--env",
         `DATABASE_PATH=${dbPath}`,
         "--env",
-        `PROJECT_ID=${projectId}`,
+        `PROJECT_ID=${project.id}`,
         "--env",
         `TEMPLATES_PATH=${templatesPath}`,
         "--env",

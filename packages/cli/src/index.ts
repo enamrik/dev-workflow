@@ -50,7 +50,14 @@ async function runInit(): Promise<void> {
 
   try {
     console.log("🚀 Initializing dev-workflow...");
-    console.log(`   Project: ${resolver.getProjectId()}`);
+
+    // Initialize database first (needed for project registration)
+    await installer.initializeDatabase();
+    console.log("✓ Initialized database");
+
+    // Register project in database (uses git initial commit hash as stable ID)
+    const project = await installer.registerProject();
+    console.log(`✓ Registered project: ${project.name} (${project.id.slice(0, 8)}...)`);
 
     await installer.createTrackDirectory();
     console.log(`✓ Created ${trackDir}`);
@@ -77,8 +84,6 @@ async function runInit(): Promise<void> {
         console.log(`    claude config add allowedTools "${perm}"`);
       }
     }
-
-    await installer.initializeDatabase();
 
     console.log("\n✨ dev-workflow initialized successfully!");
     console.log("\nNext steps:");
@@ -118,7 +123,6 @@ async function runUpdate(): Promise<void> {
     }
 
     console.log("🔄 Updating dev-workflow...");
-    console.log(`   Project: ${resolver.getProjectId()}`);
 
     await updater.updateSkills();
     console.log("✓ Updated skills");
@@ -129,11 +133,21 @@ async function runUpdate(): Promise<void> {
     await updater.updateTaskLabels();
     console.log("✓ Updated task labels");
 
-    await updater.updateMCPServer();
-    console.log("✓ Updated MCP server registration");
-
     await updater.runMigrations();
     console.log("✓ Ran database migrations");
+
+    // Register/update project in database (uses git initial commit hash as stable ID)
+    const project = await updater.registerProject();
+    console.log(`✓ Registered project: ${project.name} (${project.id.slice(0, 8)}...)`);
+
+    // Migrate existing issues from old path-based projectId to new UUID
+    const migrationResult = await updater.migrateIssues();
+    if (migrationResult.migrated > 0) {
+      console.log(`✓ Migrated ${migrationResult.migrated} issues from ${migrationResult.oldProjectId} to ${project.id.slice(0, 8)}...`);
+    }
+
+    await updater.updateMCPServer();
+    console.log("✓ Updated MCP server registration");
 
     await updater.restartUIDaemonIfRunning();
 

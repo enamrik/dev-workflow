@@ -23,6 +23,7 @@ import {
   SqlitePlanRepository,
   SqliteTaskRepository,
   SqliteMilestoneRepository,
+  SqliteProjectRepository,
   TemplateService,
   NodeFileSystem,
   VersioningService,
@@ -32,14 +33,14 @@ import {
   TaskManagementService,
   taskExecutionLogs,
   // GitHub integration
-  ConfigService,
   GitHubSyncService,
   NodeGitHubCLI,
-  TrackDirectoryResolver,
   // Git worktree support
   NodeGitWorktreeService,
   // Conflict detection
   ConflictDetectionService,
+  // Project management
+  type Project,
 } from "@dev-workflow/core";
 
 // Import tools
@@ -366,6 +367,20 @@ async function main() {
   // PROJECT_ID is validated at startup so it's guaranteed to be defined here
   const db = dbService.getDb();
   const projectId = PROJECT_ID as string;
+
+  // Load project from database
+  const projectRepository = new SqliteProjectRepository(db);
+  const project: Project | null = projectRepository.findById(projectId);
+
+  if (!project) {
+    console.error(`Error: Project not found in database: ${projectId}`);
+    console.error("This may happen if the project ID was generated with an older version.");
+    console.error("Run 'dev-workflow update' to migrate to the new project system.");
+    process.exit(1);
+  }
+
+  console.error(`Project: ${project.name} (${project.id.slice(0, 8)}...)`);
+
   const issueRepository = new SqliteIssueRepository(db, projectId);
   const snapshotRepository = new SqliteSnapshotRepository(db, projectId);
   const planRepository = new SqlitePlanRepository(db);
@@ -376,35 +391,27 @@ async function main() {
   const fileSystem = new NodeFileSystem();
   // GIT_ROOT is validated at startup so it's guaranteed to be defined here
   const projectRoot = GIT_ROOT as string;
-  // Track directory is ~/.track/<project-id>/ - global track dir is parent of DATABASE_PATH
-  const globalTrackDir = path.dirname(DATABASE_PATH);
-  const trackDirectory = path.join(globalTrackDir, projectId);
+  // For track directory, derive from TEMPLATES_PATH
+  // This is separate from the database project ID (used for file storage)
+  const trackDirectory = TEMPLATES_PATH.replace(/\/config\/issues\/templates\/?$/, "");
   const userTemplatesPath = path.join(trackDirectory, "issues/templates");
   const defaultTemplatesPath = path.resolve(TEMPLATES_PATH);
 
   // Initialize label service
   const labelService = new LabelService(trackDirectory);
 
-  // Initialize GitHub sync service if configured
+  // Initialize GitHub sync service if configured in project
   let githubSyncService: GitHubSyncService | undefined;
-  try {
-    // Create resolver from known project ID (not from track directory path)
-    const resolver = TrackDirectoryResolver.fromProjectId(projectId);
-    const configService = new ConfigService(resolver);
-    const syncConfig = await configService.getGitHubIssueSyncConfig();
-
-    if (syncConfig) {
-      const githubCLI = new NodeGitHubCLI();
-      githubSyncService = new GitHubSyncService(
-        issueRepository,
-        githubCLI,
-        syncConfig
-      );
-      console.error("GitHub issue sync enabled (repository auto-detected from git remotes)");
-    }
-  } catch (error) {
-    // Config doesn't exist or GitHub not configured - that's fine
-    console.error("GitHub issue sync not configured (this is normal for projects without GitHub integration)");
+  if (project.githubSync?.enabled) {
+    const githubCLI = new NodeGitHubCLI();
+    githubSyncService = new GitHubSyncService(
+      issueRepository,
+      githubCLI,
+      project.githubSync
+    );
+    console.error("GitHub issue sync enabled (repository auto-detected from git remotes)");
+  } else {
+    console.error("GitHub issue sync not configured");
   }
 
   // Initialize application services
@@ -487,10 +494,10 @@ async function main() {
   };
 
   // Create settings context - always available for configuring GitHub
-  const resolver = new TrackDirectoryResolver(trackDirectory);
-  const configServiceForSettings = new ConfigService(resolver);
+  // Uses projectRepository to store GitHub sync config in the projects table
   settingsToolContext = {
-    configService: configServiceForSettings,
+    project,
+    projectRepository,
     githubCLI: new NodeGitHubCLI(),
   };
 
