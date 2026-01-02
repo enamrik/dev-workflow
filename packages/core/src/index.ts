@@ -73,6 +73,8 @@ export {
 // Infrastructure - Database
 export * from "./infrastructure/database/schema.js";
 export { DatabaseService } from "./infrastructure/database/database.js";
+// Re-export sql from drizzle-orm for raw SQL queries
+export { sql } from "drizzle-orm";
 export { DatabaseFactory } from "./infrastructure/database/database-factory.js";
 export type { DatabaseAdapter, PreparedStatement, RunResult } from "./infrastructure/database/database-adapter.js";
 export { NativeAdapter } from "./infrastructure/database/native-adapter.js";

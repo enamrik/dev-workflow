@@ -2,13 +2,14 @@
  * Settings-related MCP tools
  *
  * Provides configuration for project settings, primarily GitHub integration.
+ * Settings are stored in the projects table in the database.
  */
 
 import {
-  ConfigService,
   type GitHubCLI,
-  type GitHubIssueSync,
-  type GitHubLabels,
+  type GitHubIssueSyncConfig,
+  type Project,
+  type ProjectRepository,
 } from "@dev-workflow/core";
 import {
   type ToolDefinition,
@@ -16,6 +17,19 @@ import {
   successResponse,
   errorResponse,
 } from "./types.js";
+
+/**
+ * Type for GitHub labels configuration (used in tool arguments)
+ */
+interface GitHubLabels {
+  typeLabels?: {
+    FEATURE?: string;
+    BUG?: string;
+    ENHANCEMENT?: string;
+    TASK?: string;
+  };
+  customLabels?: string[];
+}
 
 /**
  * Tool definitions for settings operations
@@ -84,9 +98,13 @@ export const settingsToolDefinitions: ToolDefinition[] = [
 
 /**
  * Service context for settings handlers
+ *
+ * Uses project and projectRepository to store GitHub sync config
+ * in the projects table instead of config.json.
  */
 export interface SettingsToolContext {
-  configService: ConfigService;
+  project: Project;
+  projectRepository: ProjectRepository;
   githubCLI: GitHubCLI;
 }
 
@@ -135,13 +153,16 @@ export async function handleUpdateSettings(
  */
 async function handleGetSettings(ctx: SettingsToolContext): Promise<ToolResponse> {
   try {
-    const config = await ctx.configService.loadConfig();
     const isGitHubAuthenticated = await ctx.githubCLI.checkAuth();
 
     return successResponse({
-      projectId: config.projectId,
-      gitRoot: config.gitRoot,
-      github: config.github ?? null,
+      projectId: ctx.project.id,
+      projectName: ctx.project.name,
+      gitRoot: ctx.project.gitRoot,
+      gitRootHash: ctx.project.gitRootHash,
+      github: ctx.project.githubSync
+        ? { syncIssues: ctx.project.githubSync }
+        : null,
       githubCLI: {
         authenticated: isGitHubAuthenticated,
       },
@@ -193,7 +214,7 @@ async function handleEnableGitHub(
   }
 
   // Step 4: Build and save config with defaults for missing label config
-  const syncConfig: GitHubIssueSync = {
+  const syncConfig: GitHubIssueSyncConfig = {
     enabled: true,
     projectId: github?.projectId,
     labels: github?.labels
@@ -217,7 +238,8 @@ async function handleEnableGitHub(
   };
 
   try {
-    await ctx.configService.setGitHubIssueSyncConfig(syncConfig);
+    // Update project in database with GitHub sync config
+    ctx.projectRepository.update(ctx.project.id, { githubSync: syncConfig });
 
     return successResponse({
       success: true,
@@ -236,7 +258,14 @@ async function handleEnableGitHub(
  */
 async function handleDisableGitHub(ctx: SettingsToolContext): Promise<ToolResponse> {
   try {
-    await ctx.configService.disableGitHubIssueSync();
+    const currentSync = ctx.project.githubSync;
+
+    if (currentSync) {
+      // Preserve config but set enabled to false
+      ctx.projectRepository.update(ctx.project.id, {
+        githubSync: { ...currentSync, enabled: false },
+      });
+    }
 
     return successResponse({
       success: true,
@@ -262,8 +291,7 @@ async function handleConfigureGitHub(
   }
 
   try {
-    const currentConfig = await ctx.configService.loadConfig();
-    const currentSync = currentConfig.github?.syncIssues;
+    const currentSync = ctx.project.githubSync;
 
     if (!currentSync) {
       return errorResponse(
@@ -282,7 +310,7 @@ async function handleConfigureGitHub(
     }
 
     // Merge with existing config (don't allow changing enabled via configure)
-    const updatedConfig: GitHubIssueSync = {
+    const updatedConfig: GitHubIssueSyncConfig = {
       ...currentSync,
       projectId: github.projectId ?? currentSync.projectId,
       labels: github.labels
@@ -313,7 +341,8 @@ async function handleConfigureGitHub(
       enabled: currentSync.enabled, // Preserve enabled state
     };
 
-    await ctx.configService.setGitHubIssueSyncConfig(updatedConfig);
+    // Update project in database
+    ctx.projectRepository.update(ctx.project.id, { githubSync: updatedConfig });
 
     return successResponse({
       success: true,
