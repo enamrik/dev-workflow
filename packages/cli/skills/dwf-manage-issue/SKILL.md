@@ -1,6 +1,6 @@
 ---
 name: dwf-manage-issue
-description: "Create or update issues in the tracker. Handles requirements separation, template selection, priority/milestone assignment. Invoked by dwf-work-request or directly when user says 'create issue', 'update issue #N', 'add acceptance criteria'."
+description: "⚠️ For NEW work requests, use 'dwf-work-request' first - it routes here automatically. This skill handles the mechanics: requirements separation, template selection, priority/milestone assignment. Only invoke directly for EDITING existing issues: 'update issue #N', 'add acceptance criteria to #5', 'change priority of #3'."
 allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_task_labels, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone
 ---
 

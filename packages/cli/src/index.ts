@@ -56,21 +56,78 @@ async function runInit(): Promise<void> {
 
   // Create resolver to get global track directory path
   const resolver = createTrackDirectoryResolver(workingDirectory);
-
-  // Check if already initialized (in global ~/.track/<project-id>/)
-  const trackDir = resolver.getTrackDirectory();
-  const alreadyInitialized = fs.existsSync(trackDir);
-
-  if (alreadyInitialized) {
-    console.error("❌ dev-workflow is already initialized for this repository.");
-    console.error(`   Project: ${resolver.getProjectId()}`);
-    console.error(`   Data: ${trackDir}`);
-    console.error("\nIf you want to update, run: dev-workflow update");
-    process.exit(1);
-  }
-
   const installer = new InstallService(fileSystem, workingDirectory, packageRoot, resolver);
 
+  // Check if this project already exists in the database (by gitRootHash)
+  const existingProject = await installer.findExistingProject();
+  const trackDir = resolver.getTrackDirectory();
+  const trackDirExists = fs.existsSync(trackDir);
+
+  // Determine mode: fresh install, repair, or already initialized
+  if (existingProject) {
+    const needsRepair = await installer.needsConfigRepair();
+
+    if (!needsRepair && trackDirExists) {
+      // Fully initialized and config is current - nothing to do
+      console.error("❌ dev-workflow is already initialized for this repository.");
+      console.error(`   Project: ${existingProject.name} (${existingProject.id.slice(0, 8)}...)`);
+      console.error(`   Data: ${trackDir}`);
+      console.error("\nIf you want to update, run: dev-workflow update");
+      process.exit(1);
+    }
+
+    // Repair mode: project exists but config needs updating (e.g., repo was moved)
+    console.log("🔧 Repairing dev-workflow configuration...");
+    console.log(`   Project: ${existingProject.name} (${existingProject.id.slice(0, 8)}...)`);
+    console.log(`   Detected: Repository has moved or config is missing\n`);
+
+    try {
+      // Use existing project
+      installer.setProject(existingProject);
+
+      // Ensure database is up to date
+      await installer.initializeDatabase();
+
+      // Ensure track directory exists
+      if (!trackDirExists) {
+        await installer.createTrackDirectory();
+        console.log(`✓ Recreated ${trackDir}`);
+
+        await installer.createTaskLabels();
+        console.log("✓ Recreated task labels");
+      }
+
+      // Update local config with new gitRoot
+      await installer.createLocalConfig();
+      console.log("✓ Updated local config with new path");
+
+      // Repair git worktrees
+      const worktreeResult = await installer.repairWorktrees();
+      if (worktreeResult.repaired) {
+        console.log("✓ Repaired git worktrees");
+      } else {
+        console.log(`⚠ Worktree repair: ${worktreeResult.output}`);
+      }
+
+      // Update skills (in case they're outdated)
+      await installer.installSkills();
+      console.log("✓ Updated skills");
+
+      // Re-register MCP server with new paths
+      await installer.registerMCPServer();
+      console.log("✓ Re-registered MCP server with new paths");
+
+      console.log("\n✨ dev-workflow repaired successfully!");
+      console.log("\nYour issues, plans, and tasks are preserved.");
+      console.log("Restart Claude Code to pick up the new configuration.");
+    } catch (error) {
+      console.error("Error during repair:", error);
+      process.exit(1);
+    }
+    return;
+  }
+
+  // Fresh install mode
   try {
     console.log("🚀 Initializing dev-workflow...");
 
@@ -83,6 +140,10 @@ async function runInit(): Promise<void> {
     console.log(`✓ Registered project: ${project.name} (${project.id.slice(0, 8)}...)`);
 
     await installer.createTrackDirectory();
+
+    // Create local config with machine-specific settings (gitRoot)
+    await installer.createLocalConfig();
+    console.log("✓ Created local config");
     console.log(`✓ Created ${trackDir}`);
 
     await installer.createTaskLabels();

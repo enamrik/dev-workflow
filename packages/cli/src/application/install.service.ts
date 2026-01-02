@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
   TrackDirectoryResolver,
@@ -15,14 +15,6 @@ export class InstallError extends Error {
     super(message);
     this.name = "InstallError";
   }
-}
-
-interface MCPServerConfig {
-  mcpServers: Record<string, {
-    command: string;
-    args: string[];
-    env: Record<string, string>;
-  }>;
 }
 
 export class InstallService {
@@ -120,15 +112,27 @@ These values can still be overridden when creating an issue explicitly.
         path.join(userTemplatesDir, "README.md"),
         userTemplatesReadme
       );
+    } catch (error) {
+      throw new InstallError("Failed to create track directory", error);
+    }
+  }
 
-      // Create default config
+  /**
+   * Create local config file with machine-specific settings.
+   *
+   * This file stores data that varies per machine (like gitRoot) and is NOT
+   * synced when using a shared remote database. Each developer has their own.
+   *
+   * Must be called after registerProject() since it needs the project UUID.
+   */
+  async createLocalConfig(): Promise<void> {
+    try {
+      const project = this.getProject();
+
+      // Local-only config - not synced to remote database
       const config = {
-        version: "1.0.0",
-        projectId: this.resolver.getProjectId(),
+        projectId: project.id,
         gitRoot: this.resolver.getGitRoot(),
-        issueTemplates: {
-          defaultTemplate: "feature.md",
-        },
       };
 
       await this.fileSystem.writeFile(
@@ -136,7 +140,7 @@ These values can still be overridden when creating an issue explicitly.
         JSON.stringify(config, null, 2)
       );
     } catch (error) {
-      throw new InstallError("Failed to create track directory", error);
+      throw new InstallError("Failed to create local config", error);
     }
   }
 
@@ -159,67 +163,37 @@ These values can still be overridden when creating an issue explicitly.
       // Project must be registered first
       const project = this.getProject();
 
-      const mcpConfigDir = path.join(this.workingDirectory, ".claude/config");
-      const mcpConfigPath = path.join(mcpConfigDir, "mcp-servers.json");
-
-      await this.fileSystem.mkdir(mcpConfigDir, { recursive: true });
-
-      // Read existing config or create new one
-      let config: MCPServerConfig;
-      const exists = await this.fileSystem.exists(mcpConfigPath);
-
-      if (exists) {
-        const content = await this.fileSystem.readFile(mcpConfigPath);
-        config = JSON.parse(content);
-      } else {
-        config = { mcpServers: {} };
-      }
-
-      // Add dev-workflow MCP server for Claude Code IDE
-      // Use project.id (UUID) instead of path-based projectId for stable identification
-      config.mcpServers["dev-workflow-tracker"] = {
-        command: "npx",
-        args: ["dev-workflow", "mcp"],
-        env: {
-          DATABASE_PATH: this.resolver.getDatabasePath(),
-          PROJECT_ID: project.id, // Use database project ID (UUID)
-          TEMPLATES_PATH: this.resolver.getTemplatesPath(),
-          GIT_ROOT: this.resolver.getGitRoot(),
-        },
-      };
-
-      await this.fileSystem.writeFile(mcpConfigPath, JSON.stringify(config, null, 2));
-
-      // Also register with claude CLI
-      await this.registerWithClaudeCLI();
-    } catch (error) {
-      throw new InstallError("Failed to register MCP server", error);
-    }
-  }
-
-  private async registerWithClaudeCLI(): Promise<void> {
-    try {
-      // Project must be registered first
-      const project = this.getProject();
-
       const dbPath = this.resolver.getDatabasePath();
       const templatesPath = this.resolver.getTemplatesPath();
       const gitRoot = this.resolver.getGitRoot();
       const cliPath = path.join(this.packageRoot, "dist/index.js");
 
-      // Remove existing registration if it exists
+      // Remove existing registration if it exists (from both scopes)
       try {
-        execSync("claude mcp remove dev-workflow-tracker", { stdio: "ignore" });
+        execSync("claude mcp remove dev-workflow-tracker --scope project", {
+          cwd: this.workingDirectory,
+          stdio: "ignore",
+          timeout: 30000,
+        });
       } catch {
-        // Ignore error if server doesn't exist
+        // Ignore if doesn't exist
+      }
+      try {
+        execSync("claude mcp remove dev-workflow-tracker --scope local", {
+          cwd: this.workingDirectory,
+          stdio: "ignore",
+          timeout: 30000,
+        });
+      } catch {
+        // Ignore if doesn't exist
       }
 
-      // Register MCP server with claude CLI
-      // Use project.id (UUID) instead of path-based projectId for stable identification
-      const command = [
-        "claude",
+      // Build the command args (--scope goes after 'mcp add')
+      const buildArgs = (scope: string) => [
         "mcp",
         "add",
+        "--scope",
+        scope,
         "--transport",
         "stdio",
         "dev-workflow-tracker",
@@ -235,14 +209,24 @@ These values can still be overridden when creating an issue explicitly.
         "node",
         cliPath,
         "mcp",
-      ].join(" ");
+      ];
 
-      execSync(command, { stdio: "inherit" });
-    } catch (error) {
-      // Don't fail the entire init if claude CLI registration fails
-      // (claude CLI might not be installed)
-      console.warn("Warning: Could not register with claude CLI (this is optional)");
-      console.warn("You can register manually with: claude mcp add --transport stdio dev-workflow-tracker ...");
+      // Register with project scope (writes to .claude/config/mcp-servers.json)
+      execSync(`claude ${buildArgs("project").join(" ")}`, {
+        cwd: this.workingDirectory,
+        stdio: "inherit",
+        timeout: 30000,
+      });
+
+      // Also register with local scope for claude --print to work
+      execSync(`claude ${buildArgs("local").join(" ")}`, {
+        cwd: this.workingDirectory,
+        stdio: "inherit",
+        timeout: 30000,
+      });
+    } catch {
+      // Don't fail if claude CLI is not available
+      console.warn("Warning: Could not register MCP server with claude CLI");
     }
   }
 
@@ -267,10 +251,8 @@ These values can still be overridden when creating an issue explicitly.
   /**
    * Configure Claude Code permissions for worktree directories.
    *
-   * Adds Read and Edit permissions for all worktree paths so Claude
-   * can access files in any worktree without prompting for permission.
-   *
-   * This is a one-time setup that covers all projects and future worktrees.
+   * Creates per-project .claude/settings.json with Read and Edit permissions
+   * for worktree paths so Claude can access files without prompting.
    */
   async configureClaudePermissions(): Promise<{ configured: boolean; permissions: string[] }> {
     const permissions = [
@@ -279,12 +261,26 @@ These values can still be overridden when creating an issue explicitly.
     ];
 
     try {
-      for (const permission of permissions) {
-        execSync(`claude config add allowedTools "${permission}"`, { stdio: "pipe" });
+      const settingsPath = path.join(this.workingDirectory, ".claude/settings.json");
+
+      // Read existing settings or create new one
+      let settings: { allowedTools?: string[] } = {};
+      const exists = await this.fileSystem.exists(settingsPath);
+
+      if (exists) {
+        const content = await this.fileSystem.readFile(settingsPath);
+        settings = JSON.parse(content);
       }
+
+      // Merge permissions (avoid duplicates)
+      const existingTools = settings.allowedTools ?? [];
+      const newTools = [...new Set([...existingTools, ...permissions])];
+      settings.allowedTools = newTools;
+
+      await this.fileSystem.writeFile(settingsPath, JSON.stringify(settings, null, 2));
       return { configured: true, permissions };
     } catch {
-      // Don't fail if claude CLI is not available
+      // Don't fail if settings can't be written
       return { configured: false, permissions };
     }
   }
@@ -330,5 +326,129 @@ assigned to tasks via the \`labels\` field.
     } catch (error) {
       throw new InstallError("Failed to create task labels", error);
     }
+  }
+
+  /**
+   * Check if this repository has an existing project in the database.
+   *
+   * Used to detect if this is a repair scenario (repo moved, config stale).
+   *
+   * @returns The existing project if found, null otherwise
+   */
+  async findExistingProject(): Promise<Project | null> {
+    const dbPath = this.resolver.getDatabasePath();
+
+    // Database might not exist yet
+    const dbExists = await this.fileSystem.exists(dbPath);
+    if (!dbExists) {
+      return null;
+    }
+
+    const dbService = await DatabaseService.create(dbPath);
+
+    try {
+      const projectRepo = new SqliteProjectRepository(dbService.getDb());
+      const gitOps = new NodeGitOperations();
+
+      // Get gitRootHash for current directory
+      const gitRootHash = await gitOps.getInitialCommitHash(this.workingDirectory);
+
+      // Look up by gitRootHash
+      return projectRepo.findByGitRootHash(gitRootHash);
+    } finally {
+      dbService.close();
+    }
+  }
+
+  /**
+   * Check if the local config needs repair (missing or has wrong gitRoot).
+   *
+   * @returns true if config is missing or stale
+   */
+  async needsConfigRepair(): Promise<boolean> {
+    const configPath = this.resolver.getConfigPath();
+    const configExists = await this.fileSystem.exists(configPath);
+
+    if (!configExists) {
+      return true;
+    }
+
+    try {
+      const content = await this.fileSystem.readFile(configPath);
+      const config = JSON.parse(content);
+      const currentGitRoot = this.resolver.getGitRoot();
+
+      // Config is stale if gitRoot doesn't match current location
+      return config.gitRoot !== currentGitRoot;
+    } catch {
+      // Invalid JSON or other error - needs repair
+      return true;
+    }
+  }
+
+  /**
+   * Repair git worktrees after repository has been moved.
+   *
+   * Git worktrees store absolute paths internally. When the main repo
+   * moves, those paths become invalid. `git worktree repair` fixes this.
+   *
+   * @returns Object with repair status and any output
+   */
+  async repairWorktrees(): Promise<{ repaired: boolean; output: string }> {
+    try {
+      // Check git version (worktree repair requires Git 2.30+)
+      const versionResult = spawnSync("git", ["--version"], {
+        cwd: this.workingDirectory,
+        encoding: "utf-8",
+      });
+
+      if (versionResult.status !== 0) {
+        return { repaired: false, output: "Git not available" };
+      }
+
+      // Parse version (format: "git version 2.39.0")
+      const versionMatch = versionResult.stdout.match(/git version (\d+)\.(\d+)/);
+      if (versionMatch) {
+        const major = parseInt(versionMatch[1]!, 10);
+        const minor = parseInt(versionMatch[2]!, 10);
+
+        if (major < 2 || (major === 2 && minor < 30)) {
+          return {
+            repaired: false,
+            output: `Git ${major}.${minor} detected. Worktree repair requires Git 2.30+`,
+          };
+        }
+      }
+
+      // Run git worktree repair
+      const result = spawnSync("git", ["worktree", "repair"], {
+        cwd: this.workingDirectory,
+        encoding: "utf-8",
+      });
+
+      if (result.status === 0) {
+        const output = result.stdout.trim() || "Worktrees repaired successfully";
+        return { repaired: true, output };
+      } else {
+        return {
+          repaired: false,
+          output: result.stderr.trim() || "Worktree repair failed",
+        };
+      }
+    } catch (error) {
+      return {
+        repaired: false,
+        output: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * Set the project (used when repairing an existing project).
+   *
+   * @param project - The existing project from database
+   */
+  setProject(project: Project): void {
+    this.project = project;
   }
 }

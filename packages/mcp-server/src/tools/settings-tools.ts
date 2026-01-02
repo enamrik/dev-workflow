@@ -106,6 +106,7 @@ export interface SettingsToolContext {
   project: Project;
   projectRepository: ProjectRepository;
   githubCLI: GitHubCLI;
+  gitRoot: string; // From env var, not database (machine-specific)
 }
 
 /**
@@ -158,7 +159,7 @@ async function handleGetSettings(ctx: SettingsToolContext): Promise<ToolResponse
     return successResponse({
       projectId: ctx.project.id,
       projectName: ctx.project.name,
-      gitRoot: ctx.project.gitRoot,
+      gitRoot: ctx.gitRoot,
       gitRootHash: ctx.project.gitRootHash,
       github: ctx.project.githubSync
         ? { syncIssues: ctx.project.githubSync }

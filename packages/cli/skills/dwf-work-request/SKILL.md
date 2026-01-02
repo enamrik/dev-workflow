@@ -1,6 +1,6 @@
 ---
 name: dwf-work-request
-description: "ALWAYS invoke when user requests work to be done: 'add X', 'fix Y', 'implement Z', 'we need...', 'can you build...', 'make it...', 'create a...'. Routes all work through issue tracking before implementation begins."
+description: "⚠️ ENTRY POINT for ALL new work. Invoke FIRST when user wants anything built, fixed, added, or created. Triggers: 'add X', 'fix Y', 'implement Z', 'create issue', 'we need...', 'can you build...', 'make it...'. Do NOT use dwf-manage-issue directly for new work - use this router instead."
 ---
 
 # Work Request Skill

@@ -200,19 +200,34 @@ export class MultiProjectService {
     const coreProjects = projectRepository.findAll();
 
     // Map core projects to UI projects with track directory
-    const projects: Project[] = coreProjects.map((p) => {
-      // Compute track directory from git root and first commit hash
-      const folderName = path.basename(p.gitRoot);
-      const hash = p.gitRootHash.slice(0, 6);
-      const trackDirName = `${folderName}-${hash}`;
+    const projectsWithConfig: Project[] = [];
 
-      return {
+    for (const p of coreProjects) {
+      // Compute track directory from project name and git root hash
+      const hash = p.gitRootHash.slice(0, 6);
+      const trackDirName = `${p.name}-${hash}`;
+      const trackDirectory = path.join(this.globalTrackDir, trackDirName);
+
+      // Read gitRoot from local config.json (machine-specific, not in database)
+      let gitRoot: string | null = null;
+      try {
+        const configPath = path.join(trackDirectory, "config.json");
+        const configContent = await fs.readFile(configPath, "utf-8");
+        const config = JSON.parse(configContent);
+        gitRoot = config.gitRoot ?? null;
+      } catch {
+        // Config file may not exist yet or be invalid
+      }
+
+      projectsWithConfig.push({
         id: p.id,
         name: p.name,
-        trackDirectory: path.join(this.globalTrackDir, trackDirName),
-        gitRoot: p.gitRoot,
-      };
-    });
+        trackDirectory,
+        gitRoot: gitRoot ?? "", // Empty string if not found
+      });
+    }
+
+    const projects = projectsWithConfig;
 
     return projects.sort((a, b) => a.name.localeCompare(b.name));
   }

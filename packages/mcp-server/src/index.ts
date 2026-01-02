@@ -143,6 +143,9 @@ if (!GIT_ROOT) {
   process.exit(1);
 }
 
+// After validation, we know these are strings
+const validatedGitRoot: string = GIT_ROOT;
+
 // Service instances (initialized in main)
 let dbService: DatabaseService;
 let issueToolContext: IssueToolContext;
@@ -389,8 +392,7 @@ async function main() {
 
   // Initialize file system and paths
   const fileSystem = new NodeFileSystem();
-  // GIT_ROOT is validated at startup so it's guaranteed to be defined here
-  const projectRoot = GIT_ROOT as string;
+  const projectRoot = validatedGitRoot;
   // For track directory, derive from TEMPLATES_PATH
   // This is separate from the database project ID (used for file storage)
   const trackDirectory = TEMPLATES_PATH.replace(/\/config\/issues\/templates\/?$/, "");
@@ -499,6 +501,7 @@ async function main() {
     project,
     projectRepository,
     githubCLI: new NodeGitHubCLI(),
+    gitRoot: validatedGitRoot, // From env var, not database (machine-specific)
   };
 
   milestoneToolContext = {

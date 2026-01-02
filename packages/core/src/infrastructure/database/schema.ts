@@ -1,10 +1,24 @@
 import { sqliteTable, text, integer, real, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
+import { z } from "zod";
 import type {
   SnapshotIssueState,
   SnapshotPlanState,
   SnapshotTaskState,
 } from "../../domain/snapshot.js";
+
+/**
+ * Local config schema (for config.json - machine-specific settings)
+ *
+ * This config is LOCAL-ONLY and not synced when using a shared remote database.
+ * Each developer has their own config.json with their local gitRoot path.
+ */
+export const LocalConfigSchema = z.object({
+  projectId: z.string(), // UUID linking to database project record
+  gitRoot: z.string(), // Absolute path to git repository (machine-specific)
+});
+
+export type LocalConfig = z.infer<typeof LocalConfigSchema>;
 
 /**
  * Issues table schema
@@ -311,20 +325,25 @@ export const milestones = sqliteTable("milestones", {
 }));
 
 /**
+ * GitHub labels configuration
+ */
+export interface GitHubLabelsConfig {
+  typeLabels: {
+    FEATURE: string;
+    BUG: string;
+    ENHANCEMENT: string;
+    TASK: string;
+  };
+  customLabels?: string[];
+}
+
+/**
  * GitHub issue sync configuration stored as JSON
  */
 export interface GitHubIssueSyncConfig {
   enabled: boolean;
   projectId?: string; // GitHub Project ID (e.g., PVT_kwDO...)
-  labels?: {
-    typeLabels: {
-      FEATURE: string;
-      BUG: string;
-      ENHANCEMENT: string;
-      TASK: string;
-    };
-    customLabels?: string[];
-  };
+  labels?: GitHubLabelsConfig;
 }
 
 /**
@@ -332,6 +351,10 @@ export interface GitHubIssueSyncConfig {
  *
  * Centralized storage for project configuration.
  * Uses git's initial commit hash as stable identifier that survives repo moves.
+ *
+ * Note: gitRoot is NOT stored here - it's in the local config.json file.
+ * This allows the database to be shared across multiple developers who have
+ * the repo cloned at different paths on their machines.
  */
 export const projects = sqliteTable("projects", {
   // Primary key (UUID)
@@ -343,10 +366,6 @@ export const projects = sqliteTable("projects", {
 
   // Human-readable project name (typically the folder name)
   name: text("name").notNull(),
-
-  // Current absolute path to the git repository root
-  // Updated on each `dev-workflow init` to handle repo moves
-  gitRoot: text("git_root").notNull(),
 
   // GitHub issue sync configuration (JSON)
   githubSync: text("github_sync", { mode: "json" })

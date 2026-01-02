@@ -13,7 +13,7 @@ import type {
   GitHubIssueData,
 } from "../domain/github.js";
 import type { GitHubCLI } from "../infrastructure/github/github-cli.js";
-import type { GitHubIssueSync, GitHubLabels } from "./config-service.js";
+import type { GitHubIssueSyncConfig, GitHubLabelsConfig } from "../infrastructure/database/schema.js";
 
 /**
  * Error thrown when GitHub sync fails
@@ -41,7 +41,7 @@ export class GitHubSyncService {
   constructor(
     private readonly issueRepository: IssueRepository,
     private readonly githubCLI: GitHubCLI,
-    private readonly config: GitHubIssueSync
+    private readonly config: GitHubIssueSyncConfig
   ) {}
 
   /**
@@ -227,7 +227,7 @@ export class GitHubSyncService {
     if (this.config.labels?.typeLabels) {
       const typeLabel =
         this.config.labels.typeLabels[
-          type as keyof GitHubLabels["typeLabels"]
+          type as keyof GitHubLabelsConfig["typeLabels"]
         ];
       if (typeLabel) {
         labels.push(typeLabel);

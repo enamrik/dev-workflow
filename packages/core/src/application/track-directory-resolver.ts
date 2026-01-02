@@ -81,8 +81,10 @@ export class TrackDirectoryResolver {
   /**
    * Get the first (initial) commit hash of the repository.
    * This is stable and never changes once the repo is created.
+   *
+   * This is the same value stored as `git_root_hash` in the database.
    */
-  private getFirstCommitHash(): string {
+  getGitRootHash(): string {
     try {
       return execSync("git rev-list --max-parents=0 HEAD", {
         cwd: this.gitRoot,
@@ -93,6 +95,13 @@ export class TrackDirectoryResolver {
       // Fallback to path-based hash if git command fails
       return crypto.createHash("sha256").update(this.gitRoot).digest("hex");
     }
+  }
+
+  /**
+   * @deprecated Use getGitRootHash() instead
+   */
+  private getFirstCommitHash(): string {
+    return this.getGitRootHash();
   }
 
   /**
