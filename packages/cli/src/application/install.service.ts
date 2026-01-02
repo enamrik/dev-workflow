@@ -267,7 +267,7 @@ These values can still be overridden when creating an issue explicitly.
 
     try {
       const claudeDir = path.join(this.workingDirectory, ".claude");
-      const settingsPath = path.join(claudeDir, "settings.json");
+      const settingsPath = path.join(claudeDir, "settings.local.json");
 
       // Ensure .claude directory exists
       const dirExists = await this.fileSystem.exists(claudeDir);
