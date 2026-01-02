@@ -157,6 +157,14 @@ export interface GitHubCLI {
   getPR(prNumber: number): Promise<GitHubPRData | null>;
 
   /**
+   * Find a pull request by head branch name
+   *
+   * @param headBranch - The source branch name
+   * @returns PR data or null if no PR exists for this branch
+   */
+  findPRByBranch(headBranch: string): Promise<GitHubPRData | null>;
+
+  /**
    * Run arbitrary gh CLI command
    */
   run(args: string[]): Promise<GitHubCLIResult>;
@@ -524,7 +532,7 @@ export class NodeGitHubCLI implements GitHubCLI {
       "view",
       String(prNumber),
       "--json",
-      "number,url,id,title,body,state,isDraft,headRefName,baseRefName,merged,mergeable",
+      "number,url,id,title,body,state,isDraft,headRefName,baseRefName,mergedAt,mergeable",
     ]);
 
     if (!result.success) {
@@ -543,6 +551,36 @@ export class NodeGitHubCLI implements GitHubCLI {
 
     const data = JSON.parse(result.stdout) as Record<string, unknown>;
     return this.mapPRData(data);
+  }
+
+  async findPRByBranch(headBranch: string): Promise<GitHubPRData | null> {
+    const result = await this.run([
+      "pr",
+      "list",
+      "--head",
+      headBranch,
+      "--state",
+      "all",
+      "--json",
+      "number,url,id,title,body,state,isDraft,headRefName,baseRefName,mergedAt,mergeable",
+      "--limit",
+      "1",
+    ]);
+
+    if (!result.success) {
+      throw new GitHubCLIError(
+        `Failed to find PR by branch: ${result.stderr}`,
+        result.exitCode,
+        result.stderr
+      );
+    }
+
+    const prs = JSON.parse(result.stdout) as Array<Record<string, unknown>>;
+    if (prs.length === 0) {
+      return null;
+    }
+
+    return this.mapPRData(prs[0]);
   }
 
   async run(args: string[]): Promise<GitHubCLIResult> {
@@ -597,9 +635,13 @@ export class NodeGitHubCLI implements GitHubCLI {
   }
 
   private mapPRData(data: Record<string, unknown>): GitHubPRData {
-    // Determine the state based on merged and state fields
+    // Derive merged status from mergedAt (gh CLI doesn't have a 'merged' field)
+    const mergedAt = data["mergedAt"] as string | null;
+    const isMerged = mergedAt !== null && mergedAt !== undefined;
+
+    // Determine the state based on merged status and state fields
     let state: GitHubPRData["state"];
-    if (data["merged"] === true) {
+    if (isMerged) {
       state = "MERGED";
     } else {
       state = data["state"] as "OPEN" | "CLOSED";
@@ -615,7 +657,7 @@ export class NodeGitHubCLI implements GitHubCLI {
       isDraft: (data["isDraft"] as boolean) ?? false,
       headBranch: data["headRefName"] as string,
       baseBranch: data["baseRefName"] as string,
-      merged: (data["merged"] as boolean) ?? false,
+      merged: isMerged,
       mergeable: (data["mergeable"] as GitHubPRData["mergeable"]) ?? "UNKNOWN",
     };
   }
