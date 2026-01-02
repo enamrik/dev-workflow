@@ -1,5 +1,6 @@
 import { clsx } from "clsx";
 import { Badge, Markdown, Tooltip } from "../ui";
+import { TaskTiming } from "./TaskTiming";
 import type { Task } from "@/lib/types";
 
 interface TaskItemProps {
@@ -117,8 +118,9 @@ export function TaskItem({ task }: TaskItemProps) {
 
       <div className="flex flex-col items-end gap-2">
         <Badge variant="status" value={task.status} />
+        <TaskTiming task={task} className="text-xs" />
         {task.estimatedMinutes && (
-          <span className="text-xs text-gray-500">{task.estimatedMinutes}m</span>
+          <span className="text-xs text-gray-500">Est: {task.estimatedMinutes}m</span>
         )}
       </div>
     </li>
