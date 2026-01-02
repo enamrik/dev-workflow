@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { clsx } from "clsx";
-import { Badge, Modal, Markdown } from "../ui";
+import { Badge, Modal, Markdown, CopyButton } from "../ui";
 import { TaskTiming, TaskMetadataPanel } from "../tasks";
 import { CopyTaskCommand } from "../tasks/CopyTaskCommand";
 import type { Task } from "@/lib/types";
@@ -85,9 +85,18 @@ function TaskModalContent({
               Details
             </button>
           </div>
-          {projectId && (
-            <CopyTaskCommand issueNumber={issueNumber} taskNumber={task.number} />
-          )}
+          <div className="flex items-center gap-2">
+            {task.prUrl && (
+              <CopyButton
+                text={task.prUrl}
+                label={`PR #${task.prNumber}`}
+                tooltip="Copy PR URL"
+              />
+            )}
+            {projectId && (
+              <CopyTaskCommand issueNumber={issueNumber} taskNumber={task.number} />
+            )}
+          </div>
         </div>
       </div>
 
