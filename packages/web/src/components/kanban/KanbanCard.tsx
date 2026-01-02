@@ -59,6 +59,16 @@ function TaskModalContent({
           <Badge variant="status" value={task.status} />
         </div>
 
+        {/* Actions panel below title */}
+        {(task.branchName || task.prUrl || projectId) && (
+          <TaskActions
+            task={task}
+            issueNumber={issueNumber}
+            showCopyCommand={!!projectId}
+            className="mt-2"
+          />
+        )}
+
         {/* Tabs */}
         <div className="flex gap-1 mt-3">
           <button
@@ -89,7 +99,7 @@ function TaskModalContent({
       {/* Content */}
       <div className="p-4">
         {activeTab === "task" ? (
-          <TaskTab task={task} issueNumber={issueNumber} projectId={projectId} />
+          <TaskTab task={task} />
         ) : (
           <DetailsTab task={task} projectId={projectId} issueNumber={issueNumber} />
         )}
@@ -121,26 +131,11 @@ function TaskModalContent({
 
 function TaskTab({
   task,
-  issueNumber,
-  projectId,
 }: {
   task: Task;
-  issueNumber: number;
-  projectId?: string;
 }) {
-  const hasActions = task.branchName || task.prUrl || projectId;
-
   return (
     <div className="space-y-4">
-      {/* Actions - consolidated copy/link section */}
-      {hasActions && (
-        <TaskActions
-          task={task}
-          issueNumber={issueNumber}
-          showCopyCommand={!!projectId}
-        />
-      )}
-
       {/* Description */}
       {task.description && (
         <div>

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { clsx } from "clsx";
-import { Badge, Markdown, Tooltip } from "../ui";
+import { Badge, Markdown } from "../ui";
 import { TaskTiming } from "./TaskTiming";
 import { TaskMetadataPanel } from "./TaskMetadataPanel";
 import { TaskActions } from "./TaskActions";
@@ -36,8 +36,6 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
   const isInProgress = task.status === "IN_PROGRESS";
   const isPRReview = task.status === "PR_REVIEW";
   const isAbandoned = task.status === "ABANDONED";
-  const hasWorktree = !!task.worktreePath;
-  const hasPR = !!task.prUrl;
   const canExpand = !!projectId && issueNumber !== undefined;
 
   return (
@@ -69,24 +67,19 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-medium text-gray-800">{task.title}</span>
-            {/* Worktree indicator */}
-            {hasWorktree && (
-              <Tooltip content={task.worktreePath || ""}>
-                <span className="text-gray-500" title="Has worktree">
-                  <BranchIcon />
-                </span>
-              </Tooltip>
-            )}
-            {/* PR indicator */}
-            {hasPR && (
-              <Tooltip content={`PR #${task.prNumber}`}>
-                <span className="text-gray-500" title="Has PR">
-                  <PRIcon />
-                </span>
-              </Tooltip>
-            )}
           </div>
-          <div className="text-sm text-gray-600 mt-1">
+
+          {/* Actions panel - just below title */}
+          {(task.branchName || task.prUrl || projectId) && (
+            <TaskActions
+              task={task}
+              issueNumber={issueNumber}
+              showCopyCommand={!!projectId}
+              className="mt-1"
+            />
+          )}
+
+          <div className="text-sm text-gray-600 mt-2">
             <Markdown>{task.description}</Markdown>
           </div>
 
@@ -111,16 +104,6 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
                 <Badge key={label} variant="label" value={label} />
               ))}
             </div>
-          )}
-
-          {/* Actions section - always visible */}
-          {(task.branchName || task.prUrl || projectId) && (
-            <TaskActions
-              task={task}
-              issueNumber={issueNumber}
-              showCopyCommand={!!projectId}
-              className="mt-3"
-            />
           )}
 
           {/* Toggle link for details */}
@@ -158,42 +141,6 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
         </div>
       )}
     </li>
-  );
-}
-
-function BranchIcon() {
-  return (
-    <svg
-      className="w-4 h-4"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M13 10V3L4 14h7v7l9-11h-7z"
-      />
-    </svg>
-  );
-}
-
-function PRIcon() {
-  return (
-    <svg
-      className="w-4 h-4"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-      />
-    </svg>
   );
 }
 
