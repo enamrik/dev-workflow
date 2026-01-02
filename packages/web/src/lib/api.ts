@@ -5,6 +5,9 @@ import type {
   TasksResponse,
   MilestoneWithIssues,
   Worktree,
+  Task,
+  TaskStatusHistory,
+  TaskExecutionLog,
 } from "./types";
 import { ApiError } from "./types";
 
@@ -127,4 +130,33 @@ export async function pruneWorktrees(
     method: "POST",
     body: JSON.stringify({ action: "prune", projectId }),
   });
+}
+
+// Task Metadata
+
+export function getTaskStatusHistory(
+  projectId: string,
+  taskId: string
+): Promise<TaskStatusHistory[]> {
+  return apiClient<TaskStatusHistory[]>(
+    `/projects/${encodeURIComponent(projectId)}/tasks/${taskId}/history`
+  );
+}
+
+export function getTaskExecutionLogs(
+  projectId: string,
+  taskId: string
+): Promise<TaskExecutionLog[]> {
+  return apiClient<TaskExecutionLog[]>(
+    `/projects/${encodeURIComponent(projectId)}/tasks/${taskId}/logs`
+  );
+}
+
+export function getTaskDependencies(
+  projectId: string,
+  taskId: string
+): Promise<Task[]> {
+  return apiClient<Task[]>(
+    `/projects/${encodeURIComponent(projectId)}/tasks/${taskId}/dependencies`
+  );
 }

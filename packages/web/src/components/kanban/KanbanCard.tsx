@@ -1,7 +1,11 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { Badge, Modal, Markdown } from "../ui";
-import { TaskTiming } from "../tasks/TaskTiming";
+import { TaskTiming, TaskMetadataPanel } from "../tasks";
+import { CopyTaskCommand } from "../tasks/CopyTaskCommand";
 import type { Task } from "@/lib/types";
 
 interface KanbanCardProps {
@@ -18,42 +22,122 @@ function truncate(text: string, maxLength: number): string {
   return text.slice(0, maxLength - 3) + "...";
 }
 
+type ModalTab = "task" | "details";
+
 interface TaskModalContentProps {
   task: Task;
   issueNumber: number;
   issueUrl: string;
+  projectId?: string;
 }
 
 function TaskModalContent({
   task,
   issueNumber,
   issueUrl,
+  projectId,
 }: TaskModalContentProps) {
+  const [activeTab, setActiveTab] = useState<ModalTab>("task");
+
   return (
-    <div className="p-4">
-      {/* Header: Task number and title */}
-      <div className="font-semibold text-gray-900 text-sm mb-3 pb-2 border-b border-gray-100">
-        <Link
-          href={issueUrl}
-          className="text-blue-600 hover:underline"
-          onClick={(e) => e.stopPropagation()}
-        >
-          #{issueNumber}.{task.number}
-        </Link>{" "}
-        {task.title}
+    <div>
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-10 p-4 border-b border-gray-200 bg-white rounded-t-xl">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-gray-900 text-sm">
+              <Link
+                href={issueUrl}
+                className="text-blue-600 hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                #{issueNumber}.{task.number}
+              </Link>{" "}
+              {task.title}
+            </div>
+          </div>
+          <Badge variant="status" value={task.status} />
+        </div>
+
+        {/* Tabs and Copy button */}
+        <div className="flex items-center justify-between mt-3">
+          <div className="flex gap-1">
+            <button
+              onClick={() => setActiveTab("task")}
+              className={clsx(
+                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+                activeTab === "task"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              )}
+            >
+              Task
+            </button>
+            <button
+              onClick={() => setActiveTab("details")}
+              className={clsx(
+                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+                activeTab === "details"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              )}
+            >
+              Details
+            </button>
+          </div>
+          {projectId && (
+            <CopyTaskCommand issueNumber={issueNumber} taskNumber={task.number} />
+          )}
+        </div>
       </div>
 
-      {/* Full description */}
+      {/* Content */}
+      <div className="p-4">
+        {activeTab === "task" ? (
+          <TaskTab task={task} />
+        ) : (
+          <DetailsTab task={task} projectId={projectId} issueNumber={issueNumber} />
+        )}
+      </div>
+
+      {/* Sticky Footer */}
+      <div className="sticky bottom-0 z-10 p-3 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3">
+            <TaskTiming task={task} />
+            {task.estimatedMinutes && (
+              <span className="text-gray-500">
+                Est: {task.estimatedMinutes}m
+              </span>
+            )}
+          </div>
+          {task.labels.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              {task.labels.map((label) => (
+                <Badge key={label} variant="label" value={label} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TaskTab({ task }: { task: Task }) {
+  return (
+    <div className="space-y-4">
+      {/* Description */}
       {task.description && (
-        <div className="mb-3">
+        <div>
           <Markdown className="text-sm">{task.description}</Markdown>
         </div>
       )}
 
       {/* Acceptance criteria */}
       {task.acceptanceCriteria.length > 0 && (
-        <div className="mb-3">
-          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+        <div>
+          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
             Acceptance Criteria
           </div>
           <ul className="text-sm text-gray-700 space-y-1">
@@ -67,23 +151,46 @@ function TaskModalContent({
         </div>
       )}
 
-      {/* Metadata: timing, estimated time, and labels */}
-      <div className="flex items-center gap-3 pt-2 border-t border-gray-100 text-xs">
-        <TaskTiming task={task} />
-        {task.estimatedMinutes && (
-          <span className="text-gray-500">
-            Est: {task.estimatedMinutes} min
-          </span>
-        )}
-        {task.labels.length > 0 && (
-          <div className="flex gap-1 flex-wrap">
-            {task.labels.map((label) => (
-              <Badge key={label} variant="label" value={label} />
-            ))}
+      {/* Context instructions */}
+      {task.contextInstructions && (
+        <div>
+          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+            Context Instructions
           </div>
-        )}
-      </div>
+          <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg border border-gray-200">
+            {task.contextInstructions}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function DetailsTab({
+  task,
+  projectId,
+  issueNumber,
+}: {
+  task: Task;
+  projectId?: string;
+  issueNumber: number;
+}) {
+  if (!projectId) {
+    return (
+      <div className="text-sm text-gray-500">
+        Project context required to load details.
+      </div>
+    );
+  }
+
+  return (
+    <TaskMetadataPanel
+      task={task}
+      projectId={projectId}
+      issueNumber={issueNumber}
+      hideCopyCommand
+      hideTimestamps
+    />
   );
 }
 
@@ -140,6 +247,18 @@ function CardContent({
           {task.estimatedMinutes && (
             <span className="text-gray-500">{task.estimatedMinutes}m</span>
           )}
+          {/* Show PR indicator on card */}
+          {task.prUrl && (
+            <span className="text-blue-500" title={`PR #${task.prNumber}`}>
+              <PRIcon />
+            </span>
+          )}
+          {/* Show worktree indicator on card */}
+          {task.worktreePath && (
+            <span className="text-gray-500" title="Has worktree">
+              <BranchIcon />
+            </span>
+          )}
           {isAbandoned && <Badge variant="status" value="ABANDONED" />}
           {task.labels.length > 0 && (
             <div className="flex gap-1 flex-wrap">
@@ -173,12 +292,50 @@ export function KanbanCard({
           projectId={projectId}
         />
       }
+      maxHeight={600}
     >
       <TaskModalContent
         task={task}
         issueNumber={issueNumber}
         issueUrl={issueUrl}
+        projectId={projectId}
       />
     </Modal>
+  );
+}
+
+function PRIcon() {
+  return (
+    <svg
+      className="w-3.5 h-3.5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+      />
+    </svg>
+  );
+}
+
+function BranchIcon() {
+  return (
+    <svg
+      className="w-3.5 h-3.5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M13 10V3L4 14h7v7l9-11h-7z"
+      />
+    </svg>
   );
 }

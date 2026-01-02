@@ -4,3 +4,4 @@ export { useTasks } from "./useTasks";
 export { useMilestones } from "./useMilestones";
 export { useWorktrees, usePruneWorktrees } from "./useWorktrees";
 export { useWebSocket } from "./useWebSocket";
+export { useTaskMetadata } from "./useTaskMetadata";
