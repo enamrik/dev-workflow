@@ -1,8 +1,8 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import { clsx } from "clsx";
-import { CopyButton, Tooltip } from "../ui";
-import { CopyTaskCommand } from "./CopyTaskCommand";
+import { Tooltip } from "../ui";
 import type { Task } from "@/lib/types";
 
 interface TaskActionsProps {
@@ -14,8 +14,8 @@ interface TaskActionsProps {
 }
 
 /**
- * Unified actions section for task tiles.
- * Shows icon buttons with labels on hover.
+ * Unified actions panel for task tiles.
+ * Shows single-word labels with copy icons, full text on hover.
  */
 export function TaskActions({
   task,
@@ -35,19 +35,20 @@ export function TaskActions({
   return (
     <div
       className={clsx(
-        "flex items-center gap-1",
+        "flex items-center gap-1 px-2 py-1.5 bg-gray-100 rounded-md",
         className
       )}
     >
       {/* PR link - opens in new tab */}
       {hasPR && task.prUrl && (
-        <Tooltip content={`Open PR #${task.prNumber}`}>
+        <Tooltip content={`Open PR #${task.prNumber} in GitHub`}>
           <a
             href={task.prUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center w-6 h-6 rounded border border-gray-200 bg-gray-50 text-blue-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-colors"
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
           >
+            <span>PR</span>
             <ExternalLinkIcon className="w-3 h-3" />
           </a>
         </Tooltip>
@@ -55,50 +56,88 @@ export function TaskActions({
 
       {/* Copy PR URL */}
       {hasPR && task.prUrl && (
-        <CopyButton
+        <ActionButton
+          label="URL"
           text={task.prUrl}
-          tooltip={`Copy PR #${task.prNumber} URL`}
-          size="sm"
-          icon={<LinkIcon className="w-3 h-3" />}
+          tooltip={`Copy PR URL: ${task.prUrl}`}
         />
       )}
 
       {/* Copy branch name */}
       {hasBranch && (
-        <CopyButton
+        <ActionButton
+          label="Branch"
           text={task.branchName!}
           tooltip={`Copy branch: ${task.branchName}`}
-          size="sm"
-          icon={<BranchIcon className="w-3 h-3" />}
         />
       )}
 
       {/* Copy worktree path */}
       {hasWorktree && task.worktreePath && (
-        <CopyButton
+        <ActionButton
+          label="Path"
           text={task.worktreePath}
           tooltip={`Copy worktree: ${task.worktreePath}`}
-          size="sm"
-          icon={<FolderIcon className="w-3 h-3" />}
         />
       )}
 
       {/* Claude command */}
       {showCopyCommand && issueNumber && (
-        <CopyTaskCommand
-          issueNumber={issueNumber}
-          taskNumber={task.number}
-          size="sm"
+        <ActionButton
+          label="Claude"
+          text={`/dwf-work-task start #${issueNumber}.${task.number}`}
+          tooltip={`Copy: /dwf-work-task start #${issueNumber}.${task.number}`}
         />
       )}
     </div>
   );
 }
 
+interface ActionButtonProps {
+  label: string;
+  text: string;
+  tooltip: string;
+}
+
+function ActionButton({ label, text, tooltip }: ActionButtonProps) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  }, [text]);
+
+  return (
+    <Tooltip content={copied ? "Copied!" : tooltip}>
+      <button
+        onClick={handleCopy}
+        className={clsx(
+          "inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded transition-colors",
+          copied
+            ? "text-green-700 bg-green-50"
+            : "text-gray-600 hover:text-gray-800 hover:bg-gray-200"
+        )}
+      >
+        <span>{label}</span>
+        {copied ? (
+          <CheckIcon className="w-3 h-3" />
+        ) : (
+          <CopyIcon className="w-3 h-3" />
+        )}
+      </button>
+    </Tooltip>
+  );
+}
+
 function ExternalLinkIcon({ className }: { className?: string }) {
   return (
     <svg
-      className={clsx("flex-shrink-0", className)}
+      className={className}
       fill="none"
       stroke="currentColor"
       viewBox="0 0 24 24"
@@ -113,56 +152,23 @@ function ExternalLinkIcon({ className }: { className?: string }) {
   );
 }
 
-function LinkIcon({ className }: { className?: string }) {
+function CopyIcon({ className }: { className?: string }) {
   return (
-    <svg
-      className={clsx("flex-shrink-0", className)}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth={2}
-        d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
       />
     </svg>
   );
 }
 
-function BranchIcon({ className }: { className?: string }) {
+function CheckIcon({ className }: { className?: string }) {
   return (
-    <svg
-      className={clsx("flex-shrink-0", className)}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
-      />
-    </svg>
-  );
-}
-
-function FolderIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={clsx("flex-shrink-0", className)}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-      />
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
     </svg>
   );
 }
