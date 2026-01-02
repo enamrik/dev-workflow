@@ -21,13 +21,11 @@ describe("SqliteProjectRepository", () => {
       const project = repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
-        gitRoot: "/path/to/project",
       });
 
       expect(project.id).toBeDefined();
       expect(project.gitRootHash).toBe("abc123def456");
       expect(project.name).toBe("test-project");
-      expect(project.gitRoot).toBe("/path/to/project");
       expect(project.githubSync).toBeNull();
       expect(project.createdAt).toBeDefined();
       expect(project.updatedAt).toBeDefined();
@@ -50,7 +48,6 @@ describe("SqliteProjectRepository", () => {
       const project = repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
-        gitRoot: "/path/to/project",
         githubSync,
       });
 
@@ -61,14 +58,12 @@ describe("SqliteProjectRepository", () => {
       repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "project-1",
-        gitRoot: "/path/to/project-1",
       });
 
       expect(() =>
         repos.projectRepository.create({
           gitRootHash: "abc123def456", // Same hash
           name: "project-2",
-          gitRoot: "/path/to/project-2",
         })
       ).toThrow();
     });
@@ -79,7 +74,6 @@ describe("SqliteProjectRepository", () => {
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
-        gitRoot: "/path/to/project",
       });
 
       const found = repos.projectRepository.findById(created.id);
@@ -97,16 +91,14 @@ describe("SqliteProjectRepository", () => {
 
   describe("findByGitRootHash", () => {
     it("should find a project by git root hash", () => {
-      const created = repos.projectRepository.create({
+      repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
-        gitRoot: "/path/to/project",
       });
 
       const found = repos.projectRepository.findByGitRootHash("abc123def456");
 
       expect(found).toBeDefined();
-      expect(found?.id).toBe(created.id);
       expect(found?.gitRootHash).toBe("abc123def456");
     });
 
@@ -126,13 +118,11 @@ describe("SqliteProjectRepository", () => {
       repos.projectRepository.create({
         gitRootHash: "hash1",
         name: "project-1",
-        gitRoot: "/path/to/project-1",
       });
 
       repos.projectRepository.create({
         gitRootHash: "hash2",
         name: "project-2",
-        gitRoot: "/path/to/project-2",
       });
 
       const projects = repos.projectRepository.findAll();
@@ -141,20 +131,17 @@ describe("SqliteProjectRepository", () => {
   });
 
   describe("update", () => {
-    it("should update project fields", () => {
+    it("should update project name", () => {
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "old-name",
-        gitRoot: "/old/path",
       });
 
       const updated = repos.projectRepository.update(created.id, {
         name: "new-name",
-        gitRoot: "/new/path",
       });
 
       expect(updated.name).toBe("new-name");
-      expect(updated.gitRoot).toBe("/new/path");
       expect(updated.gitRootHash).toBe("abc123def456"); // Should not change
     });
 
@@ -162,7 +149,6 @@ describe("SqliteProjectRepository", () => {
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
-        gitRoot: "/path/to/project",
       });
 
       const githubSync: GitHubIssueSyncConfig = {
@@ -198,7 +184,6 @@ describe("SqliteProjectRepository", () => {
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
-        gitRoot: "/path/to/project",
         githubSync,
       });
 
@@ -208,17 +193,29 @@ describe("SqliteProjectRepository", () => {
     });
 
     it("should preserve unchanged fields", () => {
+      const githubSync: GitHubIssueSyncConfig = {
+        enabled: true,
+        labels: {
+          typeLabels: {
+            FEATURE: "feature",
+            BUG: "bug",
+            ENHANCEMENT: "enhancement",
+            TASK: "task",
+          },
+        },
+      };
+
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
-        gitRoot: "/path/to/project",
+        githubSync,
       });
 
       const updated = repos.projectRepository.update(created.id, {
         name: "new-name",
       });
 
-      expect(updated.gitRoot).toBe("/path/to/project"); // Preserved
+      expect(updated.githubSync).toEqual(githubSync); // Preserved
     });
   });
 
@@ -227,7 +224,6 @@ describe("SqliteProjectRepository", () => {
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
-        gitRoot: "/path/to/project",
       });
 
       repos.projectRepository.delete(created.id);

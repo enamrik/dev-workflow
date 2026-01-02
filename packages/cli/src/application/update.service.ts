@@ -210,66 +210,37 @@ export class UpdateService {
       // Project must be registered first
       const project = this.getProject();
 
-      const mcpConfigDir = path.join(this.workingDirectory, ".claude/config");
-      const mcpConfigPath = path.join(mcpConfigDir, "mcp-servers.json");
-
-      const exists = await this.fileSystem.exists(mcpConfigPath);
-      if (!exists) {
-        throw new UpdateError("MCP config not found. Run 'dev-workflow init' first.");
-      }
-
-      const content = await this.fileSystem.readFile(mcpConfigPath);
-      const config = JSON.parse(content);
-
-      // Update dev-workflow MCP server registration
-      // Use project.id (UUID) instead of path-based projectId for stable identification
-      config.mcpServers["dev-workflow-tracker"] = {
-        command: "npx",
-        args: ["dev-workflow", "mcp"],
-        env: {
-          DATABASE_PATH: this.resolver.getDatabasePath(),
-          PROJECT_ID: project.id, // Use database project ID (UUID)
-          TEMPLATES_PATH: this.resolver.getTemplatesPath(),
-          GIT_ROOT: this.resolver.getGitRoot(),
-        },
-      };
-
-      await this.fileSystem.writeFile(mcpConfigPath, JSON.stringify(config, null, 2));
-
-      // Also update claude CLI registration
-      await this.updateClaudeCLI();
-    } catch (error) {
-      if (error instanceof UpdateError) throw error;
-      throw new UpdateError("Failed to update MCP server", error);
-    }
-  }
-
-  /**
-   * Update claude CLI MCP registration
-   */
-  private async updateClaudeCLI(): Promise<void> {
-    try {
-      // Project must be registered first
-      const project = this.getProject();
-
       const dbPath = this.resolver.getDatabasePath();
       const templatesPath = this.resolver.getTemplatesPath();
       const gitRoot = this.resolver.getGitRoot();
       const cliPath = path.join(this.packageRoot, "dist/index.js");
 
-      // Remove existing registration
+      // Remove existing registration (from both scopes)
       try {
-        execSync("claude mcp remove dev-workflow-tracker", { stdio: "ignore" });
+        execSync("claude mcp remove dev-workflow-tracker --scope project", {
+          cwd: this.workingDirectory,
+          stdio: "ignore",
+          timeout: 30000,
+        });
+      } catch {
+        // Ignore if doesn't exist
+      }
+      try {
+        execSync("claude mcp remove dev-workflow-tracker --scope local", {
+          cwd: this.workingDirectory,
+          stdio: "ignore",
+          timeout: 30000,
+        });
       } catch {
         // Ignore if doesn't exist
       }
 
-      // Re-register
-      // Use project.id (UUID) instead of path-based projectId for stable identification
-      const command = [
-        "claude",
+      // Build the command args (--scope goes after 'mcp add')
+      const buildArgs = (scope: string) => [
         "mcp",
         "add",
+        "--scope",
+        scope,
         "--transport",
         "stdio",
         "dev-workflow-tracker",
@@ -285,12 +256,24 @@ export class UpdateService {
         "node",
         cliPath,
         "mcp",
-      ].join(" ");
+      ];
 
-      execSync(command, { stdio: "inherit" });
+      // Re-register with project scope
+      execSync(`claude ${buildArgs("project").join(" ")}`, {
+        cwd: this.workingDirectory,
+        stdio: "inherit",
+        timeout: 30000,
+      });
+
+      // Re-register with local scope
+      execSync(`claude ${buildArgs("local").join(" ")}`, {
+        cwd: this.workingDirectory,
+        stdio: "inherit",
+        timeout: 30000,
+      });
     } catch (error) {
-      // Don't fail update if claude CLI is not installed
-      console.warn("Warning: Could not update claude CLI registration (this is optional)");
+      if (error instanceof UpdateError) throw error;
+      throw new UpdateError("Failed to update MCP server", error);
     }
   }
 

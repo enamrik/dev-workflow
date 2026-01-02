@@ -10,14 +10,6 @@ export class UninstallError extends Error {
   }
 }
 
-interface MCPServerConfig {
-  mcpServers: Record<string, {
-    command: string;
-    args: string[];
-    env: Record<string, string>;
-  }>;
-}
-
 export class UninstallService {
   constructor(
     private readonly fileSystem: FileSystem,
@@ -63,39 +55,29 @@ export class UninstallService {
 
   async unregisterMCPServer(): Promise<void> {
     try {
-      const mcpConfigPath = path.join(this.workingDirectory, ".claude/config/mcp-servers.json");
-      const exists = await this.fileSystem.exists(mcpConfigPath);
-
-      if (exists) {
-        // Read existing config
-        const content = await this.fileSystem.readFile(mcpConfigPath);
-        const config: MCPServerConfig = JSON.parse(content);
-
-        // Remove dev-workflow-tracker entry
-        if (config.mcpServers && config.mcpServers["dev-workflow-tracker"]) {
-          delete config.mcpServers["dev-workflow-tracker"];
-
-          // Write back the config
-          await this.fileSystem.writeFile(
-            mcpConfigPath,
-            JSON.stringify(config, null, 2)
-          );
-        }
+      // Remove from project scope
+      try {
+        execSync("claude mcp remove dev-workflow-tracker --scope project", {
+          cwd: this.workingDirectory,
+          stdio: "ignore",
+          timeout: 30000,
+        });
+      } catch {
+        // Ignore if doesn't exist
       }
 
-      // Also unregister from claude CLI
-      await this.unregisterFromClaudeCLI();
+      // Remove from local scope
+      try {
+        execSync("claude mcp remove dev-workflow-tracker --scope local", {
+          cwd: this.workingDirectory,
+          stdio: "ignore",
+          timeout: 30000,
+        });
+      } catch {
+        // Ignore if doesn't exist
+      }
     } catch (error) {
       throw new UninstallError("Failed to unregister MCP server", error);
-    }
-  }
-
-  private async unregisterFromClaudeCLI(): Promise<void> {
-    try {
-      // Try to remove the MCP server registration
-      execSync("claude mcp remove dev-workflow-tracker", { stdio: "ignore" });
-    } catch {
-      // Ignore error if claude CLI is not installed or server doesn't exist
     }
   }
 }

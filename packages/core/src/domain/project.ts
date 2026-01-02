@@ -3,6 +3,9 @@
  *
  * Projects are identified by their git repository's initial commit hash,
  * which is stable regardless of where the repo is cloned or moved.
+ *
+ * Note: gitRoot is NOT part of this entity - it's stored locally in config.json.
+ * This allows the database to be shared across developers with different local paths.
  */
 
 import type { GitHubIssueSyncConfig } from "../infrastructure/database/schema.js";
@@ -17,7 +20,6 @@ export interface Project {
   readonly id: string; // UUID
   readonly gitRootHash: string; // SHA of initial commit (stable identifier)
   readonly name: string; // Human-readable name (typically folder name)
-  readonly gitRoot: string; // Current absolute path to git root
   readonly githubSync: GitHubIssueSyncConfig | null; // GitHub sync configuration
   readonly createdAt: string; // ISO datetime string
   readonly updatedAt: string; // ISO datetime string
@@ -29,7 +31,6 @@ export interface Project {
 export interface CreateProjectData {
   gitRootHash: string;
   name: string;
-  gitRoot: string;
   githubSync?: GitHubIssueSyncConfig | null;
 }
 
@@ -38,7 +39,6 @@ export interface CreateProjectData {
  */
 export interface UpdateProjectData {
   name?: string;
-  gitRoot?: string;
   githubSync?: GitHubIssueSyncConfig | null;
 }
 

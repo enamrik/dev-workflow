@@ -41,8 +41,8 @@ describe("ProjectService", () => {
       expect(project.id).toBeDefined();
       expect(project.gitRootHash).toBe("abc123def456");
       expect(project.name).toBe("my-project"); // Derived from path
-      expect(project.gitRoot).toBe("/path/to/my-project");
       expect(project.githubSync).toBeNull();
+      // Note: gitRoot is NOT stored in database - it's in local config.json
     });
 
     it("should return existing project for known repository", async () => {
@@ -56,16 +56,16 @@ describe("ProjectService", () => {
       expect(found.gitRootHash).toBe(created.gitRootHash);
     });
 
-    it("should update gitRoot when repository moves", async () => {
+    it("should return same project when called from different paths (same gitRootHash)", async () => {
       // Create project at original location
       const original = await service.getOrCreateProject("/original/path");
 
-      // "Move" the repo (same git hash, different path)
-      const updated = await service.getOrCreateProject("/new/path");
+      // Same repo accessed from different path - should return same project
+      // (gitRoot is stored locally in config.json, not in database)
+      const found = await service.getOrCreateProject("/new/path");
 
-      expect(updated.id).toBe(original.id);
-      expect(updated.gitRoot).toBe("/new/path");
-      expect(updated.gitRootHash).toBe(original.gitRootHash); // Same identity
+      expect(found.id).toBe(original.id);
+      expect(found.gitRootHash).toBe(original.gitRootHash); // Same identity
     });
 
     it("should throw ProjectError for non-git directory", async () => {

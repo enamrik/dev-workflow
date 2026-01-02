@@ -18,6 +18,8 @@ export interface ClaudeOptions {
   cwd: string;
   /** List of allowed MCP tools (e.g., ["mcp__dev-workflow-tracker__create_issue"]) */
   allowedTools?: string[];
+  /** Path to MCP config file or JSON string to load MCP servers from */
+  mcpConfig?: string;
   /** Timeout in milliseconds (default: 60000) */
   timeout?: number;
   /** Stream output to test stdout (default: true) */
@@ -36,6 +38,10 @@ export async function runClaude(
   const args = ["--print", prompt];
   const streamOutput = options.streamOutput ?? true;
   const timeout = options.timeout ?? 60000;
+
+  if (options.mcpConfig) {
+    args.push("--mcp-config", options.mcpConfig);
+  }
 
   if (options.allowedTools && options.allowedTools.length > 0) {
     args.push("--allowedTools", options.allowedTools.join(","));

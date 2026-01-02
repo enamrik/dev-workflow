@@ -47,6 +47,8 @@ export class E2ETestHarness {
   public projectId: string = "";
   /** Database project UUID (used in issues.project_id) - set after init */
   public databaseProjectId: string = "";
+  /** Path to MCP config file for this test project */
+  public mcpConfigPath: string = "";
   private cleanupOnSuccess: boolean;
   private useLocalBuild: boolean;
   private skipSampleProject: boolean;
@@ -185,16 +187,19 @@ export class E2ETestHarness {
     }
 
     // 7. Look up the database project UUID (needed for filtering issues in tests)
-    // Use resolver.getGitRoot() as it resolves symlinks (e.g., /var/folders → /private/var/folders on macOS)
-    const resolvedGitRoot = resolver.getGitRoot();
+    // Use git_root_hash (first commit SHA) as stable identifier
+    const gitRootHash = resolver.getGitRootHash();
     const db = new Database(this.dbPath);
-    const project = db.prepare("SELECT id FROM projects WHERE git_root = ?").get(resolvedGitRoot) as { id: string } | undefined;
+    const project = db.prepare("SELECT id FROM projects WHERE git_root_hash = ?").get(gitRootHash) as { id: string } | undefined;
     db.close();
 
     if (!project) {
-      throw new Error(`Project not found in database for git root: ${resolvedGitRoot}`);
+      throw new Error(`Project not found in database for git root hash: ${gitRootHash}`);
     }
     this.databaseProjectId = project.id;
+
+    // Set MCP config path for use with claude --mcp-config
+    this.mcpConfigPath = join(this.testDir, ".claude/config/mcp-servers.json");
 
     console.log(`✓ Database ready at ${this.dbPath}\n`);
   }

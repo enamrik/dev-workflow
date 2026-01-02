@@ -5,6 +5,7 @@ import * as path from "node:path";
 export interface FileSystem {
   mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
   rmdir(path: string, options?: { recursive?: boolean }): Promise<void>;
+  rmFile(path: string): Promise<void>;
   copyFile(source: string, destination: string): Promise<void>;
   copyDirectory(source: string, destination: string): Promise<void>;
   writeFile(path: string, content: string): Promise<void>;
@@ -20,6 +21,10 @@ export class NodeFileSystem implements FileSystem {
 
   async rmdir(dirPath: string, options?: { recursive?: boolean }): Promise<void> {
     await fs.rm(dirPath, options);
+  }
+
+  async rmFile(filePath: string): Promise<void> {
+    await fs.unlink(filePath);
   }
 
   async copyFile(source: string, destination: string): Promise<void> {
