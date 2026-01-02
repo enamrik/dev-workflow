@@ -64,6 +64,30 @@ async function runInit(): Promise<void> {
   const trackDir = resolver.getTrackDirectory();
   const trackDirExists = fs.existsSync(trackDir);
 
+  // Check if project is archived - auto-unarchive if so
+  if (existingProject && existingProject.isArchived) {
+    console.log("📦 Detected archived project, restoring...");
+    console.log(`   Project: ${existingProject.name} (${existingProject.id.slice(0, 8)}...)\n`);
+
+    try {
+      const archiveService = new ArchiveService(fileSystem, workingDirectory, resolver, packageRoot);
+      await archiveService.unarchive(existingProject);
+
+      console.log("✓ Marked project as unarchived");
+      console.log("✓ Restored local config");
+      console.log("✓ Installed skills");
+      console.log("✓ Registered MCP server");
+
+      console.log("\n✨ Project restored successfully!");
+      console.log("\nYour issues, plans, and tasks are ready to use.");
+      console.log("Restart Claude Code to pick up the new configuration.");
+    } catch (error) {
+      console.error("Error during unarchive:", error);
+      process.exit(1);
+    }
+    return;
+  }
+
   // Determine mode: fresh install, repair, or already initialized
   if (existingProject) {
     const needsRepair = await installer.needsConfigRepair();
@@ -357,6 +381,63 @@ async function runArchive(): Promise<void> {
   }
 }
 
+async function runUnarchive(): Promise<void> {
+  const fileSystem = new NodeFileSystem();
+  const workingDirectory = process.cwd();
+  const packageRoot = getPackageRoot();
+
+  // Create resolver
+  let resolver;
+  try {
+    resolver = createTrackDirectoryResolver(workingDirectory);
+  } catch (error) {
+    console.error("❌ Not a git repository. dev-workflow requires git.");
+    process.exit(1);
+  }
+
+  const archiveService = new ArchiveService(fileSystem, workingDirectory, resolver, packageRoot);
+
+  try {
+    // Find archived project for this repo
+    const archivedProject = await archiveService.findArchivedProjectByGitHash();
+
+    if (!archivedProject) {
+      // Check if there's a non-archived project
+      const project = await archiveService.getProject();
+      if (project) {
+        console.error("❌ Project is not archived.");
+        console.error(`   Project: ${project.name}`);
+        process.exit(1);
+      } else {
+        console.error("❌ No archived project found for this repository.");
+        console.error("\nRun: dev-workflow init");
+        process.exit(1);
+      }
+    }
+
+    console.log("📦 Unarchiving project...");
+    console.log(`   Project: ${archivedProject.name} (${archivedProject.id.slice(0, 8)}...)`);
+
+    await archiveService.unarchive(archivedProject);
+
+    console.log("\n✓ Marked project as unarchived");
+    console.log("✓ Restored local config");
+    console.log("✓ Installed skills");
+    console.log("✓ Registered MCP server");
+
+    console.log("\n✨ Project unarchived successfully!");
+    console.log("\nYour issues, plans, and tasks are ready to use.");
+    console.log("Restart Claude Code to pick up the new configuration.");
+  } catch (error) {
+    if (error instanceof ArchiveError) {
+      console.error(`❌ ${error.message}`);
+      process.exit(1);
+    }
+    console.error("Error during unarchive:", error);
+    process.exit(1);
+  }
+}
+
 async function runUI(): Promise<void> {
   const { isPortInUse, getSavedDaemonPort } = await import("./infrastructure/port-manager.js");
 
@@ -552,6 +633,18 @@ program
       await runArchive();
     } catch (error) {
       console.error("Error during archive:", error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("unarchive")
+  .description("Restore archived project (reinstalls Claude integration)")
+  .action(async () => {
+    try {
+      await runUnarchive();
+    } catch (error) {
+      console.error("Error during unarchive:", error);
       process.exit(1);
     }
   });

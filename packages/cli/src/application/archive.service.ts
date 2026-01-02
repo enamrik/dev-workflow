@@ -4,9 +4,11 @@ import {
   SqliteProjectRepository,
   SqliteTaskRepository,
   NodeGitWorktreeService,
+  NodeGitOperations,
   type Project,
 } from "@dev-workflow/core";
 import { UninstallService } from "./uninstall.service.js";
+import { InstallService } from "./install.service.js";
 import { FileSystem } from "../infrastructure/file-system.js";
 
 export class ArchiveError extends Error {
@@ -25,7 +27,8 @@ export class ArchiveService {
   constructor(
     private readonly fileSystem: FileSystem,
     private readonly workingDirectory: string,
-    private readonly resolver: TrackDirectoryResolver
+    private readonly resolver: TrackDirectoryResolver,
+    private readonly packageRoot?: string
   ) {}
 
   /**
@@ -186,6 +189,107 @@ export class ArchiveService {
     try {
       const projectRepository = new SqliteProjectRepository(dbService.getDb());
       return projectRepository.archive(project.id);
+    } finally {
+      dbService.close();
+    }
+  }
+
+  /**
+   * Find an archived project by git root hash.
+   *
+   * Used by init to detect if this repo was previously archived.
+   *
+   * @returns The archived project if found, null otherwise
+   */
+  async findArchivedProjectByGitHash(): Promise<Project | null> {
+    const dbPath = this.resolver.getDatabasePath();
+    const dbExists = await this.fileSystem.exists(dbPath);
+
+    if (!dbExists) {
+      return null;
+    }
+
+    const dbService = await DatabaseService.create(dbPath);
+
+    try {
+      const projectRepository = new SqliteProjectRepository(dbService.getDb());
+      const gitOps = new NodeGitOperations();
+
+      // Get gitRootHash for current directory
+      const gitRootHash = await gitOps.getInitialCommitHash(this.workingDirectory);
+
+      // Look up by gitRootHash
+      const project = projectRepository.findByGitRootHash(gitRootHash);
+
+      // Only return if it's archived
+      if (project && project.isArchived) {
+        return project;
+      }
+
+      return null;
+    } finally {
+      dbService.close();
+    }
+  }
+
+  /**
+   * Unarchive a project.
+   *
+   * 1. Marks project as unarchived in database
+   * 2. Re-installs Claude integration (skills, MCP)
+   * 3. Recreates config.json if missing
+   *
+   * @param project - The project to unarchive (must be archived)
+   * @returns The unarchived project
+   * @throws ArchiveError if unarchiving fails
+   */
+  async unarchive(project: Project): Promise<Project> {
+    if (!project.isArchived) {
+      throw new ArchiveError("Project is not archived.");
+    }
+
+    if (!this.packageRoot) {
+      throw new ArchiveError("Package root not provided. Cannot reinstall skills.");
+    }
+
+    const dbPath = this.resolver.getDatabasePath();
+    const dbService = await DatabaseService.create(dbPath);
+
+    try {
+      const projectRepository = new SqliteProjectRepository(dbService.getDb());
+
+      // Mark project as unarchived in database first
+      const unarchivedProject = projectRepository.unarchive(project.id);
+
+      // Re-install Claude integration
+      const installer = new InstallService(
+        this.fileSystem,
+        this.workingDirectory,
+        this.packageRoot,
+        this.resolver
+      );
+
+      // Set the project so installer can use it
+      installer.setProject(unarchivedProject);
+
+      // Ensure track directory exists (it should, since archive preserves it)
+      const trackDir = this.resolver.getTrackDirectory();
+      const trackDirExists = await this.fileSystem.exists(trackDir);
+      if (!trackDirExists) {
+        await installer.createTrackDirectory();
+        await installer.createTaskLabels();
+      }
+
+      // Recreate local config with current gitRoot
+      await installer.createLocalConfig();
+
+      // Re-install skills
+      await installer.installSkills();
+
+      // Re-register MCP server
+      await installer.registerMCPServer();
+
+      return unarchivedProject;
     } finally {
       dbService.close();
     }
