@@ -35,13 +35,13 @@ export function TaskActions({
   return (
     <div
       className={clsx(
-        "flex items-center gap-1 px-2 py-1.5 bg-gray-100 rounded-md",
+        "inline-flex items-center gap-1 px-2 py-1.5 bg-gray-100 rounded-md",
         className
       )}
     >
       {/* PR link - opens in new tab */}
       {hasPR && task.prUrl && (
-        <Tooltip content={`Open PR #${task.prNumber} in GitHub`}>
+        <Tooltip content={`Open PR #${task.prNumber}: ${task.prUrl}`}>
           <a
             href={task.prUrl}
             target="_blank"
@@ -52,15 +52,6 @@ export function TaskActions({
             <ExternalLinkIcon className="w-3 h-3" />
           </a>
         </Tooltip>
-      )}
-
-      {/* Copy PR URL */}
-      {hasPR && task.prUrl && (
-        <ActionButton
-          label="URL"
-          text={task.prUrl}
-          tooltip={`Copy PR URL: ${task.prUrl}`}
-        />
       )}
 
       {/* Copy branch name */}
