@@ -11,6 +11,7 @@ import {
   type SqlitePlanRepository,
   type SqliteTaskRepository,
   type PRStatus,
+  type ConfigService,
 } from "@dev-workflow/core";
 import {
   type ToolDefinition,
@@ -99,6 +100,7 @@ export const prToolDefinitions: ToolDefinition[] = [
  * Context required for PR tool handlers
  */
 export interface PRToolContext {
+  configService: ConfigService;
   githubCLI: GitHubCLI;
   issueRepository: SqliteIssueRepository;
   planRepository: SqlitePlanRepository;
@@ -242,15 +244,13 @@ export async function handleSubmitForReview(
     );
   }
 
-  // 2. Get GitHub config
+  // 2. Check GitHub is configured
   const config = await ctx.configService.loadConfig();
   if (!config.github?.enabled) {
     return errorResponse(
       "GitHub integration is not enabled. Use update_settings to enable it."
     );
   }
-
-  const { owner, repo } = config.github;
 
   // 3. Get issue info for PR title and linking
   const plan = ctx.planRepository.findById(task.planId);
@@ -303,11 +303,9 @@ export async function handleSubmitForReview(
   // 7. Determine base branch
   const targetBranch = baseBranch ?? "main";
 
-  // 8. Create the PR
+  // 8. Create the PR (gh CLI auto-detects repo from git remotes)
   try {
     const pr = await ctx.githubCLI.createPR(
-      owner,
-      repo,
       task.branchName,
       targetBranch,
       prTitle,
@@ -423,16 +421,14 @@ export async function handleCompleteTask(
     );
   }
 
-  // 2. Get GitHub config and verify PR is merged
+  // 2. Check GitHub is configured
   const config = await ctx.configService.loadConfig();
   if (!config.github?.enabled) {
     return errorResponse("GitHub integration is not enabled.");
   }
 
-  const { owner, repo } = config.github;
-
-  // 3. Check PR status - must be merged
-  const pr = await ctx.githubCLI.getPR(owner, repo, task.prNumber);
+  // 3. Check PR status - must be merged (gh CLI auto-detects repo)
+  const pr = await ctx.githubCLI.getPR(task.prNumber);
   if (!pr) {
     return errorResponse(`PR #${task.prNumber} not found on GitHub.`);
   }
