@@ -261,28 +261,34 @@ These values can still be overridden when creating an issue explicitly.
     ];
 
     try {
-      const settingsPath = path.join(this.workingDirectory, ".claude/settings.json");
+      const claudeDir = path.join(this.workingDirectory, ".claude");
+      const settingsPath = path.join(claudeDir, "settings.json");
+
+      // Ensure .claude directory exists
+      const dirExists = await this.fileSystem.exists(claudeDir);
+      if (!dirExists) {
+        await this.fileSystem.mkdir(claudeDir, { recursive: true });
+      }
 
       // Read existing settings or create new one
-      let settings: { permissions?: { allow?: string[] } } = {};
-      const exists = await this.fileSystem.exists(settingsPath);
+      // Use Record to preserve all existing properties when we write back
+      let settings: Record<string, unknown> = {};
+      const fileExists = await this.fileSystem.exists(settingsPath);
 
-      if (exists) {
+      if (fileExists) {
         const content = await this.fileSystem.readFile(settingsPath);
         settings = JSON.parse(content);
       }
 
-      // Ensure permissions.allow structure exists
-      if (!settings.permissions) {
-        settings.permissions = {};
-      }
-      if (!settings.permissions.allow) {
-        settings.permissions.allow = [];
-      }
+      // Ensure permissions.allow structure exists, preserving other properties
+      const existingPermissions = (settings["permissions"] as Record<string, unknown>) ?? {};
+      const existingAllow = (existingPermissions["allow"] as string[]) ?? [];
 
       // Merge permissions (avoid duplicates)
-      const existingTools = settings.permissions.allow;
-      settings.permissions.allow = [...new Set([...existingTools, ...permissions])];
+      settings["permissions"] = {
+        ...existingPermissions,
+        allow: [...new Set([...existingAllow, ...permissions])],
+      };
 
       await this.fileSystem.writeFile(settingsPath, JSON.stringify(settings, null, 2));
       return { configured: true, permissions };
