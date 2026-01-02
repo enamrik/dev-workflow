@@ -5,6 +5,7 @@ import { clsx } from "clsx";
 import { Badge, Markdown, Tooltip } from "../ui";
 import { TaskTiming } from "./TaskTiming";
 import { TaskMetadataPanel } from "./TaskMetadataPanel";
+import { TaskActions } from "./TaskActions";
 import type { Task } from "@/lib/types";
 
 interface TaskItemProps {
@@ -112,6 +113,17 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
             </div>
           )}
 
+          {/* Actions section - always visible */}
+          {(task.branchName || task.prUrl || projectId) && (
+            <TaskActions
+              task={task}
+              issueNumber={issueNumber}
+              showCopyCommand={!!projectId}
+              compact
+              className="mt-3"
+            />
+          )}
+
           {/* Toggle link for details */}
           {canExpand && (
             <button
@@ -142,6 +154,7 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
             projectId={projectId}
             issueNumber={issueNumber}
             className="mt-4"
+            hideActions
           />
         </div>
       )}

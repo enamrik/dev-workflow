@@ -19,6 +19,8 @@ interface TaskMetadataPanelProps {
   hideCopyCommand?: boolean;
   /** Hide timestamps (e.g., when shown in footer) */
   hideTimestamps?: boolean;
+  /** Hide the actions section (e.g., when shown above in parent) */
+  hideActions?: boolean;
 }
 
 function formatDateTime(isoString: string): string {
@@ -50,6 +52,7 @@ export function TaskMetadataPanel({
   className,
   hideCopyCommand = false,
   hideTimestamps = false,
+  hideActions = false,
 }: TaskMetadataPanelProps) {
   const { data, isLoading, error } = useTaskMetadata(projectId, task.id);
 
@@ -71,7 +74,7 @@ export function TaskMetadataPanel({
 
   const { history = [], logs = [], dependencies = [] } = data || {};
 
-  const hasActions = task.branchName || task.prUrl || !hideCopyCommand;
+  const hasActions = !hideActions && (task.branchName || task.prUrl || !hideCopyCommand);
 
   return (
     <div className={clsx("space-y-4", className)}>
