@@ -1,10 +1,16 @@
+"use client";
+
+import { useState } from "react";
 import { clsx } from "clsx";
 import { Badge, Markdown, Tooltip } from "../ui";
 import { TaskTiming } from "./TaskTiming";
+import { TaskMetadataPanel } from "./TaskMetadataPanel";
 import type { Task } from "@/lib/types";
 
 interface TaskItemProps {
   task: Task;
+  projectId?: string;
+  issueNumber?: number;
 }
 
 function getStatusIcon(status: Task["status"]): string {
@@ -22,18 +28,21 @@ function getStatusIcon(status: Task["status"]): string {
   }
 }
 
-export function TaskItem({ task }: TaskItemProps) {
+export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   const isCompleted = task.status === "COMPLETED";
   const isInProgress = task.status === "IN_PROGRESS";
   const isPRReview = task.status === "PR_REVIEW";
   const isAbandoned = task.status === "ABANDONED";
   const hasWorktree = !!task.worktreePath;
   const hasPR = !!task.prUrl;
+  const canExpand = !!projectId && issueNumber !== undefined;
 
   return (
     <li
       className={clsx(
-        "flex gap-4 p-4 rounded-lg border",
+        "rounded-lg border transition-colors",
         isCompleted && "bg-green-50 border-green-200",
         isInProgress && "bg-orange-50 border-orange-200",
         isPRReview && "bg-blue-50 border-blue-200",
@@ -41,93 +50,119 @@ export function TaskItem({ task }: TaskItemProps) {
         !isCompleted && !isInProgress && !isPRReview && !isAbandoned && "bg-gray-50 border-gray-200"
       )}
     >
+      {/* Main content (clickable to expand) */}
       <div
         className={clsx(
-          "w-6 h-6 flex items-center justify-center rounded-full text-sm font-bold",
-          isCompleted && "bg-green-500 text-white",
-          isInProgress && "bg-orange-500 text-white",
-          isPRReview && "bg-blue-500 text-white",
-          isAbandoned && "bg-red-500 text-white",
-          !isCompleted && !isInProgress && !isPRReview && !isAbandoned && "bg-gray-300 text-gray-600"
+          "flex gap-4 p-4",
+          canExpand && "cursor-pointer hover:bg-opacity-80"
         )}
+        onClick={canExpand ? () => setIsExpanded(!isExpanded) : undefined}
       >
-        {getStatusIcon(task.status)}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-gray-800">{task.title}</span>
-          {/* Worktree indicator */}
-          {hasWorktree && (
-            <Tooltip content={task.worktreePath || ""}>
-              <span className="text-gray-500" title="Has worktree">
-                <BranchIcon />
-              </span>
-            </Tooltip>
+        <div
+          className={clsx(
+            "w-6 h-6 flex items-center justify-center rounded-full text-sm font-bold flex-shrink-0",
+            isCompleted && "bg-green-500 text-white",
+            isInProgress && "bg-orange-500 text-white",
+            isPRReview && "bg-blue-500 text-white",
+            isAbandoned && "bg-red-500 text-white",
+            !isCompleted && !isInProgress && !isPRReview && !isAbandoned && "bg-gray-300 text-gray-600"
           )}
-          {/* PR indicator */}
-          {hasPR && (
-            <Tooltip content={`PR #${task.prNumber}`}>
-              <span className="text-gray-500" title="Has PR">
+        >
+          {getStatusIcon(task.status)}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-gray-800">{task.title}</span>
+            {/* Worktree indicator */}
+            {hasWorktree && (
+              <Tooltip content={task.worktreePath || ""}>
+                <span className="text-gray-500" title="Has worktree">
+                  <BranchIcon />
+                </span>
+              </Tooltip>
+            )}
+            {/* PR indicator */}
+            {hasPR && (
+              <Tooltip content={`PR #${task.prNumber}`}>
+                <span className="text-gray-500" title="Has PR">
+                  <PRIcon />
+                </span>
+              </Tooltip>
+            )}
+            {/* Expand indicator */}
+            {canExpand && (
+              <ChevronIcon isExpanded={isExpanded} className="ml-auto text-gray-400" />
+            )}
+          </div>
+          <div className="text-sm text-gray-600 mt-1">
+            <Markdown>{task.description}</Markdown>
+          </div>
+
+          {/* Worktree/Branch info */}
+          {task.branchName && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+              <BranchIcon />
+              <code className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">
+                {task.branchName}
+              </code>
+            </div>
+          )}
+
+          {/* PR info */}
+          {task.prUrl && task.prStatus && (
+            <div className="mt-2 flex items-center gap-2">
+              <a
+                href={task.prUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <PRIcon />
-              </span>
-            </Tooltip>
+                PR #{task.prNumber}
+              </a>
+              <Badge variant="prStatus" value={task.prStatus} />
+            </div>
+          )}
+
+          {task.acceptanceCriteria.length > 0 && (
+            <ul className="mt-2 text-sm text-gray-600 list-disc list-inside">
+              {task.acceptanceCriteria.map((criterion, idx) => (
+                <li key={idx}>{criterion}</li>
+              ))}
+            </ul>
+          )}
+
+          {task.labels.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {task.labels.map((label) => (
+                <Badge key={label} variant="label" value={label} />
+              ))}
+            </div>
           )}
         </div>
-        <div className="text-sm text-gray-600 mt-1">
-          <Markdown>{task.description}</Markdown>
+
+        <div className="flex flex-col items-end gap-2 flex-shrink-0">
+          <Badge variant="status" value={task.status} />
+          <TaskTiming task={task} className="text-xs" />
+          {task.estimatedMinutes && (
+            <span className="text-xs text-gray-500">Est: {task.estimatedMinutes}m</span>
+          )}
         </div>
-
-        {/* Worktree/Branch info */}
-        {task.branchName && (
-          <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
-            <BranchIcon />
-            <code className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">
-              {task.branchName}
-            </code>
-          </div>
-        )}
-
-        {/* PR info */}
-        {task.prUrl && task.prStatus && (
-          <div className="mt-2 flex items-center gap-2">
-            <a
-              href={task.prUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-            >
-              <PRIcon />
-              PR #{task.prNumber}
-            </a>
-            <Badge variant="prStatus" value={task.prStatus} />
-          </div>
-        )}
-
-        {task.acceptanceCriteria.length > 0 && (
-          <ul className="mt-2 text-sm text-gray-600 list-disc list-inside">
-            {task.acceptanceCriteria.map((criterion, idx) => (
-              <li key={idx}>{criterion}</li>
-            ))}
-          </ul>
-        )}
-
-        {task.labels.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {task.labels.map((label) => (
-              <Badge key={label} variant="label" value={label} />
-            ))}
-          </div>
-        )}
       </div>
 
-      <div className="flex flex-col items-end gap-2">
-        <Badge variant="status" value={task.status} />
-        <TaskTiming task={task} className="text-xs" />
-        {task.estimatedMinutes && (
-          <span className="text-xs text-gray-500">Est: {task.estimatedMinutes}m</span>
-        )}
-      </div>
+      {/* Expanded metadata panel */}
+      {isExpanded && canExpand && (
+        <div className="px-4 pb-4 pt-0 border-t border-gray-200 mt-0">
+          <TaskMetadataPanel
+            task={task}
+            projectId={projectId}
+            issueNumber={issueNumber}
+            className="mt-4"
+          />
+        </div>
+      )}
     </li>
   );
 }
@@ -164,6 +199,19 @@ function PRIcon() {
         strokeWidth={2}
         d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
       />
+    </svg>
+  );
+}
+
+function ChevronIcon({ isExpanded, className }: { isExpanded: boolean; className?: string }) {
+  return (
+    <svg
+      className={clsx("w-4 h-4 transition-transform", isExpanded && "rotate-180", className)}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
     </svg>
   );
 }

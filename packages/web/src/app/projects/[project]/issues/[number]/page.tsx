@@ -124,6 +124,8 @@ export default function IssueDetailPage({ params }: PageProps) {
           tasks={tasks}
           taskCounts={taskCounts}
           boardUrl={boardUrl}
+          projectId={projectId}
+          issueNumber={issue.number}
         />
       )}
     </Card>
@@ -235,9 +237,11 @@ interface TasksTabProps {
   tasks: Task[];
   taskCounts: { total: number; completed: number; inProgress: number };
   boardUrl: string;
+  projectId: string;
+  issueNumber: number;
 }
 
-function TasksTab({ tasks, taskCounts, boardUrl }: TasksTabProps) {
+function TasksTab({ tasks, taskCounts, boardUrl, projectId, issueNumber }: TasksTabProps) {
   if (tasks.length === 0) {
     return (
       <TabPanel>
@@ -273,7 +277,7 @@ function TasksTab({ tasks, taskCounts, boardUrl }: TasksTabProps) {
       </div>
 
       {/* Task list */}
-      <TaskList tasks={tasks} />
+      <TaskList tasks={tasks} projectId={projectId} issueNumber={issueNumber} />
     </TabPanel>
   );
 }

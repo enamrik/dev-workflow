@@ -109,7 +109,7 @@ export function Modal({
               role="dialog"
               aria-modal="true"
             >
-              <div className="overflow-y-auto" style={{ maxHeight }}>
+              <div className="overflow-y-auto scrollbar-auto-hide" style={{ maxHeight }}>
                 {children}
               </div>
             </div>

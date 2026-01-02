@@ -6,3 +6,4 @@ export { ExecutionLogList } from "./ExecutionLogList";
 export { TaskDependencies } from "./TaskDependencies";
 export { TimeBreakdown } from "./TimeBreakdown";
 export { CopyTaskCommand } from "./CopyTaskCommand";
+export { TaskMetadataPanel } from "./TaskMetadataPanel";

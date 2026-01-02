@@ -32,7 +32,7 @@ export function KanbanColumn({
   }[status];
 
   return (
-    <div className="flex flex-col min-w-[300px] w-[300px] bg-gray-50 rounded-lg">
+    <div className="flex flex-col flex-1 min-w-[220px] bg-gray-50 rounded-lg">
       {/* Column header */}
       <div
         className={clsx(
