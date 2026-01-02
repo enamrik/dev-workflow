@@ -1,6 +1,5 @@
-import * as path from "node:path";
-import * as os from "node:os";
 import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import {
   DatabaseService,
   SqliteIssueRepository,
@@ -8,6 +7,7 @@ import {
   SqliteTaskRepository,
   SqliteMilestoneRepository,
   getGlobalDatabasePath,
+  resolveGlobalTrackDir,
   NodeGitWorktreeService,
   type Issue,
   type Plan,
@@ -119,7 +119,7 @@ export class MultiProjectService {
   private planRepository: SqlitePlanRepository | null = null;
   private taskRepository: SqliteTaskRepository | null = null;
 
-  constructor(private readonly globalTrackDir: string = path.join(os.homedir(), ".track")) {}
+  constructor(private readonly globalTrackDir: string = resolveGlobalTrackDir()) {}
 
   /**
    * Get the global database path

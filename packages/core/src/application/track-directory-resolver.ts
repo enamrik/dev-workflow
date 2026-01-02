@@ -4,12 +4,29 @@ import * as os from "node:os";
 import { execSync } from "node:child_process";
 
 /**
+ * Get the global track directory, respecting TRACK_DIR environment variable.
+ *
+ * @returns TRACK_DIR if set, otherwise ~/.track/
+ */
+export function resolveGlobalTrackDir(): string {
+  const trackDir = process.env["TRACK_DIR"];
+  if (trackDir) {
+    return path.resolve(trackDir);
+  }
+  return path.join(os.homedir(), ".track");
+}
+
+/**
  * TrackDirectoryResolver resolves paths to dev-workflow data storage.
  *
  * Storage architecture:
  * - Single global database: ~/.track/workflow.db (all projects share one DB)
  * - Per-project config: ~/.track/<project-id>/config.json
  * - Per-project labels: ~/.track/<project-id>/labels/
+ *
+ * The base directory can be overridden by setting the TRACK_DIR environment
+ * variable. This is useful for testing in worktrees without affecting
+ * production data.
  *
  * Project ID is derived from the git repository root path.
  * Format: <repo-folder-name>-<6-char-hash>
@@ -42,7 +59,7 @@ export class TrackDirectoryResolver {
    * this resolver is only used for path resolution, not for git operations.
    */
   static fromProjectId(projectId: string): TrackDirectoryResolver {
-    const trackDir = path.join(os.homedir(), ".track", projectId);
+    const trackDir = path.join(resolveGlobalTrackDir(), projectId);
     return new TrackDirectoryResolver(trackDir, projectId);
   }
 
@@ -72,18 +89,18 @@ export class TrackDirectoryResolver {
 
   /**
    * Get the base track directory for this project.
-   * Returns: ~/.track/<project-id>/
+   * Returns: $TRACK_DIR/<project-id>/ or ~/.track/<project-id>/
    */
   getTrackDirectory(): string {
-    return path.join(os.homedir(), ".track", this.projectId);
+    return path.join(resolveGlobalTrackDir(), this.projectId);
   }
 
   /**
    * Get the global track directory (parent of all projects).
-   * Returns: ~/.track/
+   * Returns: $TRACK_DIR or ~/.track/
    */
   getGlobalTrackDirectory(): string {
-    return path.join(os.homedir(), ".track");
+    return resolveGlobalTrackDir();
   }
 
   /**
@@ -151,12 +168,12 @@ export function createTrackDirectoryResolver(cwd: string = process.cwd()): Track
 
 /**
  * List all project IDs in the global track directory.
- * Scans ~/.track/ for project directories.
+ * Scans $TRACK_DIR or ~/.track/ for project directories.
  *
  * @returns Array of project IDs
  */
 export async function listAllProjects(): Promise<string[]> {
-  const globalDir = path.join(os.homedir(), ".track");
+  const globalDir = resolveGlobalTrackDir();
   const fs = await import("node:fs/promises");
 
   try {
@@ -179,15 +196,15 @@ export async function listAllProjects(): Promise<string[]> {
  * @returns Full path to project's track directory
  */
 export function getTrackDirectoryForProject(projectId: string): string {
-  return path.join(os.homedir(), ".track", projectId);
+  return path.join(resolveGlobalTrackDir(), projectId);
 }
 
 /**
  * Get the global database path.
- * All projects share a single database at ~/.track/workflow.db.
+ * All projects share a single database at $TRACK_DIR/workflow.db or ~/.track/workflow.db.
  *
  * @returns Full path to the global database file
  */
 export function getGlobalDatabasePath(): string {
-  return path.join(os.homedir(), ".track", "workflow.db");
+  return path.join(resolveGlobalTrackDir(), "workflow.db");
 }
