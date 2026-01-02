@@ -388,23 +388,23 @@ async function main() {
   // Initialize GitHub sync service if configured
   let githubSyncService: GitHubSyncService | undefined;
   try {
-    // Create resolver from track directory path
-    const resolver = new TrackDirectoryResolver(trackDirectory);
+    // Create resolver from known project ID (not from track directory path)
+    const resolver = TrackDirectoryResolver.fromProjectId(projectId);
     const configService = new ConfigService(resolver);
-    const githubConfig = await configService.getGitHubConfig();
+    const syncConfig = await configService.getGitHubIssueSyncConfig();
 
-    if (githubConfig) {
+    if (syncConfig) {
       const githubCLI = new NodeGitHubCLI();
       githubSyncService = new GitHubSyncService(
         issueRepository,
         githubCLI,
-        githubConfig
+        syncConfig
       );
-      console.error("GitHub sync enabled (repository auto-detected from git remotes)");
+      console.error("GitHub issue sync enabled (repository auto-detected from git remotes)");
     }
   } catch (error) {
     // Config doesn't exist or GitHub not configured - that's fine
-    console.error("GitHub sync not configured (this is normal for projects without GitHub integration)");
+    console.error("GitHub issue sync not configured (this is normal for projects without GitHub integration)");
   }
 
   // Initialize application services

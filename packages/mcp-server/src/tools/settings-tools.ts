@@ -7,7 +7,7 @@
 import {
   ConfigService,
   type GitHubCLI,
-  type GitHubConfig,
+  type GitHubIssueSync,
   type GitHubLabels,
 } from "@dev-workflow/core";
 import {
@@ -24,7 +24,7 @@ export const settingsToolDefinitions: ToolDefinition[] = [
   {
     name: "update_settings",
     description:
-      "Configure project settings including GitHub integration. " +
+      "Configure project settings including GitHub issue sync. " +
       "Repository owner/repo are auto-detected from git remotes. " +
       "Validates gh CLI auth and repository access before enabling.",
     inputSchema: {
@@ -40,8 +40,8 @@ export const settingsToolDefinitions: ToolDefinition[] = [
           ],
           description:
             "The settings action to perform: get_settings returns current config, " +
-            "enable_github enables GitHub sync with validation, " +
-            "disable_github disables sync, " +
+            "enable_github enables GitHub issue sync with validation, " +
+            "disable_github disables issue sync, " +
             "configure_github updates labels/projectId config",
         },
         github: {
@@ -193,7 +193,7 @@ async function handleEnableGitHub(
   }
 
   // Step 4: Build and save config with defaults for missing label config
-  const githubConfig: GitHubConfig = {
+  const syncConfig: GitHubIssueSync = {
     enabled: true,
     projectId: github?.projectId,
     labels: github?.labels
@@ -217,12 +217,12 @@ async function handleEnableGitHub(
   };
 
   try {
-    await ctx.configService.setGitHubConfig(githubConfig);
+    await ctx.configService.setGitHubIssueSyncConfig(syncConfig);
 
     return successResponse({
       success: true,
-      message: "GitHub integration enabled (repository auto-detected from git remotes)",
-      config: githubConfig,
+      message: "GitHub issue sync enabled (repository auto-detected from git remotes)",
+      config: { syncIssues: syncConfig },
     });
   } catch (error) {
     return errorResponse(
@@ -232,15 +232,15 @@ async function handleEnableGitHub(
 }
 
 /**
- * Disable GitHub integration
+ * Disable GitHub issue sync
  */
 async function handleDisableGitHub(ctx: SettingsToolContext): Promise<ToolResponse> {
   try {
-    await ctx.configService.disableGitHub();
+    await ctx.configService.disableGitHubIssueSync();
 
     return successResponse({
       success: true,
-      message: "GitHub integration disabled",
+      message: "GitHub issue sync disabled",
     });
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));
@@ -248,7 +248,7 @@ async function handleDisableGitHub(ctx: SettingsToolContext): Promise<ToolRespon
 }
 
 /**
- * Update GitHub configuration without re-validating repository access
+ * Update GitHub issue sync configuration without re-validating repository access
  *
  * Use this for updating labels, projectId, etc. after initial setup.
  * If changing projectId, validates the new project.
@@ -263,15 +263,16 @@ async function handleConfigureGitHub(
 
   try {
     const currentConfig = await ctx.configService.loadConfig();
+    const currentSync = currentConfig.github?.syncIssues;
 
-    if (!currentConfig.github) {
+    if (!currentSync) {
       return errorResponse(
-        "GitHub is not enabled. Use enable_github action first."
+        "GitHub issue sync is not enabled. Use enable_github action first."
       );
     }
 
     // If projectId is being added/changed, validate it
-    if (github.projectId && github.projectId !== currentConfig.github.projectId) {
+    if (github.projectId && github.projectId !== currentSync.projectId) {
       const projectExists = await ctx.githubCLI.checkProject(github.projectId);
       if (!projectExists) {
         return errorResponse(
@@ -281,43 +282,43 @@ async function handleConfigureGitHub(
     }
 
     // Merge with existing config (don't allow changing enabled via configure)
-    const updatedConfig: GitHubConfig = {
-      ...currentConfig.github,
-      projectId: github.projectId ?? currentConfig.github.projectId,
+    const updatedConfig: GitHubIssueSync = {
+      ...currentSync,
+      projectId: github.projectId ?? currentSync.projectId,
       labels: github.labels
         ? {
             typeLabels: {
               FEATURE:
                 github.labels.typeLabels?.FEATURE ??
-                currentConfig.github.labels?.typeLabels.FEATURE ??
+                currentSync.labels?.typeLabels.FEATURE ??
                 "feature",
               BUG:
                 github.labels.typeLabels?.BUG ??
-                currentConfig.github.labels?.typeLabels.BUG ??
+                currentSync.labels?.typeLabels.BUG ??
                 "bug",
               ENHANCEMENT:
                 github.labels.typeLabels?.ENHANCEMENT ??
-                currentConfig.github.labels?.typeLabels.ENHANCEMENT ??
+                currentSync.labels?.typeLabels.ENHANCEMENT ??
                 "enhancement",
               TASK:
                 github.labels.typeLabels?.TASK ??
-                currentConfig.github.labels?.typeLabels.TASK ??
+                currentSync.labels?.typeLabels.TASK ??
                 "task",
             },
             customLabels:
               github.labels.customLabels ??
-              currentConfig.github.labels?.customLabels,
+              currentSync.labels?.customLabels,
           }
-        : currentConfig.github.labels,
-      enabled: currentConfig.github.enabled, // Preserve enabled state
+        : currentSync.labels,
+      enabled: currentSync.enabled, // Preserve enabled state
     };
 
-    await ctx.configService.setGitHubConfig(updatedConfig);
+    await ctx.configService.setGitHubIssueSyncConfig(updatedConfig);
 
     return successResponse({
       success: true,
-      message: "GitHub configuration updated",
-      config: updatedConfig,
+      message: "GitHub issue sync configuration updated",
+      config: { syncIssues: updatedConfig },
     });
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));

@@ -13,7 +13,7 @@ import type {
   GitHubIssueData,
 } from "../domain/github.js";
 import type { GitHubCLI } from "../infrastructure/github/github-cli.js";
-import type { GitHubConfig, GitHubLabels } from "./config-service.js";
+import type { GitHubIssueSync, GitHubLabels } from "./config-service.js";
 
 /**
  * Error thrown when GitHub sync fails
@@ -41,7 +41,7 @@ export class GitHubSyncService {
   constructor(
     private readonly issueRepository: IssueRepository,
     private readonly githubCLI: GitHubCLI,
-    private readonly config: GitHubConfig
+    private readonly config: GitHubIssueSync
   ) {}
 
   /**
