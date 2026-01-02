@@ -11,8 +11,6 @@ import {
   type SqlitePlanRepository,
   type SqliteTaskRepository,
   type PRStatus,
-  ConfigService,
-  TrackDirectoryResolver,
 } from "@dev-workflow/core";
 import {
   type ToolDefinition,
@@ -106,19 +104,6 @@ export interface PRToolContext {
   planRepository: SqlitePlanRepository;
   taskRepository: SqliteTaskRepository;
   gitWorktreeService?: GitWorktreeService;
-}
-
-/**
- * Create a ConfigService for a specific project ID.
- *
- * This is used to load the correct config when running from a worktree,
- * where the project ID derived from the current working directory may be wrong.
- * Instead, we use the issue's projectId from the database to ensure we're
- * loading the config from the correct project's track directory.
- */
-function createConfigServiceForProject(projectId: string): ConfigService {
-  const resolver = TrackDirectoryResolver.fromProjectId(projectId);
-  return new ConfigService(resolver);
 }
 
 /**
@@ -268,16 +253,7 @@ export async function handleSubmitForReview(
     return errorResponse(`Issue not found for plan: ${plan.id}`);
   }
 
-  // 3. Check GitHub is configured (use issue's projectId to get correct config)
-  const configService = createConfigServiceForProject(issue.projectId);
-  const config = await configService.loadConfig();
-  if (!config.github?.enabled) {
-    return errorResponse(
-      "GitHub integration is not enabled. Use update_settings to enable it."
-    );
-  }
-
-  // 4. Push the branch to remote (required before creating PR)
+  // 3. Push the branch to remote (required before creating PR)
   if (ctx.gitWorktreeService) {
     try {
       const pushResult = await ctx.gitWorktreeService.run(
@@ -299,10 +275,10 @@ export async function handleSubmitForReview(
     );
   }
 
-  // 5. Build PR title
+  // 4. Build PR title
   const prTitle = title ?? `[#${issue.number}] ${task.title}`;
 
-  // 6. Build PR body with GitHub issue linking
+  // 5. Build PR body with GitHub issue linking
   let prBody = body ?? task.description;
 
   // Add "Closes #N" if the issue is synced to GitHub
@@ -314,10 +290,10 @@ export async function handleSubmitForReview(
   // Add task reference
   prBody += `\n\n_Task ${issue.number}.${task.number}: ${task.title}_`;
 
-  // 7. Determine base branch
+  // 6. Determine base branch
   const targetBranch = baseBranch ?? "main";
 
-  // 8. Create the PR (gh CLI auto-detects repo from git remotes)
+  // 7. Create the PR (gh CLI auto-detects repo from git remotes)
   try {
     const pr = await ctx.githubCLI.createPR(
       task.branchName,
@@ -327,11 +303,11 @@ export async function handleSubmitForReview(
       draft
     );
 
-    // 9. Store PR info on task
+    // 8. Store PR info on task
     const prStatus = mapGitHubStateToPRStatus(pr.state, pr.isDraft);
     ctx.taskRepository.updatePRInfo(taskId, pr.url, pr.number, prStatus);
 
-    // 10. Update task status to PR_REVIEW
+    // 9. Update task status to PR_REVIEW
     ctx.taskRepository.updateStatus(taskId, "PR_REVIEW", undefined, "Submitted for review");
 
     return successResponse({
@@ -435,25 +411,7 @@ export async function handleCompleteTask(
     );
   }
 
-  // 2. Get issue to get the correct projectId
-  const plan = ctx.planRepository.findById(task.planId);
-  if (!plan) {
-    return errorResponse(`Plan not found for task: ${taskId}`);
-  }
-
-  const issue = ctx.issueRepository.findById(plan.issueId);
-  if (!issue) {
-    return errorResponse(`Issue not found for plan: ${plan.id}`);
-  }
-
-  // 3. Check GitHub is configured (use issue's projectId to get correct config)
-  const configService = createConfigServiceForProject(issue.projectId);
-  const config = await configService.loadConfig();
-  if (!config.github?.enabled) {
-    return errorResponse("GitHub integration is not enabled.");
-  }
-
-  // 4. Check PR status - must be merged (gh CLI auto-detects repo)
+  // 2. Check PR status - must be merged (gh CLI auto-detects repo)
   const pr = await ctx.githubCLI.getPR(task.prNumber);
   if (!pr) {
     return errorResponse(`PR #${task.prNumber} not found on GitHub.`);
@@ -466,7 +424,7 @@ export async function handleCompleteTask(
     );
   }
 
-  // 4. Pull main to get merged changes
+  // 3. Pull main to get merged changes
   if (ctx.gitWorktreeService) {
     try {
       // Pull on the main repo (not the worktree)
@@ -480,7 +438,7 @@ export async function handleCompleteTask(
       console.warn("Failed to pull main, continuing with cleanup");
     }
 
-    // 5. Clean up worktree if present (isolated mode)
+    // 4. Clean up worktree if present (isolated mode)
     if (hasWorktree) {
       try {
         // Remove worktree and delete the branch (merged, no longer needed)
@@ -503,10 +461,10 @@ export async function handleCompleteTask(
     }
   }
 
-  // 6. Update PR status to MERGED
+  // 5. Update PR status to MERGED
   ctx.taskRepository.updatePRStatus(taskId, "MERGED");
 
-  // 7. Update task status to COMPLETED
+  // 6. Update task status to COMPLETED
   ctx.taskRepository.updateStatus(
     taskId,
     "COMPLETED",
@@ -514,7 +472,7 @@ export async function handleCompleteTask(
     `PR #${task.prNumber} merged`
   );
 
-  // 8. Clear session association
+  // 7. Clear session association
   ctx.taskRepository.clearSession(taskId);
 
   return successResponse({
