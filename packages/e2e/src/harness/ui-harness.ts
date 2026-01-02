@@ -43,7 +43,7 @@ export class UIHarness {
     this.serverProcess = spawn(cmd!, [...args, "ui"], {
       cwd: this.harness.testDir,
       env: {
-        ...process.env,
+        ...this.harness.getEnv(),
         PORT: String(this.port),
         NO_OPEN_BROWSER: "true", // Prevent auto-opening browser in E2E tests
       },

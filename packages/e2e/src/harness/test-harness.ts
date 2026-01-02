@@ -39,8 +39,10 @@ export interface HarnessOptions {
 export class E2ETestHarness {
   public readonly testDir: string;
   public dbPath: string;
-  /** Global track directory (~/.track/<project-id>) - set after init */
+  /** Isolated track directory for this test (testDir/.track) */
   public trackDir: string = "";
+  /** Project-specific directory within trackDir */
+  public projectTrackDir: string = "";
   /** Folder-based project ID (for track directory naming) - set after setup */
   public projectId: string = "";
   /** Database project UUID (used in issues.project_id) - set after init */
@@ -56,8 +58,22 @@ export class E2ETestHarness {
 
     // Create temp directory for this test run
     this.testDir = mkdtempSync(join(tmpdir(), "dev-workflow-e2e-"));
+    // Use isolated .track directory within the test directory
+    this.trackDir = join(this.testDir, ".track");
     // dbPath will be updated in setup() after we know the project ID
     this.dbPath = "";
+  }
+
+  /**
+   * Get environment variables with TRACK_DIR set for isolated testing
+   */
+  getEnv(): Record<string, string | undefined> {
+    return {
+      ...process.env,
+      TRACK_DIR: this.trackDir,
+      // Ensure we don't inherit any existing DATABASE_PATH
+      DATABASE_PATH: undefined,
+    };
   }
 
   /**
@@ -132,14 +148,21 @@ export class E2ETestHarness {
     });
     console.log("✓ Initial commit created");
 
+    // Create isolated .track directory for this test
+    mkdirSync(this.trackDir, { recursive: true });
+    console.log(`✓ Created isolated track directory: ${this.trackDir}`);
+
+    // Set TRACK_DIR in environment so resolver uses our isolated directory
+    process.env["TRACK_DIR"] = this.trackDir;
+
     // Use the same resolver as production code to compute paths
     // Must be AFTER initial commit since we use git first commit hash
     const resolver = createTrackDirectoryResolver(this.testDir);
     this.projectId = resolver.getProjectId();
-    this.trackDir = resolver.getTrackDirectory();
+    this.projectTrackDir = resolver.getTrackDirectory();
     this.dbPath = resolver.getDatabasePath();
 
-    // 5. Run dev-workflow init
+    // 5. Run dev-workflow init with isolated TRACK_DIR
     console.log("🚀 Running dev-workflow init...");
     const devWorkflowCmd = this.useLocalBuild
       ? `node ${this.getCliPath()}`
@@ -149,18 +172,14 @@ export class E2ETestHarness {
       execSync(`${devWorkflowCmd} init`, {
         cwd: this.testDir,
         stdio: "inherit",
-        env: {
-          ...process.env,
-          // Ensure we don't inherit any existing DATABASE_PATH
-          DATABASE_PATH: undefined,
-        },
+        env: this.getEnv(),
       });
     } catch (error) {
       console.error("❌ dev-workflow init failed");
       throw error;
     }
 
-    // 6. Verify DB was created in global storage
+    // 6. Verify DB was created in isolated storage
     if (!existsSync(this.dbPath)) {
       throw new Error(`Database not created. Expected at: ${this.dbPath}`);
     }
@@ -312,6 +331,9 @@ console.log("Capitalized:", capitalize("hello"));
    * @param testPassed - Whether the test passed
    */
   cleanup(testPassed: boolean): void {
+    // Restore environment
+    delete process.env["TRACK_DIR"];
+
     if (testPassed && this.cleanupOnSuccess) {
       console.log("\n🧹 Cleaning up test environment...");
       try {
@@ -322,18 +344,13 @@ console.log("Capitalized:", capitalize("hello"));
         execSync(`${devWorkflowCmd} uninit`, {
           cwd: this.testDir,
           stdio: "pipe",
+          env: this.getEnv(),
         });
         console.log("✓ Ran dev-workflow uninit");
 
-        // Clean up local test directory
+        // Clean up test directory (includes the isolated .track directory)
         rmSync(this.testDir, { recursive: true, force: true });
         console.log("✓ Removed test directory");
-
-        // Clean up global track directory (uninit should have done this, but ensure it's gone)
-        if (this.trackDir && existsSync(this.trackDir)) {
-          rmSync(this.trackDir, { recursive: true, force: true });
-          console.log("✓ Removed track directory");
-        }
 
         console.log("✓ Cleanup complete");
       } catch (error) {
@@ -341,9 +358,6 @@ console.log("Capitalized:", capitalize("hello"));
         // Still try to clean up directories even if uninit failed
         try {
           rmSync(this.testDir, { recursive: true, force: true });
-          if (this.trackDir && existsSync(this.trackDir)) {
-            rmSync(this.trackDir, { recursive: true, force: true });
-          }
         } catch {
           // Ignore secondary cleanup errors
         }

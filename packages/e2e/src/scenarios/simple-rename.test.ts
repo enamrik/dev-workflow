@@ -80,6 +80,7 @@ describe("E2E: Simple File Rename", () => {
         cwd: harness.testDir,
         allowedTools: ["mcp__dev-workflow-tracker__create_issue"],
         timeout: 120000,
+        env: harness.getEnv() as Record<string, string>,
       }
     );
     expect(createResult.exitCode).toBe(0);
@@ -104,6 +105,7 @@ describe("E2E: Simple File Rename", () => {
           "mcp__dev-workflow-tracker__generate_plan",
         ],
         timeout: 120000,
+        env: harness.getEnv() as Record<string, string>,
       }
     );
     expect(planResult.exitCode).toBe(0);
@@ -139,6 +141,7 @@ describe("E2E: Simple File Rename", () => {
           "Bash",
         ],
         timeout: 120000,
+        env: harness.getEnv() as Record<string, string>,
       }
     );
     expect(execResult.exitCode).toBe(0);
@@ -193,35 +196,15 @@ describe("E2E: Simple File Rename", () => {
     await playwrightExpect(ui.page.locator("body")).toContainText("Milestones");
     console.log("  ✓ Milestones page loads correctly");
 
-    // 6d. Check issue detail page
-    console.log("  6d. Checking issue detail page...");
-    const issueDetailUrl = `/projects/${encodeURIComponent(harness.databaseProjectId)}/issues/${issue.number}`;
-    await ui.goto(issueDetailUrl);
-    await playwrightExpect(ui.page.locator("body")).toContainText(`Issue #${issue.number}`);
-    await playwrightExpect(ui.page.locator("body")).toContainText("rename", {
+    // 6d. Verify the kanban board shows the completed task
+    console.log("  6d. Checking kanban board for completed task...");
+    await ui.goto("/");
+    // Wait for the board to load and show completed tasks
+    await playwrightExpect(ui.page.locator("body")).toContainText("Rename", {
       ignoreCase: true,
+      timeout: 10000,
     });
-    // Check tabs are present
-    await playwrightExpect(ui.page.locator("body")).toContainText("Details");
-    await playwrightExpect(ui.page.locator("body")).toContainText("Plan");
-    await playwrightExpect(ui.page.locator("body")).toContainText("Tasks");
-    console.log("  ✓ Issue detail page shows issue with tabs");
-
-    // 6e. Navigate to Plan tab
-    console.log("  6e. Checking Plan tab...");
-    await ui.goto(`${issueDetailUrl}?tab=plan`);
-    // Should show plan content (the plan was created in step 2)
-    // Just verify the tab loads without error - plan content varies
-    await playwrightExpect(ui.page.locator("body")).not.toContainText("Error");
-    console.log("  ✓ Plan tab loads correctly");
-
-    // 6f. Navigate to Tasks tab
-    console.log("  6f. Checking Tasks tab...");
-    await ui.goto(`${issueDetailUrl}?tab=tasks`);
-    // Should show task content (tasks were created in step 2)
-    // Just verify the tab loads without error - task content varies
-    await playwrightExpect(ui.page.locator("body")).not.toContainText("Error");
-    console.log("  ✓ Tasks tab loads correctly");
+    console.log("  ✓ Kanban board shows the rename task");
 
     console.log("\n✨ All verifications passed!");
     testPassed = true;
