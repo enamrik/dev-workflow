@@ -5,7 +5,7 @@ import { getTaskTimingMessage } from "@/lib/duration";
 import type { Task } from "@/lib/types";
 
 interface TaskTimingProps {
-  task: Pick<Task, "status" | "startedAt" | "completedAt" | "abandonedAt">;
+  task: Pick<Task, "status" | "startedAt" | "submittedForReviewAt" | "completedAt" | "abandonedAt">;
   className?: string;
 }
 
@@ -22,8 +22,9 @@ export function TaskTiming({ task, className = "" }: TaskTimingProps) {
     // Update message immediately when task changes
     setMessage(getTaskTimingMessage(task));
 
-    // For in-progress tasks, update every minute
-    if (task.status === "IN_PROGRESS" && task.startedAt) {
+    // For in-progress or in-review tasks, update every minute
+    const isActiveTask = (task.status === "IN_PROGRESS" || task.status === "PR_REVIEW") && task.startedAt;
+    if (isActiveTask) {
       const interval = setInterval(() => {
         setMessage(getTaskTimingMessage(task));
       }, 60000); // Update every minute
@@ -32,7 +33,7 @@ export function TaskTiming({ task, className = "" }: TaskTimingProps) {
     }
 
     return undefined;
-  }, [task, task.status, task.startedAt, task.completedAt, task.abandonedAt]);
+  }, [task, task.status, task.startedAt, task.submittedForReviewAt, task.completedAt, task.abandonedAt]);
 
   if (!message) {
     return null;
@@ -46,12 +47,16 @@ export function TaskTiming({ task, className = "" }: TaskTimingProps) {
 }
 
 function getTooltip(
-  task: Pick<Task, "status" | "startedAt" | "completedAt" | "abandonedAt">
+  task: Pick<Task, "status" | "startedAt" | "submittedForReviewAt" | "completedAt" | "abandonedAt">
 ): string {
   const parts: string[] = [];
 
   if (task.startedAt) {
     parts.push(`Started: ${formatDateTime(task.startedAt)}`);
+  }
+
+  if (task.submittedForReviewAt) {
+    parts.push(`Submitted for review: ${formatDateTime(task.submittedForReviewAt)}`);
   }
 
   if (task.completedAt) {

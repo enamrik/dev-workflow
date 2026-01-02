@@ -14,6 +14,8 @@ import {
   type Task,
   type Milestone,
   type WorktreeInfo,
+  type TaskStatusHistory,
+  type TaskExecutionLog,
 } from "@dev-workflow/core";
 
 /**
@@ -560,6 +562,44 @@ export class MultiProjectService {
     const afterCount = (await worktreeService.listWorktrees()).filter((w) => !w.isMain).length;
 
     return { pruned: beforeCount - afterCount };
+  }
+
+  /**
+   * Get task by ID
+   */
+  async getTask(taskId: string): Promise<Task | null> {
+    const { taskRepository } = await this.ensureConnection();
+    return taskRepository.findById(taskId);
+  }
+
+  /**
+   * Get status history for a task
+   */
+  async getTaskStatusHistory(taskId: string): Promise<TaskStatusHistory[]> {
+    const { taskRepository } = await this.ensureConnection();
+    return taskRepository.getStatusHistory(taskId);
+  }
+
+  /**
+   * Get execution logs for a task
+   */
+  async getTaskExecutionLogs(taskId: string): Promise<TaskExecutionLog[]> {
+    const { taskRepository } = await this.ensureConnection();
+    return taskRepository.getExecutionLogs(taskId);
+  }
+
+  /**
+   * Get dependency tasks for a task
+   *
+   * Returns the tasks that this task depends on with their current status.
+   */
+  async getTaskDependencies(taskId: string): Promise<Task[]> {
+    const { taskRepository } = await this.ensureConnection();
+    const task = taskRepository.findById(taskId);
+    if (!task || !task.dependsOn || task.dependsOn.length === 0) {
+      return [];
+    }
+    return taskRepository.findByIds(task.dependsOn);
   }
 
   /**

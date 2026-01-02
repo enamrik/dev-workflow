@@ -33,6 +33,7 @@ export function KanbanBoard({
   // Group tasks by status (mapping ABANDONED to COMPLETED column)
   const pendingTasks = allTasks.filter((t) => t.status === "PENDING");
   const inProgressTasks = allTasks.filter((t) => t.status === "IN_PROGRESS");
+  const prReviewTasks = allTasks.filter((t) => t.status === "PR_REVIEW");
 
   // For Done column: merge completed tasks from open issues with completedTasks prop
   // The completedTasks prop includes tasks from closed issues (last 7 days, max 20)
@@ -69,6 +70,7 @@ export function KanbanBoard({
   const hasAnyTasks =
     pendingTasks.length > 0 ||
     inProgressTasks.length > 0 ||
+    prReviewTasks.length > 0 ||
     limitedDoneTasks.length > 0;
 
   if (!hasAnyTasks) {
@@ -87,6 +89,12 @@ export function KanbanBoard({
         title="In Progress"
         status="IN_PROGRESS"
         tasks={inProgressTasks}
+      />
+      <KanbanColumn
+        title="In Review"
+        status="PR_REVIEW"
+        tasks={prReviewTasks}
+        tooltip="Tasks with open PRs awaiting review"
       />
       <KanbanColumn
         title="Done"

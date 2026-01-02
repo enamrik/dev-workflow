@@ -13,7 +13,7 @@ interface KanbanTask extends Task {
 
 interface KanbanColumnProps {
   title: string;
-  status: "PENDING" | "IN_PROGRESS" | "COMPLETED";
+  status: "PENDING" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED";
   tasks: KanbanTask[];
   tooltip?: string;
 }
@@ -27,6 +27,7 @@ export function KanbanColumn({
   const headerColor = {
     PENDING: "bg-gray-100",
     IN_PROGRESS: "bg-orange-100",
+    PR_REVIEW: "bg-blue-100",
     COMPLETED: "bg-green-100",
   }[status];
 

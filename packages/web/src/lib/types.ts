@@ -35,7 +35,7 @@ export interface Task {
   number: number;
   title: string;
   description: string;
-  status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
+  status: "PENDING" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
   estimatedMinutes: number | null;
   acceptanceCriteria: string[];
   labels: string[];
@@ -50,10 +50,13 @@ export interface Task {
   prNumber: number | null;
   prStatus: "DRAFT" | "OPEN" | "MERGED" | "CLOSED" | null;
   startedAt?: string;
+  submittedForReviewAt?: string;
   completedAt?: string;
   abandonedAt?: string;
   createdAt: string;
   updatedAt: string;
+  // Dependencies
+  dependsOn?: string[];
 }
 
 export interface Milestone {
@@ -146,6 +149,32 @@ export interface Worktree {
   taskTitle?: string;
   taskStatus?: string;
   issueNumber?: number;
+}
+
+/**
+ * Task status history entry
+ */
+export interface TaskStatusHistory {
+  id: string;
+  taskId: string;
+  fromStatus: Task["status"];
+  toStatus: Task["status"];
+  changedBy?: string;
+  changedAt: string;
+  notes?: string;
+  sessionId?: string;
+}
+
+/**
+ * Task execution log entry
+ */
+export interface TaskExecutionLog {
+  id: string;
+  taskId: string;
+  sessionId: string;
+  message: string;
+  filesModified?: string[];
+  createdAt: string;
 }
 
 export class ApiError extends Error {

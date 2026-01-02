@@ -11,7 +11,9 @@ import {
   type SqlitePlanRepository,
   type SqliteTaskRepository,
   type PRStatus,
-  type ConfigService,
+  ConfigService,
+  TrackDirectoryResolver,
+  getTrackDirectoryForProject,
 } from "@dev-workflow/core";
 import {
   type ToolDefinition,
@@ -100,12 +102,25 @@ export const prToolDefinitions: ToolDefinition[] = [
  * Context required for PR tool handlers
  */
 export interface PRToolContext {
-  configService: ConfigService;
   githubCLI: GitHubCLI;
   issueRepository: SqliteIssueRepository;
   planRepository: SqlitePlanRepository;
   taskRepository: SqliteTaskRepository;
   gitWorktreeService?: GitWorktreeService;
+}
+
+/**
+ * Create a ConfigService for a specific project ID.
+ *
+ * This is used to load the correct config when running from a worktree,
+ * where the project ID derived from the current working directory may be wrong.
+ * Instead, we use the issue's projectId from the database to ensure we're
+ * loading the config from the correct project's track directory.
+ */
+function createConfigServiceForProject(projectId: string): ConfigService {
+  const trackDir = getTrackDirectoryForProject(projectId);
+  const resolver = new TrackDirectoryResolver(trackDir);
+  return new ConfigService(resolver);
 }
 
 /**
@@ -244,15 +259,7 @@ export async function handleSubmitForReview(
     );
   }
 
-  // 2. Check GitHub is configured
-  const config = await ctx.configService.loadConfig();
-  if (!config.github?.enabled) {
-    return errorResponse(
-      "GitHub integration is not enabled. Use update_settings to enable it."
-    );
-  }
-
-  // 3. Get issue info for PR title and linking
+  // 2. Get issue info for PR title and linking (needed before config check to get projectId)
   const plan = ctx.planRepository.findById(task.planId);
   if (!plan) {
     return errorResponse(`Plan not found for task: ${taskId}`);
@@ -261,6 +268,15 @@ export async function handleSubmitForReview(
   const issue = ctx.issueRepository.findById(plan.issueId);
   if (!issue) {
     return errorResponse(`Issue not found for plan: ${plan.id}`);
+  }
+
+  // 3. Check GitHub is configured (use issue's projectId to get correct config)
+  const configService = createConfigServiceForProject(issue.projectId);
+  const config = await configService.loadConfig();
+  if (!config.github?.enabled) {
+    return errorResponse(
+      "GitHub integration is not enabled. Use update_settings to enable it."
+    );
   }
 
   // 4. Push the branch to remote (required before creating PR)
@@ -421,13 +437,25 @@ export async function handleCompleteTask(
     );
   }
 
-  // 2. Check GitHub is configured
-  const config = await ctx.configService.loadConfig();
+  // 2. Get issue to get the correct projectId
+  const plan = ctx.planRepository.findById(task.planId);
+  if (!plan) {
+    return errorResponse(`Plan not found for task: ${taskId}`);
+  }
+
+  const issue = ctx.issueRepository.findById(plan.issueId);
+  if (!issue) {
+    return errorResponse(`Issue not found for plan: ${plan.id}`);
+  }
+
+  // 3. Check GitHub is configured (use issue's projectId to get correct config)
+  const configService = createConfigServiceForProject(issue.projectId);
+  const config = await configService.loadConfig();
   if (!config.github?.enabled) {
     return errorResponse("GitHub integration is not enabled.");
   }
 
-  // 3. Check PR status - must be merged (gh CLI auto-detects repo)
+  // 4. Check PR status - must be merged (gh CLI auto-detects repo)
   const pr = await ctx.githubCLI.getPR(task.prNumber);
   if (!pr) {
     return errorResponse(`PR #${task.prNumber} not found on GitHub.`);

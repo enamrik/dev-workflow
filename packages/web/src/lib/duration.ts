@@ -63,7 +63,7 @@ export function getTaskDuration(task: {
     return new Date(task.abandonedAt).getTime() - startTime;
   }
 
-  if (task.status === "IN_PROGRESS") {
+  if (task.status === "IN_PROGRESS" || task.status === "PR_REVIEW") {
     return Date.now() - startTime;
   }
 
@@ -90,6 +90,8 @@ export function getTaskTimingMessage(task: {
   switch (task.status) {
     case "IN_PROGRESS":
       return `Started ${formatted} ago`;
+    case "PR_REVIEW":
+      return `In review for ${formatted}`;
     case "COMPLETED":
       return `Completed in ${formatted}`;
     case "ABANDONED":
