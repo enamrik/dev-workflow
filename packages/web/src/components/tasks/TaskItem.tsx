@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { clsx } from "clsx";
-import { Badge, Markdown, Tooltip } from "../ui";
+import { Badge, CopyButton, Markdown, Tooltip } from "../ui";
 import { TaskTiming } from "./TaskTiming";
 import { TaskMetadataPanel } from "./TaskMetadataPanel";
 import type { Task } from "@/lib/types";
@@ -96,6 +96,10 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
               <code className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">
                 {task.branchName}
               </code>
+              <CopyButton text={task.branchName} tooltip="Copy branch name" />
+              {task.worktreePath && (
+                <CopyButton text={task.worktreePath} tooltip="Copy worktree path" label="Worktree" size="md" />
+              )}
             </div>
           )}
 
@@ -111,6 +115,7 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
                 <PRIcon />
                 PR #{task.prNumber}
               </a>
+              <CopyButton text={task.prUrl} tooltip="Copy PR URL" />
               <Badge variant="prStatus" value={task.prStatus} />
             </div>
           )}
