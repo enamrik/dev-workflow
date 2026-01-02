@@ -504,6 +504,7 @@ async function main() {
   };
 
   prToolContext = {
+    configService: configServiceForSettings,
     githubCLI: new NodeGitHubCLI(),
     issueRepository,
     planRepository,
