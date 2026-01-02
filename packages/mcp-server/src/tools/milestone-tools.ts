@@ -20,6 +20,7 @@ import {
 export interface MilestoneToolContext {
   milestoneRepository: SqliteMilestoneRepository;
   issueRepository: SqliteIssueRepository;
+  projectName: string;
 }
 
 /**
@@ -187,7 +188,10 @@ export function handleCreateMilestone(
 
   return successResponse({
     message: `Created milestone M${milestone.number}: ${milestone.title}`,
-    milestone,
+    milestone: {
+      ...milestone,
+      projectName: ctx.projectName,
+    },
   });
 }
 
@@ -216,7 +220,10 @@ export function handleGetMilestone(
   const issues = ctx.issueRepository.findMany({ milestoneId: milestone.id });
 
   return successResponse({
-    milestone,
+    milestone: {
+      ...milestone,
+      projectName: ctx.projectName,
+    },
     issues: issues.map((i) => ({
       number: i.number,
       title: i.title,
@@ -243,11 +250,12 @@ export function handleListMilestones(
     args.status ? { status: args.status } : undefined
   );
 
-  // Enrich each milestone with issue counts
+  // Enrich each milestone with issue counts and project name
   const enrichedMilestones = milestones.map((m) => {
     const issues = ctx.issueRepository.findMany({ milestoneId: m.id });
     return {
       ...m,
+      projectName: ctx.projectName,
       issueCount: issues.length,
       closedCount: issues.filter((i) => i.status === "CLOSED").length,
     };
@@ -300,7 +308,10 @@ export function handleUpdateMilestone(
 
   return successResponse({
     message: `Updated milestone M${updated.number}`,
-    milestone: updated,
+    milestone: {
+      ...updated,
+      projectName: ctx.projectName,
+    },
   });
 }
 

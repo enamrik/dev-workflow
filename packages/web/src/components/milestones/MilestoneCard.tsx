@@ -23,6 +23,11 @@ export function MilestoneCard({ data }: MilestoneCardProps) {
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-gray-500">M{milestone.number}</span>
           <span className="font-semibold text-gray-800">{milestone.title}</span>
+          {milestone.projectName && (
+            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
+              {milestone.projectName}
+            </span>
+          )}
         </div>
         <Badge variant="status" value={milestone.status} />
       </div>
