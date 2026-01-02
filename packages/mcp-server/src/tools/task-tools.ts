@@ -57,7 +57,10 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "start_task_session",
     description:
-      "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Starts working on a task in the current Claude session. Automatically updates status to IN_PROGRESS. Optionally creates a git worktree for isolated execution.",
+      "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Starts working on a task. " +
+      "Supports 3 modes: 'isolated' (default) creates worktree+branch for parallel work, " +
+      "'branch' creates branch only for single-task focus, " +
+      "'main' works directly on main for quick fixes (skips PR review).",
     inputSchema: {
       type: "object",
       properties: {
@@ -69,10 +72,13 @@ export const taskToolDefinitions: ToolDefinition[] = [
           type: "string",
           description: "Claude session ID",
         },
-        createWorktree: {
-          type: "boolean",
+        mode: {
+          type: "string",
+          enum: ["isolated", "branch", "main"],
           description:
-            "Create a git worktree for isolated task execution. Creates a new branch and worktree directory. Default: false",
+            "Execution mode. 'isolated' (default): creates worktree+branch for parallel work. " +
+            "'branch': creates branch only, checks out in main repo. " +
+            "'main': work directly on main branch, skips PR review.",
         },
       },
       required: ["taskId", "sessionId"],
@@ -505,17 +511,22 @@ export function handleUpdateTaskStatus(
 
 /**
  * Handle start_task_session tool call
+ *
+ * Supports 3 modes:
+ * - 'isolated' (default): creates worktree + branch for parallel work
+ * - 'branch': creates branch only, checks out in main repo
+ * - 'main': works directly on main, skips PR review
  */
 export async function handleStartTaskSession(
   ctx: TaskToolContext,
-  args: { taskId: string; sessionId: string; createWorktree?: boolean }
+  args: { taskId: string; sessionId: string; mode?: "isolated" | "branch" | "main" }
 ): Promise<ToolResponse> {
-  const { taskId, sessionId, createWorktree = false } = args;
+  const { taskId, sessionId, mode = "isolated" } = args;
 
   const result = await ctx.taskSessionService.startTaskSession({
     taskId,
     sessionId,
-    createWorktree,
+    mode,
   });
 
   const response: Record<string, unknown> = {

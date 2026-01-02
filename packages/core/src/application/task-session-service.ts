@@ -12,13 +12,27 @@ import type {
 } from "./conflict-detection-service.js";
 
 /**
+ * Execution mode for task sessions
+ *
+ * - 'isolated': Creates worktree + branch for parallel work (default)
+ * - 'branch': Creates branch only, checks out in main repo
+ * - 'main': Works directly on main, skips PR review
+ */
+export type TaskExecutionMode = "isolated" | "branch" | "main";
+
+/**
  * Request to start a task session
  */
 export interface StartTaskSessionRequest {
   taskId: string;
   sessionId: string;
-  /** Create a git worktree for isolated task execution (default: false) */
-  createWorktree?: boolean;
+  /**
+   * Execution mode for the task.
+   * - 'isolated' (default): Creates worktree + branch for parallel work
+   * - 'branch': Creates branch only, checks out in main repo
+   * - 'main': Works directly on main, skips PR review
+   */
+  mode?: TaskExecutionMode;
 }
 
 /**
@@ -99,13 +113,16 @@ export class TaskSessionService {
    *
    * Workflow:
    * 1. Validate task is available (not locked by another session)
-   * 2. Create a worktree for isolated execution (if createWorktree=true and GitWorktreeService available)
+   * 2. Based on mode:
+   *    - 'isolated': Create worktree + branch
+   *    - 'branch': Create branch only, checkout in main repo
+   *    - 'main': No branch, work directly on main
    * 3. Update task status to IN_PROGRESS with session info
    */
   async startTaskSession(
     request: StartTaskSessionRequest
   ): Promise<TaskSession> {
-    const { taskId, sessionId, createWorktree = false } = request;
+    const { taskId, sessionId, mode = "isolated" } = request;
 
     // Get task and validate
     const task = this.taskRepository.findById(taskId);
@@ -160,11 +177,19 @@ export class TaskSessionService {
       }
     }
 
-    // Create worktree for isolated execution (only if requested and service available)
+    // Setup based on execution mode
     let worktreePath: string | undefined;
     let branchName: string | undefined;
 
-    if (createWorktree && this.gitWorktreeService) {
+    if (mode === "isolated") {
+      // Isolated mode: create worktree + branch
+      if (!this.gitWorktreeService) {
+        throw new Error(
+          "GitWorktreeService is required for 'isolated' mode. " +
+          "Use 'branch' or 'main' mode if git worktrees are not available."
+        );
+      }
+
       const names = generateWorktreeNames(
         issueNumber,
         task.number,
@@ -179,7 +204,30 @@ export class TaskSessionService {
 
       // Update task with worktree info
       this.taskRepository.updateWorktreeInfo(taskId, worktreePath, branchName);
+    } else if (mode === "branch") {
+      // Branch mode: create branch only, checkout in main repo
+      if (!this.gitWorktreeService) {
+        throw new Error(
+          "GitWorktreeService is required for 'branch' mode. " +
+          "Use 'main' mode if git operations are not available."
+        );
+      }
+
+      const names = generateWorktreeNames(
+        issueNumber,
+        task.number,
+        task.title,
+        this.trackDirectory
+      );
+      branchName = names.branchName;
+
+      // Create and checkout the branch (no worktree)
+      await this.gitWorktreeService.run(["checkout", "-b", branchName]);
+
+      // Update task with branch info only (no worktree path)
+      this.taskRepository.update(taskId, { branchName });
     }
+    // mode === "main": no branch, no worktree - work directly on main
 
     // Update task status to IN_PROGRESS and set session info
     this.taskRepository.updateStatus(

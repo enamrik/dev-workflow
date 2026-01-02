@@ -106,9 +106,9 @@ import {
   handlePruneStaleWorktrees,
   // PR handlers
   prToolDefinitions,
-  handleCreateTaskPR,
-  handleMergeTaskPR,
   handleGetTaskPRStatus,
+  handleSubmitForReview,
+  handleCompleteTask,
   // Types
   type IssueToolContext,
   type PlanToolContext,
@@ -338,14 +338,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     }
 
     // PR tools
-    if (name === "create_task_pr") {
-      return await handleCreateTaskPR(prToolContext, a);
-    }
-    if (name === "merge_task_pr") {
-      return await handleMergeTaskPR(prToolContext, a);
-    }
     if (name === "get_task_pr_status") {
       return await handleGetTaskPRStatus(prToolContext, a);
+    }
+    if (name === "submit_for_review") {
+      return await handleSubmitForReview(prToolContext, a);
+    }
+    if (name === "complete_task") {
+      return await handleCompleteTask(prToolContext, a);
     }
 
     return errorResponse(`Unknown tool: ${name}`);
@@ -508,6 +508,7 @@ async function main() {
     issueRepository,
     planRepository,
     taskRepository,
+    gitWorktreeService,
   };
 
   // Start server with stdio transport

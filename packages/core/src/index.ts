@@ -19,7 +19,13 @@ export * from "./domain/milestone.js";
 export { PlanningService } from "./application/planning-service.js";
 export { VersioningService } from "./application/versioning-service.js";
 export { TaskManagementService } from "./application/task-management-service.js";
-export { TaskSessionService } from "./application/task-session-service.js";
+export {
+  TaskSessionService,
+  type TaskExecutionMode,
+  type StartTaskSessionRequest,
+  type CompleteTaskSessionRequest,
+  type TaskSession,
+} from "./application/task-session-service.js";
 export {
   ConflictDetectionService,
   type ConflictWarning,
