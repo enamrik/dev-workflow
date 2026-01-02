@@ -5,7 +5,6 @@
  */
 
 import {
-  type ConfigService,
   type GitHubCLI,
   type GitHubMergeStrategy,
   type SqliteIssueRepository,
@@ -104,7 +103,6 @@ export const prToolDefinitions: ToolDefinition[] = [
  * Context required for PR tool handlers
  */
 export interface PRToolContext {
-  configService: ConfigService;
   githubCLI: GitHubCLI;
   issueRepository: SqliteIssueRepository;
   planRepository: SqlitePlanRepository;
@@ -128,6 +126,7 @@ function mapGitHubStateToPRStatus(
  * Handle create_task_pr tool call
  *
  * Creates a GitHub PR for the task and stores the PR info on the task.
+ * Uses gh CLI which auto-detects the repository from git remotes.
  */
 export async function handleCreateTaskPR(
   ctx: PRToolContext,
@@ -159,17 +158,7 @@ export async function handleCreateTaskPR(
     );
   }
 
-  // 2. Get GitHub config
-  const config = await ctx.configService.loadConfig();
-  if (!config.github?.enabled) {
-    return errorResponse(
-      "GitHub integration is not enabled. Use update_settings to enable it."
-    );
-  }
-
-  const { owner, repo } = config.github;
-
-  // 3. Get issue info for PR title and linking
+  // 2. Get issue info for PR title and linking
   const plan = ctx.planRepository.findById(task.planId);
   if (!plan) {
     return errorResponse(`Plan not found for task: ${taskId}`);
@@ -180,10 +169,10 @@ export async function handleCreateTaskPR(
     return errorResponse(`Issue not found for plan: ${plan.id}`);
   }
 
-  // 4. Build PR title
+  // 3. Build PR title
   const prTitle = title ?? `[#${issue.number}] ${task.title}`;
 
-  // 5. Build PR body with GitHub issue linking
+  // 4. Build PR body with GitHub issue linking
   let prBody = body ?? task.description;
 
   // Add "Closes #N" if the issue is synced to GitHub
@@ -195,14 +184,12 @@ export async function handleCreateTaskPR(
   // Add task reference
   prBody += `\n\n_Task ${issue.number}.${task.number}: ${task.title}_`;
 
-  // 6. Determine base branch
+  // 5. Determine base branch
   const targetBranch = baseBranch ?? "main";
 
-  // 7. Create the PR
+  // 6. Create the PR (gh CLI auto-detects repo from git remotes)
   try {
     const pr = await ctx.githubCLI.createPR(
-      owner,
-      repo,
       task.branchName,
       targetBranch,
       prTitle,
@@ -210,7 +197,7 @@ export async function handleCreateTaskPR(
       draft
     );
 
-    // 8. Store PR info on task
+    // 7. Store PR info on task
     const prStatus = mapGitHubStateToPRStatus(pr.state, pr.isDraft);
     ctx.taskRepository.updatePRInfo(taskId, pr.url, pr.number, prStatus);
 
@@ -240,6 +227,7 @@ export async function handleCreateTaskPR(
  * Handle merge_task_pr tool call
  *
  * Merges the task's PR and updates the PR status.
+ * Uses gh CLI which auto-detects the repository from git remotes.
  */
 export async function handleMergeTaskPR(
   ctx: PRToolContext,
@@ -258,7 +246,9 @@ export async function handleMergeTaskPR(
   }
 
   if (!task.prNumber) {
-    return errorResponse("Task does not have a PR. Create one first with create_task_pr.");
+    return errorResponse(
+      "Task does not have a PR. Create one first with create_task_pr."
+    );
   }
 
   if (task.prStatus === "MERGED") {
@@ -269,25 +259,11 @@ export async function handleMergeTaskPR(
     return errorResponse("PR is closed. Cannot merge a closed PR.");
   }
 
-  // 2. Get GitHub config
-  const config = await ctx.configService.loadConfig();
-  if (!config.github?.enabled) {
-    return errorResponse("GitHub integration is not enabled.");
-  }
-
-  const { owner, repo } = config.github;
-
-  // 3. Merge the PR
+  // 2. Merge the PR (gh CLI auto-detects repo from git remotes)
   try {
-    const pr = await ctx.githubCLI.mergePR(
-      owner,
-      repo,
-      task.prNumber,
-      strategy,
-      commitTitle
-    );
+    const pr = await ctx.githubCLI.mergePR(task.prNumber, strategy, commitTitle);
 
-    // 4. Update PR status on task
+    // 3. Update PR status on task
     const prStatus = mapGitHubStateToPRStatus(pr.state, pr.isDraft);
     ctx.taskRepository.updatePRStatus(taskId, prStatus);
 
@@ -311,6 +287,7 @@ export async function handleMergeTaskPR(
  * Handle get_task_pr_status tool call
  *
  * Gets the current PR status for a task.
+ * Uses gh CLI which auto-detects the repository from git remotes.
  */
 export async function handleGetTaskPRStatus(
   ctx: PRToolContext,
@@ -331,27 +308,9 @@ export async function handleGetTaskPRStatus(
     });
   }
 
-  // 2. Get GitHub config
-  const config = await ctx.configService.loadConfig();
-  if (!config.github?.enabled) {
-    // Return cached status if GitHub is disabled
-    return successResponse({
-      hasPR: true,
-      pr: {
-        number: task.prNumber,
-        url: task.prUrl,
-        status: task.prStatus,
-      },
-      message: "GitHub integration disabled. Showing cached PR info.",
-      cached: true,
-    });
-  }
-
-  const { owner, repo } = config.github;
-
-  // 3. Fetch fresh PR status from GitHub
+  // 2. Fetch fresh PR status from GitHub (gh CLI auto-detects repo)
   try {
-    const pr = await ctx.githubCLI.getPR(owner, repo, task.prNumber);
+    const pr = await ctx.githubCLI.getPR(task.prNumber);
 
     if (!pr) {
       return successResponse({

@@ -42,6 +42,10 @@ export class GitHubCLIError extends Error {
  * Interface for GitHub CLI operations
  *
  * Abstracts the gh CLI for testability and follows DIP.
+ *
+ * Note: Methods no longer require owner/repo parameters - the gh CLI
+ * auto-detects the repository from git remotes. This simplifies the API
+ * and works correctly in git worktrees.
  */
 export interface GitHubCLI {
   /**
@@ -50,11 +54,14 @@ export interface GitHubCLI {
   checkAuth(): Promise<boolean>;
 
   /**
+   * Check if we're in a git repo with a GitHub remote
+   */
+  checkCurrentRepository(): Promise<boolean>;
+
+  /**
    * Create a new GitHub issue
    */
   createIssue(
-    owner: string,
-    repo: string,
     title: string,
     body: string,
     labels: string[]
@@ -64,8 +71,6 @@ export interface GitHubCLI {
    * Update an existing GitHub issue
    */
   updateIssue(
-    owner: string,
-    repo: string,
     issueNumber: number,
     title: string,
     body: string,
@@ -75,33 +80,27 @@ export interface GitHubCLI {
   /**
    * Close a GitHub issue
    */
-  closeIssue(owner: string, repo: string, issueNumber: number): Promise<void>;
+  closeIssue(issueNumber: number): Promise<void>;
 
   /**
    * Reopen a GitHub issue
    */
-  reopenIssue(owner: string, repo: string, issueNumber: number): Promise<void>;
+  reopenIssue(issueNumber: number): Promise<void>;
 
   /**
    * Get issue details
    */
-  getIssue(
-    owner: string,
-    repo: string,
-    issueNumber: number
-  ): Promise<GitHubIssueData | null>;
+  getIssue(issueNumber: number): Promise<GitHubIssueData | null>;
 
   /**
    * List labels on the repository
    */
-  listLabels(owner: string, repo: string): Promise<string[]>;
+  listLabels(): Promise<string[]>;
 
   /**
    * Create a label on the repository
    */
   createLabel(
-    owner: string,
-    repo: string,
     name: string,
     color?: string,
     description?: string
@@ -113,11 +112,6 @@ export interface GitHubCLI {
   addToProject(projectId: string, issueNodeId: string): Promise<string>;
 
   /**
-   * Check if a repository exists and is accessible
-   */
-  checkRepository(owner: string, repo: string): Promise<boolean>;
-
-  /**
    * Check if a GitHub Project exists and is accessible
    */
   checkProject(projectId: string): Promise<boolean>;
@@ -125,8 +119,6 @@ export interface GitHubCLI {
   /**
    * Create a new pull request
    *
-   * @param owner - Repository owner
-   * @param repo - Repository name
    * @param headBranch - Source branch for the PR
    * @param baseBranch - Target branch for the PR
    * @param title - PR title
@@ -135,8 +127,6 @@ export interface GitHubCLI {
    * @returns PR data including number and URL
    */
   createPR(
-    owner: string,
-    repo: string,
     headBranch: string,
     baseBranch: string,
     title: string,
@@ -147,16 +137,12 @@ export interface GitHubCLI {
   /**
    * Merge a pull request
    *
-   * @param owner - Repository owner
-   * @param repo - Repository name
    * @param prNumber - PR number to merge
    * @param strategy - Merge strategy (merge, squash, rebase)
    * @param commitTitle - Optional custom commit title for squash/merge
    * @returns Updated PR data
    */
   mergePR(
-    owner: string,
-    repo: string,
     prNumber: number,
     strategy?: GitHubMergeStrategy,
     commitTitle?: string
@@ -165,12 +151,10 @@ export interface GitHubCLI {
   /**
    * Get pull request details
    *
-   * @param owner - Repository owner
-   * @param repo - Repository name
    * @param prNumber - PR number
    * @returns PR data or null if not found
    */
-  getPR(owner: string, repo: string, prNumber: number): Promise<GitHubPRData | null>;
+  getPR(prNumber: number): Promise<GitHubPRData | null>;
 
   /**
    * Run arbitrary gh CLI command
@@ -182,6 +166,7 @@ export interface GitHubCLI {
  * Node.js implementation of GitHubCLI using the gh CLI
  *
  * Requires gh CLI to be installed and authenticated.
+ * Auto-detects repository from git remotes - no need to specify owner/repo.
  */
 export class NodeGitHubCLI implements GitHubCLI {
   async checkAuth(): Promise<boolean> {
@@ -189,23 +174,18 @@ export class NodeGitHubCLI implements GitHubCLI {
     return result.success;
   }
 
+  async checkCurrentRepository(): Promise<boolean> {
+    // gh repo view without -R will use the current repo from git remotes
+    const result = await this.run(["repo", "view", "--json", "name"]);
+    return result.success;
+  }
+
   async createIssue(
-    owner: string,
-    repo: string,
     title: string,
     body: string,
     labels: string[]
   ): Promise<GitHubIssueData> {
-    const args = [
-      "issue",
-      "create",
-      "-R",
-      `${owner}/${repo}`,
-      "--title",
-      title,
-      "--body",
-      body,
-    ];
+    const args = ["issue", "create", "--title", title, "--body", body];
 
     for (const label of labels) {
       args.push("--label", label);
@@ -228,8 +208,6 @@ export class NodeGitHubCLI implements GitHubCLI {
   }
 
   async updateIssue(
-    owner: string,
-    repo: string,
     issueNumber: number,
     title: string,
     body: string,
@@ -240,8 +218,6 @@ export class NodeGitHubCLI implements GitHubCLI {
       "issue",
       "edit",
       String(issueNumber),
-      "-R",
-      `${owner}/${repo}`,
       "--title",
       title,
       "--body",
@@ -260,7 +236,7 @@ export class NodeGitHubCLI implements GitHubCLI {
     // Update labels - first get current labels, then update
     if (labels.length > 0) {
       // Get current issue to find existing labels
-      const current = await this.getIssue(owner, repo, issueNumber);
+      const current = await this.getIssue(issueNumber);
       const currentLabels = current?.labels ?? [];
 
       // Remove labels that are not in the new list
@@ -270,8 +246,6 @@ export class NodeGitHubCLI implements GitHubCLI {
             "issue",
             "edit",
             String(issueNumber),
-            "-R",
-            `${owner}/${repo}`,
             "--remove-label",
             label,
           ]);
@@ -285,8 +259,6 @@ export class NodeGitHubCLI implements GitHubCLI {
             "issue",
             "edit",
             String(issueNumber),
-            "-R",
-            `${owner}/${repo}`,
             "--add-label",
             label,
           ]);
@@ -295,25 +267,15 @@ export class NodeGitHubCLI implements GitHubCLI {
     }
 
     // Fetch and return updated issue
-    const issue = await this.getIssue(owner, repo, issueNumber);
+    const issue = await this.getIssue(issueNumber);
     if (!issue) {
       throw new GitHubCLIError("Issue not found after update");
     }
     return issue;
   }
 
-  async closeIssue(
-    owner: string,
-    repo: string,
-    issueNumber: number
-  ): Promise<void> {
-    const result = await this.run([
-      "issue",
-      "close",
-      String(issueNumber),
-      "-R",
-      `${owner}/${repo}`,
-    ]);
+  async closeIssue(issueNumber: number): Promise<void> {
+    const result = await this.run(["issue", "close", String(issueNumber)]);
     if (!result.success) {
       throw new GitHubCLIError(
         `Failed to close issue: ${result.stderr}`,
@@ -323,18 +285,8 @@ export class NodeGitHubCLI implements GitHubCLI {
     }
   }
 
-  async reopenIssue(
-    owner: string,
-    repo: string,
-    issueNumber: number
-  ): Promise<void> {
-    const result = await this.run([
-      "issue",
-      "reopen",
-      String(issueNumber),
-      "-R",
-      `${owner}/${repo}`,
-    ]);
+  async reopenIssue(issueNumber: number): Promise<void> {
+    const result = await this.run(["issue", "reopen", String(issueNumber)]);
     if (!result.success) {
       throw new GitHubCLIError(
         `Failed to reopen issue: ${result.stderr}`,
@@ -344,17 +296,11 @@ export class NodeGitHubCLI implements GitHubCLI {
     }
   }
 
-  async getIssue(
-    owner: string,
-    repo: string,
-    issueNumber: number
-  ): Promise<GitHubIssueData | null> {
+  async getIssue(issueNumber: number): Promise<GitHubIssueData | null> {
     const result = await this.run([
       "issue",
       "view",
       String(issueNumber),
-      "-R",
-      `${owner}/${repo}`,
       "--json",
       "number,url,id,title,body,state,labels",
     ]);
@@ -374,15 +320,8 @@ export class NodeGitHubCLI implements GitHubCLI {
     return this.mapIssueData(data);
   }
 
-  async listLabels(owner: string, repo: string): Promise<string[]> {
-    const result = await this.run([
-      "label",
-      "list",
-      "-R",
-      `${owner}/${repo}`,
-      "--json",
-      "name",
-    ]);
+  async listLabels(): Promise<string[]> {
+    const result = await this.run(["label", "list", "--json", "name"]);
 
     if (!result.success) {
       throw new GitHubCLIError(
@@ -397,13 +336,11 @@ export class NodeGitHubCLI implements GitHubCLI {
   }
 
   async createLabel(
-    owner: string,
-    repo: string,
     name: string,
     color?: string,
     description?: string
   ): Promise<void> {
-    const args = ["label", "create", name, "-R", `${owner}/${repo}`];
+    const args = ["label", "create", name];
 
     if (color) {
       args.push("--color", color);
@@ -463,16 +400,6 @@ export class NodeGitHubCLI implements GitHubCLI {
     return data.data.addProjectV2ItemById.item.id;
   }
 
-  async checkRepository(owner: string, repo: string): Promise<boolean> {
-    const result = await this.run([
-      "repo",
-      "view",
-      `${owner}/${repo}`,
-      "--json",
-      "name",
-    ]);
-    return result.success;
-  }
 
   async checkProject(projectId: string): Promise<boolean> {
     const query = `
@@ -510,8 +437,6 @@ export class NodeGitHubCLI implements GitHubCLI {
   }
 
   async createPR(
-    owner: string,
-    repo: string,
     headBranch: string,
     baseBranch: string,
     title: string,
@@ -521,8 +446,6 @@ export class NodeGitHubCLI implements GitHubCLI {
     const args = [
       "pr",
       "create",
-      "-R",
-      `${owner}/${repo}`,
       "--head",
       headBranch,
       "--base",
@@ -557,20 +480,11 @@ export class NodeGitHubCLI implements GitHubCLI {
   }
 
   async mergePR(
-    owner: string,
-    repo: string,
     prNumber: number,
     strategy: GitHubMergeStrategy = "squash",
     commitTitle?: string
   ): Promise<GitHubPRData> {
-    const args = [
-      "pr",
-      "merge",
-      String(prNumber),
-      "-R",
-      `${owner}/${repo}`,
-      `--${strategy}`,
-    ];
+    const args = ["pr", "merge", String(prNumber), `--${strategy}`];
 
     if (commitTitle) {
       args.push("--subject", commitTitle);
@@ -586,30 +500,27 @@ export class NodeGitHubCLI implements GitHubCLI {
     }
 
     // Fetch updated PR data after merge
-    const pr = await this.getPR(owner, repo, prNumber);
+    const pr = await this.getPR(prNumber);
     if (!pr) {
       throw new GitHubCLIError("PR not found after merge");
     }
     return pr;
   }
 
-  async getPR(
-    owner: string,
-    repo: string,
-    prNumber: number
-  ): Promise<GitHubPRData | null> {
+  async getPR(prNumber: number): Promise<GitHubPRData | null> {
     const result = await this.run([
       "pr",
       "view",
       String(prNumber),
-      "-R",
-      `${owner}/${repo}`,
       "--json",
       "number,url,id,title,body,state,isDraft,headRefName,baseRefName,merged,mergeable",
     ]);
 
     if (!result.success) {
-      if (result.stderr.includes("not found") || result.stderr.includes("Could not resolve")) {
+      if (
+        result.stderr.includes("not found") ||
+        result.stderr.includes("Could not resolve")
+      ) {
         return null;
       }
       throw new GitHubCLIError(
