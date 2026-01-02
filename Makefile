@@ -95,7 +95,7 @@ init: link
 
 dogfood: install
 	@echo "🧹 Clearing Next.js cache..."
-	@rm -rf packages/web/.next
+	@rm -rf packages/web/.next packages/web/.dev-next
 	@$(MAKE) build
 	@$(MAKE) link
 	@echo ""
