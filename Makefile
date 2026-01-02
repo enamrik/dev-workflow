@@ -5,7 +5,7 @@ export PNPM_HOME
 export PATH := $(PNPM_HOME):$(PATH)
 DEV_WORKFLOW := $(PNPM_HOME)/dev-workflow
 
-.PHONY: help install build clean reset init dogfood test test-npm-install test-mcp test-e2e link unlink flatten-migrations ui ui-dev ui-stop
+.PHONY: help install build clean reset init dogfood test test-npm-install test-mcp test-e2e link unlink flatten-migrations ui ui-dev ui-stop local-track ui-dev-local
 
 help:
 	@echo "dev-workflow - Makefile commands"
@@ -27,6 +27,8 @@ help:
 	@echo "  make ui               - Restart UI server (rebuild + restart)"
 	@echo "  make ui-dev           - Start UI in dev mode with hot reload"
 	@echo "  make ui-stop          - Stop running UI server"
+	@echo "  make local-track      - Set up local .track/ for isolated testing"
+	@echo "  make ui-dev-local     - Start UI dev mode with local data"
 
 install:
 	@echo "📦 Installing dependencies..."
@@ -145,3 +147,58 @@ ui-dev:
 	@echo "   http://localhost:3457"
 	@(cd packages/web && npx wait-on tcp:3457 && open http://localhost:3457) &
 	@pnpm --filter @dev-workflow/web dev
+
+# Compute project ID from git root (matches TrackDirectoryResolver logic)
+# Format: <folder-name>-<6-char-sha256-hash>
+# Uses git-common-dir to get the main repo path even when in a worktree
+define GET_GIT_ROOT
+$(shell dirname "$$(git rev-parse --path-format=absolute --git-common-dir)")
+endef
+
+define GET_PROJECT_ID
+$(shell basename "$(GET_GIT_ROOT)")-$(shell printf '%s' "$(GET_GIT_ROOT)" | shasum -a 256 | cut -c1-6)
+endef
+
+local-track:
+	@echo "📁 Setting up local .track/ directory for isolated testing..."
+	@if [ ! -d "$$HOME/.track" ]; then \
+		echo "❌ Error: ~/.track does not exist. Run 'dev-workflow init' first."; \
+		exit 1; \
+	fi
+	@if [ ! -f "$$HOME/.track/workflow.db" ]; then \
+		echo "❌ Error: ~/.track/workflow.db does not exist. Run 'dev-workflow init' first."; \
+		exit 1; \
+	fi
+	@PROJECT_ID=$(GET_PROJECT_ID); \
+	echo "   Project ID: $$PROJECT_ID"; \
+	mkdir -p .track; \
+	if [ -f "$$HOME/.track/workflow.db" ]; then \
+		echo "   Copying workflow.db..."; \
+		cp "$$HOME/.track/workflow.db" .track/workflow.db; \
+	fi; \
+	if [ -d "$$HOME/.track/$$PROJECT_ID" ]; then \
+		echo "   Copying project config..."; \
+		cp -R "$$HOME/.track/$$PROJECT_ID" .track/; \
+	else \
+		echo "⚠️  Warning: No project config found at ~/.track/$$PROJECT_ID"; \
+	fi
+	@echo ""
+	@echo "✓ Local .track/ directory created!"
+	@echo ""
+	@echo "To use local data, set the TRACK_DIR environment variable:"
+	@echo ""
+	@echo "  export TRACK_DIR=$$(pwd)/.track"
+	@echo ""
+	@echo "Examples:"
+	@echo "  TRACK_DIR=.track dev-workflow ui           # Start UI with local data"
+	@echo "  TRACK_DIR=.track pnpm --filter @dev-workflow/web dev  # Dev mode"
+	@echo ""
+	@echo "Or use 'make ui-dev-local' for convenience."
+
+ui-dev-local: local-track
+	@-lsof -ti :3457 | xargs kill 2>/dev/null || true
+	@echo "🔥 Starting UI in dev mode with local data..."
+	@echo "   http://localhost:3457"
+	@echo "   Using: TRACK_DIR=$$(pwd)/.track"
+	@(cd packages/web && npx wait-on tcp:3457 && open http://localhost:3457) &
+	@TRACK_DIR=$$(pwd)/.track pnpm --filter @dev-workflow/web dev
