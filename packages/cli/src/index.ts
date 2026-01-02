@@ -438,6 +438,77 @@ async function runUnarchive(): Promise<void> {
   }
 }
 
+async function runNuke(): Promise<void> {
+  const fileSystem = new NodeFileSystem();
+  const workingDirectory = process.cwd();
+
+  // Create resolver
+  let resolver;
+  try {
+    resolver = createTrackDirectoryResolver(workingDirectory);
+  } catch (error) {
+    console.error("❌ Not a git repository. dev-workflow requires git.");
+    process.exit(1);
+  }
+
+  const archiveService = new ArchiveService(fileSystem, workingDirectory, resolver);
+
+  try {
+    // Get project info first for display
+    const project = await archiveService.getProject();
+    if (!project) {
+      console.error("❌ dev-workflow is not initialized for this repository.");
+      console.error("\nNothing to delete.");
+      process.exit(1);
+    }
+
+    const trackDir = resolver.getTrackDirectory();
+
+    console.log("⚠️  WARNING: This will PERMANENTLY DELETE all project data!\n");
+    console.log("   Project: " + project.name);
+    console.log("   Track directory: " + trackDir);
+    console.log("\n   This action CANNOT be undone.\n");
+
+    // Interactive confirmation - user must type project name
+    const readline = await import("node:readline");
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    const answer = await new Promise<string>((resolve) => {
+      rl.question(`Type the project name to confirm deletion (${project.name}): `, (answer) => {
+        rl.close();
+        resolve(answer);
+      });
+    });
+
+    if (answer !== project.name) {
+      console.error("\n❌ Project name does not match. Aborting.");
+      process.exit(1);
+    }
+
+    console.log("\n💣 Nuking project...");
+
+    await archiveService.nuke(project);
+
+    console.log("\n✓ Removed skills");
+    console.log("✓ Unregistered MCP server");
+    console.log("✓ Deleted all project data from database");
+    console.log("✓ Removed track directory");
+
+    console.log("\n✨ Project nuked successfully!");
+    console.log("\nAll project data has been permanently deleted.");
+  } catch (error) {
+    if (error instanceof ArchiveError) {
+      console.error(`❌ ${error.message}`);
+      process.exit(1);
+    }
+    console.error("Error during nuke:", error);
+    process.exit(1);
+  }
+}
+
 async function runUI(): Promise<void> {
   const { isPortInUse, getSavedDaemonPort } = await import("./infrastructure/port-manager.js");
 
@@ -645,6 +716,18 @@ program
       await runUnarchive();
     } catch (error) {
       console.error("Error during unarchive:", error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("nuke")
+  .description("PERMANENTLY DELETE all project data (requires all issues closed)")
+  .action(async () => {
+    try {
+      await runNuke();
+    } catch (error) {
+      console.error("Error during nuke:", error);
       process.exit(1);
     }
   });
