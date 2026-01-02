@@ -217,6 +217,7 @@ export class SqliteTaskRepository implements TaskRepository {
     // Determine which timestamp to update based on status
     const timestampUpdate: {
       startedAt?: string;
+      submittedForReviewAt?: string;
       completedAt?: string;
       abandonedAt?: string;
     } = {};
@@ -224,6 +225,9 @@ export class SqliteTaskRepository implements TaskRepository {
     switch (status) {
       case "IN_PROGRESS":
         timestampUpdate.startedAt = now;
+        break;
+      case "PR_REVIEW":
+        timestampUpdate.submittedForReviewAt = now;
         break;
       case "COMPLETED":
         timestampUpdate.completedAt = now;
@@ -595,6 +599,7 @@ export class SqliteTaskRepository implements TaskRepository {
       prNumber: row.prNumber ?? undefined,
       prStatus: (row.prStatus as Task["prStatus"]) ?? undefined,
       startedAt: row.startedAt ?? undefined,
+      submittedForReviewAt: row.submittedForReviewAt ?? undefined,
       completedAt: row.completedAt ?? undefined,
       abandonedAt: row.abandonedAt ?? undefined,
       createdAt: row.createdAt,

@@ -2,7 +2,7 @@
  * Domain types for Task entity
  */
 
-export type TaskStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
+export type TaskStatus = "PENDING" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
 export type TaskSource = "generated" | "manual";
 export type PRStatus = "DRAFT" | "OPEN" | "MERGED" | "CLOSED";
 
@@ -55,6 +55,7 @@ export interface Task {
   readonly prStatus?: PRStatus; // PR state
 
   readonly startedAt?: string; // When task moved to IN_PROGRESS
+  readonly submittedForReviewAt?: string; // When task moved to PR_REVIEW
   readonly completedAt?: string; // When task moved to COMPLETED
   readonly abandonedAt?: string; // When task moved to ABANDONED
   readonly createdAt: string; // ISO date string

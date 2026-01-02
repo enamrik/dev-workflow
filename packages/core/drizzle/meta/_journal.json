@@ -22,6 +22,13 @@
       "when": 1767286881146,
       "tag": "0002_large_khan",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1767315288396,
+      "tag": "0003_tired_molecule_man",
+      "breakpoints": true
     }
   ]
 }
