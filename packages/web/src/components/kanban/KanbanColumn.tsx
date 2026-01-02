@@ -17,6 +17,7 @@ interface KanbanTask extends Task {
   issueNumber: number;
   issueTitle: string;
   projectId?: string;
+  projectName?: string;
 }
 
 interface KanbanColumnProps {
@@ -89,6 +90,7 @@ export function KanbanColumn({
                   issueNumber={task.issueNumber}
                   issueTitle={task.issueTitle}
                   projectId={task.projectId}
+                  projectName={task.projectName}
                 />
               </motion.div>
             ))

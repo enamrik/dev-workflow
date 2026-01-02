@@ -3,9 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { clsx } from "clsx";
-import { Badge, Modal, Markdown, CopyButton } from "../ui";
-import { TaskTiming, TaskMetadataPanel } from "../tasks";
-import { CopyTaskCommand } from "../tasks/CopyTaskCommand";
+import { Badge, Modal, Markdown } from "../ui";
+import { TaskTiming, TaskMetadataPanel, TaskActions } from "../tasks";
 import type { Task } from "@/lib/types";
 
 interface KanbanCardProps {
@@ -13,6 +12,7 @@ interface KanbanCardProps {
   issueNumber: number;
   issueTitle: string;
   projectId?: string;
+  projectName?: string;
 }
 
 function truncate(text: string, maxLength: number): string {
@@ -59,51 +59,37 @@ function TaskModalContent({
           <Badge variant="status" value={task.status} />
         </div>
 
-        {/* Tabs and Copy button */}
-        <div className="flex items-center justify-between mt-3">
-          <div className="flex gap-1">
-            <button
-              onClick={() => setActiveTab("task")}
-              className={clsx(
-                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
-                activeTab === "task"
-                  ? "bg-gray-900 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              )}
-            >
-              Task
-            </button>
-            <button
-              onClick={() => setActiveTab("details")}
-              className={clsx(
-                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
-                activeTab === "details"
-                  ? "bg-gray-900 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              )}
-            >
-              Details
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            {task.prUrl && (
-              <CopyButton
-                text={task.prUrl}
-                label={`PR #${task.prNumber}`}
-                tooltip="Copy PR URL"
-              />
+        {/* Tabs */}
+        <div className="flex gap-1 mt-3">
+          <button
+            onClick={() => setActiveTab("task")}
+            className={clsx(
+              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+              activeTab === "task"
+                ? "bg-gray-900 text-white"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             )}
-            {projectId && (
-              <CopyTaskCommand issueNumber={issueNumber} taskNumber={task.number} />
+          >
+            Task
+          </button>
+          <button
+            onClick={() => setActiveTab("details")}
+            className={clsx(
+              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+              activeTab === "details"
+                ? "bg-gray-900 text-white"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             )}
-          </div>
+          >
+            Details
+          </button>
         </div>
       </div>
 
       {/* Content */}
       <div className="p-4">
         {activeTab === "task" ? (
-          <TaskTab task={task} />
+          <TaskTab task={task} issueNumber={issueNumber} projectId={projectId} />
         ) : (
           <DetailsTab task={task} projectId={projectId} issueNumber={issueNumber} />
         )}
@@ -133,9 +119,29 @@ function TaskModalContent({
   );
 }
 
-function TaskTab({ task }: { task: Task }) {
+function TaskTab({
+  task,
+  issueNumber,
+  projectId,
+}: {
+  task: Task;
+  issueNumber: number;
+  projectId?: string;
+}) {
+  const hasActions = task.branchName || task.prUrl || projectId;
+
   return (
     <div className="space-y-4">
+      {/* Actions - consolidated copy/link section */}
+      {hasActions && (
+        <TaskActions
+          task={task}
+          issueNumber={issueNumber}
+          showCopyCommand={!!projectId}
+          compact
+        />
+      )}
+
       {/* Description */}
       {task.description && (
         <div>
@@ -208,11 +214,13 @@ function CardContent({
   issueNumber,
   issueUrl,
   projectId,
+  projectName,
 }: {
   task: Task;
   issueNumber: number;
   issueUrl: string;
   projectId?: string;
+  projectName?: string;
 }) {
   const isCompleted = task.status === "COMPLETED";
   const isInProgress = task.status === "IN_PROGRESS";
@@ -249,8 +257,8 @@ function CardContent({
 
       {/* Footer: project and metadata */}
       <div className="flex items-center justify-between text-xs">
-        {projectId && (
-          <span className="font-medium text-gray-600">{projectId}</span>
+        {(projectName || projectId) && (
+          <span className="font-medium text-gray-600">{projectName ?? projectId}</span>
         )}
         <div className="flex items-center gap-2">
           {task.estimatedMinutes && (
@@ -286,6 +294,7 @@ export function KanbanCard({
   task,
   issueNumber,
   projectId,
+  projectName,
 }: KanbanCardProps) {
   const issueUrl = projectId
     ? `/projects/${encodeURIComponent(projectId)}/issues/${issueNumber}`
@@ -299,6 +308,7 @@ export function KanbanCard({
           issueNumber={issueNumber}
           issueUrl={issueUrl}
           projectId={projectId}
+          projectName={projectName}
         />
       }
       maxHeight={600}

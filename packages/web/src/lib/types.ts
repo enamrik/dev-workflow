@@ -95,6 +95,7 @@ export interface ProjectIssueWithTasks {
   tasks: Task[];
   milestoneNumber?: number;
   milestoneTitle?: string;
+  projectName?: string;
 }
 
 /**

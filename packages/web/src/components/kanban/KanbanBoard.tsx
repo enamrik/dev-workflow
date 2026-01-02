@@ -6,6 +6,7 @@ interface KanbanTask extends Task {
   issueNumber: number;
   issueTitle: string;
   projectId?: string;
+  projectName?: string;
 }
 
 interface KanbanBoardProps {
@@ -19,13 +20,14 @@ export function KanbanBoard({
 }: KanbanBoardProps) {
   // Flatten all tasks and add issue context
   const allTasks: KanbanTask[] = [];
-  for (const { issue, tasks } of issuesWithTasks) {
+  for (const { issue, tasks, projectName } of issuesWithTasks) {
     for (const task of tasks) {
       allTasks.push({
         ...task,
         issueNumber: issue.number,
         issueTitle: issue.title,
         projectId: issue.projectId,
+        projectName,
       });
     }
   }

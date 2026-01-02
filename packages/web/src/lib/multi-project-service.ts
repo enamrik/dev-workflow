@@ -75,6 +75,7 @@ export interface ProjectIssueWithTasks {
   tasks: Task[];
   milestoneNumber?: number;
   milestoneTitle?: string;
+  projectName?: string;
 }
 
 /**
@@ -158,6 +159,8 @@ export class MultiProjectService {
     }
 
     this.dbService = await DatabaseService.create(dbPath);
+    // Run migrations to ensure schema is up to date
+    this.dbService.runMigrations();
     const db = this.dbService.getDb();
     this.planRepository = new SqlitePlanRepository(db);
     this.taskRepository = new SqliteTaskRepository(db);
@@ -339,6 +342,7 @@ export class MultiProjectService {
             tasks,
             milestoneNumber,
             milestoneTitle,
+            projectName: project.name,
           });
         }
       }

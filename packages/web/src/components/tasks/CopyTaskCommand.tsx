@@ -7,6 +7,8 @@ interface CopyTaskCommandProps {
   issueNumber: number;
   taskNumber: number;
   className?: string;
+  /** Size variant */
+  size?: "sm" | "md";
 }
 
 /**
@@ -16,6 +18,7 @@ export function CopyTaskCommand({
   issueNumber,
   taskNumber,
   className,
+  size = "md",
 }: CopyTaskCommandProps) {
   const [copied, setCopied] = useState(false);
 
@@ -31,11 +34,14 @@ export function CopyTaskCommand({
     }
   }, [command]);
 
+  const isSmall = size === "sm";
+
   return (
     <button
       onClick={handleCopy}
       className={clsx(
-        "inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded border transition-colors",
+        "inline-flex items-center font-medium rounded border transition-colors",
+        isSmall ? "gap-1 px-1.5 py-0.5 text-xs" : "gap-1.5 px-2 py-1 text-xs",
         copied
           ? "bg-green-50 border-green-200 text-green-700"
           : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100 hover:border-gray-300",
@@ -45,22 +51,27 @@ export function CopyTaskCommand({
     >
       {copied ? (
         <>
-          <CheckIcon />
+          <CheckIcon size={size} />
           Copied!
         </>
       ) : (
         <>
-          <CopyIcon />
-          Copy Claude command
+          <CopyIcon size={size} />
+          {isSmall ? "Claude cmd" : "Copy Claude command"}
         </>
       )}
     </button>
   );
 }
 
-function CopyIcon() {
+function CopyIcon({ size = "md" }: { size?: "sm" | "md" }) {
   return (
-    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className={size === "sm" ? "w-3 h-3" : "w-3.5 h-3.5"}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -71,9 +82,14 @@ function CopyIcon() {
   );
 }
 
-function CheckIcon() {
+function CheckIcon({ size = "md" }: { size?: "sm" | "md" }) {
   return (
-    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className={size === "sm" ? "w-3 h-3" : "w-3.5 h-3.5"}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
     </svg>
   );

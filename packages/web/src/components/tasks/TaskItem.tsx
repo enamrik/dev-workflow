@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { clsx } from "clsx";
-import { Badge, CopyButton, Markdown, Tooltip } from "../ui";
+import { Badge, Markdown, Tooltip } from "../ui";
 import { TaskTiming } from "./TaskTiming";
 import { TaskMetadataPanel } from "./TaskMetadataPanel";
+import { TaskActions } from "./TaskActions";
 import type { Task } from "@/lib/types";
 
 interface TaskItemProps {
@@ -89,33 +90,20 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
             <Markdown>{task.description}</Markdown>
           </div>
 
-          {/* Worktree/Branch info */}
-          {task.branchName && (
-            <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
-              <BranchIcon />
-              <code className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">
-                {task.branchName}
-              </code>
-              <CopyButton text={task.branchName} tooltip="Copy branch name" />
-              {task.worktreePath && (
-                <CopyButton text={task.worktreePath} tooltip="Copy worktree path" label="Worktree" size="md" />
-              )}
-            </div>
+          {/* Consolidated actions section */}
+          {(task.branchName || task.prUrl) && (
+            <TaskActions
+              task={task}
+              issueNumber={issueNumber}
+              showCopyCommand={false}
+              compact
+              className="mt-3"
+            />
           )}
 
-          {/* PR info */}
-          {task.prUrl && task.prStatus && (
-            <div className="mt-2 flex items-center gap-2">
-              <a
-                href={task.prUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-              >
-                <PRIcon />
-                PR #{task.prNumber}
-              </a>
-              <CopyButton text={task.prUrl} tooltip="Copy PR URL" />
+          {/* PR status badge (shown separately for visibility) */}
+          {task.prStatus && (
+            <div className="mt-2">
               <Badge variant="prStatus" value={task.prStatus} />
             </div>
           )}
