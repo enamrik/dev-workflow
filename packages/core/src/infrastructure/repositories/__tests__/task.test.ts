@@ -136,6 +136,32 @@ describe("SqliteTaskRepository", () => {
 
       expect(updated.abandonedAt).toBeDefined();
     });
+
+    it("should set submittedForReviewAt when status changes to PR_REVIEW", () => {
+      const task = createTestTask(repos.taskRepository, planId);
+
+      const updated = repos.taskRepository.updateStatus(task.id, "PR_REVIEW", "test");
+
+      expect(updated.status).toBe("PR_REVIEW");
+      expect(updated.submittedForReviewAt).toBeDefined();
+    });
+
+    it("should allow full lifecycle: PENDING -> IN_PROGRESS -> PR_REVIEW -> COMPLETED", () => {
+      const task = createTestTask(repos.taskRepository, planId);
+      expect(task.status).toBe("PENDING");
+
+      const inProgress = repos.taskRepository.updateStatus(task.id, "IN_PROGRESS", "test");
+      expect(inProgress.status).toBe("IN_PROGRESS");
+      expect(inProgress.startedAt).toBeDefined();
+
+      const prReview = repos.taskRepository.updateStatus(task.id, "PR_REVIEW", "test");
+      expect(prReview.status).toBe("PR_REVIEW");
+      expect(prReview.submittedForReviewAt).toBeDefined();
+
+      const completed = repos.taskRepository.updateStatus(task.id, "COMPLETED", "test");
+      expect(completed.status).toBe("COMPLETED");
+      expect(completed.completedAt).toBeDefined();
+    });
   });
 
   describe("softDelete", () => {
