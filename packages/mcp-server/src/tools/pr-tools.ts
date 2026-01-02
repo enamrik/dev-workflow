@@ -13,7 +13,6 @@ import {
   type PRStatus,
   ConfigService,
   TrackDirectoryResolver,
-  getTrackDirectoryForProject,
 } from "@dev-workflow/core";
 import {
   type ToolDefinition,
@@ -118,8 +117,7 @@ export interface PRToolContext {
  * loading the config from the correct project's track directory.
  */
 function createConfigServiceForProject(projectId: string): ConfigService {
-  const trackDir = getTrackDirectoryForProject(projectId);
-  const resolver = new TrackDirectoryResolver(trackDir);
+  const resolver = TrackDirectoryResolver.fromProjectId(projectId);
   return new ConfigService(resolver);
 }
 
