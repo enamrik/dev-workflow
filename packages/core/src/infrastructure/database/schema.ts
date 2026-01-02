@@ -371,6 +371,10 @@ export const projects = sqliteTable("projects", {
   githubSync: text("github_sync", { mode: "json" })
     .$type<GitHubIssueSyncConfig | null>(),
 
+  // Archive status - archived projects are hidden from UI by default
+  isArchived: integer("is_archived", { mode: "boolean" }).notNull().default(false),
+  archivedAt: text("archived_at"),
+
   // Timestamps (stored as ISO strings)
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),

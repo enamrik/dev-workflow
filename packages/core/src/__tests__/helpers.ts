@@ -11,6 +11,7 @@ import { SqlitePlanRepository } from "../infrastructure/repositories/plan-reposi
 import { SqliteTaskRepository } from "../infrastructure/repositories/task-repository.js";
 import { SqliteSnapshotRepository } from "../infrastructure/repositories/snapshot-repository.js";
 import { SqliteProjectRepository } from "../infrastructure/repositories/project-repository.js";
+import { SqliteMilestoneRepository } from "../infrastructure/repositories/milestone-repository.js";
 import { VersioningService } from "../application/versioning-service.js";
 import { PlanningService } from "../application/planning-service.js";
 import { TaskManagementService } from "../application/task-management-service.js";
@@ -37,6 +38,7 @@ export function createRepositories(db: TestDatabase["db"], projectId: string = T
     taskRepository: new SqliteTaskRepository(typedDb),
     snapshotRepository: new SqliteSnapshotRepository(typedDb, projectId),
     projectRepository: new SqliteProjectRepository(typedDb),
+    milestoneRepository: new SqliteMilestoneRepository(typedDb, projectId),
   };
 }
 
