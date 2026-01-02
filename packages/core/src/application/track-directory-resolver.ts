@@ -28,9 +28,14 @@ export function resolveGlobalTrackDir(): string {
  * variable. This is useful for testing in worktrees without affecting
  * production data.
  *
- * Project ID is derived from the git repository root path.
- * Format: <repo-folder-name>-<6-char-hash>
- * Example: "dev-workflow-a1b2c3"
+ * Project ID is derived from the git repository's first commit hash.
+ * Format: <repo-folder-name>-<6-char-first-commit-hash>
+ * Example: "dev-workflow-b9bccf"
+ *
+ * This provides a stable, readable identifier that:
+ * - Never changes (first commit is immutable)
+ * - Works without remotes
+ * - Is human-readable (includes repo name)
  */
 export class TrackDirectoryResolver {
   private readonly projectId: string;
@@ -38,7 +43,7 @@ export class TrackDirectoryResolver {
 
   /**
    * Create a resolver from a git root path.
-   * The project ID will be computed from the path.
+   * The project ID will be computed from the git first commit hash.
    */
   constructor(gitRoot: string);
   /**
@@ -64,13 +69,30 @@ export class TrackDirectoryResolver {
   }
 
   /**
-   * Compute project ID from git root path.
-   * Format: <repo-folder-name>-<6-char-hash>
+   * Compute project ID from git first commit hash.
+   * Format: <repo-folder-name>-<6-char-first-commit-hash>
    */
   private computeProjectId(): string {
     const folderName = path.basename(this.gitRoot);
-    const hash = crypto.createHash("sha256").update(this.gitRoot).digest("hex").slice(0, 6);
-    return `${folderName}-${hash}`;
+    const firstCommitHash = this.getFirstCommitHash();
+    return `${folderName}-${firstCommitHash.slice(0, 6)}`;
+  }
+
+  /**
+   * Get the first (initial) commit hash of the repository.
+   * This is stable and never changes once the repo is created.
+   */
+  private getFirstCommitHash(): string {
+    try {
+      return execSync("git rev-list --max-parents=0 HEAD", {
+        cwd: this.gitRoot,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      }).trim().split("\n")[0] ?? "";
+    } catch {
+      // Fallback to path-based hash if git command fails
+      return crypto.createHash("sha256").update(this.gitRoot).digest("hex");
+    }
   }
 
   /**

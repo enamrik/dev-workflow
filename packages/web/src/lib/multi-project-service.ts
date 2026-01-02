@@ -1,6 +1,5 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import * as crypto from "node:crypto";
 import {
   DatabaseService,
   SqliteIssueRepository,
@@ -198,9 +197,9 @@ export class MultiProjectService {
 
     // Map core projects to UI projects with track directory
     const projects: Project[] = coreProjects.map((p) => {
-      // Compute track directory from git root (same logic as TrackDirectoryResolver)
+      // Compute track directory from git root and first commit hash
       const folderName = path.basename(p.gitRoot);
-      const hash = crypto.createHash("sha256").update(p.gitRoot).digest("hex").slice(0, 6);
+      const hash = p.gitRootHash.slice(0, 6);
       const trackDirName = `${folderName}-${hash}`;
 
       return {
