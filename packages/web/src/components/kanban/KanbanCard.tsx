@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { clsx } from "clsx";
 import { Badge, Modal, Markdown } from "../ui";
+import { TaskTiming } from "../tasks/TaskTiming";
 import type { Task } from "@/lib/types";
 
 interface KanbanCardProps {
@@ -66,8 +67,9 @@ function TaskModalContent({
         </div>
       )}
 
-      {/* Metadata: estimated time and labels */}
+      {/* Metadata: timing, estimated time, and labels */}
       <div className="flex items-center gap-3 pt-2 border-t border-gray-100 text-xs">
+        <TaskTiming task={task} />
         {task.estimatedMinutes && (
           <span className="text-gray-500">
             Est: {task.estimatedMinutes} min
