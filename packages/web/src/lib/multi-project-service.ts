@@ -1,11 +1,13 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import * as crypto from "node:crypto";
 import {
   DatabaseService,
   SqliteIssueRepository,
   SqlitePlanRepository,
   SqliteTaskRepository,
   SqliteMilestoneRepository,
+  SqliteProjectRepository,
   getGlobalDatabasePath,
   resolveGlobalTrackDir,
   NodeGitWorktreeService,
@@ -19,11 +21,13 @@ import {
 } from "@dev-workflow/core";
 
 /**
- * Represents a project with its ID and track directory
+ * Represents a project with its ID, name, and track directory
  */
 export interface Project {
   readonly id: string;
+  readonly name: string;
   readonly trackDirectory: string;
+  readonly gitRoot: string;
 }
 
 /**
@@ -118,6 +122,7 @@ export class MultiProjectService {
   private dbService: DatabaseService | null = null;
   private planRepository: SqlitePlanRepository | null = null;
   private taskRepository: SqliteTaskRepository | null = null;
+  private projectRepository: SqliteProjectRepository | null = null;
 
   constructor(private readonly globalTrackDir: string = resolveGlobalTrackDir()) {}
 
@@ -134,9 +139,14 @@ export class MultiProjectService {
   private async ensureConnection(): Promise<{
     planRepository: SqlitePlanRepository;
     taskRepository: SqliteTaskRepository;
+    projectRepository: SqliteProjectRepository;
   }> {
-    if (this.dbService && this.planRepository && this.taskRepository) {
-      return { planRepository: this.planRepository, taskRepository: this.taskRepository };
+    if (this.dbService && this.planRepository && this.taskRepository && this.projectRepository) {
+      return {
+        planRepository: this.planRepository,
+        taskRepository: this.taskRepository,
+        projectRepository: this.projectRepository,
+      };
     }
 
     const dbPath = this.getDatabasePath();
@@ -152,8 +162,13 @@ export class MultiProjectService {
     const db = this.dbService.getDb();
     this.planRepository = new SqlitePlanRepository(db);
     this.taskRepository = new SqliteTaskRepository(db);
+    this.projectRepository = new SqliteProjectRepository(db);
 
-    return { planRepository: this.planRepository, taskRepository: this.taskRepository };
+    return {
+      planRepository: this.planRepository,
+      taskRepository: this.taskRepository,
+      projectRepository: this.projectRepository,
+    };
   }
 
   /**
@@ -175,37 +190,28 @@ export class MultiProjectService {
   }
 
   /**
-   * List all projects in the global track directory
+   * List all projects from the database
    */
   async listProjects(): Promise<Project[]> {
-    const projects: Project[] = [];
+    const { projectRepository } = await this.ensureConnection();
+    const coreProjects = projectRepository.findAll();
 
-    try {
-      const entries = await fs.readdir(this.globalTrackDir, { withFileTypes: true });
+    // Map core projects to UI projects with track directory
+    const projects: Project[] = coreProjects.map((p) => {
+      // Compute track directory from git root (same logic as TrackDirectoryResolver)
+      const folderName = path.basename(p.gitRoot);
+      const hash = crypto.createHash("sha256").update(p.gitRoot).digest("hex").slice(0, 6);
+      const trackDirName = `${folderName}-${hash}`;
 
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        // Skip the workflow.db file and hidden directories
-        if (entry.name.startsWith(".") || entry.name === "workflow.db") continue;
+      return {
+        id: p.id,
+        name: p.name,
+        trackDirectory: path.join(this.globalTrackDir, trackDirName),
+        gitRoot: p.gitRoot,
+      };
+    });
 
-        const projectId = entry.name;
-        const trackDirectory = path.join(this.globalTrackDir, projectId);
-
-        // Verify config.json exists (indicates valid project)
-        try {
-          await fs.access(path.join(trackDirectory, "config.json"));
-          projects.push({ id: projectId, trackDirectory });
-        } catch {
-          // Skip directories without config (not valid projects)
-          continue;
-        }
-      }
-    } catch {
-      // Global track directory doesn't exist - return empty list
-      return [];
-    }
-
-    return projects.sort((a, b) => a.id.localeCompare(b.id));
+    return projects.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   /**
