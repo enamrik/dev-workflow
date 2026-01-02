@@ -1,7 +1,7 @@
 ---
 name: dwf-work-task
-description: Manage task execution lifecycle - start, complete, or abandon tasks. Supports PR workflow for code review. Auto-invoked when user wants to "start task", "work on task", "complete task", "finish task", "abandon task", "create PR", "merge PR", etc.
-allowed-tools: mcp:dev-workflow-tracker:get_task_for_session, mcp:dev-workflow-tracker:start_task_session, mcp:dev-workflow-tracker:complete_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:create_task_pr, mcp:dev-workflow-tracker:merge_task_pr, mcp:dev-workflow-tracker:get_task_pr_status
+description: Manage task execution lifecycle - start, complete, or abandon tasks. Supports 3 execution modes (isolated, branch, main) and PR-based workflow. Auto-invoked when user wants to "start task", "work on task", "complete task", "finish task", "abandon task", "submit for review", "merge PR", etc.
+allowed-tools: mcp:dev-workflow-tracker:get_task_for_session, mcp:dev-workflow-tracker:start_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status
 ---
 
 # Work Task Skill
@@ -13,9 +13,13 @@ allowed-tools: mcp:dev-workflow-tracker:get_task_for_session, mcp:dev-workflow-t
 - User wants to work: "let's work on the first task", "start working on #1"
 - User is ready: "I'm ready to implement", "let's begin"
 
+**Submitting for review:**
+- User mentions: "submit for review", "create PR", "open PR", "ready for review"
+- User finished implementation: "I've finished, create a PR"
+
 **Completing work:**
 - User mentions: "complete task", "finish task", "done with task", "mark complete"
-- User finished: "I've finished the implementation", "tests are passing"
+- User after PR merged: "PR is merged", "merge the PR"
 
 **Abandoning work:**
 - User mentions: "abandon task", "stop task", "cancel task"
@@ -25,41 +29,62 @@ allowed-tools: mcp:dev-workflow-tracker:get_task_for_session, mcp:dev-workflow-t
 - User asks: "what tasks are available?", "what can I work on?"
 - User browses: "show me the tasks", "list pending tasks"
 
-**PR workflow:**
-- User mentions: "create PR", "open PR", "make a pull request"
-- User wants review: "submit for review", "ready for review"
-- User merging: "merge PR", "merge the pull request"
-- User checking: "PR status", "check PR"
+**Checking PR status:**
+- User mentions: "PR status", "check PR", "what's the PR status?"
 
 ## Task Lifecycle
 
+The task lifecycle supports 3 execution modes with a PR-based review flow:
+
 ```
-PENDING → IN_PROGRESS → COMPLETED
-              ↓
-          ABANDONED
+                    PENDING
+                       │
+         ┌─────────────┼─────────────┐
+         │             │             │
+     isolated        branch         main
+     (default)                       │
+         │             │             │
+         ▼             ▼             ▼
+    IN_PROGRESS   IN_PROGRESS   IN_PROGRESS
+    (worktree)    (branch)      (main)
+         │             │             │
+         ▼             ▼             │
+    PR_REVIEW     PR_REVIEW         │
+    (submit PR)   (submit PR)       │
+         │             │             │
+         ▼             ▼             ▼
+     COMPLETED     COMPLETED     COMPLETED
+    (merge+cleanup)(merge+cleanup)(direct)
+
+         Any status can → ABANDONED
 ```
 
-### Starting a Task
+### Execution Modes
 
-When starting a task:
-1. Task status changes to IN_PROGRESS
-2. Session is associated with the task
-3. Optionally, a git worktree is created for isolated execution
+**1. Isolated Mode (default)**
+- Creates a git worktree + branch for parallel work
+- Full PR workflow: submit for review → merge → complete
+- Best for: feature work, parallel tasks, changes that need review
 
-### Completing a Task
+**2. Branch Mode**
+- Creates a branch only, checks out in main repo
+- Full PR workflow: submit for review → merge → complete
+- Best for: sequential work, when worktrees aren't needed
 
-When completing a task:
-1. Task status changes to COMPLETED
-2. Session is cleared
-3. Worktree is cleaned up (branch is kept for PR creation)
+**3. Main Mode**
+- Works directly on main branch, no branch created
+- Skips PR workflow, completes directly
+- Best for: trivial fixes, documentation, config changes
 
-### Abandoning a Task
+### Status Transitions
 
-When abandoning a task:
-1. Task status changes to ABANDONED
-2. Session is cleared
-3. Worktree and branch are deleted (abandoned work)
-4. Reason is recorded
+| From | To | Trigger |
+|------|-----|---------|
+| PENDING | IN_PROGRESS | `start_task_session` |
+| IN_PROGRESS | PR_REVIEW | `submit_for_review` (isolated/branch modes) |
+| IN_PROGRESS | COMPLETED | `complete_task` (main mode only) |
+| PR_REVIEW | COMPLETED | `complete_task` (after PR merged) |
+| Any | ABANDONED | `abandon_task_session` |
 
 ## Process
 
@@ -74,58 +99,87 @@ When abandoning a task:
    - Call `get_task_for_session` with the task ID
    - Review title, description, and acceptance criteria
 
-3. **Check for worktree request:**
-   - If user mentions "worktree", "isolated", "separate branch" → set `createWorktree: true`
-   - Otherwise, work in the main repository
+3. **Determine execution mode:**
+   - Default: `isolated` (worktree + branch)
+   - If user mentions "branch only", "no worktree" → use `branch`
+   - If user mentions "on main", "direct", "trivial fix" → use `main`
 
 4. **Start the session:**
-   - Call `start_task_session` with task ID, session ID, and optional `createWorktree`
+   - Call `start_task_session` with task ID, session ID, and mode
    - If successful → show task details and begin work
 
 5. **Present task to user:**
    - Show what needs to be implemented
    - Show acceptance criteria as a checklist
-   - If worktree was created, show the worktree path and branch name
+   - For isolated mode: show worktree path and branch name
+   - For branch mode: show branch name
+   - For main mode: note that PR will be skipped
    - Offer to begin implementation
 
-### To Complete a Task
+### To Submit for Review (Isolated/Branch Modes)
 
-**IMPORTANT: Always ask user for confirmation before completing a task.**
+After implementing the task, submit for PR review:
 
 1. **Summarize work done:**
    - List the key changes made (files modified, features added)
    - Review acceptance criteria against what was implemented
    - Show which criteria are met
 
-2. **Ask for confirmation:**
-   - Present summary to user
-   - Ask: "Should I mark this task as complete?"
-   - Wait for explicit user approval before proceeding
-   - Do NOT call `complete_task_session` without user saying yes
-
-3. **Re-ask after addressing concerns:**
-   - If user reports an issue or gives feedback, fix it first
-   - After fixing, **always re-summarize and ask again** if task should be marked complete
-   - Do NOT wait silently after addressing concerns — proactively re-ask
-   - Continue this cycle until user explicitly approves completion
-
-4. **Run validation steps:**
+2. **Run validation steps:**
    - Check context (CLAUDE.md, task labels, project docs) for required validation
    - Run any tests, linting, build, or other quality checks mentioned
    - Common validations: `make test`, `pnpm test`, `pnpm typecheck`, `pnpm lint`
-   - If validation fails → fix issues and re-ask (go back to step 3)
+   - If validation fails → fix issues before submitting
 
-5. **Create git commit:**
+3. **Create git commit:**
    - Stage all changes related to the task
    - Create a commit with a clear message describing the work done
    - Include task context in commit message (e.g., "Implement X for issue #N")
-   - This ensures all task work is properly committed before completion
 
-6. **Complete the session (only after user confirms and validation passes):**
-   - Call `complete_task_session` with task ID and session ID
-   - Worktree will be cleaned up automatically (branch preserved)
+4. **Submit for review:**
+   - Call `submit_for_review` with task ID
+   - This atomically: pushes branch, creates PR, transitions to PR_REVIEW
+   - Show the PR URL to user
 
-7. **Report completion:**
+5. **Report status:**
+   - Task is now in PR_REVIEW
+   - PR is open and ready for review
+   - User can still push changes to the PR branch
+
+### To Complete a Task
+
+**For Main Mode (no PR):**
+
+1. **Summarize work done:**
+   - List the key changes made
+   - Review acceptance criteria
+
+2. **Ask for confirmation:**
+   - Present summary to user
+   - Ask: "Should I mark this task as complete?"
+   - Wait for explicit user approval
+
+3. **Run validation and commit:**
+   - Run tests/linting
+   - Create git commit
+
+4. **Complete the task:**
+   - Call `complete_task` with task ID and session ID
+   - Task transitions directly to COMPLETED
+
+**For Isolated/Branch Modes (with PR):**
+
+1. **Verify PR is merged:**
+   - Check PR status with `get_task_pr_status`
+   - If not merged → tell user to merge the PR first
+   - If merged → proceed
+
+2. **Complete the task:**
+   - Call `complete_task` with task ID and session ID
+   - This atomically: verifies PR merged, pulls main, cleans up worktree/branch
+   - Task transitions to COMPLETED
+
+3. **Report completion:**
    - Show task is now COMPLETED
    - Suggest next steps (next task, or done with issue)
 
@@ -133,92 +187,78 @@ When abandoning a task:
 
 1. **Confirm abandonment:**
    - Ask user for the reason
-   - Confirm they want to abandon (work will be lost)
+   - Confirm they want to abandon (work will be lost for isolated/branch modes)
 
 2. **Abandon the session:**
    - Call `abandon_task_session` with task ID, session ID, and reason
-   - Worktree and branch will be deleted
+   - For isolated/branch modes: worktree and branch will be deleted
 
 3. **Report and suggest:**
    - Show task is now ABANDONED
    - Suggest alternatives (different approach, re-plan issue)
 
-## Git Worktree Support
+## Execution Mode Details
 
-When starting a task with `createWorktree: true`:
+### Isolated Mode (Default)
+
+When starting with `mode: "isolated"`:
 - A new git branch is created: `issue-{N}/task-{N}-{slug}`
-- A worktree directory is created: `.worktrees/issue-{N}-task-{N}`
+- A worktree directory is created in the global track directory
 - Work happens in the isolated worktree, not the main repo
-- On completion: worktree removed, branch preserved (for PR)
+- On submit: branch is pushed, PR created
+- On completion: worktree removed, branch deleted (after merge)
 - On abandonment: worktree AND branch deleted
 
-**When to use worktrees:**
-- User explicitly asks for isolated execution
-- User mentions "worktree", "separate branch", or "isolated"
-- Working on changes that might conflict with other work
+**Best for:**
+- Feature development that needs review
+- Working on multiple tasks in parallel
+- Changes that might conflict with other work
+- Team workflows requiring code review
 
-## GitHub PR Workflow
+### Branch Mode
 
-Tasks that use worktrees can create PRs for code review before merging to main.
+When starting with `mode: "branch"`:
+- A new git branch is created: `issue-{N}/task-{N}-{slug}`
+- Branch is checked out in the main repository
+- No worktree created
+- On submit: branch is pushed, PR created
+- On completion: branch deleted (after merge), checkout main
+- On abandonment: branch deleted, checkout main
 
-### PR Lifecycle
+**Best for:**
+- Sequential work (one task at a time)
+- When worktree overhead isn't needed
+- Simple features that still need review
 
-```
-Task IN_PROGRESS → Create PR (DRAFT/OPEN) → Review → Merge PR → Task COMPLETED
-```
+### Main Mode
 
-### Creating a PR
+When starting with `mode: "main"`:
+- No branch created, work directly on main
+- No PR workflow
+- On completion: changes committed directly to main
+- On abandonment: uncommitted changes may be lost
 
-After implementing a task with a worktree:
-1. **Call `create_task_pr`** with the task ID
-   - PR title defaults to `[#issueNumber] taskTitle`
-   - PR body includes task description
-   - If issue is synced to GitHub, "Closes #N" is auto-added to link them
-   - Use `draft: true` for work-in-progress PRs
-2. **PR info is stored** on the task (prUrl, prNumber, prStatus)
-
-**Requirements:**
-- Task must have a branch (started with `createWorktree: true`)
-- GitHub integration must be enabled via `update_settings`
-
-### Merging a PR
-
-After PR is reviewed and approved:
-1. **Call `merge_task_pr`** with the task ID
-   - Default strategy is `squash` (cleaner history)
-   - Can use `merge` or `rebase` if preferred
-2. **PR status updates** to MERGED on the task
-
-### Checking PR Status
-
-To check current PR status:
-1. **Call `get_task_pr_status`** with the task ID
-2. Returns fresh status from GitHub (DRAFT, OPEN, MERGED, CLOSED)
-3. Cached status is updated automatically
-
-### When to Create PRs
-
-**Always create PRs when:**
-- Task was started with a worktree
-- User mentions "PR", "pull request", "code review"
-- Team workflow requires PR reviews
-
-**Skip PRs when:**
-- Working directly on main branch (no worktree)
-- Small fixes that don't need review
-- User explicitly says to skip PR
+**Best for:**
+- Trivial fixes (typos, small tweaks)
+- Documentation updates
+- Configuration changes
+- Emergency hotfixes (when review would delay too much)
 
 ## Example Interactions
 
-### Starting a Task
+### Starting a Task (Isolated Mode - Default)
 
 **User:** "Start working on the first task"
 
 **Response:**
 ```
-Starting task session...
+Starting task session in isolated mode...
 
 Task: Add OAuth2 authentication with Google provider
+
+Created isolated environment:
+- Branch: issue-5/task-1-add-oauth
+- Worktree: ~/.track/project-abc/worktrees/issue-5-task-1
 
 Description:
 Implement Google OAuth2 authentication flow including callback handling,
@@ -237,22 +277,18 @@ Task is now IN_PROGRESS.
 Ready to begin implementation. Where would you like to start?
 ```
 
-### Starting with Worktree
+### Starting in Branch Mode
 
-**User:** "Start task 2 in a worktree"
+**User:** "Start task 2 in branch mode"
 
 **Response:**
 ```
-Starting task session with isolated worktree...
+Starting task session in branch mode...
 
 Task: Add session management and user profile
 
-Created worktree:
-- Branch: issue-5/task-2-add-session-management
-- Path: .worktrees/issue-5-task-2
-
-You're now working in an isolated environment. Changes won't affect
-the main branch until you create a PR.
+Created branch: issue-5/task-2-add-session-management
+(checked out in main repository)
 
 Acceptance Criteria:
 - [ ] Session persists across page refreshes
@@ -264,9 +300,31 @@ Task is now IN_PROGRESS.
 Ready to begin implementation. Where would you like to start?
 ```
 
-### Completing a Task
+### Starting in Main Mode
 
-**User:** "I've finished the task, tests are passing"
+**User:** "Start the config update task on main"
+
+**Response:**
+```
+Starting task session in main mode...
+
+Task: Update logging configuration
+
+Working directly on main branch. No PR will be created - changes
+will be committed directly when you complete the task.
+
+Acceptance Criteria:
+- [ ] Log level configurable via environment variable
+- [ ] Log format matches production standards
+
+Task is now IN_PROGRESS.
+
+Ready to make the changes?
+```
+
+### Submitting for Review
+
+**User:** "I've finished the implementation, submit for review"
 
 **Response:**
 ```
@@ -289,6 +347,66 @@ Here's a summary of what was completed:
 - [x] Unit tests achieve 80%+ coverage
 - [x] Integration test covers sign-in flow
 
+Running validation...
+  - pnpm typecheck: PASSED
+  - pnpm test: PASSED
+
+Creating git commit...
+  [issue-5/task-1-add-oauth abc1234] Add OAuth2 authentication with Google
+
+Submitting for review...
+
+PR created successfully:
+- PR #42: https://github.com/owner/repo/pull/42
+- Title: [#5] Add OAuth2 authentication with Google provider
+- Status: OPEN
+
+Task is now in PR_REVIEW status. The PR is ready for review.
+You can still push additional changes to the branch if needed.
+```
+
+### Completing After PR Merged
+
+**User:** "The PR is merged, complete the task"
+
+**Response:**
+```
+Checking PR status...
+  PR #42: MERGED
+
+Completing task...
+  - Pulling latest changes to main
+  - Cleaning up worktree: ~/.track/project-abc/worktrees/issue-5-task-1
+  - Deleting branch: issue-5/task-1-add-oauth
+
+Task "Add OAuth2 authentication with Google provider" is now COMPLETED.
+
+Next available task: "Add session management and user profile"
+Would you like to start working on it?
+```
+
+### Completing in Main Mode
+
+**User:** "I've finished, mark it complete"
+
+**Response:**
+```
+Here's a summary of what was completed:
+
+**Task:** Update logging configuration
+
+**Changes made:**
+- Updated `src/config/logging.ts` with environment variable support
+- Updated log format to match production standards
+
+**Acceptance Criteria:**
+- [x] Log level configurable via environment variable
+- [x] Log format matches production standards
+
+Running validation...
+  - pnpm typecheck: PASSED
+  - pnpm test: PASSED
+
 Should I mark this task as complete?
 ```
 
@@ -296,162 +414,14 @@ Should I mark this task as complete?
 
 **Response:**
 ```
-Running validation steps from project context...
-  - pnpm typecheck: PASSED
-  - pnpm test: PASSED
-
 Creating git commit...
-  [main abc1234] Add OAuth2 authentication with Google provider (#5)
-   6 files changed, 342 insertions(+)
+  [main def5678] Update logging configuration (#8)
 
 Completing task session...
 
-Task "Add OAuth2 authentication with Google provider" is now COMPLETED.
+Task "Update logging configuration" is now COMPLETED.
 
-Next available task: "Add session management and user profile"
-Would you like to start working on it?
-```
-
-### Completing After Fixing Issues (Re-ask Flow)
-
-**User:** "I think I'm done"
-
-**Response:**
-```
-Here's a summary of what was completed:
-
-**Task:** Add form validation for user registration
-
-**Changes made:**
-- Added validation rules in `src/validators/user.ts`
-- Added error display component in `src/components/FormError.tsx`
-- Added unit tests
-
-**Acceptance Criteria:**
-- [x] Email format validation
-- [x] Password strength requirements
-- [x] Error messages display inline
-- [ ] Form disables submit while validating
-
-Should I mark this task as complete?
-```
-
-**User:** "Actually the submit button doesn't disable, can you fix that?"
-
-**Response:**
-```
-Good catch! Let me fix that.
-
-[Makes changes to disable submit button during validation]
-
-Done! I've updated `src/components/RegisterForm.tsx` to disable the
-submit button while validation is in progress.
-
-Here's the updated summary:
-
-**Changes made:**
-- Added validation rules in `src/validators/user.ts`
-- Added error display component in `src/components/FormError.tsx`
-- Updated `RegisterForm.tsx` to disable submit during validation
-- Added unit tests
-
-**Acceptance Criteria:**
-- [x] Email format validation
-- [x] Password strength requirements
-- [x] Error messages display inline
-- [x] Form disables submit while validating
-
-All criteria now met. Should I mark this task as complete?
-```
-
-**User:** "yes looks good"
-
-**Response:**
-```
-Running validation steps from project context...
-  - pnpm typecheck: PASSED
-  - pnpm test: PASSED
-
-Creating git commit...
-  [main abc1234] Add form validation for user registration (#12)
-   4 files changed, 156 insertions(+)
-
-Completing task session...
-
-Task "Add form validation for user registration" is now COMPLETED.
-
-Next available task: "Add password reset flow"
-Would you like to start working on it?
-```
-
-### Abandoning a Task
-
-**User:** "I need to abandon this task, the approach won't work"
-
-**Response:**
-```
-Are you sure you want to abandon this task?
-Reason provided: "the approach won't work"
-
-This will mark the task as ABANDONED. You can re-plan the issue
-with a different approach if needed.
-
-Proceeding with abandonment...
-
-Task "Add OAuth2 authentication with Google provider" is now ABANDONED.
-
-Would you like to re-plan issue #5 with a different approach?
-```
-
-### Creating a PR After Task Completion
-
-**User:** "Create a PR for the task"
-
-**Response:**
-```
-Creating PR for task "Add OAuth2 authentication"...
-
-PR created successfully:
-- PR #42: https://github.com/owner/repo/pull/42
-- Title: [#5] Add OAuth2 authentication with Google provider
-- Status: OPEN
-- Linked to GitHub issue #5 (will auto-close on merge)
-
-The PR is ready for review. Once approved, say "merge the PR" to merge it.
-```
-
-### Creating a Draft PR
-
-**User:** "Create a draft PR, it's not ready for review yet"
-
-**Response:**
-```
-Creating draft PR for task "Add session management"...
-
-Draft PR created successfully:
-- PR #43: https://github.com/owner/repo/pull/43
-- Title: [#5] Add session management and user profile
-- Status: DRAFT
-
-The PR is marked as draft. When ready for review, you can convert it
-to ready on GitHub, or create a new PR.
-```
-
-### Merging a PR
-
-**User:** "Merge the PR"
-
-**Response:**
-```
-Merging PR #42 for task "Add OAuth2 authentication"...
-
-PR merged successfully using squash strategy.
-- PR #42 is now MERGED
-- GitHub issue #5 has been auto-closed
-
-Task "Add OAuth2 authentication with Google provider" is now COMPLETED.
-
-Next available task: "Add session management and user profile"
+Next available task: "Add request tracing"
 Would you like to start working on it?
 ```
 
@@ -468,7 +438,29 @@ PR status for task "Add OAuth2 authentication":
 - Mergeable: Yes
 - Branch: issue-5/task-1-add-oauth
 
-The PR is open and ready to be merged. Say "merge the PR" when ready.
+The PR is open and ready to be merged. Once merged, say "complete the task"
+to finish up and clean the worktree.
+```
+
+### Abandoning a Task
+
+**User:** "I need to abandon this task, the approach won't work"
+
+**Response:**
+```
+Are you sure you want to abandon this task?
+Reason provided: "the approach won't work"
+
+This will:
+- Mark the task as ABANDONED
+- Delete the worktree: ~/.track/project-abc/worktrees/issue-5-task-1
+- Delete the branch: issue-5/task-1-add-oauth
+
+Proceeding with abandonment...
+
+Task "Add OAuth2 authentication with Google provider" is now ABANDONED.
+
+Would you like to re-plan issue #5 with a different approach?
 ```
 
 ## Error Handling
@@ -485,24 +477,23 @@ The PR is open and ready to be merged. Say "merge the PR" when ready.
 - Explain all tasks are completed or in progress
 - Suggest checking the plan or creating new tasks
 
-**PR creation failed - no branch:**
-- Task doesn't have a branch (wasn't started with worktree)
-- Suggest starting a new task with `createWorktree: true`
-- Or create a branch manually and use `gh pr create`
+**Submit for review failed - no branch:**
+- Task was started in main mode
+- Explain that main mode doesn't support PR workflow
+- Complete the task directly instead
 
-**PR creation failed - GitHub not configured:**
+**Submit for review failed - GitHub not configured:**
 - GitHub integration not enabled
 - Guide user to run `update_settings` with `enable_github` action
 
-**PR already exists:**
-- Task already has a PR associated
-- Show existing PR URL and status
-- Suggest using `get_task_pr_status` to check it
+**Complete failed - PR not merged:**
+- For isolated/branch modes, PR must be merged first
+- Show current PR status
+- Ask user to merge the PR on GitHub first
 
-**PR merge failed - not mergeable:**
-- PR has conflicts or failing checks
-- Suggest resolving conflicts on GitHub
-- Check PR status for details
+**Complete failed - PR not found:**
+- Task is in PR_REVIEW but PR was deleted
+- Suggest abandoning and re-starting the task
 
 ## Notes
 
@@ -510,6 +501,7 @@ The PR is open and ready to be merged. Say "merge the PR" when ready.
 - Session timeout is 1 hour of inactivity
 - Abandoned tasks can inform re-planning
 - Always show acceptance criteria when starting a task
+- Default to isolated mode for feature work
 
 ### Task Tuning
 

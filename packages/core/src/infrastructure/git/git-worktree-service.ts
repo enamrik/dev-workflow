@@ -256,7 +256,7 @@ export class NodeGitWorktreeService implements GitWorktreeService {
             path: current.path,
             branch: current.branch ?? "detached",
             head: current.head,
-            isMain: !current.path.includes(".worktrees"),
+            isMain: current.path === this.projectRoot,
           });
         }
         current = {};
@@ -269,7 +269,7 @@ export class NodeGitWorktreeService implements GitWorktreeService {
         path: current.path,
         branch: current.branch ?? "detached",
         head: current.head,
-        isMain: !current.path.includes(".worktrees"),
+        isMain: current.path === this.projectRoot,
       });
     }
 
