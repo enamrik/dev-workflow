@@ -460,12 +460,8 @@ export class NodeGitHubCLI implements GitHubCLI {
       args.push("--draft");
     }
 
-    // Get JSON output
-    args.push(
-      "--json",
-      "number,url,id,title,body,state,isDraft,headRefName,baseRefName,merged,mergeable"
-    );
-
+    // Note: gh pr create doesn't support --json, so we create the PR first
+    // then fetch its data using gh pr view
     const result = await this.run(args);
     if (!result.success) {
       throw new GitHubCLIError(
@@ -475,8 +471,23 @@ export class NodeGitHubCLI implements GitHubCLI {
       );
     }
 
-    const data = JSON.parse(result.stdout) as Record<string, unknown>;
-    return this.mapPRData(data);
+    // The output contains the PR URL, extract the PR number from it
+    // Format: https://github.com/owner/repo/pull/123
+    const urlMatch = result.stdout.trim().match(/\/pull\/(\d+)/);
+    if (!urlMatch) {
+      throw new GitHubCLIError(
+        `Failed to parse PR URL from output: ${result.stdout}`
+      );
+    }
+
+    const prNumber = parseInt(urlMatch[1], 10);
+
+    // Fetch full PR data
+    const pr = await this.getPR(prNumber);
+    if (!pr) {
+      throw new GitHubCLIError("PR not found after creation");
+    }
+    return pr;
   }
 
   async mergePR(
