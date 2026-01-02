@@ -14,6 +14,7 @@ export * from "./domain/template.js";
 export * from "./domain/events.js";
 export * from "./domain/github.js";
 export * from "./domain/milestone.js";
+export * from "./domain/project.js";
 
 // Application services
 export { PlanningService } from "./application/planning-service.js";
@@ -62,6 +63,12 @@ export {
   GitHubSyncService,
   GitHubSyncError,
 } from "./application/github-sync-service.js";
+export {
+  ProjectService,
+  ProjectError,
+  NodeGitOperations,
+  type GitOperations,
+} from "./application/project-service.js";
 
 // Infrastructure - Database
 export * from "./infrastructure/database/schema.js";
@@ -77,6 +84,7 @@ export { SqlitePlanRepository } from "./infrastructure/repositories/plan-reposit
 export { SqliteTaskRepository } from "./infrastructure/repositories/task-repository.js";
 export { SqliteSnapshotRepository } from "./infrastructure/repositories/snapshot-repository.js";
 export { SqliteMilestoneRepository } from "./infrastructure/repositories/milestone-repository.js";
+export { SqliteProjectRepository } from "./infrastructure/repositories/project-repository.js";
 
 // Infrastructure - File System
 export type { FileSystem } from "./infrastructure/file-system/file-system.js";

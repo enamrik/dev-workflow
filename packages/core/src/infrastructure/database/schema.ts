@@ -310,6 +310,53 @@ export const milestones = sqliteTable("milestones", {
   projectNumberIdx: uniqueIndex("milestones_project_number_idx").on(table.projectId, table.number),
 }));
 
+/**
+ * GitHub issue sync configuration stored as JSON
+ */
+export interface GitHubIssueSyncConfig {
+  enabled: boolean;
+  projectId?: string; // GitHub Project ID (e.g., PVT_kwDO...)
+  labels?: {
+    typeLabels: {
+      FEATURE: string;
+      BUG: string;
+      ENHANCEMENT: string;
+      TASK: string;
+    };
+    customLabels?: string[];
+  };
+}
+
+/**
+ * Projects table schema
+ *
+ * Centralized storage for project configuration.
+ * Uses git's initial commit hash as stable identifier that survives repo moves.
+ */
+export const projects = sqliteTable("projects", {
+  // Primary key (UUID)
+  id: text("id").primaryKey(),
+
+  // Stable identifier: SHA of the initial commit (git rev-list --max-parents=0 HEAD)
+  // This never changes regardless of where the repo is cloned or moved
+  gitRootHash: text("git_root_hash").notNull().unique(),
+
+  // Human-readable project name (typically the folder name)
+  name: text("name").notNull(),
+
+  // Current absolute path to the git repository root
+  // Updated on each `dev-workflow init` to handle repo moves
+  gitRoot: text("git_root").notNull(),
+
+  // GitHub issue sync configuration (JSON)
+  githubSync: text("github_sync", { mode: "json" })
+    .$type<GitHubIssueSyncConfig | null>(),
+
+  // Timestamps (stored as ISO strings)
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 // Type inference for SELECT operations
 export type IssueRow = typeof issues.$inferSelect;
 export type SnapshotRow = typeof snapshots.$inferSelect;
@@ -318,6 +365,7 @@ export type TaskRow = typeof tasks.$inferSelect;
 export type TaskStatusHistoryRow = typeof taskStatusHistory.$inferSelect;
 export type TaskExecutionLogRow = typeof taskExecutionLogs.$inferSelect;
 export type MilestoneRow = typeof milestones.$inferSelect;
+export type ProjectRow = typeof projects.$inferSelect;
 
 // Type inference for INSERT operations
 export type NewIssue = typeof issues.$inferInsert;
@@ -327,3 +375,4 @@ export type NewTask = typeof tasks.$inferInsert;
 export type NewTaskStatusHistory = typeof taskStatusHistory.$inferInsert;
 export type NewTaskExecutionLog = typeof taskExecutionLogs.$inferInsert;
 export type NewMilestone = typeof milestones.$inferInsert;
+export type NewProject = typeof projects.$inferInsert;
