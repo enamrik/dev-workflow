@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { projects, ProjectRow } from "../database/schema.js";
+import { projects, issues, milestones, snapshots, ProjectRow } from "../database/schema.js";
 import type {
   Project,
   ProjectRepository,
@@ -32,6 +32,8 @@ export class SqliteProjectRepository implements ProjectRepository {
       gitRootHash: data.gitRootHash,
       name: data.name,
       githubSync: data.githubSync ?? null,
+      isArchived: false,
+      archivedAt: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -44,6 +46,8 @@ export class SqliteProjectRepository implements ProjectRepository {
         gitRootHash: project.gitRootHash,
         name: project.name,
         githubSync: project.githubSync,
+        isArchived: project.isArchived,
+        archivedAt: project.archivedAt,
         createdAt: project.createdAt,
         updatedAt: project.updatedAt,
       })
@@ -72,12 +76,14 @@ export class SqliteProjectRepository implements ProjectRepository {
     return result ? this.mapRowToProject(result) : null;
   }
 
-  findAll(): Project[] {
-    const results = this.db
-      .select()
-      .from(projects)
-      .all();
+  findAll(includeArchived: boolean = false): Project[] {
+    let query = this.db.select().from(projects);
 
+    if (!includeArchived) {
+      query = query.where(eq(projects.isArchived, false)) as typeof query;
+    }
+
+    const results = query.all();
     return results.map((row) => this.mapRowToProject(row));
   }
 
@@ -108,6 +114,78 @@ export class SqliteProjectRepository implements ProjectRepository {
       .run();
   }
 
+  archive(id: string): Project {
+    const now = new Date().toISOString();
+
+    this.db
+      .update(projects)
+      .set({
+        isArchived: true,
+        archivedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(projects.id, id))
+      .run();
+
+    const archived = this.findById(id);
+    if (!archived) {
+      throw new Error(`Failed to archive project: ${id}`);
+    }
+
+    return archived;
+  }
+
+  unarchive(id: string): Project {
+    const now = new Date().toISOString();
+
+    this.db
+      .update(projects)
+      .set({
+        isArchived: false,
+        archivedAt: null,
+        updatedAt: now,
+      })
+      .where(eq(projects.id, id))
+      .run();
+
+    const unarchived = this.findById(id);
+    if (!unarchived) {
+      throw new Error(`Failed to unarchive project: ${id}`);
+    }
+
+    return unarchived;
+  }
+
+  hardDelete(id: string): void {
+    // Delete in order to respect foreign key constraints
+    // Note: plans and tasks cascade from issues, task_status_history and
+    // task_execution_logs cascade from tasks
+
+    // 1. Delete snapshots for this project
+    this.db
+      .delete(snapshots)
+      .where(eq(snapshots.projectId, id))
+      .run();
+
+    // 2. Delete milestones for this project
+    this.db
+      .delete(milestones)
+      .where(eq(milestones.projectId, id))
+      .run();
+
+    // 3. Delete issues for this project (cascades to plans, tasks, etc.)
+    this.db
+      .delete(issues)
+      .where(eq(issues.projectId, id))
+      .run();
+
+    // 4. Finally delete the project itself
+    this.db
+      .delete(projects)
+      .where(eq(projects.id, id))
+      .run();
+  }
+
   /**
    * Map database row to domain Project object
    */
@@ -117,6 +195,8 @@ export class SqliteProjectRepository implements ProjectRepository {
       gitRootHash: row.gitRootHash,
       name: row.name,
       githubSync: row.githubSync ?? null,
+      isArchived: row.isArchived,
+      archivedAt: row.archivedAt ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

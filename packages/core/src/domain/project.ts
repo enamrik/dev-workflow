@@ -21,6 +21,8 @@ export interface Project {
   readonly gitRootHash: string; // SHA of initial commit (stable identifier)
   readonly name: string; // Human-readable name (typically folder name)
   readonly githubSync: GitHubIssueSyncConfig | null; // GitHub sync configuration
+  readonly isArchived: boolean; // Whether project is archived (hidden from UI)
+  readonly archivedAt: string | null; // ISO datetime when archived
   readonly createdAt: string; // ISO datetime string
   readonly updatedAt: string; // ISO datetime string
 }
@@ -78,9 +80,10 @@ export interface ProjectRepository {
   /**
    * Find all projects
    *
-   * @returns Array of all projects
+   * @param includeArchived - If true, include archived projects (default: false)
+   * @returns Array of projects
    */
-  findAll(): Project[];
+  findAll(includeArchived?: boolean): Project[];
 
   /**
    * Update a project's properties
@@ -92,11 +95,46 @@ export interface ProjectRepository {
   update(id: string, data: UpdateProjectData): Project;
 
   /**
-   * Delete a project
-   *
-   * WARNING: This will orphan any issues associated with this project.
+   * Archive a project (soft delete - hides from UI but preserves data)
    *
    * @param id - Project UUID
+   * @returns The archived project
+   */
+  archive(id: string): Project;
+
+  /**
+   * Unarchive a project (restore from archived state)
+   *
+   * @param id - Project UUID
+   * @returns The unarchived project
+   */
+  unarchive(id: string): Project;
+
+  /**
+   * Hard delete a project and ALL associated data
+   *
+   * WARNING: This permanently deletes:
+   * - The project record
+   * - All issues associated with this project
+   * - All plans (cascades from issues)
+   * - All tasks (cascades from plans)
+   * - All milestones
+   * - All snapshots
+   *
+   * This operation is IRREVERSIBLE.
+   *
+   * @param id - Project UUID
+   */
+  hardDelete(id: string): void;
+
+  /**
+   * Delete a project (soft delete via archive is preferred)
+   *
+   * WARNING: This will orphan any issues associated with this project.
+   * Consider using archive() instead.
+   *
+   * @param id - Project UUID
+   * @deprecated Use archive() or hardDelete() instead
    */
   delete(id: string): void;
 }
