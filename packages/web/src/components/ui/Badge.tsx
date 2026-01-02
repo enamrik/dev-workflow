@@ -28,6 +28,7 @@ const statusStyles: Record<string, string> = {
   CLOSED: "bg-gray-200 text-gray-700",
   // Task statuses
   PENDING: "bg-gray-200 text-gray-700",
+  PR_REVIEW: "bg-blue-100 text-blue-800",
   COMPLETED: "bg-green-100 text-green-800",
   ABANDONED: "bg-red-100 text-red-700",
 };

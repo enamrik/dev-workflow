@@ -13,6 +13,8 @@ function getStatusIcon(status: Task["status"]): string {
       return "\u2713";
     case "IN_PROGRESS":
       return "\u2192";
+    case "PR_REVIEW":
+      return "\u21C4"; // arrows left right
     case "ABANDONED":
       return "\u2717";
     default:
@@ -23,6 +25,7 @@ function getStatusIcon(status: Task["status"]): string {
 export function TaskItem({ task }: TaskItemProps) {
   const isCompleted = task.status === "COMPLETED";
   const isInProgress = task.status === "IN_PROGRESS";
+  const isPRReview = task.status === "PR_REVIEW";
   const isAbandoned = task.status === "ABANDONED";
   const hasWorktree = !!task.worktreePath;
   const hasPR = !!task.prUrl;
@@ -33,8 +36,9 @@ export function TaskItem({ task }: TaskItemProps) {
         "flex gap-4 p-4 rounded-lg border",
         isCompleted && "bg-green-50 border-green-200",
         isInProgress && "bg-orange-50 border-orange-200",
+        isPRReview && "bg-blue-50 border-blue-200",
         isAbandoned && "bg-red-50 border-red-200",
-        !isCompleted && !isInProgress && !isAbandoned && "bg-gray-50 border-gray-200"
+        !isCompleted && !isInProgress && !isPRReview && !isAbandoned && "bg-gray-50 border-gray-200"
       )}
     >
       <div
@@ -42,8 +46,9 @@ export function TaskItem({ task }: TaskItemProps) {
           "w-6 h-6 flex items-center justify-center rounded-full text-sm font-bold",
           isCompleted && "bg-green-500 text-white",
           isInProgress && "bg-orange-500 text-white",
+          isPRReview && "bg-blue-500 text-white",
           isAbandoned && "bg-red-500 text-white",
-          !isCompleted && !isInProgress && !isAbandoned && "bg-gray-300 text-gray-600"
+          !isCompleted && !isInProgress && !isPRReview && !isAbandoned && "bg-gray-300 text-gray-600"
         )}
       >
         {getStatusIcon(task.status)}

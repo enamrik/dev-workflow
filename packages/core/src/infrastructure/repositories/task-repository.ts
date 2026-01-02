@@ -1,11 +1,13 @@
-import { eq, max, and, asc, inArray } from "drizzle-orm";
+import { eq, max, and, asc, inArray, desc } from "drizzle-orm";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { tasks, taskStatusHistory, TaskRow } from "../database/schema.js";
+import { tasks, taskStatusHistory, taskExecutionLogs, TaskRow, TaskStatusHistoryRow, TaskExecutionLogRow } from "../database/schema.js";
 import type {
   Task,
   TaskRepository,
   TaskFilters,
   TaskStatus,
+  TaskStatusHistory,
+  TaskExecutionLog,
 } from "../../domain/task.js";
 import * as schema from "../database/schema.js";
 
@@ -563,6 +565,74 @@ export class SqliteTaskRepository implements TaskRepository {
     }
 
     return updatedTask;
+  }
+
+  /**
+   * Get status history for a task
+   *
+   * Returns all status transitions ordered by timestamp descending (newest first).
+   *
+   * @param taskId - Task UUID
+   * @returns Array of status history entries
+   */
+  getStatusHistory(taskId: string): TaskStatusHistory[] {
+    const results = this.db
+      .select()
+      .from(taskStatusHistory)
+      .where(eq(taskStatusHistory.taskId, taskId))
+      .orderBy(desc(taskStatusHistory.changedAt))
+      .all();
+
+    return results.map((row) => this.mapRowToStatusHistory(row));
+  }
+
+  /**
+   * Get execution logs for a task
+   *
+   * Returns all execution log entries ordered by timestamp ascending (oldest first).
+   *
+   * @param taskId - Task UUID
+   * @returns Array of execution log entries
+   */
+  getExecutionLogs(taskId: string): TaskExecutionLog[] {
+    const results = this.db
+      .select()
+      .from(taskExecutionLogs)
+      .where(eq(taskExecutionLogs.taskId, taskId))
+      .orderBy(asc(taskExecutionLogs.createdAt))
+      .all();
+
+    return results.map((row) => this.mapRowToExecutionLog(row));
+  }
+
+  /**
+   * Map database row to domain TaskStatusHistory object
+   */
+  private mapRowToStatusHistory(row: TaskStatusHistoryRow): TaskStatusHistory {
+    return {
+      id: row.id,
+      taskId: row.taskId,
+      fromStatus: row.fromStatus as TaskStatus,
+      toStatus: row.toStatus as TaskStatus,
+      changedBy: row.changedBy ?? undefined,
+      changedAt: row.changedAt,
+      notes: row.notes ?? undefined,
+      sessionId: row.sessionId ?? undefined,
+    };
+  }
+
+  /**
+   * Map database row to domain TaskExecutionLog object
+   */
+  private mapRowToExecutionLog(row: TaskExecutionLogRow): TaskExecutionLog {
+    return {
+      id: row.id,
+      taskId: row.taskId,
+      sessionId: row.sessionId,
+      message: row.message,
+      filesModified: row.filesModified ?? undefined,
+      createdAt: row.createdAt,
+    };
   }
 
   /**

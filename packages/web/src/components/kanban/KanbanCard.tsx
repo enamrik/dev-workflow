@@ -100,6 +100,7 @@ function CardContent({
 }) {
   const isCompleted = task.status === "COMPLETED";
   const isInProgress = task.status === "IN_PROGRESS";
+  const isPRReview = task.status === "PR_REVIEW";
   const isAbandoned = task.status === "ABANDONED";
 
   return (
@@ -108,8 +109,9 @@ function CardContent({
         "bg-white rounded-lg shadow-sm border p-3 transition-shadow hover:shadow-md",
         isCompleted && "border-green-200",
         isInProgress && "border-orange-200",
+        isPRReview && "border-blue-200",
         isAbandoned && "border-red-200 opacity-75",
-        !isCompleted && !isInProgress && !isAbandoned && "border-gray-200"
+        !isCompleted && !isInProgress && !isPRReview && !isAbandoned && "border-gray-200"
       )}
     >
       {/* Task number and title at top */}

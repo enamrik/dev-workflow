@@ -224,4 +224,64 @@ describe("SqliteTaskRepository", () => {
       expect(filtered).toHaveLength(1);
     });
   });
+
+  describe("getStatusHistory", () => {
+    it("should return empty array for task with no status changes", () => {
+      const task = createTestTask(repos.taskRepository, planId);
+
+      const history = repos.taskRepository.getStatusHistory(task.id);
+
+      expect(history).toEqual([]);
+    });
+
+    it("should return status changes in reverse chronological order", () => {
+      const task = createTestTask(repos.taskRepository, planId);
+
+      // Trigger status changes
+      repos.taskRepository.updateStatus(task.id, "IN_PROGRESS", "user1");
+      repos.taskRepository.updateStatus(task.id, "PR_REVIEW", "user2");
+      repos.taskRepository.updateStatus(task.id, "COMPLETED", "user3");
+
+      const history = repos.taskRepository.getStatusHistory(task.id);
+
+      expect(history).toHaveLength(3);
+      // Newest first
+      expect(history[0]?.fromStatus).toBe("PR_REVIEW");
+      expect(history[0]?.toStatus).toBe("COMPLETED");
+      expect(history[1]?.fromStatus).toBe("IN_PROGRESS");
+      expect(history[1]?.toStatus).toBe("PR_REVIEW");
+      expect(history[2]?.fromStatus).toBe("PENDING");
+      expect(history[2]?.toStatus).toBe("IN_PROGRESS");
+    });
+
+    it("should include changedBy information", () => {
+      const task = createTestTask(repos.taskRepository, planId);
+
+      repos.taskRepository.updateStatus(task.id, "IN_PROGRESS", "test-user");
+
+      const history = repos.taskRepository.getStatusHistory(task.id);
+
+      expect(history[0]?.changedBy).toBe("test-user");
+    });
+
+    it("should include notes when provided", () => {
+      const task = createTestTask(repos.taskRepository, planId);
+
+      repos.taskRepository.updateStatus(task.id, "ABANDONED", "user", "Not feasible");
+
+      const history = repos.taskRepository.getStatusHistory(task.id);
+
+      expect(history[0]?.notes).toBe("Not feasible");
+    });
+  });
+
+  describe("getExecutionLogs", () => {
+    it("should return empty array for task with no logs", () => {
+      const task = createTestTask(repos.taskRepository, planId);
+
+      const logs = repos.taskRepository.getExecutionLogs(task.id);
+
+      expect(logs).toEqual([]);
+    });
+  });
 });
