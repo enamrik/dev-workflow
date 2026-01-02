@@ -96,15 +96,49 @@ export class ConfigService {
   constructor(private readonly resolver: TrackDirectoryResolver) {}
 
   /**
+   * Ensure config file exists, creating a default if missing.
+   *
+   * Creates the project directory structure and a minimal config
+   * with version, projectId, and gitRoot.
+   */
+  async ensureConfigExists(): Promise<void> {
+    const configPath = this.resolver.getConfigPath();
+
+    try {
+      await fs.access(configPath);
+      // File exists, nothing to do
+    } catch {
+      // File doesn't exist, create default config
+      const defaultConfig: Config = {
+        version: "1.0.0",
+        projectId: this.resolver.getProjectId(),
+        gitRoot: this.resolver.getGitRoot(),
+      };
+
+      // Ensure directory exists
+      const configDir = configPath.substring(0, configPath.lastIndexOf("/"));
+      await fs.mkdir(configDir, { recursive: true });
+
+      // Write default config
+      await fs.writeFile(configPath, JSON.stringify(defaultConfig, null, 2));
+    }
+  }
+
+  /**
    * Load and validate configuration from disk
    *
+   * Creates a default config if one doesn't exist.
+   *
    * @returns The validated configuration
-   * @throws ConfigError if config file doesn't exist or is invalid
+   * @throws ConfigError if config is invalid
    */
   async loadConfig(): Promise<Config> {
     if (this.config) {
       return this.config;
     }
+
+    // Ensure config exists before loading
+    await this.ensureConfigExists();
 
     const configPath = this.resolver.getConfigPath();
 
@@ -125,13 +159,6 @@ export class ConfigService {
     } catch (error) {
       if (error instanceof ConfigError) {
         throw error;
-      }
-      if (
-        error instanceof Error &&
-        "code" in error &&
-        error.code === "ENOENT"
-      ) {
-        throw new ConfigError(`Config file not found: ${configPath}`);
       }
       throw new ConfigError(
         `Failed to load config: ${error instanceof Error ? error.message : String(error)}`,
