@@ -256,8 +256,13 @@ These values can still be overridden when creating an issue explicitly.
    */
   async configureClaudePermissions(): Promise<{ configured: boolean; permissions: string[] }> {
     const permissions = [
+      // Worktree file access
       "Read(~/.track/**/worktrees/**)",
       "Edit(~/.track/**/worktrees/**)",
+      // Skills
+      "Skill(dwf-*)",
+      // MCP tools
+      "mcp__dev-workflow-tracker__*",
     ];
 
     try {
