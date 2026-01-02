@@ -524,7 +524,7 @@ export class NodeGitHubCLI implements GitHubCLI {
       "view",
       String(prNumber),
       "--json",
-      "number,url,id,title,body,state,isDraft,headRefName,baseRefName,merged,mergeable",
+      "number,url,id,title,body,state,isDraft,headRefName,baseRefName,mergedAt,mergeable",
     ]);
 
     if (!result.success) {
@@ -597,9 +597,13 @@ export class NodeGitHubCLI implements GitHubCLI {
   }
 
   private mapPRData(data: Record<string, unknown>): GitHubPRData {
-    // Determine the state based on merged and state fields
+    // Derive merged status from mergedAt (gh CLI doesn't have a 'merged' field)
+    const mergedAt = data["mergedAt"] as string | null;
+    const isMerged = mergedAt !== null && mergedAt !== undefined;
+
+    // Determine the state based on merged status and state fields
     let state: GitHubPRData["state"];
-    if (data["merged"] === true) {
+    if (isMerged) {
       state = "MERGED";
     } else {
       state = data["state"] as "OPEN" | "CLOSED";
@@ -615,7 +619,7 @@ export class NodeGitHubCLI implements GitHubCLI {
       isDraft: (data["isDraft"] as boolean) ?? false,
       headBranch: data["headRefName"] as string,
       baseBranch: data["baseRefName"] as string,
-      merged: (data["merged"] as boolean) ?? false,
+      merged: isMerged,
       mergeable: (data["mergeable"] as GitHubPRData["mergeable"]) ?? "UNKNOWN",
     };
   }
