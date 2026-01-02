@@ -5,7 +5,6 @@ import { clsx } from "clsx";
 import { Badge, Markdown, Tooltip } from "../ui";
 import { TaskTiming } from "./TaskTiming";
 import { TaskMetadataPanel } from "./TaskMetadataPanel";
-import { TaskActions } from "./TaskActions";
 import type { Task } from "@/lib/types";
 
 interface TaskItemProps {
@@ -89,17 +88,6 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
           <div className="text-sm text-gray-600 mt-1">
             <Markdown>{task.description}</Markdown>
           </div>
-
-          {/* Consolidated actions section */}
-          {(task.branchName || task.prUrl) && (
-            <TaskActions
-              task={task}
-              issueNumber={issueNumber}
-              showCopyCommand={false}
-              compact
-              className="mt-3"
-            />
-          )}
 
           {/* PR status badge (shown separately for visibility) */}
           {task.prStatus && (
