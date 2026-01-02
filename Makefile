@@ -5,7 +5,7 @@ export PNPM_HOME
 export PATH := $(PNPM_HOME):$(PATH)
 DEV_WORKFLOW := $(PNPM_HOME)/dev-workflow
 
-.PHONY: help install build clean reset init dogfood test test-npm-install test-mcp test-e2e link unlink flatten-migrations ui ui-dev ui-stop
+.PHONY: help install build clean reset init dogfood test test-npm-install test-mcp test-e2e link unlink flatten-migrations ui ui-dev ui-stop local-track ui-dev-local
 
 help:
 	@echo "dev-workflow - Makefile commands"
@@ -27,6 +27,8 @@ help:
 	@echo "  make ui               - Restart UI server (rebuild + restart)"
 	@echo "  make ui-dev           - Start UI in dev mode with hot reload"
 	@echo "  make ui-stop          - Stop running UI server"
+	@echo "  make local-track      - Set up local .track/ for isolated testing"
+	@echo "  make ui-dev-local     - Start UI dev mode with local data"
 
 install:
 	@echo "📦 Installing dependencies..."
@@ -145,3 +147,14 @@ ui-dev:
 	@echo "   http://localhost:3457"
 	@(cd packages/web && npx wait-on tcp:3457 && open http://localhost:3457) &
 	@pnpm --filter @dev-workflow/web dev
+
+local-track:
+	@./scripts/local-track.sh
+
+ui-dev-local: local-track
+	@-lsof -ti :3457 | xargs kill 2>/dev/null || true
+	@echo "🔥 Starting UI in dev mode with local data..."
+	@echo "   http://localhost:3457"
+	@echo "   Using: TRACK_DIR=$$(pwd)/.track"
+	@(cd packages/web && npx wait-on tcp:3457 && open http://localhost:3457) &
+	@TRACK_DIR=$$(pwd)/.track pnpm --filter @dev-workflow/web dev
