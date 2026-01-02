@@ -88,23 +88,20 @@ async function runInit(): Promise<void> {
     return;
   }
 
-  // Determine mode: fresh install, repair, or already initialized
+  // Determine mode: fresh install or repair/re-init
   if (existingProject) {
     const needsRepair = await installer.needsConfigRepair();
 
-    if (!needsRepair && trackDirExists) {
-      // Fully initialized and config is current - nothing to do
-      console.error("❌ dev-workflow is already initialized for this repository.");
-      console.error(`   Project: ${existingProject.name} (${existingProject.id.slice(0, 8)}...)`);
-      console.error(`   Data: ${trackDir}`);
-      console.error("\nIf you want to update, run: dev-workflow update");
-      process.exit(1);
+    // Repair mode: project exists - run repair to ensure everything is up to date
+    // This makes `init` idempotent and safe to run multiple times
+    if (needsRepair || !trackDirExists) {
+      console.log("🔧 Repairing dev-workflow configuration...");
+      console.log(`   Project: ${existingProject.name} (${existingProject.id.slice(0, 8)}...)`);
+      console.log(`   Detected: Repository has moved or config is missing\n`);
+    } else {
+      console.log("🔧 Re-initializing dev-workflow...");
+      console.log(`   Project: ${existingProject.name} (${existingProject.id.slice(0, 8)}...)\n`);
     }
-
-    // Repair mode: project exists but config needs updating (e.g., repo was moved)
-    console.log("🔧 Repairing dev-workflow configuration...");
-    console.log(`   Project: ${existingProject.name} (${existingProject.id.slice(0, 8)}...)`);
-    console.log(`   Detected: Repository has moved or config is missing\n`);
 
     try {
       // Use existing project
@@ -142,7 +139,13 @@ async function runInit(): Promise<void> {
       await installer.registerMCPServer();
       console.log("✓ Re-registered MCP server with new paths");
 
-      console.log("\n✨ dev-workflow repaired successfully!");
+      // Update Claude permissions
+      const permResult = await installer.configureClaudePermissions();
+      if (permResult.configured) {
+        console.log("✓ Updated Claude permissions");
+      }
+
+      console.log("\n✨ dev-workflow re-initialized successfully!");
       console.log("\nYour issues, plans, and tasks are preserved.");
       console.log("Restart Claude Code to pick up the new configuration.");
     } catch (error) {
@@ -265,6 +268,11 @@ async function runUpdate(): Promise<void> {
     await updater.updateMCPServer();
     console.log("✓ Updated MCP server registration");
 
+    const permResult = await updater.configureClaudePermissions();
+    if (permResult.configured) {
+      console.log("✓ Updated Claude permissions");
+    }
+
     await updater.restartUIDaemonIfRunning();
 
     console.log("\n✨ dev-workflow updated successfully!");
@@ -272,6 +280,7 @@ async function runUpdate(): Promise<void> {
     console.log("- Skills updated to latest version");
     console.log("- New templates added (existing customizations preserved)");
     console.log("- MCP server registration refreshed");
+    console.log("- Claude permissions updated");
     console.log("- Database schema updated");
   } catch (error) {
     console.error("Error during update:", error);

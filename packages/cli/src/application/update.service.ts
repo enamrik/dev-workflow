@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { execSync } from "node:child_process";
+import * as fs from "node:fs";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
   TrackDirectoryResolver,
@@ -431,6 +432,58 @@ These values can still be overridden when creating an issue explicitly.
       console.log("🔄 Restarting UI daemon...");
       await UIService.restartDaemon();
       console.log("✓ UI daemon restarted");
+    }
+  }
+
+  /**
+   * Configure Claude Code permissions for worktree directories.
+   *
+   * Creates per-project .claude/settings.json with Read and Edit permissions
+   * for worktree paths so Claude can access files without prompting.
+   */
+  async configureClaudePermissions(): Promise<{ configured: boolean; permissions: string[] }> {
+    const permissions = [
+      // Worktree file access
+      "Read(~/.track/**/worktrees/**)",
+      "Edit(~/.track/**/worktrees/**)",
+      // Skills
+      "Skill(dwf-*)",
+      // MCP tools
+      "mcp__dev-workflow-tracker__*",
+    ];
+
+    try {
+      const claudeDir = path.join(this.workingDirectory, ".claude");
+      const settingsPath = path.join(claudeDir, "settings.json");
+
+      // Ensure .claude directory exists
+      if (!fs.existsSync(claudeDir)) {
+        fs.mkdirSync(claudeDir, { recursive: true });
+      }
+
+      // Read existing settings or create new one
+      let settings: Record<string, unknown> = {};
+
+      if (fs.existsSync(settingsPath)) {
+        const content = fs.readFileSync(settingsPath, "utf-8");
+        settings = JSON.parse(content);
+      }
+
+      // Ensure permissions.allow structure exists, preserving other properties
+      const existingPermissions = (settings["permissions"] as Record<string, unknown>) ?? {};
+      const existingAllow = (existingPermissions["allow"] as string[]) ?? [];
+
+      // Merge permissions (avoid duplicates)
+      settings["permissions"] = {
+        ...existingPermissions,
+        allow: [...new Set([...existingAllow, ...permissions])],
+      };
+
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+      return { configured: true, permissions };
+    } catch {
+      // Don't fail if settings can't be written
+      return { configured: false, permissions };
     }
   }
 }
