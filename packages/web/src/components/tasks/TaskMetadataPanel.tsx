@@ -21,6 +21,8 @@ interface TaskMetadataPanelProps {
   hideTimestamps?: boolean;
   /** Hide the actions section (e.g., when shown above in parent) */
   hideActions?: boolean;
+  /** Hide PR status badge (e.g., when shown in subheader) */
+  hidePRStatus?: boolean;
 }
 
 function formatDateTime(isoString: string): string {
@@ -53,6 +55,7 @@ export function TaskMetadataPanel({
   hideCopyCommand = false,
   hideTimestamps = false,
   hideActions = false,
+  hidePRStatus = false,
 }: TaskMetadataPanelProps) {
   const { data, isLoading, error } = useTaskMetadata(projectId, task.id);
 
@@ -88,7 +91,7 @@ export function TaskMetadataPanel({
       )}
 
       {/* PR status badge (shown separately for visibility) */}
-      {task.prStatus && (
+      {!hidePRStatus && task.prStatus && (
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-500">PR Status:</span>
           <Badge variant="prStatus" value={task.prStatus} />

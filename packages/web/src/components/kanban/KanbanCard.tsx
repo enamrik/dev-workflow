@@ -88,14 +88,25 @@ function TaskModalContent({
 
       {/* Content */}
       <div className="p-4">
-        {/* Actions panel at top of content */}
-        {(task.branchName || task.prUrl || projectId) && (
-          <TaskActions
-            task={task}
-            issueNumber={issueNumber}
-            showCopyCommand={!!projectId}
-            className="mb-4"
-          />
+        {/* Subheader: Actions panel + PR status */}
+        {(task.branchName || task.prUrl || projectId || task.prStatus) && (
+          <div className="flex items-center justify-between gap-2 mb-4">
+            {(task.branchName || task.prUrl || projectId) ? (
+              <TaskActions
+                task={task}
+                issueNumber={issueNumber}
+                showCopyCommand={!!projectId}
+              />
+            ) : (
+              <div />
+            )}
+            {task.prStatus && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">PR Status:</span>
+                <Badge variant="prStatus" value={task.prStatus} />
+              </div>
+            )}
+          </div>
         )}
 
         {activeTab === "task" ? (
@@ -198,6 +209,7 @@ function DetailsTab({
       projectId={projectId}
       issueNumber={issueNumber}
       hideActions
+      hidePRStatus
       hideTimestamps
     />
   );
