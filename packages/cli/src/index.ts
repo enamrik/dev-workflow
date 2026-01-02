@@ -246,6 +246,13 @@ async function runUI(): Promise<void> {
   const { isPortInUse, getSavedDaemonPort } = await import("./infrastructure/port-manager.js");
 
   try {
+    // If PORT is explicitly set, always start on that port (for E2E tests, parallel instances)
+    const explicitPort = process.env["PORT"];
+    if (explicitPort) {
+      await UIService.startMultiProject();
+      return;
+    }
+
     // Check if daemon is already running by checking saved port
     const savedPort = getSavedDaemonPort();
     if (savedPort) {
