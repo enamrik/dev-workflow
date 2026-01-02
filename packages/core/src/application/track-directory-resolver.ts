@@ -17,9 +17,33 @@ import { execSync } from "node:child_process";
  */
 export class TrackDirectoryResolver {
   private readonly projectId: string;
+  private readonly gitRoot: string;
 
-  constructor(private readonly gitRoot: string) {
-    this.projectId = this.computeProjectId();
+  /**
+   * Create a resolver from a git root path.
+   * The project ID will be computed from the path.
+   */
+  constructor(gitRoot: string);
+  /**
+   * Create a resolver from a known project ID.
+   * Use this when you already have the project ID and don't need to compute it.
+   */
+  constructor(gitRoot: string, projectId: string);
+  constructor(gitRoot: string, projectId?: string) {
+    this.gitRoot = gitRoot;
+    this.projectId = projectId ?? this.computeProjectId();
+  }
+
+  /**
+   * Create a resolver from a known project ID.
+   * Use this when you already have the project ID and don't need to compute it.
+   *
+   * Note: gitRoot will be set to the track directory, which is fine since
+   * this resolver is only used for path resolution, not for git operations.
+   */
+  static fromProjectId(projectId: string): TrackDirectoryResolver {
+    const trackDir = path.join(os.homedir(), ".track", projectId);
+    return new TrackDirectoryResolver(trackDir, projectId);
   }
 
   /**
