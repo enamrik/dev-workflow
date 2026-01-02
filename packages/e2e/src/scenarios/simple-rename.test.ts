@@ -207,6 +207,105 @@ describe("E2E: Simple File Rename", () => {
     console.log("  ✓ Kanban board shows the rename task");
 
     console.log("\n✨ All verifications passed!");
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 7: Close the issue (required for nuke)
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log("\n📋 Step 7: Closing issue...");
+
+    const closeResult = await runClaude(
+      `Close issue #${issue.number} using update_issue with status "CLOSED".`,
+      {
+        cwd: harness.testDir,
+        allowedTools: ["mcp__dev-workflow-tracker__update_issue"],
+        timeout: 60000,
+        env: harness.getEnv() as Record<string, string>,
+      }
+    );
+    expect(closeResult.exitCode).toBe(0);
+
+    db = harness.getDb();
+    const closedIssue = db
+      .prepare("SELECT * FROM issues WHERE number = ? AND project_id = ?")
+      .get(issue.number, harness.databaseProjectId) as { status: string };
+    expect(closedIssue.status).toBe("CLOSED");
+    console.log(`✓ Issue #${issue.number} closed`);
+    db.close();
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 8: Archive the project
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log("\n📦 Step 8: Archiving project...");
+
+    const devWorkflowCmd = harness.getDevWorkflowCommand();
+    const { execSync } = await import("node:child_process");
+
+    execSync(`${devWorkflowCmd} archive`, {
+      cwd: harness.testDir,
+      stdio: "pipe",
+      env: harness.getEnv() as Record<string, string>,
+    });
+
+    // Verify project is archived in database
+    db = harness.getDb();
+    const archivedProject = db
+      .prepare("SELECT is_archived, archived_at FROM projects WHERE id = ?")
+      .get(harness.databaseProjectId) as { is_archived: number; archived_at: string | null };
+    db.close();
+
+    expect(archivedProject.is_archived).toBe(1);
+    expect(archivedProject.archived_at).not.toBeNull();
+    console.log("✓ Project archived in database");
+
+    // Verify skills were removed
+    expect(harness.fileExists(".claude/skills/dwf-manage-issue")).toBe(false);
+    console.log("✓ Skills removed");
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 9: Nuke the project (permanently delete)
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log("\n💣 Step 9: Nuking project...");
+
+    // Get project name from database for confirmation
+    db = harness.getDb();
+    const project = db
+      .prepare("SELECT name FROM projects WHERE id = ?")
+      .get(harness.databaseProjectId) as { name: string };
+    const projectName = project.name;
+    db.close();
+
+    // Nuke requires typing project name to confirm - pipe it to stdin
+    const { spawnSync } = await import("node:child_process");
+    const nukeResult = spawnSync(devWorkflowCmd.split(" ")[0]!, [...devWorkflowCmd.split(" ").slice(1), "nuke"], {
+      cwd: harness.testDir,
+      input: projectName + "\n",
+      encoding: "utf-8",
+      env: harness.getEnv() as Record<string, string>,
+    });
+
+    expect(nukeResult.status).toBe(0);
+    console.log("✓ Nuke command completed");
+
+    // Verify project is deleted from database
+    db = harness.getDb();
+    const deletedProject = db
+      .prepare("SELECT id FROM projects WHERE id = ?")
+      .get(harness.databaseProjectId);
+    const remainingIssues = db
+      .prepare("SELECT COUNT(*) as count FROM issues WHERE project_id = ?")
+      .get(harness.databaseProjectId) as { count: number };
+    db.close();
+
+    expect(deletedProject).toBeUndefined();
+    expect(remainingIssues.count).toBe(0);
+    console.log("✓ Project and all data deleted from database");
+
+    // Verify track directory was removed
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(harness.projectTrackDir)).toBe(false);
+    console.log("✓ Track directory removed");
+
+    console.log("\n✨ Archive and nuke verifications passed!");
     testPassed = true;
   }, 600000); // 10 min total for the full workflow
 });
