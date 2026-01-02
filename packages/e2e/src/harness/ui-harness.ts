@@ -10,7 +10,8 @@ import { chromium, type Browser, type Page } from "@playwright/test";
 import { getSavedDaemonPort } from "@dev-workflow/core";
 import type { E2ETestHarness } from "./test-harness.js";
 
-const DEFAULT_PORT = 3456;
+// Use a different port than production (3456) and dev mode (3457)
+const DEFAULT_PORT = 3458;
 
 // Re-export for convenience
 export { getSavedDaemonPort as getDaemonPort } from "@dev-workflow/core";
