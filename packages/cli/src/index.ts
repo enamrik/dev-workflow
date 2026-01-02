@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import * as fs from "node:fs";
@@ -11,6 +11,19 @@ import { UninstallService } from "./application/uninstall.service.js";
 import { UIService } from "./application/ui.service.js";
 import { NodeFileSystem } from "./infrastructure/file-system.js";
 import { createTrackDirectoryResolver } from "@dev-workflow/core";
+
+/**
+ * Check if the git repository has at least one commit.
+ * dev-workflow requires a commit to compute a stable project ID.
+ */
+function hasGitCommit(cwd: string): boolean {
+  try {
+    execSync("git rev-parse HEAD", { cwd, stdio: ["pipe", "pipe", "pipe"] });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function getPackageRoot(): string {
   // In development: packages/cli/dist -> packages/cli
@@ -25,14 +38,24 @@ async function runInit(): Promise<void> {
   const workingDirectory = process.cwd();
   const packageRoot = getPackageRoot();
 
-  // Create resolver to get global track directory path
-  let resolver;
-  try {
-    resolver = createTrackDirectoryResolver(workingDirectory);
-  } catch (error) {
-    console.error("❌ Not a git repository. dev-workflow requires git.");
-    process.exit(1);
+  // Check for git repository and at least one commit
+  if (!hasGitCommit(workingDirectory)) {
+    // Check if it's a git repo at all
+    try {
+      execSync("git rev-parse --git-dir", { cwd: workingDirectory, stdio: ["pipe", "pipe", "pipe"] });
+      // It's a git repo but no commits
+      console.error("❌ No commits found. dev-workflow requires at least one commit.");
+      console.error("   Run: git commit --allow-empty -m \"Initial commit\"");
+      process.exit(1);
+    } catch {
+      // Not a git repo
+      console.error("❌ Not a git repository. dev-workflow requires git.");
+      process.exit(1);
+    }
   }
+
+  // Create resolver to get global track directory path
+  const resolver = createTrackDirectoryResolver(workingDirectory);
 
   // Check if already initialized (in global ~/.track/<project-id>/)
   const trackDir = resolver.getTrackDirectory();

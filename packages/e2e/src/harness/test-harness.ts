@@ -11,7 +11,6 @@
  */
 
 import { execSync, spawnSync } from "node:child_process";
-import * as crypto from "node:crypto";
 import {
   mkdtempSync,
   rmSync,
@@ -20,10 +19,11 @@ import {
   readFileSync,
   mkdirSync,
 } from "node:fs";
-import { basename, join, resolve } from "node:path";
-import { homedir, tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+import { createTrackDirectoryResolver } from "@dev-workflow/core";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -41,8 +41,10 @@ export class E2ETestHarness {
   public dbPath: string;
   /** Global track directory (~/.track/<project-id>) - set after init */
   public trackDir: string = "";
-  /** Project ID computed from git root - set after setup */
+  /** Folder-based project ID (for track directory naming) - set after setup */
   public projectId: string = "";
+  /** Database project UUID (used in issues.project_id) - set after init */
+  public databaseProjectId: string = "";
   private cleanupOnSuccess: boolean;
   private useLocalBuild: boolean;
   private skipSampleProject: boolean;
@@ -56,16 +58,6 @@ export class E2ETestHarness {
     this.testDir = mkdtempSync(join(tmpdir(), "dev-workflow-e2e-"));
     // dbPath will be updated in setup() after we know the project ID
     this.dbPath = "";
-  }
-
-  /**
-   * Compute project ID from git root path (matches TrackDirectoryResolver logic)
-   * Format: <repo-folder-name>-<6-char-hash>
-   */
-  private computeProjectId(gitRoot: string): string {
-    const folderName = basename(gitRoot);
-    const hash = crypto.createHash("sha256").update(gitRoot).digest("hex").slice(0, 6);
-    return `${folderName}-${hash}`;
   }
 
   /**
@@ -124,17 +116,6 @@ export class E2ETestHarness {
     });
     console.log("✓ Git repo initialized");
 
-    // Compute the global track directory path (matches TrackDirectoryResolver)
-    // Need to get the resolved git root (may differ from testDir due to symlinks)
-    const gitRoot = execSync("git rev-parse --show-toplevel", {
-      cwd: this.testDir,
-      encoding: "utf-8",
-    }).trim();
-    this.projectId = this.computeProjectId(gitRoot);
-    this.trackDir = join(homedir(), ".track", this.projectId);
-    // Global database at ~/.track/workflow.db (single DB for all projects)
-    this.dbPath = join(homedir(), ".track", "workflow.db");
-
     // 3. Create sample project files
     if (!this.skipSampleProject) {
       await this.createSampleProject();
@@ -143,13 +124,20 @@ export class E2ETestHarness {
       writeFileSync(join(this.testDir, "README.md"), "# E2E Test Project\n");
     }
 
-    // 4. Initial commit
+    // 4. Initial commit (must happen BEFORE computing projectId)
     execSync("git add .", { cwd: this.testDir, stdio: "pipe" });
     execSync('git commit -m "Initial commit"', {
       cwd: this.testDir,
       stdio: "pipe",
     });
     console.log("✓ Initial commit created");
+
+    // Use the same resolver as production code to compute paths
+    // Must be AFTER initial commit since we use git first commit hash
+    const resolver = createTrackDirectoryResolver(this.testDir);
+    this.projectId = resolver.getProjectId();
+    this.trackDir = resolver.getTrackDirectory();
+    this.dbPath = resolver.getDatabasePath();
 
     // 5. Run dev-workflow init
     console.log("🚀 Running dev-workflow init...");
@@ -176,6 +164,19 @@ export class E2ETestHarness {
     if (!existsSync(this.dbPath)) {
       throw new Error(`Database not created. Expected at: ${this.dbPath}`);
     }
+
+    // 7. Look up the database project UUID (needed for filtering issues in tests)
+    // Use resolver.getGitRoot() as it resolves symlinks (e.g., /var/folders → /private/var/folders on macOS)
+    const resolvedGitRoot = resolver.getGitRoot();
+    const db = new Database(this.dbPath);
+    const project = db.prepare("SELECT id FROM projects WHERE git_root = ?").get(resolvedGitRoot) as { id: string } | undefined;
+    db.close();
+
+    if (!project) {
+      throw new Error(`Project not found in database for git root: ${resolvedGitRoot}`);
+    }
+    this.databaseProjectId = project.id;
+
     console.log(`✓ Database ready at ${this.dbPath}\n`);
   }
 
