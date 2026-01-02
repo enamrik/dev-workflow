@@ -10,13 +10,13 @@ interface ProjectFilterProps {
 }
 
 export function ProjectFilter({ projects, value, onChange }: ProjectFilterProps) {
-  if (projects.length <= 1) {
+  if (projects.length === 0) {
     return null;
   }
 
   const options = projects.map((p) => ({
     value: p.id,
-    label: p.id,
+    label: p.name,
   }));
 
   return (

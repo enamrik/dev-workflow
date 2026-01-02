@@ -74,7 +74,9 @@ export interface Milestone {
 
 export interface Project {
   id: string;
+  name: string;
   trackDirectory: string;
+  gitRoot: string;
 }
 
 export interface ProjectIssueWithPlanInfo {

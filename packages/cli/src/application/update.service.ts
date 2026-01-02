@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import * as crypto from "node:crypto";
 import { execSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
@@ -8,6 +9,7 @@ import {
   ProjectService,
   NodeGitOperations,
   sql,
+  resolveGlobalTrackDir,
   type Project,
 } from "@dev-workflow/core";
 import { UIService } from "./ui.service.js";
@@ -121,11 +123,65 @@ export class UpdateService {
   }
 
   /**
-   * Check if dev-workflow is initialized for this project
+   * Check if dev-workflow is initialized for this project.
+   * Also checks for old-style directory naming and returns that path if found.
    */
   async isInitialized(): Promise<boolean> {
     const trackDir = this.resolver.getTrackDirectory();
-    return await this.fileSystem.exists(trackDir);
+    if (await this.fileSystem.exists(trackDir)) {
+      return true;
+    }
+
+    // Check for old-style directory (path-based hash)
+    const oldTrackDir = this.getOldStyleTrackDirectory();
+    if (oldTrackDir && (await this.fileSystem.exists(oldTrackDir))) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Get the old-style track directory path (using path-based hash).
+   * Used for migration from old naming to new naming.
+   */
+  private getOldStyleTrackDirectory(): string {
+    const folderName = path.basename(this.workingDirectory);
+    const hash = crypto.createHash("sha256").update(this.workingDirectory).digest("hex").slice(0, 6);
+    return path.join(resolveGlobalTrackDir(), `${folderName}-${hash}`);
+  }
+
+  /**
+   * Migrate track directory from old naming (path-based hash) to new naming (git-based hash).
+   * Returns info about what was migrated.
+   */
+  async migrateTrackDirectory(): Promise<{ migrated: boolean; oldPath?: string; newPath?: string }> {
+    const newTrackDir = this.resolver.getTrackDirectory();
+    const oldTrackDir = this.getOldStyleTrackDirectory();
+
+    // If they're the same, no migration needed
+    if (oldTrackDir === newTrackDir) {
+      return { migrated: false };
+    }
+
+    // If new directory already exists, no migration needed
+    if (await this.fileSystem.exists(newTrackDir)) {
+      return { migrated: false };
+    }
+
+    // If old directory doesn't exist, no migration needed
+    if (!(await this.fileSystem.exists(oldTrackDir))) {
+      return { migrated: false };
+    }
+
+    // Rename old directory to new directory
+    try {
+      const fs = await import("node:fs/promises");
+      await fs.rename(oldTrackDir, newTrackDir);
+      return { migrated: true, oldPath: oldTrackDir, newPath: newTrackDir };
+    } catch (error) {
+      throw new UpdateError(`Failed to migrate track directory from ${oldTrackDir} to ${newTrackDir}`, error);
+    }
   }
 
   /**

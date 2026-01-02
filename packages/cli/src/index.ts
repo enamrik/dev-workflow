@@ -124,6 +124,13 @@ async function runUpdate(): Promise<void> {
 
     console.log("🔄 Updating dev-workflow...");
 
+    // Migrate track directory from old naming to new naming (must be first)
+    const dirMigration = await updater.migrateTrackDirectory();
+    if (dirMigration.migrated) {
+      console.log(`✓ Migrated track directory:`);
+      console.log(`  ${dirMigration.oldPath} → ${dirMigration.newPath}`);
+    }
+
     await updater.updateSkills();
     console.log("✓ Updated skills");
 
