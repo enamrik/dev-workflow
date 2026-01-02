@@ -12,3 +12,4 @@ export { Select } from "./Select";
 export { Markdown } from "./Markdown";
 export { Tooltip } from "./Tooltip";
 export { Modal } from "./Modal";
+export { CopyButton } from "./CopyButton";
