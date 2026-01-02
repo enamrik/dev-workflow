@@ -5,8 +5,8 @@ import { StatusHistoryTimeline } from "./StatusHistoryTimeline";
 import { TimeBreakdown } from "./TimeBreakdown";
 import { TaskDependencies } from "./TaskDependencies";
 import { ExecutionLogList } from "./ExecutionLogList";
-import { CopyTaskCommand } from "./CopyTaskCommand";
-import { Badge, CopyButton } from "../ui";
+import { TaskActions } from "./TaskActions";
+import { Badge } from "../ui";
 import { useTaskMetadata } from "@/hooks";
 import type { Task } from "@/lib/types";
 
@@ -19,6 +19,10 @@ interface TaskMetadataPanelProps {
   hideCopyCommand?: boolean;
   /** Hide timestamps (e.g., when shown in footer) */
   hideTimestamps?: boolean;
+  /** Hide the actions section (e.g., when shown above in parent) */
+  hideActions?: boolean;
+  /** Hide PR status badge (e.g., when shown in subheader) */
+  hidePRStatus?: boolean;
 }
 
 function formatDateTime(isoString: string): string {
@@ -50,6 +54,8 @@ export function TaskMetadataPanel({
   className,
   hideCopyCommand = false,
   hideTimestamps = false,
+  hideActions = false,
+  hidePRStatus = false,
 }: TaskMetadataPanelProps) {
   const { data, isLoading, error } = useTaskMetadata(projectId, task.id);
 
@@ -71,59 +77,24 @@ export function TaskMetadataPanel({
 
   const { history = [], logs = [], dependencies = [] } = data || {};
 
+  const hasActions = !hideActions && (task.branchName || task.prUrl || !hideCopyCommand);
+
   return (
     <div className={clsx("space-y-4", className)}>
-      {/* Action buttons */}
-      {!hideCopyCommand && (
+      {/* Consolidated actions section */}
+      {hasActions && (
+        <TaskActions
+          task={task}
+          issueNumber={issueNumber}
+          showCopyCommand={!hideCopyCommand}
+        />
+      )}
+
+      {/* PR status badge (shown separately for visibility) */}
+      {!hidePRStatus && task.prStatus && (
         <div className="flex items-center gap-2">
-          <CopyTaskCommand issueNumber={issueNumber} taskNumber={task.number} />
-        </div>
-      )}
-
-      {/* Worktree and Branch info */}
-      {task.branchName && (
-        <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-            Branch
-          </div>
-          <div className="flex items-center gap-2">
-            <code className="text-sm bg-gray-100 px-2 py-1 rounded font-mono block truncate flex-1">
-              {task.branchName}
-            </code>
-            <CopyButton text={task.branchName} tooltip="Copy branch name" />
-          </div>
-          {task.worktreePath && (
-            <div className="mt-2 flex items-center gap-2">
-              <div className="text-xs text-gray-500 truncate flex-1" title={task.worktreePath}>
-                Worktree: {task.worktreePath}
-              </div>
-              <CopyButton text={task.worktreePath} tooltip="Copy worktree path" />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* PR info */}
-      {task.prUrl && (
-        <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-          <div className="flex items-center justify-between">
-            <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-              Pull Request
-            </div>
-            {task.prStatus && <Badge variant="prStatus" value={task.prStatus} />}
-          </div>
-          <div className="mt-2 flex items-center gap-2">
-            <a
-              href={task.prUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-            >
-              <PRIcon />
-              PR #{task.prNumber}
-            </a>
-            <CopyButton text={task.prUrl} tooltip="Copy PR URL" />
-          </div>
+          <span className="text-xs text-gray-500">PR Status:</span>
+          <Badge variant="prStatus" value={task.prStatus} />
         </div>
       )}
 
@@ -171,23 +142,5 @@ export function TaskMetadataPanel({
         </div>
       )}
     </div>
-  );
-}
-
-function PRIcon() {
-  return (
-    <svg
-      className="w-4 h-4"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-      />
-    </svg>
   );
 }

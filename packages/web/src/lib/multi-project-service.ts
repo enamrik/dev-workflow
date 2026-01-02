@@ -48,6 +48,7 @@ export interface ProjectTask extends Task {
  */
 export interface CompletedTask extends Task {
   projectId: string;
+  projectName: string;
   issueNumber: number;
   issueTitle: string;
   issueStatus: string;
@@ -75,6 +76,7 @@ export interface ProjectIssueWithTasks {
   tasks: Task[];
   milestoneNumber?: number;
   milestoneTitle?: string;
+  projectName?: string;
 }
 
 /**
@@ -158,6 +160,8 @@ export class MultiProjectService {
     }
 
     this.dbService = await DatabaseService.create(dbPath);
+    // Run migrations to ensure schema is up to date
+    this.dbService.runMigrations();
     const db = this.dbService.getDb();
     this.planRepository = new SqlitePlanRepository(db);
     this.taskRepository = new SqliteTaskRepository(db);
@@ -339,6 +343,7 @@ export class MultiProjectService {
             tasks,
             milestoneNumber,
             milestoneTitle,
+            projectName: project.name,
           });
         }
       }
@@ -389,6 +394,7 @@ export class MultiProjectService {
           allCompletedTasks.push({
             ...task,
             projectId: issue.projectId,
+            projectName: project.name,
             issueNumber: issue.number,
             issueTitle: issue.title,
             issueStatus: issue.status,

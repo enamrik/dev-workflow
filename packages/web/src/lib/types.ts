@@ -95,6 +95,7 @@ export interface ProjectIssueWithTasks {
   tasks: Task[];
   milestoneNumber?: number;
   milestoneTitle?: string;
+  projectName?: string;
 }
 
 /**
@@ -102,6 +103,7 @@ export interface ProjectIssueWithTasks {
  */
 export interface CompletedTask extends Task {
   projectId: string;
+  projectName: string;
   issueNumber: number;
   issueTitle: string;
   issueStatus: string;

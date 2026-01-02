@@ -5,7 +5,7 @@ export PNPM_HOME
 export PATH := $(PNPM_HOME):$(PATH)
 DEV_WORKFLOW := $(PNPM_HOME)/dev-workflow
 
-.PHONY: help install build clean reset init dogfood test test-npm-install test-mcp test-e2e link unlink flatten-migrations ui ui-dev ui-stop local-track ui-dev-local
+.PHONY: help install build clean reset init dogfood test test-npm-install test-mcp test-e2e link unlink flatten-migrations ui ui-dev ui-stop local-track ui-dev-local worktree-setup
 
 help:
 	@echo "dev-workflow - Makefile commands"
@@ -29,6 +29,7 @@ help:
 	@echo "  make ui-stop          - Stop running UI server"
 	@echo "  make local-track      - Set up local .track/ for isolated testing"
 	@echo "  make ui-dev-local     - Start UI dev mode with local data"
+	@echo "  make worktree-setup   - Ensure worktree has deps installed and packages built"
 
 install:
 	@echo "📦 Installing dependencies..."
@@ -151,8 +152,21 @@ ui-dev:
 local-track:
 	@./scripts/local-track.sh
 
-ui-dev-local: local-track
+# Ensure worktree is ready for development (deps installed, packages built)
+worktree-setup:
+	@if [ ! -d "node_modules" ]; then \
+		echo "📦 Installing dependencies..."; \
+		pnpm install; \
+	fi
+	@if [ ! -d "packages/core/dist" ]; then \
+		echo "🔨 Building packages..."; \
+		pnpm build; \
+	fi
+
+ui-dev-local: worktree-setup local-track
 	@-lsof -ti :3457 | xargs kill 2>/dev/null || true
+	@echo "🧹 Clearing Next.js cache..."
+	@rm -rf packages/web/.next
 	@echo "🔥 Starting UI in dev mode with local data..."
 	@echo "   http://localhost:3457"
 	@echo "   Using: TRACK_DIR=$$(pwd)/.track"
