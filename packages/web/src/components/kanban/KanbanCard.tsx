@@ -59,40 +59,41 @@ function TaskModalContent({
           <Badge variant="status" value={task.status} />
         </div>
 
-        {/* Actions panel below title */}
-        {(task.branchName || task.prUrl || projectId) && (
-          <TaskActions
-            task={task}
-            issueNumber={issueNumber}
-            showCopyCommand={!!projectId}
-            className="mt-2"
-          />
-        )}
+        {/* Tabs and Actions row */}
+        <div className="flex items-center justify-between gap-2 mt-3">
+          <div className="flex gap-1">
+            <button
+              onClick={() => setActiveTab("task")}
+              className={clsx(
+                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+                activeTab === "task"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              )}
+            >
+              Task
+            </button>
+            <button
+              onClick={() => setActiveTab("details")}
+              className={clsx(
+                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+                activeTab === "details"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              )}
+            >
+              Details
+            </button>
+          </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 mt-3">
-          <button
-            onClick={() => setActiveTab("task")}
-            className={clsx(
-              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
-              activeTab === "task"
-                ? "bg-gray-900 text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            )}
-          >
-            Task
-          </button>
-          <button
-            onClick={() => setActiveTab("details")}
-            className={clsx(
-              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
-              activeTab === "details"
-                ? "bg-gray-900 text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            )}
-          >
-            Details
-          </button>
+          {/* Actions panel aligned right */}
+          {(task.branchName || task.prUrl || projectId) && (
+            <TaskActions
+              task={task}
+              issueNumber={issueNumber}
+              showCopyCommand={!!projectId}
+            />
+          )}
         </div>
       </div>
 
