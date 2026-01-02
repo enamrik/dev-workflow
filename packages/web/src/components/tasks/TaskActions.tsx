@@ -66,7 +66,7 @@ export function TaskActions({
       {/* Copy worktree path */}
       {hasWorktree && task.worktreePath && (
         <ActionButton
-          label="Path"
+          label="Worktree"
           text={task.worktreePath}
           tooltip={`Copy worktree: ${task.worktreePath}`}
         />
