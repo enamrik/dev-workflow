@@ -8,6 +8,7 @@ import * as fs from "node:fs";
 import { InstallService } from "./application/install.service.js";
 import { UpdateService } from "./application/update.service.js";
 import { UninstallService } from "./application/uninstall.service.js";
+import { ArchiveService, ArchiveError } from "./application/archive.service.js";
 import { UIService } from "./application/ui.service.js";
 import { NodeFileSystem } from "./infrastructure/file-system.js";
 import { createTrackDirectoryResolver } from "@dev-workflow/core";
@@ -267,13 +268,13 @@ async function runUninit(): Promise<void> {
     process.exit(1);
   }
 
-  // Check if initialized
-  const trackDir = resolver.getTrackDirectory();
-  const isInitialized = fs.existsSync(trackDir);
+  // Check if initialized (skills exist or MCP is registered)
+  const skillsDir = path.join(workingDirectory, ".claude/skills");
+  const hasDwfSkills = fs.existsSync(skillsDir) &&
+    fs.readdirSync(skillsDir).some(name => name.startsWith("dwf-"));
 
-  if (!isInitialized) {
+  if (!hasDwfSkills) {
     console.error("❌ dev-workflow is not initialized for this repository.");
-    console.error(`   Project: ${resolver.getProjectId()}`);
     console.error("\nNothing to remove.");
     process.exit(1);
   }
@@ -281,11 +282,7 @@ async function runUninit(): Promise<void> {
   const uninstaller = new UninstallService(fileSystem, workingDirectory, resolver);
 
   try {
-    console.log("🗑️  Uninstalling dev-workflow...");
-    console.log(`   Project: ${resolver.getProjectId()}`);
-
-    await uninstaller.removeTrackDirectory();
-    console.log(`✓ Removed ${trackDir}`);
+    console.log("🗑️  Removing dev-workflow Claude integration...");
 
     await uninstaller.removeSkills();
     console.log("✓ Removed skills");
@@ -293,12 +290,69 @@ async function runUninit(): Promise<void> {
     await uninstaller.unregisterMCPServer();
     console.log("✓ Unregistered MCP server");
 
-    console.log("\n✨ dev-workflow uninstalled successfully!");
+    console.log("\n✨ dev-workflow Claude integration removed!");
     console.log("\nPreserved:");
+    console.log("- Project data in ~/.track/ (issues, plans, tasks)");
     console.log("- .claude/config/ (your Claude Code configuration)");
-    console.log("- Other .claude/ contents (your other integrations)");
+    console.log("\nTo fully remove project data, use: dev-workflow nuke");
+    console.log("To archive (hide but preserve data), use: dev-workflow archive");
   } catch (error) {
-    console.error("Error during uninstall:", error);
+    console.error("Error during uninit:", error);
+    process.exit(1);
+  }
+}
+
+async function runArchive(): Promise<void> {
+  const fileSystem = new NodeFileSystem();
+  const workingDirectory = process.cwd();
+
+  // Create resolver
+  let resolver;
+  try {
+    resolver = createTrackDirectoryResolver(workingDirectory);
+  } catch (error) {
+    console.error("❌ Not a git repository. dev-workflow requires git.");
+    process.exit(1);
+  }
+
+  const archiveService = new ArchiveService(fileSystem, workingDirectory, resolver);
+
+  try {
+    // Get project info first for display
+    const project = await archiveService.getProject();
+    if (!project) {
+      console.error("❌ dev-workflow is not initialized for this repository.");
+      console.error("\nRun: dev-workflow init");
+      process.exit(1);
+    }
+
+    if (project.isArchived) {
+      console.error("❌ Project is already archived.");
+      console.error(`   Project: ${project.name}`);
+      console.error("\nTo restore, run: dev-workflow unarchive");
+      process.exit(1);
+    }
+
+    console.log("📦 Archiving project...");
+    console.log(`   Project: ${project.name} (${project.id.slice(0, 8)}...)`);
+
+    await archiveService.archive();
+
+    console.log("\n✓ Removed skills");
+    console.log("✓ Unregistered MCP server");
+    console.log("✓ Marked project as archived");
+
+    console.log("\n✨ Project archived successfully!");
+    console.log("\nPreserved:");
+    console.log("- All project data (issues, plans, tasks) in ~/.track/");
+    console.log("- Project will be hidden from UI until unarchived");
+    console.log("\nTo restore, run: dev-workflow unarchive");
+  } catch (error) {
+    if (error instanceof ArchiveError) {
+      console.error(`❌ ${error.message}`);
+      process.exit(1);
+    }
+    console.error("Error during archive:", error);
     process.exit(1);
   }
 }
@@ -480,12 +534,24 @@ program
 
 program
   .command("uninit")
-  .description("Uninstall dev-workflow from current repository")
+  .description("Remove dev-workflow Claude integration (skills, MCP) - preserves project data")
   .action(async () => {
     try {
       await runUninit();
     } catch (error) {
-      console.error("Error during uninstall:", error);
+      console.error("Error during uninit:", error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("archive")
+  .description("Archive project (uninit + hide from UI) - preserves all data")
+  .action(async () => {
+    try {
+      await runArchive();
+    } catch (error) {
+      console.error("Error during archive:", error);
       process.exit(1);
     }
   });
