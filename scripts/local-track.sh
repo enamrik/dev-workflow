@@ -10,14 +10,19 @@ get_git_root() {
 }
 
 # Compute project ID matching TrackDirectoryResolver logic
-# Format: <folder-name>-<6-char-sha256-hash>
+# Format: <folder-name>-<6-char-first-commit-hash>
 get_project_id() {
     local git_root="$1"
     local folder_name
-    local hash
+    local first_commit_hash
     folder_name=$(basename "$git_root")
-    hash=$(printf '%s' "$git_root" | shasum -a 256 | cut -c1-6)
-    echo "${folder_name}-${hash}"
+    # Get the first (initial) commit hash - this is stable and never changes
+    first_commit_hash=$(git -C "$git_root" rev-list --max-parents=0 HEAD 2>/dev/null | head -1 | cut -c1-6)
+    if [ -z "$first_commit_hash" ]; then
+        # Fallback to path-based hash if git command fails
+        first_commit_hash=$(printf '%s' "$git_root" | shasum -a 256 | cut -c1-6)
+    fi
+    echo "${folder_name}-${first_commit_hash}"
 }
 
 echo "📁 Setting up local .track/ directory for isolated testing..."
@@ -41,9 +46,16 @@ echo "   Project ID: $PROJECT_ID"
 # Create local .track directory
 mkdir -p .track
 
-# Copy database
+# Copy database (including WAL files for complete data)
 echo "   Copying workflow.db..."
 cp "$HOME/.track/workflow.db" .track/workflow.db
+# Copy WAL files if they exist (SQLite WAL mode stores uncommitted data here)
+if [ -f "$HOME/.track/workflow.db-wal" ]; then
+    cp "$HOME/.track/workflow.db-wal" .track/workflow.db-wal
+fi
+if [ -f "$HOME/.track/workflow.db-shm" ]; then
+    cp "$HOME/.track/workflow.db-shm" .track/workflow.db-shm
+fi
 
 # Copy project config if it exists
 if [ -d "$HOME/.track/$PROJECT_ID" ]; then

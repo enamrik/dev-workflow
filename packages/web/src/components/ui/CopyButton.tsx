@@ -14,6 +14,8 @@ interface CopyButtonProps {
   size?: "sm" | "md";
   /** Tooltip text when hovering */
   tooltip?: string;
+  /** Custom icon to show instead of default copy icon */
+  icon?: React.ReactNode;
 }
 
 /**
@@ -25,6 +27,7 @@ export function CopyButton({
   className,
   size = "sm",
   tooltip,
+  icon,
 }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
 
@@ -62,7 +65,7 @@ export function CopyButton({
         </>
       ) : (
         <>
-          <CopyIcon size={size} />
+          {icon ?? <CopyIcon size={size} />}
           {label && <span>{label}</span>}
         </>
       )}
