@@ -264,7 +264,7 @@ These values can still be overridden when creating an issue explicitly.
       const settingsPath = path.join(this.workingDirectory, ".claude/settings.json");
 
       // Read existing settings or create new one
-      let settings: { allowedTools?: string[] } = {};
+      let settings: { permissions?: { allow?: string[] } } = {};
       const exists = await this.fileSystem.exists(settingsPath);
 
       if (exists) {
@@ -272,10 +272,17 @@ These values can still be overridden when creating an issue explicitly.
         settings = JSON.parse(content);
       }
 
+      // Ensure permissions.allow structure exists
+      if (!settings.permissions) {
+        settings.permissions = {};
+      }
+      if (!settings.permissions.allow) {
+        settings.permissions.allow = [];
+      }
+
       // Merge permissions (avoid duplicates)
-      const existingTools = settings.allowedTools ?? [];
-      const newTools = [...new Set([...existingTools, ...permissions])];
-      settings.allowedTools = newTools;
+      const existingTools = settings.permissions.allow;
+      settings.permissions.allow = [...new Set([...existingTools, ...permissions])];
 
       await this.fileSystem.writeFile(settingsPath, JSON.stringify(settings, null, 2));
       return { configured: true, permissions };
