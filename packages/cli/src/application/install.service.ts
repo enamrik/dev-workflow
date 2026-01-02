@@ -214,6 +214,31 @@ These values can still be overridden when creating an issue explicitly.
   }
 
   /**
+   * Configure Claude Code permissions for worktree directories.
+   *
+   * Adds Read and Edit permissions for all worktree paths so Claude
+   * can access files in any worktree without prompting for permission.
+   *
+   * This is a one-time setup that covers all projects and future worktrees.
+   */
+  async configureClaudePermissions(): Promise<{ configured: boolean; permissions: string[] }> {
+    const permissions = [
+      "Read(~/.track/**/worktrees/**)",
+      "Edit(~/.track/**/worktrees/**)",
+    ];
+
+    try {
+      for (const permission of permissions) {
+        execSync(`claude config add allowedTools "${permission}"`, { stdio: "pipe" });
+      }
+      return { configured: true, permissions };
+    } catch {
+      // Don't fail if claude CLI is not available
+      return { configured: false, permissions };
+    }
+  }
+
+  /**
    * Create default task labels in ~/.track/<project-id>/labels/
    *
    * Labels are markdown files that provide contextual guidance for tasks.
