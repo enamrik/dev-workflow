@@ -3,6 +3,7 @@ import {
   DatabaseService,
   SqliteProjectRepository,
   SqliteTaskRepository,
+  SqliteIssueRepository,
   NodeGitWorktreeService,
   NodeGitOperations,
   type Project,
@@ -106,6 +107,110 @@ export class ArchiveService {
       valid: errors.length === 0,
       errors,
     };
+  }
+
+  /**
+   * Check if there are any issues that are not CLOSED.
+   *
+   * @param projectId - Project UUID
+   * @returns true if there are open issues that would block nuking
+   */
+  async hasOpenIssues(projectId: string): Promise<boolean> {
+    const dbPath = this.resolver.getDatabasePath();
+    const dbService = await DatabaseService.create(dbPath);
+
+    try {
+      const issueRepository = new SqliteIssueRepository(dbService.getDb(), projectId);
+
+      // Get all non-deleted issues
+      const issues = issueRepository.findMany({ includeDeleted: false });
+
+      // Check if any are not CLOSED
+      return issues.some((issue) => issue.status !== "CLOSED");
+    } finally {
+      dbService.close();
+    }
+  }
+
+  /**
+   * Validate that the project can be nuked.
+   *
+   * Requirements:
+   * - All issues must be CLOSED
+   * - No active worktrees (non-main)
+   *
+   * @param projectId - Project UUID
+   * @returns Validation result with any errors
+   */
+  async validateForNuke(projectId: string): Promise<ValidationResult> {
+    const errors: string[] = [];
+
+    // Check for active worktrees
+    const hasWorktrees = await this.hasActiveWorktrees();
+    if (hasWorktrees) {
+      errors.push("Active worktrees exist. Remove worktrees before nuking.");
+    }
+
+    // Check for open issues
+    const hasOpen = await this.hasOpenIssues(projectId);
+    if (hasOpen) {
+      errors.push("Some issues are not CLOSED. Close all issues before nuking.");
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+    };
+  }
+
+  /**
+   * Nuke the project - permanently delete all data.
+   *
+   * 1. Validates all issues are CLOSED and no worktrees
+   * 2. Removes Claude integration (skills, MCP)
+   * 3. Hard deletes project from database (cascades to all data)
+   * 4. Removes track directory (~/.track/<project>/)
+   *
+   * WARNING: This operation is IRREVERSIBLE.
+   *
+   * @param project - The project to nuke
+   * @throws ArchiveError if validation fails or nuking fails
+   */
+  async nuke(project: Project): Promise<void> {
+    // Validate
+    const validation = await this.validateForNuke(project.id);
+    if (!validation.valid) {
+      throw new ArchiveError(
+        `Cannot nuke project:\n${validation.errors.map(e => `  - ${e}`).join("\n")}`
+      );
+    }
+
+    // Remove Claude integration (uninit)
+    const uninstaller = new UninstallService(
+      this.fileSystem,
+      this.workingDirectory,
+      this.resolver
+    );
+    await uninstaller.removeSkills();
+    await uninstaller.unregisterMCPServer();
+
+    // Hard delete project from database
+    const dbPath = this.resolver.getDatabasePath();
+    const dbService = await DatabaseService.create(dbPath);
+
+    try {
+      const projectRepository = new SqliteProjectRepository(dbService.getDb());
+      projectRepository.hardDelete(project.id);
+    } finally {
+      dbService.close();
+    }
+
+    // Remove track directory
+    const trackDir = this.resolver.getTrackDirectory();
+    const trackDirExists = await this.fileSystem.exists(trackDir);
+    if (trackDirExists) {
+      await this.fileSystem.rmdir(trackDir, { recursive: true });
+    }
   }
 
   /**
