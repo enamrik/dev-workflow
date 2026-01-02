@@ -119,7 +119,6 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
               task={task}
               issueNumber={issueNumber}
               showCopyCommand={!!projectId}
-              compact
               className="mt-3"
             />
           )}

@@ -138,7 +138,6 @@ function TaskTab({
           task={task}
           issueNumber={issueNumber}
           showCopyCommand={!!projectId}
-          compact
         />
       )}
 

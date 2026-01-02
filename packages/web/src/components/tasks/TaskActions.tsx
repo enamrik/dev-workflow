@@ -10,14 +10,12 @@ interface TaskActionsProps {
   issueNumber?: number;
   /** Show the Claude command copy button */
   showCopyCommand?: boolean;
-  /** Compact layout for smaller spaces */
-  compact?: boolean;
   className?: string;
 }
 
 /**
  * Unified actions section for task tiles.
- * Shows icon-only buttons with labels on hover.
+ * Shows icon buttons with labels on hover.
  */
 export function TaskActions({
   task,
@@ -61,6 +59,7 @@ export function TaskActions({
           text={task.prUrl}
           tooltip={`Copy PR #${task.prNumber} URL`}
           size="sm"
+          icon={<LinkIcon className="w-3 h-3" />}
         />
       )}
 
@@ -70,6 +69,7 @@ export function TaskActions({
           text={task.branchName!}
           tooltip={`Copy branch: ${task.branchName}`}
           size="sm"
+          icon={<BranchIcon className="w-3 h-3" />}
         />
       )}
 
@@ -79,6 +79,7 @@ export function TaskActions({
           text={task.worktreePath}
           tooltip={`Copy worktree: ${task.worktreePath}`}
           size="sm"
+          icon={<FolderIcon className="w-3 h-3" />}
         />
       )}
 
@@ -107,6 +108,60 @@ function ExternalLinkIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
         strokeWidth={2}
         d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+      />
+    </svg>
+  );
+}
+
+function LinkIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={clsx("flex-shrink-0", className)}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+      />
+    </svg>
+  );
+}
+
+function BranchIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={clsx("flex-shrink-0", className)}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+      />
+    </svg>
+  );
+}
+
+function FolderIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={clsx("flex-shrink-0", className)}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
       />
     </svg>
   );
