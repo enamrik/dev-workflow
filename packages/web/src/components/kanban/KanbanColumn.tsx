@@ -1,9 +1,17 @@
 "use client";
 
 import { clsx } from "clsx";
+import { AnimatePresence, motion } from "framer-motion";
 import { KanbanCard } from "./KanbanCard";
 import { Tooltip } from "../ui";
 import type { Task } from "@/lib/types";
+
+const cardAnimation = {
+  initial: { opacity: 0, scale: 0.95 },
+  animate: { opacity: 1, scale: 1 },
+  exit: { opacity: 0, scale: 0.95 },
+  transition: { duration: 0.25, ease: "easeOut" as const },
+};
 
 interface KanbanTask extends Task {
   issueNumber: number;
@@ -68,19 +76,34 @@ export function KanbanColumn({
 
       {/* Column content */}
       <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[calc(100vh-280px)] scrollbar-auto-hide">
-        {tasks.length > 0 ? (
-          tasks.map((task) => (
-            <KanbanCard
-              key={task.id}
-              task={task}
-              issueNumber={task.issueNumber}
-              issueTitle={task.issueTitle}
-              projectId={task.projectId}
-            />
-          ))
-        ) : (
-          <div className="text-center text-gray-400 text-sm py-4">No tasks</div>
-        )}
+        <AnimatePresence mode="popLayout">
+          {tasks.length > 0 ? (
+            tasks.map((task) => (
+              <motion.div
+                key={task.id}
+                layoutId={task.id}
+                {...cardAnimation}
+              >
+                <KanbanCard
+                  task={task}
+                  issueNumber={task.issueNumber}
+                  issueTitle={task.issueTitle}
+                  projectId={task.projectId}
+                />
+              </motion.div>
+            ))
+          ) : (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="text-center text-gray-400 text-sm py-4"
+            >
+              No tasks
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
