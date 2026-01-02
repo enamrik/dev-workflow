@@ -48,6 +48,7 @@ export interface ProjectTask extends Task {
  */
 export interface CompletedTask extends Task {
   projectId: string;
+  projectName: string;
   issueNumber: number;
   issueTitle: string;
   issueStatus: string;
@@ -393,6 +394,7 @@ export class MultiProjectService {
           allCompletedTasks.push({
             ...task,
             projectId: issue.projectId,
+            projectName: project.name,
             issueNumber: issue.number,
             issueTitle: issue.title,
             issueStatus: issue.status,

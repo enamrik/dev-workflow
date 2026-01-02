@@ -55,6 +55,7 @@ export function KanbanBoard({
       doneTasks.push({
         ...task,
         projectId: task.projectId,
+        projectName: task.projectName,
       });
     }
   }

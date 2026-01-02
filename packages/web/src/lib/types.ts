@@ -103,6 +103,7 @@ export interface ProjectIssueWithTasks {
  */
 export interface CompletedTask extends Task {
   projectId: string;
+  projectName: string;
   issueNumber: number;
   issueTitle: string;
   issueStatus: string;
