@@ -507,6 +507,7 @@ async function main() {
   milestoneToolContext = {
     milestoneRepository,
     issueRepository,
+    projectName: project.name,
   };
 
   worktreeToolContext = {
