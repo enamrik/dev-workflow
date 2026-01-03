@@ -27,6 +27,8 @@ const statusStyles: Record<string, string> = {
   IN_PROGRESS: "bg-orange-100 text-orange-700",
   CLOSED: "bg-gray-200 text-gray-700",
   // Task statuses
+  BACKLOG: "bg-slate-200 text-slate-700",
+  READY: "bg-gray-200 text-gray-700",
   PENDING: "bg-gray-200 text-gray-700",
   PR_REVIEW: "bg-blue-100 text-blue-800",
   COMPLETED: "bg-green-100 text-green-800",
