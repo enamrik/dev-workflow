@@ -117,6 +117,14 @@ export interface GitHubCLI {
   checkProject(projectId: string): Promise<boolean>;
 
   /**
+   * Get GitHub Project details including URL
+   *
+   * @param projectId - GitHub Project ID (PVT_...)
+   * @returns Project info with URL, or null if not found
+   */
+  getProjectDetails(projectId: string): Promise<{ id: string; title: string; url: string } | null>;
+
+  /**
    * Create a new pull request
    *
    * @param headBranch - Source branch for the PR
@@ -430,12 +438,18 @@ export class NodeGitHubCLI implements GitHubCLI {
 
 
   async checkProject(projectId: string): Promise<boolean> {
+    const details = await this.getProjectDetails(projectId);
+    return details !== null;
+  }
+
+  async getProjectDetails(projectId: string): Promise<{ id: string; title: string; url: string } | null> {
     const query = `
       query($projectId: ID!) {
         node(id: $projectId) {
           ... on ProjectV2 {
             id
             title
+            url
           }
         }
       }
@@ -451,16 +465,24 @@ export class NodeGitHubCLI implements GitHubCLI {
     ]);
 
     if (!result.success) {
-      return false;
+      return null;
     }
 
     try {
       const data = JSON.parse(result.stdout) as {
-        data?: { node?: { id?: string } };
+        data?: { node?: { id?: string; title?: string; url?: string } };
       };
-      return data.data?.node?.id !== undefined;
+      const node = data.data?.node;
+      if (node?.id && node?.title && node?.url) {
+        return {
+          id: node.id,
+          title: node.title,
+          url: node.url,
+        };
+      }
+      return null;
     } catch {
-      return false;
+      return null;
     }
   }
 

@@ -343,6 +343,7 @@ export interface GitHubLabelsConfig {
 export interface GitHubIssueSyncConfig {
   enabled: boolean;
   projectId?: string; // GitHub Project ID (e.g., PVT_kwDO...)
+  projectUrl?: string; // GitHub Project URL for linking (e.g., https://github.com/orgs/org/projects/1)
   labels?: GitHubLabelsConfig;
 }
 
