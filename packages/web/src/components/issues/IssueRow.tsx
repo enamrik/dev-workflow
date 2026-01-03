@@ -34,8 +34,19 @@ export function IssueRow({ item }: IssueRowProps) {
         {issue.number}
       </td>
       <td className="py-3 px-3 font-medium text-gray-800">{issue.title}</td>
-      <td className="py-3 px-3 w-32 text-sm text-gray-600">
-        {projectName ?? "-"}
+      <td className="py-3 px-3 w-32 text-sm">
+        {projectName ? (
+          <Link
+            href={`/issues?project=${encodeURIComponent(issue.projectId)}`}
+            className="text-blue-600 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+            title={`Filter by ${projectName}`}
+          >
+            {projectName}
+          </Link>
+        ) : (
+          <span className="text-gray-400">-</span>
+        )}
       </td>
       <td className="py-3 px-3 w-28">
         <Badge variant="type" value={issue.type} />
