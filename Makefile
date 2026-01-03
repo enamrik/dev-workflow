@@ -166,11 +166,22 @@ worktree-setup:
 	fi
 
 ui-dev-local: worktree-setup local-track
-	@-lsof -ti :3457 | xargs kill 2>/dev/null || true
-	@echo "🧹 Clearing Next.js cache..."
-	@rm -rf packages/web/.next packages/web/node_modules/.cache
-	@echo "🔥 Starting UI in dev mode with local data..."
-	@echo "   http://localhost:3457"
-	@echo "   Using: TRACK_DIR=$$(pwd)/.track"
-	@(cd packages/web && npx wait-on tcp:3457 && open http://localhost:3457) &
-	@TRACK_DIR=$$(pwd)/.track pnpm --filter @dev-workflow/web dev
+	@# Extract issue number from worktree path (e.g., issue-54-task-1 -> 54)
+	@# Use modulo 100 to keep ports in range 3500-3599 (avoids issues with high issue numbers)
+	@ISSUE_NUM=$$(basename "$$(pwd)" | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+' || echo ""); \
+	if [ -n "$$ISSUE_NUM" ]; then \
+		PORT=$$((3500 + ($$ISSUE_NUM % 100))); \
+		QUERY="?issue=$$ISSUE_NUM"; \
+		echo "🔧 Detected worktree for issue #$$ISSUE_NUM"; \
+	else \
+		PORT=3457; \
+		QUERY=""; \
+	fi; \
+	lsof -ti :$$PORT | xargs kill 2>/dev/null || true; \
+	echo "🧹 Clearing Next.js cache..."; \
+	rm -rf packages/web/.next packages/web/node_modules/.cache; \
+	echo "🔥 Starting UI in dev mode with local data..."; \
+	echo "   http://localhost:$$PORT$$QUERY"; \
+	echo "   Using: TRACK_DIR=$$(pwd)/.track"; \
+	(cd packages/web && npx wait-on tcp:$$PORT && open "http://localhost:$$PORT$$QUERY") & \
+	TRACK_DIR=$$(pwd)/.track PORT=$$PORT pnpm --filter @dev-workflow/web dev

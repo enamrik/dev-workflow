@@ -40,6 +40,7 @@ interface TaskModalContentProps {
   task: Task;
   issueNumber: number;
   issueTitle: string;
+  issueType: string;
   issueUrl: string;
   issueGithubUrl?: string;
   projectId?: string;
@@ -49,10 +50,12 @@ function TaskModalContent({
   task,
   issueNumber,
   issueTitle,
+  issueType,
   issueUrl,
   issueGithubUrl,
   projectId,
 }: TaskModalContentProps) {
+  const tooltipContent = `${issueType.toLowerCase()}(#${issueNumber}): ${issueTitle}`;
   const [activeTab, setActiveTab] = useState<ModalTab>("task");
 
   return (
@@ -62,7 +65,7 @@ function TaskModalContent({
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-gray-900 text-sm">
-              <Tooltip content={issueTitle} side="bottom">
+              <Tooltip content={tooltipContent} side="bottom">
                 <Link
                   href={issueUrl}
                   className="text-blue-600 hover:underline"
@@ -259,6 +262,7 @@ function CardContent({
   projectId?: string;
   projectName?: string;
 }) {
+  const tooltipContent = `${issueType.toLowerCase()}(#${issueNumber}): ${issueTitle}`;
   const isAbandoned = task.status === "ABANDONED";
 
   return (
@@ -280,7 +284,7 @@ function CardContent({
 
       {/* Task number and title */}
       <div className="font-medium text-gray-800 text-sm mb-1">
-        <Tooltip content={issueTitle} side="bottom">
+        <Tooltip content={tooltipContent} side="bottom">
           <Link
             href={issueUrl}
             className="text-blue-600 hover:underline"
@@ -364,6 +368,7 @@ export function KanbanCard({
         task={task}
         issueNumber={issueNumber}
         issueTitle={issueTitle}
+        issueType={issueType}
         issueUrl={issueUrl}
         issueGithubUrl={issueGithubUrl}
         projectId={projectId}

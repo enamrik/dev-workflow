@@ -217,9 +217,26 @@ make ui-dev-local
 This command:
 1. Installs dependencies if needed (`make worktree-setup`)
 2. Creates a local `.track/` directory with test data
-3. Starts the Next.js dev server at http://localhost:3457
+3. **Detects if running in a worktree** and calculates a unique port (3500 + issue % 100)
+4. Starts the Next.js dev server and opens browser with issue filter querystring
 
-**After completing UI work in a worktree**, always offer to run `make ui-dev-local` so the user can visually verify the changes before submitting for review.
+For example, in worktree `issue-54-task-1`:
+- Port: 3554 (3500 + 54 % 100)
+- URL: http://localhost:3554/?issue=54
+
+Ports are in range 3500-3599 using modulo to handle high issue numbers.
+
+---
+
+## ⚠️ IMPORTANT: Verification Workflow
+
+**After completing ANY code changes, you MUST ask the user:**
+
+> "Would you like me to run `make ui-dev-local` so you can verify the changes?"
+
+**Do NOT submit for review until the user has had the opportunity to verify the changes.**
+
+---
 
 ### Database Migrations
 
