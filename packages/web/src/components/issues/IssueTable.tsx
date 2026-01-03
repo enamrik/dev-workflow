@@ -27,6 +27,9 @@ export function IssueTable({ issues }: IssueTableProps) {
             Title
           </th>
           <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+            Project
+          </th>
+          <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">
             Type
           </th>
           <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">

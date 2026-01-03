@@ -33,10 +33,10 @@ export function IssueRow({ item }: IssueRowProps) {
       <td className="py-3 px-3 w-20 font-semibold text-gray-600">
         {issue.number}
       </td>
-      <td className="py-3 px-3">
-        <div className="font-medium text-gray-800">{issue.title}</div>
+      <td className="py-3 px-3 font-medium text-gray-800">{issue.title}</td>
+      <td className="py-3 px-3 w-32">
         {projectName && (
-          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded inline-block mt-1">
+          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
             {projectName}
           </span>
         )}
