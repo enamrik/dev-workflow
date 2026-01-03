@@ -63,13 +63,14 @@ export interface CompletedTask extends Task {
  * This replaces the dual display of issue.status + taskPhase with a single status.
  *
  * Status rules:
+ * - PLANNED: Issue is in planning phase (not yet activated)
  * - CLOSED: Issue is explicitly closed
  * - COMPLETED: All tasks are COMPLETED or ABANDONED
  * - IN_PROGRESS: Some tasks not completed AND no tasks in BACKLOG (work has started)
  * - READY: Any task is in BACKLOG status (plan exists, work not started)
  * - OPEN: No plan/tasks yet
  */
-export type ComputedIssueStatus = "OPEN" | "READY" | "IN_PROGRESS" | "COMPLETED" | "CLOSED";
+export type ComputedIssueStatus = "PLANNED" | "OPEN" | "READY" | "IN_PROGRESS" | "COMPLETED" | "CLOSED";
 
 /**
  * Issue with plan info and project context
@@ -288,7 +289,10 @@ export class MultiProjectService {
         let computedStatus: ComputedIssueStatus;
 
         // Compute single status based on issue state and task progress
-        if (issue.status === "CLOSED") {
+        if (issue.status === "PLANNED") {
+          // Issue is in planning phase (not yet activated)
+          computedStatus = "PLANNED";
+        } else if (issue.status === "CLOSED") {
           // Issue explicitly closed
           computedStatus = "CLOSED";
         } else if (!plan) {
