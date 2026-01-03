@@ -1,7 +1,7 @@
 ---
 name: dwf-work-task
 description: Manage task execution lifecycle - start, complete, or abandon tasks. Supports 3 execution modes (isolated, branch, main) and PR-based workflow. Auto-invoked when user wants to "start task", "work on task", "complete task", "finish task", "abandon task", "submit for review", "merge PR", "pause issue", etc. (project)
-allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue, mcp:dev-workflow-tracker:move_issue_to_backlog
+allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:log_task_progress
 ---
 
 # Work Task Skill
@@ -598,3 +598,111 @@ Before execution, tasks can be tuned using `update_task`:
 - **contextInstructions**: Add custom instructions (e.g., "use existing auth pattern in src/auth")
 - **acceptanceCriteria**: Refine what needs to be verified
 - **description**: Clarify implementation details
+
+## Bug Investigation Workflow
+
+When working on a **BUG** type issue, the task follows an investigation-first approach. Use `log_task_progress` to document your findings throughout the investigation.
+
+### Why Log During Bug Investigation?
+
+- **Creates an audit trail**: Documents what was investigated and why
+- **Captures the journey**: Root cause discovery isn't always linear
+- **Helps future debugging**: Similar bugs can reference the investigation log
+- **Informs the PR**: Findings can be summarized in the PR description
+
+### When to Log Progress
+
+Call `log_task_progress` at these key moments:
+
+1. **Initial investigation findings**
+   - What areas of code you're examining
+   - Initial hypotheses about the cause
+
+2. **Root cause identified**
+   - The actual cause of the bug
+   - Why it was happening
+   - Any related issues discovered
+
+3. **Fix applied**
+   - What changes were made
+   - Files modified
+   - Why this fix addresses the root cause
+
+### Bug Investigation Example
+
+**User:** "Start the bug task"
+
+**Response:**
+```
+Starting task session in isolated mode...
+
+Task: Investigate and fix: Login fails silently when session expires
+
+This is a BUG investigation task. I'll document findings using progress logs
+as I investigate.
+
+Symptoms (from issue):
+- Users stuck on login page with no error message
+- Happens when session has expired
+
+Reproduction steps:
+1. Log in successfully
+2. Wait for session to expire
+3. Attempt authenticated action
+4. Observe: redirected to login with no message
+
+Let me start investigating...
+```
+
+**During investigation:**
+```
+[Logging progress: "Examining session handling in src/auth/session.ts.
+The sessionExpired check returns early without setting an error message.
+Hypothesis: error state not propagated to UI."]
+
+Found it. The issue is in the session middleware - when a session expires,
+it redirects without passing an error code to the login page.
+
+[Logging progress: "ROOT CAUSE: SessionMiddleware.validateSession() at
+line 45 calls res.redirect('/login') without query param. Login page
+checks for ?error=session_expired to show message, but it's never set."]
+
+I'll fix this by adding the error parameter to the redirect.
+
+[Logging progress: "FIX: Modified SessionMiddleware.validateSession() to
+redirect to /login?error=session_expired. Added test for expired session
+redirect. Files: src/middleware/session.ts, tests/session.test.ts"]
+```
+
+**On completion:**
+```
+Bug investigation complete. Here's the summary:
+
+**Root Cause:**
+SessionMiddleware.validateSession() was redirecting to /login without
+the error query parameter that the login page needs to display the
+"Session expired" message.
+
+**Fix Applied:**
+- Modified redirect to include ?error=session_expired
+- Added unit test for expired session redirect behavior
+
+**Files Modified:**
+- src/middleware/session.ts
+- tests/session.test.ts
+
+Ready to submit for review?
+```
+
+### Progress Log API
+
+```typescript
+log_task_progress({
+  taskId: "...",
+  sessionId: "...",
+  message: "ROOT CAUSE: Description of what was found",
+  filesModified: ["src/file1.ts", "src/file2.ts"]  // optional
+})
+```
+
+The `filesModified` parameter is optional but recommended when logging the fix.
