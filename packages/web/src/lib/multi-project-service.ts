@@ -55,6 +55,17 @@ export interface CompletedTask extends Task {
 }
 
 /**
+ * Task phase represents the overall progress phase of an issue's tasks.
+ * Computed from task statuses:
+ * - BACKLOG: At least one task is still in BACKLOG
+ * - READY: All tasks are at least READY (none in BACKLOG)
+ * - IN_PROGRESS: At least one task is IN_PROGRESS
+ * - PR_REVIEW: At least one task is in PR_REVIEW (and none IN_PROGRESS)
+ * - COMPLETED: All tasks are COMPLETED or ABANDONED
+ */
+export type TaskPhase = "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED";
+
+/**
  * Issue with plan info and project context
  */
 export interface ProjectIssueWithPlanInfo {
@@ -65,6 +76,7 @@ export interface ProjectIssueWithPlanInfo {
     completed: number;
     inProgress: number;
   };
+  taskPhase?: TaskPhase;
   projectName?: string;
 }
 
@@ -259,23 +271,43 @@ export class MultiProjectService {
       for (const issue of issues) {
         const plan = planRepository.findByIssueId(issue.id);
         let taskCounts: ProjectIssueWithPlanInfo["taskCounts"];
+        let taskPhase: TaskPhase | undefined;
 
         if (plan) {
           const tasks = taskRepository.findByPlanId(plan.id);
           const completed = tasks.filter((t) => t.status === "COMPLETED").length;
+          const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
           const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
+          const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
+          const backlog = tasks.filter((t) => t.status === "BACKLOG").length;
 
           taskCounts = {
             total: tasks.length,
             completed,
             inProgress,
           };
+
+          // Compute task phase based on task statuses
+          if (tasks.length > 0) {
+            if (completed + abandoned === tasks.length) {
+              taskPhase = "COMPLETED";
+            } else if (inProgress > 0) {
+              taskPhase = "IN_PROGRESS";
+            } else if (prReview > 0) {
+              taskPhase = "PR_REVIEW";
+            } else if (backlog > 0) {
+              taskPhase = "BACKLOG";
+            } else {
+              taskPhase = "READY";
+            }
+          }
         }
 
         allIssues.push({
           issue,
           hasPlan: !!plan,
           taskCounts,
+          taskPhase,
           projectName: project.name,
         });
       }
