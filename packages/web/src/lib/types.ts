@@ -88,11 +88,22 @@ export interface Milestone {
   updatedAt: string;
 }
 
+/**
+ * GitHub issue sync configuration
+ */
+export interface GitHubIssueSyncConfig {
+  enabled: boolean;
+  projectId?: string;
+  projectUrl?: string;
+}
+
 export interface Project {
   id: string;
   name: string;
   trackDirectory: string;
   gitRoot: string;
+  /** GitHub sync configuration (optional - only present if configured) */
+  githubSync?: GitHubIssueSyncConfig | null;
 }
 
 /**

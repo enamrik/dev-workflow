@@ -1,6 +1,6 @@
 "use client";
 
-import { Select } from "../ui";
+import { Select, GitHubLink } from "../ui";
 import type { Project } from "@/lib/types";
 
 interface ProjectFilterProps {
@@ -19,6 +19,10 @@ export function ProjectFilter({ projects, value, onChange }: ProjectFilterProps)
     label: p.name,
   }));
 
+  // Find selected project to check for GitHub Project link
+  const selectedProject = value ? projects.find((p) => p.id === value) : null;
+  const githubProjectUrl = selectedProject?.githubSync?.projectUrl;
+
   return (
     <div className="flex items-center gap-2">
       <label className="text-sm text-gray-600">Project:</label>
@@ -28,6 +32,13 @@ export function ProjectFilter({ projects, value, onChange }: ProjectFilterProps)
         onChange={onChange}
         placeholder="All projects"
       />
+      {githubProjectUrl && (
+        <GitHubLink
+          url={githubProjectUrl}
+          label="Project"
+          tooltip={`View GitHub Project: ${githubProjectUrl}`}
+        />
+      )}
     </div>
   );
 }
