@@ -36,9 +36,9 @@ export function IssueRow({ item }: IssueRowProps) {
       <td className="py-3 px-3">
         <div className="font-medium text-gray-800">{issue.title}</div>
         {projectName && (
-          <div className="text-xs text-gray-400 mt-0.5">
+          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded inline-block mt-1">
             {projectName}
-          </div>
+          </span>
         )}
       </td>
       <td className="py-3 px-3 w-28">
