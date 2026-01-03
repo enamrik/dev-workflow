@@ -55,15 +55,17 @@ export interface CompletedTask extends Task {
 }
 
 /**
- * Task phase represents the overall progress phase of an issue's tasks.
- * Computed from task statuses:
- * - BACKLOG: At least one task is still in BACKLOG
- * - READY: All tasks are at least READY (none in BACKLOG)
- * - IN_PROGRESS: At least one task is IN_PROGRESS
- * - PR_REVIEW: At least one task is in PR_REVIEW (and none IN_PROGRESS)
+ * Computed issue status based on task states.
+ * This replaces the dual display of issue.status + taskPhase with a single status.
+ *
+ * Status rules:
+ * - CLOSED: Issue is explicitly closed
  * - COMPLETED: All tasks are COMPLETED or ABANDONED
+ * - IN_PROGRESS: Some tasks not completed AND no tasks in BACKLOG (work has started)
+ * - READY: Any task is in BACKLOG status (plan exists, work not started)
+ * - OPEN: No plan/tasks yet
  */
-export type TaskPhase = "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED";
+export type ComputedIssueStatus = "OPEN" | "READY" | "IN_PROGRESS" | "COMPLETED" | "CLOSED";
 
 /**
  * Issue with plan info and project context
@@ -76,7 +78,11 @@ export interface ProjectIssueWithPlanInfo {
     completed: number;
     inProgress: number;
   };
-  taskPhase?: TaskPhase;
+  /**
+   * Single computed status based on issue state and task progress.
+   * Replaces the previous dual display of issue.status + taskPhase.
+   */
+  computedStatus: ComputedIssueStatus;
   projectName?: string;
 }
 
@@ -271,9 +277,16 @@ export class MultiProjectService {
       for (const issue of issues) {
         const plan = planRepository.findByIssueId(issue.id);
         let taskCounts: ProjectIssueWithPlanInfo["taskCounts"];
-        let taskPhase: TaskPhase | undefined;
+        let computedStatus: ComputedIssueStatus;
 
-        if (plan) {
+        // Compute single status based on issue state and task progress
+        if (issue.status === "CLOSED") {
+          // Issue explicitly closed
+          computedStatus = "CLOSED";
+        } else if (!plan) {
+          // No plan/tasks yet
+          computedStatus = "OPEN";
+        } else {
           const tasks = taskRepository.findByPlanId(plan.id);
           const completed = tasks.filter((t) => t.status === "COMPLETED").length;
           const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
@@ -284,22 +297,21 @@ export class MultiProjectService {
           taskCounts = {
             total: tasks.length,
             completed,
-            inProgress,
+            inProgress: inProgress + prReview, // Include PR_REVIEW in "in progress" count
           };
 
-          // Compute task phase based on task statuses
-          if (tasks.length > 0) {
-            if (completed + abandoned === tasks.length) {
-              taskPhase = "COMPLETED";
-            } else if (inProgress > 0) {
-              taskPhase = "IN_PROGRESS";
-            } else if (prReview > 0) {
-              taskPhase = "PR_REVIEW";
-            } else if (backlog > 0) {
-              taskPhase = "BACKLOG";
-            } else {
-              taskPhase = "READY";
-            }
+          if (tasks.length === 0) {
+            // Plan exists but no tasks yet
+            computedStatus = "OPEN";
+          } else if (completed + abandoned === tasks.length) {
+            // All tasks COMPLETED or ABANDONED
+            computedStatus = "COMPLETED";
+          } else if (backlog > 0) {
+            // Any task in BACKLOG means work hasn't started
+            computedStatus = "READY";
+          } else {
+            // Some tasks not completed AND no tasks in BACKLOG (work has started)
+            computedStatus = "IN_PROGRESS";
           }
         }
 
@@ -307,7 +319,7 @@ export class MultiProjectService {
           issue,
           hasPlan: !!plan,
           taskCounts,
-          taskPhase,
+          computedStatus,
           projectName: project.name,
         });
       }

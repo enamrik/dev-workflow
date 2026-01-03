@@ -17,7 +17,7 @@ import {
   EmptyState,
   Markdown,
 } from "@/components/ui";
-import type { Issue, Plan, Task, TaskPhase } from "@/lib/types";
+import type { Issue, Plan, Task, ComputedIssueStatus } from "@/lib/types";
 
 type TabId = "details" | "plan" | "tasks";
 
@@ -69,8 +69,8 @@ export default function IssueDetailPage({ params }: PageProps) {
     inProgress: tasks.filter((t) => t.status === "IN_PROGRESS").length,
   };
 
-  // Compute task phase from task statuses
-  const taskPhase = computeTaskPhase(tasks);
+  // Compute single status from issue state and tasks
+  const computedStatus = computeIssueStatus(issue, plan, tasks);
 
   const backUrl = projectId ? `/?project=${encodeURIComponent(projectId)}` : "/";
   const boardUrl = projectId
@@ -108,10 +108,7 @@ export default function IssueDetailPage({ params }: PageProps) {
         <div className="flex flex-wrap gap-2">
           <Badge variant="type" value={issue.type} />
           <Badge variant="priority" value={issue.priority} />
-          <Badge variant="status" value={issue.status} />
-          {taskPhase && taskPhase !== "COMPLETED" && (
-            <Badge variant="status" value={taskPhase} className="opacity-75" />
-          )}
+          <Badge variant="status" value={computedStatus} />
         </div>
       </div>
 
@@ -289,26 +286,44 @@ function formatDate(isoString: string): string {
 }
 
 /**
- * Compute task phase from task statuses
+ * Compute single issue status from issue state and tasks.
+ *
+ * Status rules:
+ * - CLOSED: Issue is explicitly closed
+ * - COMPLETED: All tasks are COMPLETED or ABANDONED
+ * - IN_PROGRESS: Some tasks not completed AND no tasks in BACKLOG (work has started)
+ * - READY: Any task is in BACKLOG status (plan exists, work not started)
+ * - OPEN: No plan/tasks yet
  */
-function computeTaskPhase(tasks: Task[]): TaskPhase | undefined {
-  if (tasks.length === 0) return undefined;
+function computeIssueStatus(
+  issue: Issue,
+  plan: Plan | null,
+  tasks: Task[]
+): ComputedIssueStatus {
+  // Explicitly closed issues stay CLOSED
+  if (issue.status === "CLOSED") {
+    return "CLOSED";
+  }
+
+  // No plan means OPEN
+  if (!plan || tasks.length === 0) {
+    return "OPEN";
+  }
 
   const completed = tasks.filter((t) => t.status === "COMPLETED").length;
   const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
-  const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
-  const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
   const backlog = tasks.filter((t) => t.status === "BACKLOG").length;
 
+  // All tasks done (completed or abandoned) = COMPLETED
   if (completed + abandoned === tasks.length) {
     return "COMPLETED";
-  } else if (inProgress > 0) {
-    return "IN_PROGRESS";
-  } else if (prReview > 0) {
-    return "PR_REVIEW";
-  } else if (backlog > 0) {
-    return "BACKLOG";
-  } else {
+  }
+
+  // Any task in BACKLOG = READY (plan exists, work not started)
+  if (backlog > 0) {
     return "READY";
   }
+
+  // Some tasks not completed AND no tasks in BACKLOG = IN_PROGRESS
+  return "IN_PROGRESS";
 }
