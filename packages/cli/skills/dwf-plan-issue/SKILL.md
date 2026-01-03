@@ -59,38 +59,45 @@ If no context was passed, make reasonable decisions based on the codebase patter
    - Call `get_issue` with the issue number
    - Read the issue title, description, and acceptance criteria
    - Note any implementation context passed from manage-issue
-   - Understand the full scope of what needs to be done
+   - **Check the issue type** - if it's a BUG, use the single-task investigation approach (see "Bug Issues" section below)
 
-2. **Analyze Scope and Complexity:**
+2. **For BUG Issues - Use Single-Task Approach:**
+   - Skip multi-task planning entirely
+   - Generate ONE task: "Investigate and fix: [bug title]"
+   - Include symptoms and reproduction steps in description
+   - Set complexity to LOW
+   - Proceed to step 6 (Generate Plan)
+
+3. **Analyze Scope and Complexity (non-bug issues):**
    - Consider what files/components will be touched
    - Identify natural boundaries (different subsystems, different APIs)
    - Incorporate any technology choices from the context
    - Estimate if this is a 1-task or multi-task issue
 
-3. **Design Tasks as Deployable Units:**
+4. **Design Tasks as Deployable Units:**
    For each potential task, ask:
    - Can this be deployed independently without breaking prod?
    - Does it include all necessary tests?
    - Would this make sense as a single commit message?
    - Is anything missing that would cause issues if deployed?
 
-4. **Write Clear Task Definitions:**
+5. **Write Clear Task Definitions:**
    Each task should have:
    - **Title**: Verb phrase describing the deliverable (e.g., "Add user authentication with session management")
    - **Description**: What will be implemented AND tested
    - **Acceptance Criteria**: Specific, verifiable outcomes (include test expectations)
 
-5. **Generate Plan:**
+6. **Generate Plan:**
    - Call `generate_plan` with summary, approach, and tasks
    - Use appropriate complexity estimate (LOW, MEDIUM, HIGH, VERY_HIGH)
    - **Tasks are created in PLANNED status** (no GitHub sync yet)
 
-6. **Ask for Confirmation (REQUIRED):**
+7. **Ask for Confirmation (REQUIRED):**
    - **NEVER auto-activate.** Always ask the user to confirm the plan first.
    - Present the plan summary and ask: "Are you satisfied with this plan? Ready to activate and start work?"
    - Wait for explicit user approval before calling `move_issue_to_backlog`
 
-7. **Activate on Confirmation:**
+8. **Activate on Confirmation:**
    - Only after user confirms, call `move_issue_to_backlog` with the issue number
    - This transitions: Issue PLANNED → OPEN, Tasks PLANNED → BACKLOG
    - If GitHub sync is enabled, creates GitHub issues for each task
@@ -113,6 +120,44 @@ Split when:
 - Different parts touch completely separate subsystems
 - One part is blocked waiting for external dependencies
 - The scope is large enough that multiple commits make sense
+
+## Bug Issues: Single-Task Investigation Approach
+
+**Bugs are inherently exploratory.** You don't know the solution until you've investigated the root cause. Creating a multi-task plan for bugs is backwards - you'd be planning a solution before understanding the problem.
+
+### Bug Planning Rules
+
+When the issue type is **BUG**:
+
+1. **Always create a SINGLE task** with the title pattern: `Investigate and fix: [bug title]`
+2. **Do NOT attempt to break down into multiple tasks** - the scope is unknown until investigation
+3. **Task description** should reference the symptoms and reproduction steps from the issue
+4. **Acceptance criteria** should include:
+   - Bug is fixed and verified
+   - Root cause is documented (in task progress log)
+   - Tests added to prevent regression
+
+### Why Single-Task for Bugs?
+
+- **Investigation IS the work**: You can't separate "find the bug" from "fix the bug" - they're one continuous flow
+- **Scope is unknown**: A bug might be a one-line fix or require refactoring multiple files - you don't know until you look
+- **Premature planning wastes effort**: Any multi-task breakdown would need revision after investigation anyway
+- **Task progress log captures the journey**: Use `log_task_progress` during execution to document findings, root cause, and fix applied
+
+### Bug Task Template
+
+**Title:** Investigate and fix: [bug title from issue]
+
+**Description:**
+Investigate and resolve the reported issue. Document findings in task progress log.
+
+Symptoms: [from issue description]
+Reproduction: [from issue steps to reproduce]
+
+**Acceptance Criteria:**
+- [ ] Bug is fixed and verified with reproduction steps
+- [ ] Root cause documented in task progress log
+- [ ] Regression test added to prevent recurrence
 
 ## Complexity Estimation
 
@@ -250,6 +295,51 @@ Implement caching middleware for GET endpoints with:
 - Cache invalidates on POST/PUT/DELETE
 - Cache TTL is configurable per route
 - Tests verify caching behavior and edge cases
+
+---
+Plan generated with 1 task in PLANNED status.
+
+**Are you satisfied with this plan? Ready to activate and start work?**
+(I'll create a GitHub issue for the task if you confirm)
+```
+
+### Bug Issue (Single-Task Investigation)
+
+**User:** "Plan issue #7 - Login fails silently when session expires"
+
+**Response:**
+```
+Analyzing issue #7: Login fails silently when session expires
+
+This is a BUG issue. Using single-task investigation approach - the solution
+will be discovered during investigation, not planned upfront.
+
+## Plan Summary
+Investigate and fix the silent login failure on session expiry.
+
+## Approach
+Investigation-first: identify root cause through debugging, then implement
+fix with regression test. Findings will be documented in task progress log.
+
+## Tasks
+
+### Task 1: Investigate and fix: Login fails silently when session expires
+Investigate and resolve the reported issue. Document findings in task progress log.
+
+Symptoms: Users report being stuck on login page with no error message when
+their session has expired. Expected behavior is a clear "Session expired"
+message prompting re-authentication.
+
+Reproduction:
+1. Log in successfully
+2. Wait for session to expire (or manually invalidate)
+3. Attempt any authenticated action
+4. Observe: redirected to login with no message
+
+**Acceptance Criteria:**
+- [ ] Bug is fixed and verified with reproduction steps
+- [ ] Root cause documented in task progress log
+- [ ] Regression test added to prevent recurrence
 
 ---
 Plan generated with 1 task in PLANNED status.
