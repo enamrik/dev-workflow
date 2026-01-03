@@ -858,10 +858,10 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
     milestones.map((m) => [m.id, m.title])
   );
 
-  // Get active issues (IN_PROGRESS and OPEN only, not PLANNED or CLOSED)
+  // Get actionable issues (PLANNED needs confirmation, OPEN/IN_PROGRESS need work)
   const activeIssues = ctx.issueRepository
     .findMany()
-    .filter((i) => i.status === "IN_PROGRESS" || i.status === "OPEN");
+    .filter((i) => i.status === "IN_PROGRESS" || i.status === "OPEN" || i.status === "PLANNED");
 
   // Get available tasks and their parent info
   interface TaskWithContext {
