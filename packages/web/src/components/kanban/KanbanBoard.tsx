@@ -33,7 +33,10 @@ export function KanbanBoard({
   }
 
   // Group tasks by status (mapping ABANDONED to COMPLETED column)
-  const pendingTasks = allTasks.filter((t) => t.status === "PENDING");
+  // Ready column shows BACKLOG, READY, and PENDING (for backwards compatibility)
+  const readyTasks = allTasks.filter(
+    (t) => t.status === "BACKLOG" || t.status === "READY" || t.status === "PENDING"
+  );
   const inProgressTasks = allTasks.filter((t) => t.status === "IN_PROGRESS");
   const prReviewTasks = allTasks.filter((t) => t.status === "PR_REVIEW");
 
@@ -71,7 +74,7 @@ export function KanbanBoard({
   const limitedDoneTasks = doneTasks.slice(0, 20);
 
   const hasAnyTasks =
-    pendingTasks.length > 0 ||
+    readyTasks.length > 0 ||
     inProgressTasks.length > 0 ||
     prReviewTasks.length > 0 ||
     limitedDoneTasks.length > 0;
@@ -87,7 +90,7 @@ export function KanbanBoard({
 
   return (
     <div className="flex gap-4 overflow-x-auto pb-4">
-      <KanbanColumn title="Ready" status="PENDING" tasks={pendingTasks} />
+      <KanbanColumn title="Ready" status="READY" tasks={readyTasks} />
       <KanbanColumn
         title="In Progress"
         status="IN_PROGRESS"

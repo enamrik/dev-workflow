@@ -35,7 +35,7 @@ export interface Task {
   number: number;
   title: string;
   description: string;
-  status: "PENDING" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
+  status: "BACKLOG" | "READY" | "PENDING" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
   estimatedMinutes: number | null;
   acceptanceCriteria: string[];
   labels: string[];
