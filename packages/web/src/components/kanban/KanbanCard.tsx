@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { clsx } from "clsx";
-import { Badge, Modal, Markdown } from "../ui";
+import { Badge, Modal, Markdown, Tooltip } from "../ui";
 import { TaskTiming, TaskMetadataPanel, TaskActions } from "../tasks";
 import type { Task } from "@/lib/types";
 
@@ -27,6 +27,7 @@ type ModalTab = "task" | "details";
 interface TaskModalContentProps {
   task: Task;
   issueNumber: number;
+  issueTitle: string;
   issueUrl: string;
   projectId?: string;
 }
@@ -34,6 +35,7 @@ interface TaskModalContentProps {
 function TaskModalContent({
   task,
   issueNumber,
+  issueTitle,
   issueUrl,
   projectId,
 }: TaskModalContentProps) {
@@ -46,13 +48,15 @@ function TaskModalContent({
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-gray-900 text-sm">
-              <Link
-                href={issueUrl}
-                className="text-blue-600 hover:underline"
-                onClick={(e) => e.stopPropagation()}
-              >
-                #{issueNumber}.{task.number}
-              </Link>{" "}
+              <Tooltip content={issueTitle} side="bottom">
+                <Link
+                  href={issueUrl}
+                  className="text-blue-600 hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  #{issueNumber}.{task.number}
+                </Link>
+              </Tooltip>{" "}
               {task.title}
             </div>
           </div>
@@ -218,12 +222,14 @@ function DetailsTab({
 function CardContent({
   task,
   issueNumber,
+  issueTitle,
   issueUrl,
   projectId,
   projectName,
 }: {
   task: Task;
   issueNumber: number;
+  issueTitle: string;
   issueUrl: string;
   projectId?: string;
   projectName?: string;
@@ -246,13 +252,15 @@ function CardContent({
     >
       {/* Task number and title at top */}
       <div className="font-medium text-gray-800 text-sm mb-1">
-        <Link
-          href={issueUrl}
-          className="text-blue-600 hover:underline"
-          onClick={(e) => e.stopPropagation()}
-        >
-          #{issueNumber}.{task.number}
-        </Link>{" "}
+        <Tooltip content={issueTitle} side="bottom">
+          <Link
+            href={issueUrl}
+            className="text-blue-600 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            #{issueNumber}.{task.number}
+          </Link>
+        </Tooltip>{" "}
         {task.title}
       </div>
 
@@ -299,6 +307,7 @@ function CardContent({
 export function KanbanCard({
   task,
   issueNumber,
+  issueTitle,
   projectId,
   projectName,
 }: KanbanCardProps) {
@@ -312,6 +321,7 @@ export function KanbanCard({
         <CardContent
           task={task}
           issueNumber={issueNumber}
+          issueTitle={issueTitle}
           issueUrl={issueUrl}
           projectId={projectId}
           projectName={projectName}
@@ -322,6 +332,7 @@ export function KanbanCard({
       <TaskModalContent
         task={task}
         issueNumber={issueNumber}
+        issueTitle={issueTitle}
         issueUrl={issueUrl}
         projectId={projectId}
       />
