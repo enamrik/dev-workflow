@@ -1,7 +1,7 @@
 ---
 name: dwf-work-task
-description: Manage task execution lifecycle - start, complete, or abandon tasks. Supports 3 execution modes (isolated, branch, main) and PR-based workflow. Auto-invoked when user wants to "start task", "work on task", "complete task", "finish task", "abandon task", "submit for review", "merge PR", "pause issue", etc.
-allowed-tools: mcp:dev-workflow-tracker:get_task_for_session, mcp:dev-workflow-tracker:start_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue
+description: Manage task execution lifecycle - start, complete, or abandon tasks. Supports 3 execution modes (isolated, branch, main) and PR-based workflow. Auto-invoked when user wants to "start task", "work on task", "complete task", "finish task", "abandon task", "submit for review", "merge PR", "pause issue", etc. (project)
+allowed-tools: mcp:dev-workflow-tracker:get_task_for_session, mcp:dev-workflow-tracker:start_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue, mcp:dev-workflow-tracker:move_issue_to_backlog
 ---
 
 # Work Task Skill
@@ -38,15 +38,26 @@ allowed-tools: mcp:dev-workflow-tracker:get_task_for_session, mcp:dev-workflow-t
 
 ## Task Lifecycle
 
-Tasks start in BACKLOG status. When the first task in a plan is started, all other
-BACKLOG tasks automatically transition to READY. Both BACKLOG and READY tasks can
-be started.
+**New tasks start in PLANNED status.** The issue and tasks remain in PLANNED until
+the user confirms the plan and calls `move_issue_to_backlog`. This activates the
+plan, creating GitHub issues for each task (if sync enabled).
+
+Once activated, when the first task is started, all other BACKLOG tasks automatically
+transition to READY. Both BACKLOG and READY tasks can be started.
 
 The `pause_issue` tool moves all READY tasks back to BACKLOG, allowing you to
 temporarily deactivate a plan. Starting any task again will transition remaining
 BACKLOG tasks back to READY.
 
 ```
+                    PLANNED (new issues/tasks start here)
+                       │
+                       │ (user confirms plan)
+                       ▼
+             move_issue_to_backlog
+        (creates GitHub issues for each task)
+                       │
+                       ▼
                     BACKLOG
                        │
                        │ (first task started → others become READY)
@@ -94,6 +105,7 @@ BACKLOG tasks back to READY.
 
 | From | To | Trigger |
 |------|-----|---------|
+| PLANNED | BACKLOG | `move_issue_to_backlog` (activates plan, creates GitHub issues) |
 | BACKLOG | IN_PROGRESS | `start_task_session` (also moves other BACKLOG → READY) |
 | READY | IN_PROGRESS | `start_task_session` |
 | READY | BACKLOG | `pause_issue` (moves all READY tasks) |
@@ -111,21 +123,28 @@ BACKLOG tasks back to READY.
    - If not specified → call `list_available_tasks` and help user choose
    - If only one task available → confirm and start it
 
-2. **Get task details:**
+2. **Check task status:**
+   - **If task is PLANNED:** The plan hasn't been activated yet.
+     - Ask the user: "This task is still in PLANNED status. Would you like to activate the plan first?"
+     - If user confirms → call `move_issue_to_backlog` to activate
+     - This transitions all PLANNED tasks to BACKLOG and creates GitHub issues
+   - **If task is BACKLOG or READY:** Proceed with starting
+
+3. **Get task details:**
    - Call `get_task_for_session` with the task ID
    - Review title, description, and acceptance criteria
 
-3. **Determine execution mode:**
+4. **Determine execution mode:**
    - **ALWAYS use `isolated` mode** unless the user explicitly requests otherwise
    - Only use `branch` if user explicitly says "branch mode", "no worktree", etc.
    - Only use `main` if user explicitly says "on main", "main mode", "skip PR", etc.
    - **NEVER autonomously choose a non-default mode** based on task complexity or size
 
-4. **Start the session:**
+5. **Start the session:**
    - Call `start_task_session` with task ID, session ID, and mode
    - If successful → show task details and begin work
 
-5. **Present task to user:**
+6. **Present task to user:**
    - Show what needs to be implemented
    - Show acceptance criteria as a checklist
    - For isolated mode: show worktree path and branch name

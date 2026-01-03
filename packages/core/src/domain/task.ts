@@ -2,13 +2,16 @@
  * Domain types for Task entity
  */
 
-export type TaskStatus = "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
+import type { GitHubSyncState } from "./github.js";
+
+export type TaskStatus = "PLANNED" | "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
 
 /**
  * Valid task status transitions
  *
  * Defines which status transitions are allowed in the task lifecycle.
  * Key transitions:
+ * - PLANNED → BACKLOG: Issue activated via move_issue_to_backlog (GitHub issues created)
  * - BACKLOG → READY: Plan activation (any task started)
  * - READY → BACKLOG: Issue paused
  * - BACKLOG/READY → IN_PROGRESS: Task started
@@ -18,6 +21,7 @@ export type TaskStatus = "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "CO
  * - Any → ABANDONED: Task abandoned
  */
 const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
+  PLANNED: ["BACKLOG", "ABANDONED"], // PLANNED → BACKLOG when issue activated
   BACKLOG: ["READY", "IN_PROGRESS", "ABANDONED"],
   READY: ["BACKLOG", "IN_PROGRESS", "ABANDONED"],
   IN_PROGRESS: ["PR_REVIEW", "COMPLETED", "ABANDONED"],
@@ -102,6 +106,9 @@ export interface Task {
   readonly prUrl?: string; // GitHub PR URL
   readonly prNumber?: number; // GitHub PR number
   readonly prStatus?: PRStatus; // PR state
+
+  // GitHub issue sync state (for task-level GitHub issues)
+  readonly githubSync?: GitHubSyncState;
 
   readonly startedAt?: string; // When task moved to IN_PROGRESS
   readonly submittedForReviewAt?: string; // When task moved to PR_REVIEW
@@ -377,7 +384,7 @@ export interface TaskRepository {
    * Soft delete a task
    *
    * Marks the task as deleted without removing it from the database.
-   * Only BACKLOG or READY tasks can be soft deleted.
+   * Only PLANNED, BACKLOG, or READY tasks can be soft deleted.
    *
    * @param id - Task UUID
    * @param deletedBy - Who deleted the task
@@ -394,4 +401,26 @@ export interface TaskRepository {
    * @returns The restored task
    */
   restore(id: string): Task;
+
+  /**
+   * Update GitHub sync information for a task
+   *
+   * Sets the GitHub issue sync state (number, URL, node ID, etc.).
+   * Called when a GitHub issue is created for the task.
+   *
+   * @param taskId - Task UUID
+   * @param syncState - GitHub sync state to set
+   * @returns The updated task
+   */
+  updateGitHubSync(taskId: string, syncState: GitHubSyncState): Task;
+
+  /**
+   * Clear GitHub sync information from a task
+   *
+   * Removes GitHub sync state. Used if GitHub issue is deleted.
+   *
+   * @param taskId - Task UUID
+   * @returns The updated task
+   */
+  clearGitHubSync(taskId: string): Task;
 }

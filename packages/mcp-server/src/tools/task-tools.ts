@@ -18,6 +18,7 @@ import {
   type TaskExecutionLogRow,
   type ConflictDetectionService,
   type ConflictWarning,
+  type TaskGitHubSyncService,
 } from "@dev-workflow/core";
 import {
   type ToolDefinition,
@@ -464,15 +465,19 @@ export interface TaskToolContext {
   labelService: LabelService;
   taskExecutionLogsSchema: typeof taskExecutionLogs;
   conflictDetectionService?: ConflictDetectionService;
+  /** Optional - for syncing task status changes to GitHub */
+  taskGitHubSyncService?: TaskGitHubSyncService;
 }
 
 /**
  * Handle update_task_status tool call
+ *
+ * Updates task status and syncs to GitHub if task has GitHub sync enabled.
  */
-export function handleUpdateTaskStatus(
+export async function handleUpdateTaskStatus(
   ctx: TaskToolContext,
   args: { taskId: string; status: TaskStatus; notes?: string }
-): ToolResponse {
+): Promise<ToolResponse> {
   const { taskId, status, notes } = args;
 
   // Get current task to capture previous status
@@ -502,6 +507,16 @@ export function handleUpdateTaskStatus(
         fromStatus,
         toStatus: status,
       });
+    }
+  }
+
+  // Sync to GitHub if task has GitHub sync enabled
+  if (ctx.taskGitHubSyncService && updatedTask.githubSync?.githubIssueNumber) {
+    try {
+      await ctx.taskGitHubSyncService.syncTaskStatus(taskId, status);
+    } catch (error) {
+      // Log but don't fail - GitHub sync is best effort after local update
+      console.warn(`Failed to sync task status to GitHub: ${error}`);
     }
   }
 

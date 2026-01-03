@@ -8,6 +8,7 @@ import type {
   SqliteTaskRepository,
   PlanningService,
   PlanComplexity,
+  TaskGitHubSyncService,
 } from "@dev-workflow/core";
 import {
   type ToolDefinition,
@@ -117,6 +118,24 @@ export const planToolDefinitions: ToolDefinition[] = [
       required: ["issueNumber"],
     },
   },
+  {
+    name: "move_issue_to_backlog",
+    description:
+      "Move a PLANNED issue to OPEN and activate all PLANNED tasks to BACKLOG. " +
+      "Creates GitHub issues for each task (if GitHub sync is enabled). " +
+      "This confirms the plan is finalized and makes tasks available for work. " +
+      "User must confirm the plan before calling this tool.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issueNumber: {
+          type: "number",
+          description: "Issue number (e.g., 123 for #123)",
+        },
+      },
+      required: ["issueNumber"],
+    },
+  },
 ];
 
 /**
@@ -127,6 +146,7 @@ export interface PlanToolContext {
   planRepository: SqlitePlanRepository;
   taskRepository: SqliteTaskRepository;
   planningService: PlanningService;
+  taskGitHubSyncService?: TaskGitHubSyncService; // Optional - only present if GitHub sync is enabled
 }
 
 /**
@@ -285,5 +305,121 @@ export function handlePauseIssue(
       title: t.title,
       status: t.status,
     })),
+  });
+}
+
+/**
+ * Handle move_issue_to_backlog tool call
+ *
+ * Activates a PLANNED issue and all its PLANNED tasks:
+ * - Issue: PLANNED → OPEN
+ * - Tasks: PLANNED → BACKLOG
+ * - Creates GitHub issues for each task (if sync enabled)
+ *
+ * This is idempotent: if called on an issue already in OPEN status,
+ * it only activates any remaining PLANNED tasks (from a plan regeneration).
+ */
+export async function handleMoveIssueToBacklog(
+  ctx: PlanToolContext,
+  args: { issueNumber: number }
+): Promise<ToolResponse> {
+  const { issueNumber } = args;
+
+  if (!issueNumber) {
+    return errorResponse("issueNumber is required");
+  }
+
+  // Get the issue
+  const issue = ctx.issueRepository.findByNumber(issueNumber);
+  if (!issue) {
+    return errorResponse(`Issue not found: #${issueNumber}`);
+  }
+
+  // Validate issue status
+  if (issue.status !== "PLANNED" && issue.status !== "OPEN") {
+    return errorResponse(
+      `Issue must be PLANNED or OPEN to activate. Current status: ${issue.status}`
+    );
+  }
+
+  // Get the plan
+  const plan = ctx.planRepository.findByIssueId(issue.id);
+  if (!plan) {
+    return errorResponse(`No plan found for issue #${issueNumber}`);
+  }
+
+  // Get PLANNED tasks
+  const allTasks = ctx.taskRepository.findByPlanId(plan.id);
+  const plannedTasks = allTasks.filter((t) => t.status === "PLANNED");
+
+  // If no PLANNED tasks and issue is already OPEN, nothing to do
+  if (plannedTasks.length === 0 && issue.status === "OPEN") {
+    return successResponse({
+      message: `Issue #${issueNumber} is already active with no PLANNED tasks`,
+      issueNumber: issue.number,
+      issueStatus: issue.status,
+      tasksActivated: 0,
+      githubIssuesCreated: 0,
+    });
+  }
+
+  // Use TaskGitHubSyncService if available
+  if (ctx.taskGitHubSyncService) {
+    try {
+      const result = await ctx.taskGitHubSyncService.activatePlannedTasks(issue.id);
+
+      if (!result.success) {
+        return errorResponse(result.error ?? "Failed to activate tasks");
+      }
+
+      return successResponse({
+        message: `Issue #${issueNumber} activated. ${result.tasksActivated.length} task(s) moved to BACKLOG.`,
+        issueNumber: issue.number,
+        issueStatus: result.issueTransitioned ? "OPEN" : issue.status,
+        issueTransitioned: result.issueTransitioned,
+        tasksActivated: result.tasksActivated.length,
+        githubIssuesCreated: result.tasksActivated.filter((t) => t.githubIssueNumber).length,
+        tasks: result.tasksActivated.map((t) => ({
+          taskId: t.taskId,
+          taskNumber: t.taskNumber,
+          githubIssueNumber: t.githubIssueNumber,
+          githubUrl: t.githubUrl,
+        })),
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return errorResponse(`Failed to activate tasks: ${errorMessage}`);
+    }
+  }
+
+  // No GitHub sync - just move tasks to BACKLOG
+  const activatedTasks = [];
+  for (const task of plannedTasks) {
+    ctx.taskRepository.updateStatus(
+      task.id,
+      "BACKLOG",
+      "system",
+      "Activated via move_issue_to_backlog"
+    );
+    activatedTasks.push({
+      taskId: task.id,
+      taskNumber: task.number,
+    });
+  }
+
+  // Transition issue from PLANNED → OPEN
+  const issueTransitioned = issue.status === "PLANNED";
+  if (issueTransitioned) {
+    ctx.issueRepository.update(issue.id, { status: "OPEN" });
+  }
+
+  return successResponse({
+    message: `Issue #${issueNumber} activated. ${activatedTasks.length} task(s) moved to BACKLOG.`,
+    issueNumber: issue.number,
+    issueStatus: issueTransitioned ? "OPEN" : issue.status,
+    issueTransitioned,
+    tasksActivated: activatedTasks.length,
+    githubIssuesCreated: 0, // No GitHub sync
+    tasks: activatedTasks,
   });
 }
