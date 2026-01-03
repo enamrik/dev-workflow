@@ -648,11 +648,13 @@ export class SqliteTaskRepository implements TaskRepository {
    * @returns Array of status history entries
    */
   getStatusHistory(taskId: string): TaskStatusHistory[] {
+    // Order by changedAt DESC, then by rowid DESC for deterministic ordering
+    // when timestamps are identical (important for fast in-memory DB tests)
     const results = this.db
       .select()
       .from(taskStatusHistory)
       .where(eq(taskStatusHistory.taskId, taskId))
-      .orderBy(desc(taskStatusHistory.changedAt))
+      .orderBy(desc(taskStatusHistory.changedAt), desc(sql`rowid`))
       .all();
 
     return results.map((row) => this.mapRowToStatusHistory(row));

@@ -5,9 +5,8 @@
  */
 
 import { afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync } from "fs";
+import { existsSync } from "fs";
 import { join } from "path";
-import { tmpdir } from "os";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
@@ -23,23 +22,23 @@ export type TestDatabase = {
   cleanup: () => void;
 };
 
-// Store the current test database path
-let currentTestDbPath: string | null = null;
+// Store current test database for cleanup
 let currentTestDb: Database.Database | null = null;
 
 /**
  * Create a fresh test database with all migrations applied
+ *
+ * Uses SQLite in-memory mode (:memory:) for:
+ * - Faster test execution (no disk I/O)
+ * - Automatic cleanup (memory freed when connection closes)
+ * - Complete isolation between tests
  */
 export function createTestDatabase(): TestDatabase {
-  // Create temp directory for this test
-  const tempDir = mkdtempSync(join(tmpdir(), "dev-workflow-test-"));
-  const dbPath = join(tempDir, "test.db");
-
-  // Create SQLite database
-  const sqlite = new Database(dbPath);
+  // Create in-memory SQLite database
+  const sqlite = new Database(":memory:");
   const db = drizzle(sqlite, { schema });
 
-  // Run migrations from core package
+  // Run migrations from core package - in-memory DB needs schema created fresh each time
   const corePath = require.resolve("@dev-workflow/core");
   const migrationsPath = join(corePath, "../../drizzle");
   if (existsSync(migrationsPath)) {
@@ -47,22 +46,22 @@ export function createTestDatabase(): TestDatabase {
   }
 
   // Track for cleanup
-  currentTestDbPath = tempDir;
   currentTestDb = sqlite;
 
   return {
     db,
     sqlite,
-    path: dbPath,
+    path: ":memory:",
     cleanup: () => {
       sqlite.close();
-      rmSync(tempDir, { recursive: true, force: true });
     },
   };
 }
 
 // Global cleanup after all tests in a file
 afterEach(() => {
+  // Close any open database connections
+  // In-memory databases are automatically cleaned up when closed
   if (currentTestDb) {
     try {
       currentTestDb.close();
@@ -70,14 +69,5 @@ afterEach(() => {
       // Ignore close errors
     }
     currentTestDb = null;
-  }
-
-  if (currentTestDbPath && existsSync(currentTestDbPath)) {
-    try {
-      rmSync(currentTestDbPath, { recursive: true, force: true });
-    } catch {
-      // Ignore cleanup errors
-    }
-    currentTestDbPath = null;
   }
 });
