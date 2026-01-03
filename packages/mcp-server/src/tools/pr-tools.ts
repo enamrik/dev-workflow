@@ -11,6 +11,7 @@ import {
   type SqlitePlanRepository,
   type SqliteTaskRepository,
   type PRStatus,
+  type TaskGitHubSyncService,
 } from "@dev-workflow/core";
 import {
   type ToolDefinition,
@@ -104,6 +105,7 @@ export interface PRToolContext {
   planRepository: SqlitePlanRepository;
   taskRepository: SqliteTaskRepository;
   gitWorktreeService?: GitWorktreeService;
+  taskGitHubSyncService?: TaskGitHubSyncService;
 }
 
 /**
@@ -251,6 +253,16 @@ export async function handleSubmitForReview(
       ctx.taskRepository.updatePRInfo(taskId, existingPR.url, existingPR.number, prStatus);
       ctx.taskRepository.updateStatus(taskId, "PR_REVIEW", undefined, "Adopted existing PR");
 
+      // Sync to GitHub if task has GitHub sync enabled
+      if (ctx.taskGitHubSyncService && task.githubSync?.githubIssueNumber) {
+        try {
+          await ctx.taskGitHubSyncService.syncTaskStatus(taskId, "PR_REVIEW");
+        } catch (error) {
+          // Log but don't fail - GitHub sync is best effort after local update
+          console.warn(`Failed to sync task status to GitHub: ${error}`);
+        }
+      }
+
       return successResponse({
         success: true,
         adopted: true,
@@ -342,6 +354,16 @@ export async function handleSubmitForReview(
     // 9. Update task status to PR_REVIEW
     ctx.taskRepository.updateStatus(taskId, "PR_REVIEW", undefined, "Submitted for review");
 
+    // 10. Sync to GitHub if task has GitHub sync enabled
+    if (ctx.taskGitHubSyncService && task.githubSync?.githubIssueNumber) {
+      try {
+        await ctx.taskGitHubSyncService.syncTaskStatus(taskId, "PR_REVIEW");
+      } catch (error) {
+        // Log but don't fail - GitHub sync is best effort after local update
+        console.warn(`Failed to sync task status to GitHub: ${error}`);
+      }
+    }
+
     return successResponse({
       success: true,
       task: {
@@ -417,6 +439,16 @@ export async function handleCompleteTask(
 
     // Clear session association
     ctx.taskRepository.clearSession(taskId);
+
+    // Sync to GitHub if task has GitHub sync enabled
+    if (ctx.taskGitHubSyncService && task.githubSync?.githubIssueNumber) {
+      try {
+        await ctx.taskGitHubSyncService.syncTaskStatus(taskId, "COMPLETED");
+      } catch (error) {
+        // Log but don't fail - GitHub sync is best effort after local update
+        console.warn(`Failed to sync task status to GitHub: ${error}`);
+      }
+    }
 
     // Find next available task
     const nextTask = findNextAvailableTask(ctx, task.planId);
@@ -511,7 +543,17 @@ export async function handleCompleteTask(
   // 7. Clear session association
   ctx.taskRepository.clearSession(taskId);
 
-  // 8. Find next available task
+  // 8. Sync to GitHub if task has GitHub sync enabled
+  if (ctx.taskGitHubSyncService && task.githubSync?.githubIssueNumber) {
+    try {
+      await ctx.taskGitHubSyncService.syncTaskStatus(taskId, "COMPLETED");
+    } catch (error) {
+      // Log but don't fail - GitHub sync is best effort after local update
+      console.warn(`Failed to sync task status to GitHub: ${error}`);
+    }
+  }
+
+  // 9. Find next available task
   const nextTask = findNextAvailableTask(ctx, task.planId);
 
   return successResponse({
