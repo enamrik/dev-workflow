@@ -141,6 +141,7 @@ export interface CompletedTask extends Task {
   issueNumber: number;
   issueTitle: string;
   issueStatus: string;
+  issueType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
 }
 
 /**
