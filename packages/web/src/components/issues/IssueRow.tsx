@@ -11,7 +11,7 @@ interface IssueRowProps {
 
 export function IssueRow({ item }: IssueRowProps) {
   const router = useRouter();
-  const { issue, hasPlan, taskCounts } = item;
+  const { issue, hasPlan, taskCounts, projectName } = item;
 
   const issueUrl = issue.projectId
     ? `/projects/${encodeURIComponent(issue.projectId)}/issues/${issue.number}`
@@ -34,6 +34,15 @@ export function IssueRow({ item }: IssueRowProps) {
         {issue.number}
       </td>
       <td className="py-3 px-3 font-medium text-gray-800">{issue.title}</td>
+      <td className="py-3 px-3 w-32">
+        {projectName ? (
+          <span className="inline-block px-2.5 py-1 text-xs rounded bg-gray-50 text-gray-500 border border-gray-200">
+            {projectName}
+          </span>
+        ) : (
+          <span className="text-gray-400">-</span>
+        )}
+      </td>
       <td className="py-3 px-3 w-28">
         <Badge variant="type" value={issue.type} />
       </td>
