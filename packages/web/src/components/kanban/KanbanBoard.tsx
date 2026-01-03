@@ -5,6 +5,7 @@ import type { ProjectIssueWithTasks, Task, CompletedTask } from "@/lib/types";
 interface KanbanTask extends Task {
   issueNumber: number;
   issueTitle: string;
+  issueType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
   projectId?: string;
   projectName?: string;
 }
@@ -26,6 +27,7 @@ export function KanbanBoard({
         ...task,
         issueNumber: issue.number,
         issueTitle: issue.title,
+        issueType: issue.type,
         projectId: issue.projectId,
         projectName,
       });
@@ -57,6 +59,7 @@ export function KanbanBoard({
         ...task,
         projectId: task.projectId,
         projectName: task.projectName,
+        issueType: task.issueType,
       });
     }
   }
