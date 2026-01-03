@@ -4,6 +4,14 @@ priority: HIGH
 labels: [bug]
 ---
 
+<!--
+  Bug Template - Investigation First Approach
+
+  Focus on SYMPTOMS and REPRODUCTION, not solutions.
+  The fix will be discovered during investigation.
+  No implementation approach is expected upfront.
+-->
+
 # Bug: [Title]
 
 ## Description
@@ -21,8 +29,8 @@ labels: [bug]
 [What actually happens]
 
 ## Acceptance Criteria
-- [ ] Bug is fixed
-- [ ] No regression in related features
+- [ ] Bug is fixed and verified
+- [ ] Root cause documented in task progress log
 - [ ] Tests added to prevent recurrence
 
 ## Environment
