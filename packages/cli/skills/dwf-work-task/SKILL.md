@@ -39,14 +39,14 @@ allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-trac
 ## Task Lifecycle
 
 **New tasks start in PLANNED status.** The issue and tasks remain in PLANNED until
-the user confirms the plan and calls `move_issue_to_backlog`. This activates the
-plan, creating GitHub issues for each task (if sync enabled).
+the user is satisfied with the plan and calls `move_issue_to_backlog`. This makes
+tasks available to work on, creating GitHub issues for each task (if sync enabled).
 
-Once activated, when the first task is started, all other BACKLOG tasks automatically
+Once work begins, when the first task is started, all other BACKLOG tasks automatically
 transition to READY. Both BACKLOG and READY tasks can be started.
 
 The `pause_issue` tool moves all READY tasks back to BACKLOG, allowing you to
-temporarily deactivate a plan. Starting any task again will transition remaining
+pause work on an issue. Starting any task again will transition remaining
 BACKLOG tasks back to READY.
 
 ```
@@ -105,7 +105,7 @@ BACKLOG tasks back to READY.
 
 | From | To | Trigger |
 |------|-----|---------|
-| PLANNED | BACKLOG | `move_issue_to_backlog` (activates plan, creates GitHub issues) |
+| PLANNED | BACKLOG | `move_issue_to_backlog` (user satisfied with plan, creates GitHub issues) |
 | BACKLOG | IN_PROGRESS | `load_task_session` (also moves other BACKLOG → READY) |
 | READY | IN_PROGRESS | `load_task_session` |
 | READY | BACKLOG | `pause_issue` (moves all READY tasks) |
@@ -124,9 +124,9 @@ BACKLOG tasks back to READY.
    - If only one task available → confirm and start it
 
 2. **Check task status:**
-   - **If task is PLANNED:** The plan hasn't been activated yet.
-     - Ask the user: "This task is still in PLANNED status. Would you like to activate the plan first?"
-     - If user confirms → call `move_issue_to_backlog` to activate
+   - **If task is PLANNED:** The plan hasn't been approved yet.
+     - Ask the user: "This task is still planned. Are you satisfied with the plan? Ready to start working on it?"
+     - If user confirms → call `move_issue_to_backlog` to make tasks available
      - This transitions all PLANNED tasks to BACKLOG and creates GitHub issues
    - **If task is BACKLOG or READY:** Proceed with starting
 
@@ -233,8 +233,8 @@ After implementing the task, submit for PR review:
 
 ### To Pause an Issue
 
-Pausing an issue moves all READY tasks back to BACKLOG, allowing the plan to be
-temporarily deactivated. This is useful when switching focus to another issue.
+Pausing an issue moves all READY tasks back to BACKLOG, allowing work to be
+temporarily put on hold. This is useful when switching focus to another issue.
 
 1. **Pause the issue:**
    - Call `pause_issue` with the issue number
@@ -242,11 +242,11 @@ temporarily deactivated. This is useful when switching focus to another issue.
 
 2. **Report results:**
    - Show how many tasks were moved
-   - Explain that starting any task will reactivate the plan
+   - Explain that starting any task will resume work on the issue
 
 3. **When work resumes:**
    - Starting any BACKLOG or READY task will transition all BACKLOG tasks to READY
-   - The plan is now "active" again
+   - Work resumes on the issue
 
 **Note:** IN_PROGRESS, PR_REVIEW, COMPLETED, and ABANDONED tasks are not affected
 by pause. Only READY tasks are moved.
