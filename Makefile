@@ -46,6 +46,8 @@ clean:
 
 link: build
 	@echo "🔗 Linking dev-workflow globally for development..."
+	@# Remove any stale global references first (prevents ENOENT errors from old tarballs)
+	@pnpm remove -g @dev-workflow/mcp-server @dev-workflow/cli 2>/dev/null || true
 	@cd packages/mcp-server && pnpm link --global
 	@cd packages/cli && pnpm link --global
 	@echo "✓ dev-workflow is now linked globally"
