@@ -565,6 +565,16 @@ export async function handleLoadTaskSession(
       response.conflictWarnings = result.conflictWarnings;
       response.conflictWarningMessage = formatConflictWarnings(result.conflictWarnings);
     }
+
+    // Sync to GitHub if task has GitHub sync enabled
+    if (ctx.taskGitHubSyncService && result.task.githubSync?.githubIssueNumber) {
+      try {
+        await ctx.taskGitHubSyncService.syncTaskStatus(taskId, "IN_PROGRESS");
+      } catch (error) {
+        // Log but don't fail - GitHub sync is best effort after local update
+        console.warn(`Failed to sync task status to GitHub: ${error}`);
+      }
+    }
   }
 
   // Load full context (same as get_task_for_session)
@@ -651,6 +661,16 @@ export async function handleCompleteTaskSession(
     notes,
   });
 
+  // Sync to GitHub if task has GitHub sync enabled
+  if (ctx.taskGitHubSyncService && task.githubSync?.githubIssueNumber) {
+    try {
+      await ctx.taskGitHubSyncService.syncTaskStatus(taskId, "COMPLETED");
+    } catch (error) {
+      // Log but don't fail - GitHub sync is best effort after local update
+      console.warn(`Failed to sync task status to GitHub: ${error}`);
+    }
+  }
+
   return successResponse({
     success: true,
     task,
@@ -671,6 +691,16 @@ export async function handleAbandonTaskSession(
     sessionId,
     reason
   );
+
+  // Sync to GitHub if task has GitHub sync enabled
+  if (ctx.taskGitHubSyncService && task.githubSync?.githubIssueNumber) {
+    try {
+      await ctx.taskGitHubSyncService.syncTaskStatus(taskId, "ABANDONED");
+    } catch (error) {
+      // Log but don't fail - GitHub sync is best effort after local update
+      console.warn(`Failed to sync task status to GitHub: ${error}`);
+    }
+  }
 
   return successResponse({
     success: true,

@@ -549,6 +549,7 @@ async function main() {
     planRepository,
     taskRepository,
     gitWorktreeService,
+    taskGitHubSyncService,
   };
 
   // Start server with stdio transport
