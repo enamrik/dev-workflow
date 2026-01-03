@@ -122,3 +122,15 @@ export {
   clearDaemonPort,
   getPortFilePath,
 } from "./infrastructure/port-manager.js";
+
+// Test utilities - Mock implementations for integration testing
+export {
+  MockGitHubCLI,
+  type MockGitHubCLICall,
+  type MockGitHubCLIConfig,
+  MockGitWorktreeService,
+  type MockGitWorktreeCall,
+  type MockGitWorktreeConfig,
+  MockFileSystem,
+  type MockFileSystemCall,
+} from "./__tests__/mocks/index.js";
