@@ -80,6 +80,11 @@ export interface Project {
   gitRoot: string;
 }
 
+/**
+ * Task phase represents the overall progress phase of an issue's tasks.
+ */
+export type TaskPhase = "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED";
+
 export interface ProjectIssueWithPlanInfo {
   issue: Issue;
   hasPlan: boolean;
@@ -88,6 +93,7 @@ export interface ProjectIssueWithPlanInfo {
     completed: number;
     inProgress: number;
   };
+  taskPhase?: TaskPhase;
   projectName?: string;
 }
 

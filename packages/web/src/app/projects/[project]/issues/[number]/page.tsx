@@ -17,7 +17,7 @@ import {
   EmptyState,
   Markdown,
 } from "@/components/ui";
-import type { Issue, Plan, Task } from "@/lib/types";
+import type { Issue, Plan, Task, TaskPhase } from "@/lib/types";
 
 type TabId = "details" | "plan" | "tasks";
 
@@ -69,6 +69,9 @@ export default function IssueDetailPage({ params }: PageProps) {
     inProgress: tasks.filter((t) => t.status === "IN_PROGRESS").length,
   };
 
+  // Compute task phase from task statuses
+  const taskPhase = computeTaskPhase(tasks);
+
   const backUrl = projectId ? `/?project=${encodeURIComponent(projectId)}` : "/";
   const boardUrl = projectId
     ? `/?project=${encodeURIComponent(projectId)}&issue=${issue.number}`
@@ -106,6 +109,9 @@ export default function IssueDetailPage({ params }: PageProps) {
           <Badge variant="type" value={issue.type} />
           <Badge variant="priority" value={issue.priority} />
           <Badge variant="status" value={issue.status} />
+          {taskPhase && taskPhase !== "COMPLETED" && (
+            <Badge variant="status" value={taskPhase} className="opacity-75" />
+          )}
         </div>
       </div>
 
@@ -280,4 +286,29 @@ function TasksTab({ tasks, taskCounts, boardUrl, projectId, issueNumber }: Tasks
 
 function formatDate(isoString: string): string {
   return format(new Date(isoString), "MMM d, yyyy 'at' h:mm a");
+}
+
+/**
+ * Compute task phase from task statuses
+ */
+function computeTaskPhase(tasks: Task[]): TaskPhase | undefined {
+  if (tasks.length === 0) return undefined;
+
+  const completed = tasks.filter((t) => t.status === "COMPLETED").length;
+  const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
+  const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
+  const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
+  const backlog = tasks.filter((t) => t.status === "BACKLOG").length;
+
+  if (completed + abandoned === tasks.length) {
+    return "COMPLETED";
+  } else if (inProgress > 0) {
+    return "IN_PROGRESS";
+  } else if (prReview > 0) {
+    return "PR_REVIEW";
+  } else if (backlog > 0) {
+    return "BACKLOG";
+  } else {
+    return "READY";
+  }
 }

@@ -11,7 +11,7 @@ interface IssueRowProps {
 
 export function IssueRow({ item }: IssueRowProps) {
   const router = useRouter();
-  const { issue, hasPlan, taskCounts, projectName } = item;
+  const { issue, hasPlan, taskCounts, taskPhase, projectName } = item;
 
   const issueUrl = issue.projectId
     ? `/projects/${encodeURIComponent(issue.projectId)}/issues/${issue.number}`
@@ -49,8 +49,13 @@ export function IssueRow({ item }: IssueRowProps) {
       <td className="py-3 px-3 w-28">
         <Badge variant="priority" value={issue.priority} />
       </td>
-      <td className="py-3 px-3 w-28">
-        <Badge variant="status" value={issue.status} />
+      <td className="py-3 px-3 w-44">
+        <div className="flex items-center gap-1.5">
+          <Badge variant="status" value={issue.status} />
+          {taskPhase && taskPhase !== "COMPLETED" && (
+            <Badge variant="status" value={taskPhase} className="opacity-75" />
+          )}
+        </div>
       </td>
       <td className="py-3 px-3 w-36">
         <TasksStatus
