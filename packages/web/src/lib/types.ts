@@ -23,7 +23,7 @@ export interface Issue {
   description: string;
   type: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
   priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-  status: "OPEN" | "IN_PROGRESS" | "CLOSED";
+  status: "PLANNED" | "OPEN" | "IN_PROGRESS" | "CLOSED";
   acceptanceCriteria: string[];
   projectId: string;
   milestoneId: string | null;
@@ -111,13 +111,14 @@ export interface Project {
  * This replaces the dual display of issue.status + taskPhase with a single status.
  *
  * Status rules:
+ * - PLANNED: Issue is in planning phase (not yet activated)
  * - CLOSED: Issue is explicitly closed
  * - COMPLETED: All tasks are COMPLETED or ABANDONED
  * - IN_PROGRESS: Some tasks not completed AND no tasks in BACKLOG (work has started)
  * - READY: Any task is in BACKLOG status (plan exists, work not started)
  * - OPEN: No plan/tasks yet
  */
-export type ComputedIssueStatus = "OPEN" | "READY" | "IN_PROGRESS" | "COMPLETED" | "CLOSED";
+export type ComputedIssueStatus = "PLANNED" | "OPEN" | "READY" | "IN_PROGRESS" | "COMPLETED" | "CLOSED";
 
 export interface ProjectIssueWithPlanInfo {
   issue: Issue;
