@@ -43,7 +43,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
         },
         status: {
           type: "string",
-          enum: ["PENDING", "IN_PROGRESS", "PR_REVIEW", "COMPLETED", "ABANDONED"],
+          enum: ["BACKLOG", "READY", "PENDING", "IN_PROGRESS", "PR_REVIEW", "COMPLETED", "ABANDONED"],
           description: "New status for the task",
         },
         notes: {
