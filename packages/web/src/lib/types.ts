@@ -81,9 +81,17 @@ export interface Project {
 }
 
 /**
- * Task phase represents the overall progress phase of an issue's tasks.
+ * Computed issue status based on task states.
+ * This replaces the dual display of issue.status + taskPhase with a single status.
+ *
+ * Status rules:
+ * - CLOSED: Issue is explicitly closed
+ * - COMPLETED: All tasks are COMPLETED or ABANDONED
+ * - IN_PROGRESS: Some tasks not completed AND no tasks in BACKLOG (work has started)
+ * - READY: Any task is in BACKLOG status (plan exists, work not started)
+ * - OPEN: No plan/tasks yet
  */
-export type TaskPhase = "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED";
+export type ComputedIssueStatus = "OPEN" | "READY" | "IN_PROGRESS" | "COMPLETED" | "CLOSED";
 
 export interface ProjectIssueWithPlanInfo {
   issue: Issue;
@@ -93,7 +101,10 @@ export interface ProjectIssueWithPlanInfo {
     completed: number;
     inProgress: number;
   };
-  taskPhase?: TaskPhase;
+  /**
+   * Single computed status based on issue state and task progress.
+   */
+  computedStatus: ComputedIssueStatus;
   projectName?: string;
 }
 
