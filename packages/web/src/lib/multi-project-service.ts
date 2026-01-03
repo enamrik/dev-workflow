@@ -51,8 +51,8 @@ export interface CompletedTask extends Task {
   projectName: string;
   issueNumber: number;
   issueTitle: string;
-  issueStatus: string;
   issueType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
+  issueStatus: string;
 }
 
 /**
@@ -466,8 +466,8 @@ export class MultiProjectService {
             projectName: project.name,
             issueNumber: issue.number,
             issueTitle: issue.title,
-            issueStatus: issue.status,
             issueType: issue.type,
+            issueStatus: issue.status,
           });
         }
       }

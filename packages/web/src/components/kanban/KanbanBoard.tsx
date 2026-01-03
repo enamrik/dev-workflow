@@ -14,11 +14,13 @@ interface KanbanTask extends Task {
 interface KanbanBoardProps {
   issuesWithTasks: ProjectIssueWithTasks[];
   completedTasks?: CompletedTask[];
+  showBacklog?: boolean;
 }
 
 export function KanbanBoard({
   issuesWithTasks,
   completedTasks = [],
+  showBacklog = false,
 }: KanbanBoardProps) {
   // Flatten all tasks and add issue context
   const allTasks: KanbanTask[] = [];
@@ -37,6 +39,10 @@ export function KanbanBoard({
   }
 
   // Group tasks by status (mapping ABANDONED to COMPLETED column)
+  // Backlog column shows BACKLOG tasks when showBacklog is enabled
+  const backlogTasks = showBacklog
+    ? allTasks.filter((t) => t.status === "BACKLOG")
+    : [];
   // Ready column shows only READY tasks (BACKLOG tasks are paused/inactive)
   const readyTasks = allTasks.filter((t) => t.status === "READY");
   const inProgressTasks = allTasks.filter((t) => t.status === "IN_PROGRESS");
@@ -77,6 +83,7 @@ export function KanbanBoard({
   const limitedDoneTasks = doneTasks.slice(0, 20);
 
   const hasAnyTasks =
+    backlogTasks.length > 0 ||
     readyTasks.length > 0 ||
     inProgressTasks.length > 0 ||
     prReviewTasks.length > 0 ||
@@ -93,6 +100,14 @@ export function KanbanBoard({
 
   return (
     <div className="flex gap-4 overflow-x-auto pb-4">
+      {showBacklog && (
+        <KanbanColumn
+          title="Backlog"
+          status="BACKLOG"
+          tasks={backlogTasks}
+          tooltip="Inactive tasks waiting to be started"
+        />
+      )}
       <KanbanColumn title="Ready" status="READY" tasks={readyTasks} />
       <KanbanColumn
         title="In Progress"

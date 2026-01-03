@@ -6,7 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useTasks, useProjects } from "@/hooks";
 import { KanbanBoard } from "@/components/kanban";
 import { ProjectFilter } from "@/components/issues";
-import { Card, CardHeader, CardTitle, LoadingState, ErrorState } from "@/components/ui";
+import { Card, CardHeader, CardTitle, LoadingState, ErrorState, Checkbox } from "@/components/ui";
 
 export default function BoardPage() {
   return (
@@ -22,6 +22,7 @@ function BoardPageContent() {
   const projectFilter = searchParams.get("project") ?? "";
   const issueFilter = searchParams.get("issue");
   const issueNumber = issueFilter ? parseInt(issueFilter, 10) : undefined;
+  const showBacklog = searchParams.get("showBacklog") === "true";
 
   const { data: projects = [], isLoading: projectsLoading } = useProjects();
   const {
@@ -52,6 +53,16 @@ function BoardPageContent() {
   function clearIssueFilter() {
     const newParams = new URLSearchParams(searchParams.toString());
     newParams.delete("issue");
+    router.push(`/?${newParams.toString()}`);
+  }
+
+  function handleShowBacklogChange(checked: boolean) {
+    const newParams = new URLSearchParams(searchParams.toString());
+    if (checked) {
+      newParams.set("showBacklog", "true");
+    } else {
+      newParams.delete("showBacklog");
+    }
     router.push(`/?${newParams.toString()}`);
   }
 
@@ -116,11 +127,18 @@ function BoardPageContent() {
         </CardHeader>
 
         <div className="flex items-center justify-between mb-4">
-          <ProjectFilter
-            projects={projects}
-            value={projectFilter}
-            onChange={handleProjectChange}
-          />
+          <div className="flex items-center gap-4">
+            <ProjectFilter
+              projects={projects}
+              value={projectFilter}
+              onChange={handleProjectChange}
+            />
+            <Checkbox
+              label="Show backlog"
+              checked={showBacklog}
+              onChange={handleShowBacklogChange}
+            />
+          </div>
           {issueDetailUrl && (
             <Link
               href={issueDetailUrl}
@@ -136,6 +154,7 @@ function BoardPageContent() {
         <KanbanBoard
           issuesWithTasks={issuesWithTasks}
           completedTasks={completedTasks}
+          showBacklog={showBacklog}
         />
       </div>
     </Card>
