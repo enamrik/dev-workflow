@@ -406,7 +406,7 @@ export class PlanningService {
 
     // Soft delete generated tasks that weren't matched
     for (const task of existingGeneratedTasks) {
-      if (!matchedTaskIds.has(task.id) && (task.status === "BACKLOG" || task.status === "READY" || task.status === "PENDING")) {
+      if (!matchedTaskIds.has(task.id) && (task.status === "BACKLOG" || task.status === "READY")) {
         this.taskRepository.softDelete(task.id, generatedBy);
       }
     }

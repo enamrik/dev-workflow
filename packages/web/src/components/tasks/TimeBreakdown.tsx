@@ -160,7 +160,9 @@ function calculateTimeBreakdown(
 
 function getStatusColor(status: Task["status"]): string {
   switch (status) {
-    case "PENDING":
+    case "BACKLOG":
+      return "bg-slate-400";
+    case "READY":
       return "bg-gray-400";
     case "IN_PROGRESS":
       return "bg-orange-400";

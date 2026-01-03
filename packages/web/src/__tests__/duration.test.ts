@@ -53,7 +53,7 @@ describe("getTaskDuration", () => {
   });
 
   it("returns null for tasks without startedAt", () => {
-    expect(getTaskDuration({ status: "PENDING" })).toBeNull();
+    expect(getTaskDuration({ status: "BACKLOG" })).toBeNull();
     expect(getTaskDuration({ status: "IN_PROGRESS" })).toBeNull();
   });
 
@@ -103,8 +103,8 @@ describe("getTaskTimingMessage", () => {
     vi.useRealTimers();
   });
 
-  it("returns null for pending tasks", () => {
-    expect(getTaskTimingMessage({ status: "PENDING" })).toBeNull();
+  it("returns null for backlog tasks", () => {
+    expect(getTaskTimingMessage({ status: "BACKLOG" })).toBeNull();
   });
 
   it("returns 'Started X ago' for in-progress tasks", () => {

@@ -2,7 +2,7 @@
  * Domain types for Task entity
  */
 
-export type TaskStatus = "BACKLOG" | "READY" | "PENDING" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
+export type TaskStatus = "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
 export type TaskSource = "generated" | "manual";
 export type PRStatus = "DRAFT" | "OPEN" | "MERGED" | "CLOSED";
 
@@ -328,7 +328,7 @@ export interface TaskRepository {
    * Soft delete a task
    *
    * Marks the task as deleted without removing it from the database.
-   * Only PENDING tasks can be soft deleted.
+   * Only BACKLOG or READY tasks can be soft deleted.
    *
    * @param id - Task UUID
    * @param deletedBy - Who deleted the task

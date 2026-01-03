@@ -122,11 +122,11 @@ describe("E2E: Simple File Rename", () => {
     console.log("\n🔧 Step 3: Executing task...");
 
     db = harness.getDb();
-    const pendingTask = getTaskByStatus(db, "PENDING", plan.id);
+    const pendingTask = getTaskByStatus(db, "BACKLOG", plan.id);
     db.close();
 
     if (!pendingTask) {
-      throw new Error("No pending task found after plan generation");
+      throw new Error("No BACKLOG task found after plan generation");
     }
 
     // Use "main" mode to work directly on main branch (no worktree/PR)

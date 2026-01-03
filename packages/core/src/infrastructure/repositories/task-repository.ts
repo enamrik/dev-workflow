@@ -237,7 +237,7 @@ export class SqliteTaskRepository implements TaskRepository {
       case "ABANDONED":
         timestampUpdate.abandonedAt = now;
         break;
-      // PENDING doesn't set a timestamp
+      // BACKLOG, READY don't set a timestamp
     }
 
     // Update task status and timestamps
@@ -518,9 +518,9 @@ export class SqliteTaskRepository implements TaskRepository {
       throw new Error(`Task not found: ${id}`);
     }
 
-    if (task.status !== "BACKLOG" && task.status !== "READY" && task.status !== "PENDING") {
+    if (task.status !== "BACKLOG" && task.status !== "READY") {
       throw new Error(
-        `Cannot delete task with status ${task.status}. Only BACKLOG, READY, or PENDING tasks can be deleted.`
+        `Cannot delete task with status ${task.status}. Only BACKLOG or READY tasks can be deleted.`
       );
     }
 

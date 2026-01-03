@@ -130,10 +130,10 @@ export class TaskSessionService {
       throw new Error(`Task not found: ${taskId}`);
     }
 
-    // Only BACKLOG, READY, or PENDING tasks can be started
-    if (task.status !== "BACKLOG" && task.status !== "READY" && task.status !== "PENDING") {
+    // Only BACKLOG or READY tasks can be started
+    if (task.status !== "BACKLOG" && task.status !== "READY") {
       throw new Error(
-        `Task must be BACKLOG, READY, or PENDING to start session. Current status: ${task.status}`
+        `Task must be BACKLOG or READY to start session. Current status: ${task.status}`
       );
     }
 
@@ -458,7 +458,7 @@ export class TaskSessionService {
    * Check if task is available for work
    *
    * A task is available if:
-   * - Status is PENDING (not started yet)
+   * - Status is BACKLOG or READY (not started yet)
    * - OR status is IN_PROGRESS but session has timed out (>1 hour inactive)
    */
   async isTaskAvailable(taskId: string): Promise<boolean> {
@@ -491,7 +491,7 @@ export class TaskSessionService {
    *
    * A task is available if:
    * - Parent issue is not CLOSED
-   * - Status is PENDING and dependencies are satisfied
+   * - Status is BACKLOG or READY and dependencies are satisfied
    * - OR status is IN_PROGRESS but session has timed out (>1 hour inactive)
    */
   private isTaskAvailableSync(task: Task): boolean {
@@ -504,8 +504,8 @@ export class TaskSessionService {
       }
     }
 
-    // BACKLOG, READY, and PENDING tasks are available if dependencies are satisfied
-    if (task.status === "BACKLOG" || task.status === "READY" || task.status === "PENDING") {
+    // BACKLOG and READY tasks are available if dependencies are satisfied
+    if (task.status === "BACKLOG" || task.status === "READY") {
       return this.dependencyService.areDependenciesSatisfied(task);
     }
 

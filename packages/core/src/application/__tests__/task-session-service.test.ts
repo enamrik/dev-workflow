@@ -161,7 +161,7 @@ describe("TaskSessionService", () => {
           sessionId: "test-session-1",
           mode: "main",
         })
-      ).rejects.toThrow(/must be BACKLOG, READY, or PENDING/);
+      ).rejects.toThrow(/must be BACKLOG or READY/);
     });
   });
 

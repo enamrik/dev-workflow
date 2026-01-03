@@ -29,7 +29,7 @@ describe("SqliteTaskRepository", () => {
         planId,
         title: "Test Task",
         description: "Test description",
-        status: "PENDING",
+        status: "BACKLOG",
         source: "generated",
         acceptanceCriteria: ["AC 1", "AC 2"],
         estimatedMinutes: 30,
@@ -39,7 +39,7 @@ describe("SqliteTaskRepository", () => {
       expect(task.id).toBe(taskId);
       expect(task.planId).toBe(planId);
       expect(task.title).toBe("Test Task");
-      expect(task.status).toBe("PENDING");
+      expect(task.status).toBe("BACKLOG");
       expect(task.source).toBe("generated");
       expect(task.acceptanceCriteria).toEqual(["AC 1", "AC 2"]);
       expect(task.estimatedMinutes).toBe(30);
@@ -53,7 +53,7 @@ describe("SqliteTaskRepository", () => {
         planId,
         title: "Manual Task",
         description: "User-created task",
-        status: "PENDING",
+        status: "BACKLOG",
         source: "manual",
         acceptanceCriteria: [],
         isDeleted: false,
@@ -146,9 +146,9 @@ describe("SqliteTaskRepository", () => {
       expect(updated.submittedForReviewAt).toBeDefined();
     });
 
-    it("should allow full lifecycle: PENDING -> IN_PROGRESS -> PR_REVIEW -> COMPLETED", () => {
+    it("should allow full lifecycle: BACKLOG -> IN_PROGRESS -> PR_REVIEW -> COMPLETED", () => {
       const task = createTestTask(repos.taskRepository, planId);
-      expect(task.status).toBe("PENDING");
+      expect(task.status).toBe("BACKLOG");
 
       const inProgress = repos.taskRepository.updateStatus(task.id, "IN_PROGRESS", "test");
       expect(inProgress.status).toBe("IN_PROGRESS");
@@ -175,7 +175,7 @@ describe("SqliteTaskRepository", () => {
       expect(deleted.deletedBy).toBe("test-user");
     });
 
-    it("should only allow deleting PENDING tasks", () => {
+    it("should only allow deleting BACKLOG tasks", () => {
       const task = createTestTask(repos.taskRepository, planId);
       repos.taskRepository.updateStatus(task.id, "IN_PROGRESS", "test");
 
@@ -200,13 +200,13 @@ describe("SqliteTaskRepository", () => {
 
   describe("findMany", () => {
     beforeEach(() => {
-      createTestTask(repos.taskRepository, planId, { status: "PENDING", source: "generated" });
+      createTestTask(repos.taskRepository, planId, { status: "BACKLOG", source: "generated" });
       createTestTask(repos.taskRepository, planId, { status: "IN_PROGRESS", source: "generated" });
-      createTestTask(repos.taskRepository, planId, { status: "PENDING", source: "manual" });
+      createTestTask(repos.taskRepository, planId, { status: "BACKLOG", source: "manual" });
     });
 
     it("should filter by status", () => {
-      const pending = repos.taskRepository.findMany({ status: "PENDING" });
+      const pending = repos.taskRepository.findMany({ status: "BACKLOG" });
       expect(pending).toHaveLength(2);
     });
 
@@ -218,7 +218,7 @@ describe("SqliteTaskRepository", () => {
 
     it("should combine filters", () => {
       const filtered = repos.taskRepository.findMany({
-        status: "PENDING",
+        status: "BACKLOG",
         source: "generated",
       });
       expect(filtered).toHaveLength(1);
@@ -250,7 +250,7 @@ describe("SqliteTaskRepository", () => {
       expect(history[0]?.toStatus).toBe("COMPLETED");
       expect(history[1]?.fromStatus).toBe("IN_PROGRESS");
       expect(history[1]?.toStatus).toBe("PR_REVIEW");
-      expect(history[2]?.fromStatus).toBe("PENDING");
+      expect(history[2]?.fromStatus).toBe("BACKLOG");
       expect(history[2]?.toStatus).toBe("IN_PROGRESS");
     });
 

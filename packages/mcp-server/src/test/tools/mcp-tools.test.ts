@@ -426,7 +426,7 @@ describe("MCP Tool: generate_plan", () => {
     const tasks = taskRepository.findByPlanId(plan!.id);
     expect(tasks).toHaveLength(3);
     expect(tasks[0]?.title).toBe("Task 1");
-    expect(tasks[0]?.status).toBe("PENDING");
+    expect(tasks[0]?.status).toBe("BACKLOG");
   });
 
   it("should return error for non-existent issue", async () => {
@@ -617,7 +617,7 @@ describe("MCP Tool: delete_task", () => {
     testDb.cleanup();
   });
 
-  it("should soft delete a PENDING task", async () => {
+  it("should soft delete a BACKLOG task", async () => {
     // Setup
     createIssueTool(issueRepository, {
       title: "Test Issue",
@@ -677,7 +677,7 @@ describe("MCP Tool: delete_task", () => {
     const result = deleteTaskTool(taskManagementService, { taskId });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("PENDING");
+    expect(result.error).toContain("BACKLOG");
   });
 });
 
@@ -896,7 +896,7 @@ describe("MCP Tool: list_available_tasks", () => {
     testDb.cleanup();
   });
 
-  it("should return PENDING tasks from OPEN issues", async () => {
+  it("should return BACKLOG/READY tasks from OPEN issues", async () => {
     // Create an open issue with a plan and task
     createIssueTool(issueRepository, {
       title: "Open Issue",
@@ -940,7 +940,7 @@ describe("MCP Tool: list_available_tasks", () => {
     const tasks = taskRepository.findByPlanId(plan!.id);
     const task = tasks[0]!;
 
-    // Close the issue (task remains PENDING)
+    // Close the issue (task remains BACKLOG)
     issueRepository.update(issue!.id, { status: "CLOSED" });
 
     // Check task availability - should be false because issue is closed

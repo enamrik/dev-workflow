@@ -125,7 +125,7 @@ When creating the issue, mention that implementation details will be captured in
 
 1. **Verify all tasks are complete:**
    - Check that all tasks in the plan are COMPLETED or ABANDONED
-   - If tasks remain PENDING or IN_PROGRESS, do not close
+   - If tasks remain BACKLOG, READY, or IN_PROGRESS, do not close
 
 2. **Ask for confirmation:**
    - Summarize what was accomplished
