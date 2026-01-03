@@ -132,6 +132,8 @@ export interface ProjectIssueWithPlanInfo {
    */
   computedStatus: ComputedIssueStatus;
   projectName?: string;
+  milestoneNumber?: number;
+  milestoneTitle?: string;
 }
 
 export interface ProjectIssueWithTasks {

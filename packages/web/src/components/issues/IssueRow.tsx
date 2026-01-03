@@ -11,7 +11,7 @@ interface IssueRowProps {
 
 export function IssueRow({ item }: IssueRowProps) {
   const router = useRouter();
-  const { issue, hasPlan, taskCounts, computedStatus, projectName } = item;
+  const { issue, hasPlan, taskCounts, computedStatus, projectName, milestoneTitle } = item;
 
   const issueUrl = issue.projectId
     ? `/projects/${encodeURIComponent(issue.projectId)}/issues/${issue.number}`
@@ -33,14 +33,21 @@ export function IssueRow({ item }: IssueRowProps) {
       <td className="py-3 px-3 w-20 font-semibold text-gray-600">
         {issue.number}
       </td>
-      <td className="py-3 px-3 font-medium text-gray-800">{issue.title}</td>
-      <td className="py-3 px-3 w-32">
-        {projectName ? (
-          <span className="inline-block px-2.5 py-1 text-xs rounded bg-gray-50 text-gray-500 border border-gray-200">
-            {projectName}
-          </span>
-        ) : (
-          <span className="text-gray-400">-</span>
+      <td className="py-3 px-3">
+        <div className="font-medium text-gray-800">{issue.title}</div>
+        {(projectName || milestoneTitle) && (
+          <div className="flex gap-1.5 mt-1">
+            {projectName && (
+              <span className="inline-block px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-500">
+                {projectName}
+              </span>
+            )}
+            {milestoneTitle && (
+              <span className="inline-block px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-500">
+                {milestoneTitle}
+              </span>
+            )}
+          </div>
         )}
       </td>
       <td className="py-3 px-3 w-28">

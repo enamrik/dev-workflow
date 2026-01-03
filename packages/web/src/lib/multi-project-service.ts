@@ -88,6 +88,8 @@ export interface ProjectIssueWithPlanInfo {
    */
   computedStatus: ComputedIssueStatus;
   projectName?: string;
+  milestoneNumber?: number;
+  milestoneTitle?: string;
 }
 
 /**
@@ -277,6 +279,7 @@ export class MultiProjectService {
 
     for (const project of filteredProjects) {
       const issueRepository = await this.getIssueRepository(project.id);
+      const milestoneRepository = await this.getMilestoneRepository(project.id);
       const issues = issueRepository.findMany({});
 
       for (const issue of issues) {
@@ -320,12 +323,26 @@ export class MultiProjectService {
           }
         }
 
+        // Get milestone info if issue is assigned to one
+        let milestoneNumber: number | undefined;
+        let milestoneTitle: string | undefined;
+
+        if (issue.milestoneId) {
+          const milestone = milestoneRepository.findById(issue.milestoneId);
+          if (milestone) {
+            milestoneNumber = milestone.number;
+            milestoneTitle = milestone.title;
+          }
+        }
+
         allIssues.push({
           issue,
           hasPlan: !!plan,
           taskCounts,
           computedStatus,
           projectName: project.name,
+          milestoneNumber,
+          milestoneTitle,
         });
       }
     }
