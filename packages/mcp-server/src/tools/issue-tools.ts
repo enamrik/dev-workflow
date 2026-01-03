@@ -5,6 +5,9 @@
 import {
   EventBus,
   type SqliteIssueRepository,
+  type SqlitePlanRepository,
+  type SqliteTaskRepository,
+  type SqliteMilestoneRepository,
   type TemplateService,
   type PlanningService,
   type GitHubSyncService,
@@ -63,7 +66,7 @@ export const issueToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "get_issue",
-    description: "Get issue by ID or number",
+    description: "Get issue by ID or number. Optionally include the plan with tasks.",
     inputSchema: {
       type: "object",
       properties: {
@@ -75,28 +78,9 @@ export const issueToolDefinitions: ToolDefinition[] = [
           type: "number",
           description: "Issue number (e.g., 123 for #123)",
         },
-      },
-    },
-  },
-  {
-    name: "list_issues",
-    description: "List issues with optional filters. Excludes deleted issues by default.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        status: {
-          type: "string",
-          enum: ["PLANNED", "OPEN", "IN_PROGRESS", "CLOSED"],
-          description: "Filter by status",
-        },
-        type: {
-          type: "string",
-          enum: ["FEATURE", "BUG", "ENHANCEMENT", "TASK"],
-          description: "Filter by type",
-        },
-        includeDeleted: {
+        includePlan: {
           type: "boolean",
-          description: "Include soft-deleted issues in results (default: false)",
+          description: "Include the plan with slim task list (default: false)",
         },
       },
     },
@@ -104,7 +88,7 @@ export const issueToolDefinitions: ToolDefinition[] = [
   {
     name: "delete_issue",
     description:
-      "Soft delete an issue. The issue will be excluded from list_issues by default. Use restore_issue to undo. Associated plans and tasks are preserved but become inaccessible.",
+      "Soft delete an issue. The issue will be excluded from search and work queue. Use restore_issue to undo. Associated plans and tasks are preserved but become inaccessible.",
     inputSchema: {
       type: "object",
       properties: {
@@ -122,7 +106,7 @@ export const issueToolDefinitions: ToolDefinition[] = [
   {
     name: "restore_issue",
     description:
-      "Restore a soft-deleted issue. The issue will be included in list_issues again. Associated plans and tasks become accessible again.",
+      "Restore a soft-deleted issue. The issue will be included in search and work queue again. Associated plans and tasks become accessible again.",
     inputSchema: {
       type: "object",
       properties: {
@@ -261,6 +245,36 @@ export const issueToolDefinitions: ToolDefinition[] = [
       required: ["updates"],
     },
   },
+  {
+    name: "get_project_stats",
+    description: "Get project statistics: issue and task counts by status. Use this for a quick overview without loading all issues.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "search_issues",
+    description: "Search issues by keyword in title or description. Returns slim results (number, title, status, type, priority). Max 10 results.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Search query (case-insensitive)",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "get_work_queue",
+    description: "Get prioritized work queue: top 3 issues and top 3 tasks to work on next. Considers status, priority, milestone deadlines, and task readiness.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
 ];
 
 /**
@@ -268,6 +282,9 @@ export const issueToolDefinitions: ToolDefinition[] = [
  */
 export interface IssueToolContext {
   issueRepository: SqliteIssueRepository;
+  planRepository: SqlitePlanRepository;
+  taskRepository: SqliteTaskRepository;
+  milestoneRepository: SqliteMilestoneRepository;
   templateService: TemplateService;
   planningService: PlanningService;
   /** GitHub sync service - always available, check isEnabled() before use */
@@ -371,9 +388,9 @@ export async function handleCreateIssue(
  */
 export function handleGetIssue(
   ctx: IssueToolContext,
-  args: { id?: string; number?: number }
+  args: { id?: string; number?: number; includePlan?: boolean }
 ): ToolResponse {
-  const { id, number } = args;
+  const { id, number, includePlan = false } = args;
 
   const issue = id
     ? ctx.issueRepository.findById(id)
@@ -383,31 +400,36 @@ export function handleGetIssue(
     return errorResponse("Issue not found");
   }
 
+  // If includePlan is true, fetch and include the plan with slim task list
+  if (includePlan) {
+    const plan = ctx.planRepository.findByIssueId(issue.id);
+    if (plan) {
+      const tasks = ctx.taskRepository.findByPlanId(plan.id);
+      return successResponse({
+        ...issue,
+        plan: {
+          id: plan.id,
+          summary: plan.summary,
+          approach: plan.approach,
+          estimatedComplexity: plan.estimatedComplexity,
+          tasks: tasks.map((t) => ({
+            id: t.id,
+            number: t.number,
+            title: t.title,
+            status: t.status,
+          })),
+        },
+      });
+    }
+  }
+
   return successResponse(issue);
-}
-
-/**
- * Handle list_issues tool call
- */
-export function handleListIssues(
-  ctx: IssueToolContext,
-  args: { status?: IssueStatus; type?: IssueType; includeDeleted?: boolean }
-): ToolResponse {
-  const { status, type, includeDeleted } = args;
-
-  const filtered = ctx.issueRepository.findMany({
-    status,
-    type,
-    includeDeleted,
-  });
-
-  return successResponse(filtered);
 }
 
 /**
  * Handle delete_issue tool call
  *
- * Soft deletes an issue. The issue will be excluded from list_issues by default.
+ * Soft deletes an issue. The issue will be excluded from search and work queue.
  */
 export function handleDeleteIssue(
   ctx: IssueToolContext,
@@ -706,4 +728,258 @@ export async function handleUpdateIssue(
   );
 
   return successResponse(result);
+}
+
+/**
+ * Handle get_project_stats tool call
+ *
+ * Returns counts of issues and tasks by status.
+ */
+export function handleGetProjectStats(ctx: IssueToolContext): ToolResponse {
+  const issueCounts = ctx.issueRepository.getStatusCounts();
+  const taskCounts = ctx.taskRepository.getStatusCounts();
+
+  // Calculate totals
+  const issueTotal = Object.values(issueCounts).reduce((a, b) => a + b, 0);
+  const taskTotal = Object.values(taskCounts).reduce((a, b) => a + b, 0);
+
+  return successResponse({
+    issues: {
+      planned: issueCounts["PLANNED"] ?? 0,
+      open: issueCounts["OPEN"] ?? 0,
+      inProgress: issueCounts["IN_PROGRESS"] ?? 0,
+      closed: issueCounts["CLOSED"] ?? 0,
+      total: issueTotal,
+    },
+    tasks: {
+      planned: taskCounts["PLANNED"] ?? 0,
+      backlog: taskCounts["BACKLOG"] ?? 0,
+      ready: taskCounts["READY"] ?? 0,
+      inProgress: taskCounts["IN_PROGRESS"] ?? 0,
+      prReview: taskCounts["PR_REVIEW"] ?? 0,
+      completed: taskCounts["COMPLETED"] ?? 0,
+      abandoned: taskCounts["ABANDONED"] ?? 0,
+      total: taskTotal,
+    },
+  });
+}
+
+/**
+ * Handle search_issues tool call
+ *
+ * Searches issues by keyword in title or description.
+ */
+export function handleSearchIssues(
+  ctx: IssueToolContext,
+  args: { query: string }
+): ToolResponse {
+  const { query } = args;
+
+  if (!query || query.trim().length === 0) {
+    return errorResponse("Search query is required");
+  }
+
+  const results = ctx.issueRepository.search(query);
+
+  return successResponse({
+    results,
+  });
+}
+
+/**
+ * Priority scoring weights for work queue
+ */
+const PRIORITY_WEIGHTS: Record<string, number> = {
+  CRITICAL: 40,
+  HIGH: 30,
+  MEDIUM: 20,
+  LOW: 10,
+};
+
+const STATUS_WEIGHTS: Record<string, number> = {
+  IN_PROGRESS: 100,
+  OPEN: 50,
+  PLANNED: 0,
+};
+
+const TASK_STATUS_WEIGHTS: Record<string, number> = {
+  READY: 100,
+  BACKLOG: 50,
+};
+
+/**
+ * Calculate priority score for an issue
+ */
+function calculateIssueScore(
+  issue: { status: string; priority: string; createdAt: string; milestoneId?: string },
+  milestoneEndDates: Map<string, string>
+): number {
+  let score = 0;
+
+  // Status weight
+  score += STATUS_WEIGHTS[issue.status] ?? 0;
+
+  // Priority weight
+  score += PRIORITY_WEIGHTS[issue.priority] ?? 0;
+
+  // Milestone urgency (days until end date)
+  if (issue.milestoneId) {
+    const endDate = milestoneEndDates.get(issue.milestoneId);
+    if (endDate) {
+      const daysUntilEnd = Math.max(
+        0,
+        (new Date(endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+      );
+      // Closer deadline = higher score (max 30 points for immediate, 0 for 30+ days)
+      score += Math.max(0, 30 - daysUntilEnd);
+    }
+  }
+
+  // Age tiebreaker (older = slightly higher priority, max 5 points)
+  const ageInDays =
+    (Date.now() - new Date(issue.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+  score += Math.min(5, ageInDays / 10);
+
+  return score;
+}
+
+/**
+ * Handle get_work_queue tool call
+ *
+ * Returns prioritized list of issues and tasks to work on.
+ */
+export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
+  // Get all milestones for date lookups
+  const milestones = ctx.milestoneRepository.findMany();
+  const milestoneEndDates = new Map(
+    milestones.map((m) => [m.id, m.endDate])
+  );
+  const milestoneNames = new Map(
+    milestones.map((m) => [m.id, m.title])
+  );
+
+  // Get active issues (IN_PROGRESS and OPEN only, not PLANNED or CLOSED)
+  const activeIssues = ctx.issueRepository
+    .findMany()
+    .filter((i) => i.status === "IN_PROGRESS" || i.status === "OPEN");
+
+  // Get available tasks and their parent info
+  interface TaskWithContext {
+    id: string;
+    number: number;
+    title: string;
+    status: string;
+    order: number;
+    planId: string;
+    issueNumber: number;
+    issueTitle: string;
+    issuePriority: string;
+    issueStatus: string;
+    milestoneId?: string;
+    score: number;
+  }
+
+  const tasksWithContext: TaskWithContext[] = [];
+
+  // For each active issue, get plan and tasks
+  for (const issue of activeIssues) {
+    const plan = ctx.planRepository.findByIssueId(issue.id);
+    if (!plan) continue;
+
+    const tasks = ctx.taskRepository.findByPlanId(plan.id);
+
+    // Only include available tasks (READY or BACKLOG with satisfied dependencies)
+    const availableTasks = tasks.filter(
+      (t) => t.status === "READY" || t.status === "BACKLOG"
+    );
+
+    for (const task of availableTasks) {
+      let score = 0;
+
+      // Task status weight
+      score += TASK_STATUS_WEIGHTS[task.status] ?? 0;
+
+      // Bonus for parent issue being IN_PROGRESS (continue what's started)
+      if (issue.status === "IN_PROGRESS") {
+        score += 50;
+      }
+
+      // Inherit issue priority weight
+      score += PRIORITY_WEIGHTS[issue.priority] ?? 0;
+
+      // Milestone urgency from parent issue
+      if (issue.milestoneId) {
+        const endDate = milestoneEndDates.get(issue.milestoneId);
+        if (endDate) {
+          const daysUntilEnd = Math.max(
+            0,
+            (new Date(endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+          );
+          score += Math.max(0, 30 - daysUntilEnd);
+        }
+      }
+
+      // Lower task order = higher priority (first tasks in plan come first)
+      score += Math.max(0, 10 - task.order);
+
+      tasksWithContext.push({
+        id: task.id,
+        number: task.number,
+        title: task.title,
+        status: task.status,
+        order: task.order,
+        planId: plan.id,
+        issueNumber: issue.number,
+        issueTitle: issue.title,
+        issuePriority: issue.priority,
+        issueStatus: issue.status,
+        milestoneId: issue.milestoneId,
+        score,
+      });
+    }
+  }
+
+  // Score and sort issues
+  const scoredIssues = activeIssues.map((issue) => {
+    // Count available tasks for this issue
+    const plan = ctx.planRepository.findByIssueId(issue.id);
+    let availableTaskCount = 0;
+    if (plan) {
+      const tasks = ctx.taskRepository.findByPlanId(plan.id);
+      availableTaskCount = tasks.filter(
+        (t) => t.status === "READY" || t.status === "BACKLOG"
+      ).length;
+    }
+
+    return {
+      number: issue.number,
+      title: issue.title,
+      status: issue.status,
+      priority: issue.priority,
+      milestone: issue.milestoneId ? milestoneNames.get(issue.milestoneId) : undefined,
+      availableTaskCount,
+      score: calculateIssueScore(issue, milestoneEndDates),
+    };
+  });
+
+  // Sort by score descending, take top 3
+  scoredIssues.sort((a, b) => b.score - a.score);
+  const topIssues = scoredIssues.slice(0, 3);
+
+  // Sort tasks by score descending, take top 3
+  tasksWithContext.sort((a, b) => b.score - a.score);
+  const topTasks = tasksWithContext.slice(0, 3).map((t) => ({
+    id: t.id,
+    number: t.number,
+    title: t.title,
+    status: t.status,
+    issueNumber: t.issueNumber,
+    issueTitle: t.issueTitle,
+    priority: t.issuePriority,
+  }));
+
+  return successResponse({
+    issues: topIssues.map(({ score, ...rest }) => rest),
+    tasks: topTasks,
+  });
 }

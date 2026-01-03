@@ -262,7 +262,7 @@ Plan generated with 1 task in PLANNED status.
 
 If issue not found:
 - Explain the error
-- Suggest checking the issue number with `list_issues`
+- Suggest checking the issue number with `search_issues`
 
 If issue has no description/acceptance criteria:
 - Ask the user for more context before planning

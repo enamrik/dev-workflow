@@ -56,11 +56,12 @@ export const taskToolDefinitions: ToolDefinition[] = [
     },
   },
   {
-    name: "start_task_session",
+    name: "load_task_session",
     description:
-      "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Starts working on a task. " +
-      "ALWAYS use 'isolated' mode (default) unless user explicitly requests otherwise. " +
-      "'branch' and 'main' modes require explicit user request - never choose them autonomously.",
+      "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Load a task for execution. " +
+      "Returns full context (task, issue, plan, labels) and starts/resumes the session. " +
+      "Idempotent: if task is already IN_PROGRESS, returns context without restarting. " +
+      "ALWAYS use 'isolated' mode (default) unless user explicitly requests otherwise.",
     inputSchema: {
       type: "object",
       properties: {
@@ -133,7 +134,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "get_task",
     description:
-      "Get task details by ID or number for quick lookups and questions about tasks. Returns task data only without loading execution context. Use get_task_for_session instead when starting work on a task.",
+      "Get task details by ID or number for quick lookups and questions about tasks. Returns task data only without loading execution context. Use load_task_session to start/resume work on a task with full context.",
     inputSchema: {
       type: "object",
       properties: {
@@ -150,25 +151,6 @@ export const taskToolDefinitions: ToolDefinition[] = [
           description: "Issue number (required when using taskNumber)",
         },
       },
-    },
-  },
-  {
-    name: "get_task_for_session",
-    description:
-      "Get full task details for execution. Loads complete context including issue, plan, and label content. Use get_task for quick lookups without execution context.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        taskId: {
-          type: "string",
-          description: "Task UUID",
-        },
-        includeContext: {
-          type: "boolean",
-          description: "Include related issue and plan context (default: true)",
-        },
-      },
-      required: ["taskId"],
     },
   },
   {
@@ -524,42 +506,115 @@ export async function handleUpdateTaskStatus(
 }
 
 /**
- * Handle start_task_session tool call
+ * Handle load_task_session tool call
+ *
+ * Loads a task for execution with full context. Starts or resumes the session.
+ * Idempotent: if task is already IN_PROGRESS, returns context without restarting.
  *
  * Supports 3 modes:
  * - 'isolated' (default): creates worktree + branch for parallel work
  * - 'branch': creates branch only, checks out in main repo
  * - 'main': works directly on main, skips PR review
  */
-export async function handleStartTaskSession(
+export async function handleLoadTaskSession(
   ctx: TaskToolContext,
   args: { taskId: string; sessionId: string; mode?: "isolated" | "branch" | "main" }
 ): Promise<ToolResponse> {
   const { taskId, sessionId, mode = "isolated" } = args;
 
-  const result = await ctx.taskSessionService.startTaskSession({
-    taskId,
-    sessionId,
-    mode,
-  });
+  // Check if task exists
+  const existingTask = ctx.taskRepository.findById(taskId);
+  if (!existingTask) {
+    return errorResponse(`Task not found: ${taskId}`);
+  }
 
   const response: Record<string, unknown> = {
     success: true,
-    task: result.task,
-    sessionId: result.sessionId,
-    startedAt: result.startedAt,
+    sessionId,
   };
 
-  // Include worktree info if created
-  if (result.worktreePath) {
-    response.worktreePath = result.worktreePath;
-    response.branchName = result.branchName;
+  // If task is already IN_PROGRESS, just return context without restarting
+  if (existingTask.status === "IN_PROGRESS") {
+    response.task = existingTask;
+    response.resumed = true;
+
+    // Include existing worktree info if available
+    if (existingTask.worktreePath) {
+      response.worktreePath = existingTask.worktreePath;
+      response.branchName = existingTask.branchName;
+    }
+  } else {
+    // Start new session
+    const result = await ctx.taskSessionService.startTaskSession({
+      taskId,
+      sessionId,
+      mode,
+    });
+
+    response.task = result.task;
+    response.startedAt = result.startedAt;
+
+    // Include worktree info if created
+    if (result.worktreePath) {
+      response.worktreePath = result.worktreePath;
+      response.branchName = result.branchName;
+    }
+
+    // Include conflict warnings if any were detected
+    if (result.conflictWarnings && result.conflictWarnings.length > 0) {
+      response.conflictWarnings = result.conflictWarnings;
+      response.conflictWarningMessage = formatConflictWarnings(result.conflictWarnings);
+    }
   }
 
-  // Include conflict warnings if any were detected
-  if (result.conflictWarnings && result.conflictWarnings.length > 0) {
-    response.conflictWarnings = result.conflictWarnings;
-    response.conflictWarningMessage = formatConflictWarnings(result.conflictWarnings);
+  // Load full context (same as get_task_for_session)
+  const task = response.task as { planId: string; dependsOn?: string[]; labels?: string[]; contextInstructions?: string };
+
+  // Get plan and issue
+  const plan = ctx.planRepository.findById(task.planId);
+  if (plan) {
+    response.plan = plan;
+    const issue = ctx.issueRepository.findById(plan.issueId);
+    if (issue) {
+      response.issue = issue;
+    }
+  }
+
+  // Load dependency information
+  if (task.dependsOn?.length) {
+    const dependencies = ctx.taskRepository.findByIds(task.dependsOn);
+    response.dependencies = dependencies.map((d) => ({
+      id: d.id,
+      title: d.title,
+      status: d.status,
+    }));
+  }
+
+  // Find tasks that depend on this one
+  const allPlanTasks = ctx.taskRepository.findByPlanId(task.planId);
+  const dependents = allPlanTasks.filter((t) => t.dependsOn?.includes(taskId));
+  if (dependents.length > 0) {
+    response.dependents = dependents.map((d) => ({
+      id: d.id,
+      title: d.title,
+      status: d.status,
+    }));
+  }
+
+  // Load label content
+  if (task.labels?.length) {
+    const loadedLabels = await ctx.labelService.loadLabelsForTask(task.labels);
+    if (loadedLabels.length > 0) {
+      response.loadedLabels = loadedLabels;
+    }
+  }
+
+  // Format task requirements prominently
+  if (task.contextInstructions || response.loadedLabels) {
+    response.taskRequirements = formatTaskRequirements(
+      task.contextInstructions,
+      response.loadedLabels as Label[] | undefined
+    );
   }
 
   return successResponse(response);
@@ -687,73 +742,6 @@ export function handleGetTask(
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   });
-}
-
-/**
- * Handle get_task_for_session tool call
- */
-export async function handleGetTaskForSession(
-  ctx: TaskToolContext,
-  args: { taskId: string; includeContext?: boolean }
-): Promise<ToolResponse> {
-  const { taskId, includeContext = true } = args;
-
-  const task = ctx.taskRepository.findById(taskId);
-  if (!task) {
-    return errorResponse(`Task not found: ${taskId}`);
-  }
-
-  const result: Record<string, unknown> = { task };
-
-  if (includeContext) {
-    const plan = ctx.planRepository.findById(task.planId);
-    if (plan) {
-      result.plan = plan;
-      const issue = ctx.issueRepository.findById(plan.issueId);
-      if (issue) {
-        result.issue = issue;
-      }
-    }
-  }
-
-  // Load dependency information
-  if (task.dependsOn?.length) {
-    const dependencies = ctx.taskRepository.findByIds(task.dependsOn);
-    result.dependencies = dependencies.map((d) => ({
-      id: d.id,
-      title: d.title,
-      status: d.status,
-    }));
-  }
-
-  // Find tasks that depend on this one
-  const allPlanTasks = ctx.taskRepository.findByPlanId(task.planId);
-  const dependents = allPlanTasks.filter((t) => t.dependsOn?.includes(task.id));
-  if (dependents.length > 0) {
-    result.dependents = dependents.map((d) => ({
-      id: d.id,
-      title: d.title,
-      status: d.status,
-    }));
-  }
-
-  // Load label content
-  if (task.labels?.length) {
-    const loadedLabels = await ctx.labelService.loadLabelsForTask(task.labels);
-    if (loadedLabels.length > 0) {
-      result.loadedLabels = loadedLabels;
-    }
-  }
-
-  // Format task requirements prominently
-  if (task.contextInstructions || result.loadedLabels) {
-    result.taskRequirements = formatTaskRequirements(
-      task.contextInstructions,
-      result.loadedLabels as Label[] | undefined
-    );
-  }
-
-  return successResponse(result);
 }
 
 /**

@@ -418,6 +418,9 @@ export async function handleCompleteTask(
     // Clear session association
     ctx.taskRepository.clearSession(taskId);
 
+    // Find next available task
+    const nextTask = findNextAvailableTask(ctx, task.planId);
+
     return successResponse({
       success: true,
       task: {
@@ -425,6 +428,7 @@ export async function handleCompleteTask(
         status: "COMPLETED",
         mode: "main",
       },
+      nextTask,
       message: "Task completed (main mode, no PR review).",
     });
   }
@@ -507,6 +511,9 @@ export async function handleCompleteTask(
   // 7. Clear session association
   ctx.taskRepository.clearSession(taskId);
 
+  // 8. Find next available task
+  const nextTask = findNextAvailableTask(ctx, task.planId);
+
   return successResponse({
     success: true,
     task: {
@@ -519,6 +526,74 @@ export async function handleCompleteTask(
       url: task.prUrl,
       merged: true,
     },
+    nextTask,
     message: `Task completed. PR #${task.prNumber} was merged, ${hasWorktree ? "worktree" : "branch"} cleaned up.`,
   });
+}
+
+/**
+ * Find the next available task to work on
+ *
+ * Priority: READY tasks in same plan, then BACKLOG in same plan,
+ * then READY tasks from other plans.
+ */
+function findNextAvailableTask(
+  ctx: PRToolContext,
+  currentPlanId: string
+): { id: string; number: number; title: string; issueNumber: number; issueTitle: string; status: string } | null {
+  // First, check same plan for READY tasks
+  const samePlanTasks = ctx.taskRepository.findByPlanId(currentPlanId);
+  const readyTask = samePlanTasks.find((t) => t.status === "READY");
+  if (readyTask) {
+    const plan = ctx.planRepository.findById(currentPlanId);
+    const issue = plan ? ctx.issueRepository.findById(plan.issueId) : null;
+    return {
+      id: readyTask.id,
+      number: readyTask.number,
+      title: readyTask.title,
+      issueNumber: issue?.number ?? 0,
+      issueTitle: issue?.title ?? "Unknown",
+      status: readyTask.status,
+    };
+  }
+
+  // Check same plan for BACKLOG tasks
+  const backlogTask = samePlanTasks.find((t) => t.status === "BACKLOG");
+  if (backlogTask) {
+    const plan = ctx.planRepository.findById(currentPlanId);
+    const issue = plan ? ctx.issueRepository.findById(plan.issueId) : null;
+    return {
+      id: backlogTask.id,
+      number: backlogTask.number,
+      title: backlogTask.title,
+      issueNumber: issue?.number ?? 0,
+      issueTitle: issue?.title ?? "Unknown",
+      status: backlogTask.status,
+    };
+  }
+
+  // Look for READY tasks in other active issues
+  const activeIssues = ctx.issueRepository
+    .findMany()
+    .filter((i) => i.status === "IN_PROGRESS" || i.status === "OPEN");
+
+  for (const issue of activeIssues) {
+    const plan = ctx.planRepository.findByIssueId(issue.id);
+    if (!plan || plan.id === currentPlanId) continue;
+
+    const tasks = ctx.taskRepository.findByPlanId(plan.id);
+    const availableTask = tasks.find((t) => t.status === "READY" || t.status === "BACKLOG");
+    if (availableTask) {
+      return {
+        id: availableTask.id,
+        number: availableTask.number,
+        title: availableTask.title,
+        issueNumber: issue.number,
+        issueTitle: issue.title,
+        status: availableTask.status,
+      };
+    }
+  }
+
+  return null;
 }
