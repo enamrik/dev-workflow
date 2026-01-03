@@ -140,8 +140,8 @@ export interface CompletedTask extends Task {
   projectName: string;
   issueNumber: number;
   issueTitle: string;
-  issueStatus: string;
   issueType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
+  issueStatus: string;
 }
 
 /**
