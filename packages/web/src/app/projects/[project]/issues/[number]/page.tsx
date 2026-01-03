@@ -16,6 +16,7 @@ import {
   ErrorState,
   EmptyState,
   Markdown,
+  GitHubLink,
 } from "@/components/ui";
 import type { Issue, Plan, Task, ComputedIssueStatus } from "@/lib/types";
 
@@ -105,10 +106,17 @@ export default function IssueDetailPage({ params }: PageProps) {
       {/* Title and badges */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-800 mb-3">{issue.title}</h1>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge variant="type" value={issue.type} />
           <Badge variant="priority" value={issue.priority} />
           <Badge variant="status" value={computedStatus} />
+          {issue.githubSync?.githubUrl && (
+            <GitHubLink
+              url={issue.githubSync.githubUrl}
+              label={`#${issue.githubSync.githubIssueNumber}`}
+              tooltip={`View on GitHub: ${issue.githubSync.githubUrl}`}
+            />
+          )}
         </div>
       </div>
 
