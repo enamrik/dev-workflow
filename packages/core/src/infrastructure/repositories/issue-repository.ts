@@ -1,4 +1,4 @@
-import { eq, max, and } from "drizzle-orm";
+import { eq, max, and, sql, like, or } from "drizzle-orm";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { issues, IssueRow } from "../database/schema.js";
 import type { Issue, IssueFilters, IssueRepository } from "../../domain/issue.js";
@@ -233,6 +233,78 @@ export class SqliteIssueRepository implements IssueRepository {
     }
 
     return restored;
+  }
+
+  /**
+   * Get counts of issues by status
+   *
+   * Returns counts for each status, excluding soft-deleted issues.
+   */
+  getStatusCounts(): Record<string, number> {
+    const results = this.db
+      .select({
+        status: issues.status,
+        count: sql<number>`count(*)`,
+      })
+      .from(issues)
+      .where(and(eq(issues.projectId, this.projectId), eq(issues.isDeleted, false)))
+      .groupBy(issues.status)
+      .all();
+
+    // Initialize all statuses to 0
+    const counts: Record<string, number> = {
+      PLANNED: 0,
+      OPEN: 0,
+      IN_PROGRESS: 0,
+      CLOSED: 0,
+    };
+
+    // Fill in actual counts
+    for (const row of results) {
+      counts[row.status] = row.count;
+    }
+
+    return counts;
+  }
+
+  /**
+   * Search issues by keyword in title or description
+   *
+   * Returns slim issue objects (number, title, status, type, priority).
+   * Case-insensitive search, limited to 10 results.
+   */
+  search(query: string): Pick<Issue, "number" | "title" | "status" | "type" | "priority">[] {
+    const searchPattern = `%${query}%`;
+
+    const results = this.db
+      .select({
+        number: issues.number,
+        title: issues.title,
+        status: issues.status,
+        type: issues.type,
+        priority: issues.priority,
+      })
+      .from(issues)
+      .where(
+        and(
+          eq(issues.projectId, this.projectId),
+          eq(issues.isDeleted, false),
+          or(
+            like(sql`lower(${issues.title})`, sql`lower(${searchPattern})`),
+            like(sql`lower(${issues.description})`, sql`lower(${searchPattern})`)
+          )
+        )
+      )
+      .limit(10)
+      .all();
+
+    return results.map((row) => ({
+      number: row.number,
+      title: row.title,
+      status: row.status as Issue["status"],
+      type: row.type as Issue["type"],
+      priority: row.priority as Issue["priority"],
+    }));
   }
 
   /**

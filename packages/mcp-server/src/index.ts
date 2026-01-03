@@ -54,7 +54,6 @@ import {
   // Issue handlers
   handleCreateIssue,
   handleGetIssue,
-  handleListIssues,
   handleListTemplates,
   handleGetTemplate,
   handleCreateTemplate,
@@ -63,6 +62,9 @@ import {
   handleUpdateIssue,
   handleDeleteIssue,
   handleRestoreIssue,
+  handleGetProjectStats,
+  handleSearchIssues,
+  handleGetWorkQueue,
   // Plan handlers
   handleGeneratePlan,
   handleGetPlan,
@@ -70,11 +72,10 @@ import {
   handleMoveIssueToBacklog,
   // Task handlers
   handleUpdateTaskStatus,
-  handleStartTaskSession,
+  handleLoadTaskSession,
   handleCompleteTaskSession,
   handleAbandonTaskSession,
   handleGetTask,
-  handleGetTaskForSession,
   handleListAvailableTasks,
   handleUpdateTaskLabels,
   handleListAvailableTaskLabels,
@@ -202,9 +203,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     if (name === "get_issue") {
       return handleGetIssue(issueToolContext, a);
     }
-    if (name === "list_issues") {
-      return handleListIssues(issueToolContext, a);
-    }
     if (name === "list_templates") {
       return await handleListTemplates(issueToolContext);
     }
@@ -229,6 +227,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     if (name === "restore_issue") {
       return handleRestoreIssue(issueToolContext, a);
     }
+    if (name === "get_project_stats") {
+      return handleGetProjectStats(issueToolContext);
+    }
+    if (name === "search_issues") {
+      return handleSearchIssues(issueToolContext, a);
+    }
+    if (name === "get_work_queue") {
+      return handleGetWorkQueue(issueToolContext);
+    }
 
     // Plan tools
     if (name === "generate_plan") {
@@ -248,8 +255,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     if (name === "update_task_status") {
       return await handleUpdateTaskStatus(taskToolContext, a);
     }
-    if (name === "start_task_session") {
-      return await handleStartTaskSession(taskToolContext, a);
+    if (name === "load_task_session") {
+      return await handleLoadTaskSession(taskToolContext, a);
     }
     if (name === "complete_task_session") {
       return await handleCompleteTaskSession(taskToolContext, a);
@@ -259,9 +266,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     }
     if (name === "get_task") {
       return handleGetTask(taskToolContext, a);
-    }
-    if (name === "get_task_for_session") {
-      return await handleGetTaskForSession(taskToolContext, a);
     }
     if (name === "list_available_tasks") {
       return await handleListAvailableTasks(taskToolContext, a);
@@ -486,6 +490,9 @@ async function main() {
   // Create tool contexts
   issueToolContext = {
     issueRepository,
+    planRepository,
+    taskRepository,
+    milestoneRepository,
     templateService,
     planningService,
     githubSyncService,

@@ -1,4 +1,4 @@
-import { eq, max, and, asc, inArray, desc } from "drizzle-orm";
+import { eq, max, and, asc, inArray, desc, sql } from "drizzle-orm";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { tasks, taskStatusHistory, taskExecutionLogs, TaskRow, TaskStatusHistoryRow, TaskExecutionLogRow } from "../database/schema.js";
 import type {
@@ -675,6 +675,41 @@ export class SqliteTaskRepository implements TaskRepository {
       .all();
 
     return results.map((row) => this.mapRowToExecutionLog(row));
+  }
+
+  /**
+   * Get counts of tasks by status across all plans
+   *
+   * Returns counts for each status, excluding soft-deleted tasks.
+   */
+  getStatusCounts(): Record<string, number> {
+    const results = this.db
+      .select({
+        status: tasks.status,
+        count: sql<number>`count(*)`,
+      })
+      .from(tasks)
+      .where(eq(tasks.isDeleted, false))
+      .groupBy(tasks.status)
+      .all();
+
+    // Initialize all statuses to 0
+    const counts: Record<string, number> = {
+      PLANNED: 0,
+      BACKLOG: 0,
+      READY: 0,
+      IN_PROGRESS: 0,
+      PR_REVIEW: 0,
+      COMPLETED: 0,
+      ABANDONED: 0,
+    };
+
+    // Fill in actual counts
+    for (const row of results) {
+      counts[row.status] = row.count;
+    }
+
+    return counts;
   }
 
   /**

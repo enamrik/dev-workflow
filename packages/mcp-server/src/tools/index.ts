@@ -11,7 +11,6 @@ export {
   type IssueToolContext,
   handleCreateIssue,
   handleGetIssue,
-  handleListIssues,
   handleListTemplates,
   handleGetTemplate,
   handleCreateTemplate,
@@ -20,6 +19,9 @@ export {
   handleUpdateIssue,
   handleDeleteIssue,
   handleRestoreIssue,
+  handleGetProjectStats,
+  handleSearchIssues,
+  handleGetWorkQueue,
 } from "./issue-tools.js";
 
 // Plan tools
@@ -37,11 +39,10 @@ export {
   taskToolDefinitions,
   type TaskToolContext,
   handleUpdateTaskStatus,
-  handleStartTaskSession,
+  handleLoadTaskSession,
   handleCompleteTaskSession,
   handleAbandonTaskSession,
   handleGetTask,
-  handleGetTaskForSession,
   handleListAvailableTasks,
   handleUpdateTaskLabels,
   handleListAvailableTaskLabels,

@@ -1,7 +1,7 @@
 ---
 name: dwf-work-task
 description: Manage task execution lifecycle - start, complete, or abandon tasks. Supports 3 execution modes (isolated, branch, main) and PR-based workflow. Auto-invoked when user wants to "start task", "work on task", "complete task", "finish task", "abandon task", "submit for review", "merge PR", "pause issue", etc. (project)
-allowed-tools: mcp:dev-workflow-tracker:get_task_for_session, mcp:dev-workflow-tracker:start_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue, mcp:dev-workflow-tracker:move_issue_to_backlog
+allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue, mcp:dev-workflow-tracker:move_issue_to_backlog
 ---
 
 # Work Task Skill
@@ -106,8 +106,8 @@ BACKLOG tasks back to READY.
 | From | To | Trigger |
 |------|-----|---------|
 | PLANNED | BACKLOG | `move_issue_to_backlog` (activates plan, creates GitHub issues) |
-| BACKLOG | IN_PROGRESS | `start_task_session` (also moves other BACKLOG → READY) |
-| READY | IN_PROGRESS | `start_task_session` |
+| BACKLOG | IN_PROGRESS | `load_task_session` (also moves other BACKLOG → READY) |
+| READY | IN_PROGRESS | `load_task_session` |
 | READY | BACKLOG | `pause_issue` (moves all READY tasks) |
 | IN_PROGRESS | PR_REVIEW | `submit_for_review` (isolated/branch modes) |
 | IN_PROGRESS | COMPLETED | `complete_task` (main mode only) |
@@ -130,21 +130,19 @@ BACKLOG tasks back to READY.
      - This transitions all PLANNED tasks to BACKLOG and creates GitHub issues
    - **If task is BACKLOG or READY:** Proceed with starting
 
-3. **Get task details:**
-   - Call `get_task_for_session` with the task ID
-   - Review title, description, and acceptance criteria
-
-4. **Determine execution mode:**
+3. **Determine execution mode:**
    - **ALWAYS use `isolated` mode** unless the user explicitly requests otherwise
    - Only use `branch` if user explicitly says "branch mode", "no worktree", etc.
    - Only use `main` if user explicitly says "on main", "main mode", "skip PR", etc.
    - **NEVER autonomously choose a non-default mode** based on task complexity or size
 
-5. **Start the session:**
-   - Call `start_task_session` with task ID, session ID, and mode
-   - If successful → show task details and begin work
+4. **Load the task session:**
+   - Call `load_task_session` with task ID, session ID, and mode
+   - This returns full context: task, issue, plan, labels, worktree info
+   - If task is already IN_PROGRESS, it resumes the existing session
+   - Review title, description, and acceptance criteria from the response
 
-6. **Present task to user:**
+5. **Present task to user:**
    - Show what needs to be implemented
    - Show acceptance criteria as a checklist
    - For isolated mode: show worktree path and branch name
@@ -273,7 +271,7 @@ When starting with `mode: "isolated"`:
 
 **CRITICAL: Always use the worktree path for ALL operations**
 
-When a task is started in isolated mode, `start_task_session` returns a `worktreePath`. You MUST use this path for ALL file operations during the task:
+When a task is started in isolated mode, `load_task_session` returns a `worktreePath`. You MUST use this path for ALL file operations during the task:
 
 - **Read/Edit/Write tools**: Always use the full worktree path (e.g., `/Users/.../.track/project/worktrees/issue-N-task-N/path/to/file`)
 - **Bash commands**: Always `cd` to the worktree path or use absolute paths within the worktree
