@@ -92,7 +92,7 @@ export class GitHubSyncService {
     // Create on GitHub (gh CLI auto-detects repo from git remotes)
     const data = await this.githubCLI.createIssue(title, body, labels);
 
-    // Add to project if configured
+    // Add to project if configured - fail fast if association fails
     let projectItemId: string | null = null;
     if (config.projectId) {
       try {
@@ -100,9 +100,22 @@ export class GitHubSyncService {
           config.projectId,
           data.nodeId
         );
+
+        // Verify the association succeeded - projectItemId should be a valid string
+        if (!projectItemId) {
+          throw new GitHubSyncError(
+            `Project association returned empty item ID for project ${config.projectId}`
+          );
+        }
       } catch (error) {
-        // Log but don't fail - project is optional
-        console.warn("Failed to add to project:", error);
+        // Wrap and re-throw with context - don't silently ignore
+        if (error instanceof GitHubSyncError) {
+          throw error;
+        }
+        throw new GitHubSyncError(
+          `Failed to add issue to GitHub Project ${config.projectId}`,
+          error
+        );
       }
     }
 
