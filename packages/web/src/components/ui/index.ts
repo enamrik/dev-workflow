@@ -13,3 +13,4 @@ export { Markdown } from "./Markdown";
 export { Tooltip } from "./Tooltip";
 export { Modal } from "./Modal";
 export { CopyButton } from "./CopyButton";
+export { GitHubLink } from "./GitHubLink";
