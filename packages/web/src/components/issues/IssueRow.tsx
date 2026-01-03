@@ -34,14 +34,12 @@ export function IssueRow({ item }: IssueRowProps) {
         {issue.number}
       </td>
       <td className="py-3 px-3">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-gray-800">{issue.title}</span>
-          {projectName && (
-            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
-              {projectName}
-            </span>
-          )}
-        </div>
+        <div className="font-medium text-gray-800">{issue.title}</div>
+        {projectName && (
+          <div className="text-xs text-gray-400 mt-0.5">
+            {projectName}
+          </div>
+        )}
       </td>
       <td className="py-3 px-3 w-28">
         <Badge variant="type" value={issue.type} />
