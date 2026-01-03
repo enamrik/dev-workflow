@@ -141,15 +141,15 @@ When creating the issue, mention that implementation details will be captured in
    - Confirm the issue is now CLOSED
    - Suggest next steps if applicable (other open issues, new work)
 
-### For Activating Issues (PLANNED → OPEN)
+### Approving Plans (PLANNED → OPEN)
 
-**IMPORTANT: NEVER auto-activate. ALWAYS ask user for confirmation before activating.**
+**IMPORTANT: NEVER automatically start work. ALWAYS ask user if they're satisfied with the plan first.**
 
 When an issue has a plan with PLANNED tasks and the user wants to start work:
 
-1. **Confirm the plan is finalized:**
+1. **Ask if user is satisfied with the plan:**
    - Show the plan summary and task list
-   - Ask: "Are you satisfied with this plan? Ready to activate and start work?"
+   - Ask: "Are you satisfied with this plan? Ready to start working on it?"
    - Wait for explicit user approval
 
 2. **Only after user confirms:**
@@ -157,15 +157,15 @@ When an issue has a plan with PLANNED tasks and the user wants to start work:
    - This transitions: Issue PLANNED → OPEN, Tasks PLANNED → BACKLOG
    - If GitHub sync is enabled, creates GitHub issues for each task
 
-3. **Report activation:**
+3. **Report that work can begin:**
    - Confirm the issue is now OPEN
-   - Show how many tasks were activated
+   - Show how many tasks are now available to work on
    - If GitHub sync is enabled, mention GitHub issues were created
 
 **Do NOT call `move_issue_to_backlog` automatically.** This must always be user-initiated.
 
 **Detection:** If you see an issue in PLANNED status with PLANNED tasks, prompt the user:
-> "Issue #N has tasks in PLANNED status. Would you like to activate them to start work?"
+> "Issue #N has a plan ready. Are you satisfied with it? Would you like to start working on it?"
 
 ## Priority Extraction
 

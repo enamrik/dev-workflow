@@ -92,12 +92,12 @@ If no context was passed, make reasonable decisions based on the codebase patter
    - Use appropriate complexity estimate (LOW, MEDIUM, HIGH, VERY_HIGH)
    - **Tasks are created in PLANNED status** (no GitHub sync yet)
 
-7. **Ask for Confirmation (REQUIRED):**
-   - **NEVER auto-activate.** Always ask the user to confirm the plan first.
-   - Present the plan summary and ask: "Are you satisfied with this plan? Ready to activate and start work?"
+7. **Ask if User is Satisfied with the Plan (REQUIRED):**
+   - **NEVER automatically start work.** Always ask the user if they're satisfied with the plan first.
+   - Present the plan summary and ask: "Are you satisfied with this plan? Ready to start working on it?"
    - Wait for explicit user approval before calling `move_issue_to_backlog`
 
-8. **Activate on Confirmation:**
+8. **Start Work on Confirmation:**
    - Only after user confirms, call `move_issue_to_backlog` with the issue number
    - This transitions: Issue PLANNED → OPEN, Tasks PLANNED → BACKLOG
    - If GitHub sync is enabled, creates GitHub issues for each task
@@ -257,8 +257,8 @@ Implement session persistence using Redis, user profile storage, and the
 ---
 Plan generated with 2 tasks in PLANNED status.
 
-**Are you satisfied with this plan? Ready to activate and start work?**
-(I'll create GitHub issues for each task if you confirm)
+**Are you satisfied with this plan? Ready to start working on it?**
+(I'll create GitHub issues for each task when you confirm)
 ```
 
 ### Without Implementation Context (standalone invocation)
@@ -299,8 +299,8 @@ Implement caching middleware for GET endpoints with:
 ---
 Plan generated with 1 task in PLANNED status.
 
-**Are you satisfied with this plan? Ready to activate and start work?**
-(I'll create a GitHub issue for the task if you confirm)
+**Are you satisfied with this plan? Ready to start working on it?**
+(I'll create a GitHub issue for the task when you confirm)
 ```
 
 ### Bug Issue (Single-Task Investigation)
@@ -344,8 +344,8 @@ Reproduction:
 ---
 Plan generated with 1 task in PLANNED status.
 
-**Are you satisfied with this plan? Ready to activate and start work?**
-(I'll create a GitHub issue for the task if you confirm)
+**Are you satisfied with this plan? Ready to start working on it?**
+(I'll create a GitHub issue for the task when you confirm)
 ```
 
 ## Error Handling
