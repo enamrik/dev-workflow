@@ -15,6 +15,7 @@ export * from "./domain/events.js";
 export * from "./domain/github.js";
 export * from "./domain/milestone.js";
 export * from "./domain/project.js";
+export * from "./domain/errors.js";
 
 // Application services
 export { PlanningService } from "./application/planning-service.js";

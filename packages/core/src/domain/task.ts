@@ -3,6 +3,55 @@
  */
 
 export type TaskStatus = "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
+
+/**
+ * Valid task status transitions
+ *
+ * Defines which status transitions are allowed in the task lifecycle.
+ * Key transitions:
+ * - BACKLOG → READY: Plan activation (any task started)
+ * - READY → BACKLOG: Issue paused
+ * - BACKLOG/READY → IN_PROGRESS: Task started
+ * - IN_PROGRESS → PR_REVIEW: Task submitted for review
+ * - IN_PROGRESS → COMPLETED: Direct completion (main mode)
+ * - PR_REVIEW → COMPLETED: PR merged
+ * - Any → ABANDONED: Task abandoned
+ */
+const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
+  BACKLOG: ["READY", "IN_PROGRESS", "ABANDONED"],
+  READY: ["BACKLOG", "IN_PROGRESS", "ABANDONED"],
+  IN_PROGRESS: ["PR_REVIEW", "COMPLETED", "ABANDONED"],
+  PR_REVIEW: ["COMPLETED", "ABANDONED"],
+  COMPLETED: [], // Terminal state - no transitions allowed
+  ABANDONED: [], // Terminal state - no transitions allowed
+};
+
+/**
+ * Check if a status transition is valid
+ *
+ * @param from - Current status
+ * @param to - Target status
+ * @returns true if the transition is allowed
+ */
+export function isValidStatusTransition(from: TaskStatus, to: TaskStatus): boolean {
+  // Same status transition is a no-op, not an error
+  if (from === to) {
+    return true;
+  }
+
+  const allowedTransitions = VALID_TRANSITIONS[from];
+  return allowedTransitions.includes(to);
+}
+
+/**
+ * Get allowed transitions from a given status
+ *
+ * @param status - Current status
+ * @returns Array of allowed target statuses
+ */
+export function getAllowedTransitions(status: TaskStatus): TaskStatus[] {
+  return [...VALID_TRANSITIONS[status]];
+}
 export type TaskSource = "generated" | "manual";
 export type PRStatus = "DRAFT" | "OPEN" | "MERGED" | "CLOSED";
 

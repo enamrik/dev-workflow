@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDatabase } from "../../__tests__/setup.js";
-import { createRepositories, createTestIssue, createTestPlan, createTestTask } from "../../__tests__/helpers.js";
+import { createRepositories, createTestIssue, createTestPlan, createTestTask, completeTask } from "../../__tests__/helpers.js";
 import { ConflictDetectionService } from "../conflict-detection-service.js";
 import { taskExecutionLogs } from "../../infrastructure/database/schema.js";
 
@@ -49,7 +49,7 @@ describe("ConflictDetectionService", () => {
       const task2 = createTestTask(repos.taskRepository, planId, { title: "Task 2" });
 
       // Complete task 1 without logging any file modifications
-      repos.taskRepository.updateStatus(task1.id, "COMPLETED", "session-1", "Completed");
+      completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
 
       const result = conflictService.detectConflicts(task2.id);
 
@@ -66,7 +66,7 @@ describe("ConflictDetectionService", () => {
       });
 
       // Complete task 1 and log file modification
-      repos.taskRepository.updateStatus(task1.id, "COMPLETED", "session-1", "Completed");
+      completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
 
       // Log that task 1 modified src/components/Button.tsx
       testDb.db.insert(taskExecutionLogs).values({
@@ -95,7 +95,7 @@ describe("ConflictDetectionService", () => {
         description: "Update src/components/Nav.tsx to add navigation",
       });
 
-      repos.taskRepository.updateStatus(task1.id, "COMPLETED", "session-1", "Completed");
+      completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
 
       testDb.db.insert(taskExecutionLogs).values({
         id: crypto.randomUUID(),
@@ -120,7 +120,7 @@ describe("ConflictDetectionService", () => {
         description: "Work on src/api/users.ts",
       });
 
-      repos.taskRepository.updateStatus(task1.id, "COMPLETED", "session-1", "Completed");
+      completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
 
       testDb.db.insert(taskExecutionLogs).values({
         id: crypto.randomUUID(),
@@ -145,8 +145,8 @@ describe("ConflictDetectionService", () => {
       });
 
       // Complete task 1 and 2, both modify the same file
-      repos.taskRepository.updateStatus(task1.id, "COMPLETED", "session-1", "Completed");
-      repos.taskRepository.updateStatus(task2.id, "COMPLETED", "session-2", "Completed");
+      completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
+      completeTask(repos.taskRepository, task2.id, "session-2", "Completed");
 
       testDb.db.insert(taskExecutionLogs).values({
         id: crypto.randomUUID(),
@@ -193,8 +193,8 @@ describe("ConflictDetectionService", () => {
       const task1 = createTestTask(repos.taskRepository, planId, { title: "Task 1" });
       const task2 = createTestTask(repos.taskRepository, planId, { title: "Task 2" });
 
-      repos.taskRepository.updateStatus(task1.id, "COMPLETED", "session-1", "Completed");
-      repos.taskRepository.updateStatus(task2.id, "COMPLETED", "session-2", "Completed");
+      completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
+      completeTask(repos.taskRepository, task2.id, "session-2", "Completed");
 
       testDb.db.insert(taskExecutionLogs).values({
         id: crypto.randomUUID(),
@@ -226,8 +226,8 @@ describe("ConflictDetectionService", () => {
       const task1 = createTestTask(repos.taskRepository, planId, { title: "Task 1" });
       const task2 = createTestTask(repos.taskRepository, planId, { title: "Task 2" });
 
-      repos.taskRepository.updateStatus(task1.id, "COMPLETED", "session-1", "Completed");
-      repos.taskRepository.updateStatus(task2.id, "COMPLETED", "session-2", "Completed");
+      completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
+      completeTask(repos.taskRepository, task2.id, "session-2", "Completed");
 
       testDb.db.insert(taskExecutionLogs).values({
         id: crypto.randomUUID(),

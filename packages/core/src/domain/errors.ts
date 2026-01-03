@@ -60,3 +60,30 @@ export class DependencyNotSatisfiedError extends Error {
     this.name = "DependencyNotSatisfiedError";
   }
 }
+
+/**
+ * Error thrown when attempting an invalid task status transition
+ *
+ * Task status transitions follow a specific state machine:
+ * - BACKLOG → READY (when plan is activated)
+ * - READY → BACKLOG (when issue is paused)
+ * - BACKLOG/READY → IN_PROGRESS (when task is started)
+ * - IN_PROGRESS → PR_REVIEW (when task is submitted for review)
+ * - IN_PROGRESS → COMPLETED (direct completion, main mode only)
+ * - PR_REVIEW → COMPLETED (after PR is merged)
+ * - Any → ABANDONED (when task is abandoned)
+ */
+export class InvalidStatusTransitionError extends Error {
+  constructor(
+    public readonly taskId: string,
+    public readonly fromStatus: string,
+    public readonly toStatus: string,
+    public readonly reason?: string
+  ) {
+    const reasonPart = reason ? `: ${reason}` : "";
+    super(
+      `Cannot transition task from ${fromStatus} to ${toStatus}${reasonPart}`
+    );
+    this.name = "InvalidStatusTransitionError";
+  }
+}
