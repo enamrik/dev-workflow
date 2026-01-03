@@ -60,6 +60,7 @@ import {
   handleUpdateTemplate,
   handleDeleteTemplate,
   handleUpdateIssue,
+  handleCloseIssue,
   handleDeleteIssue,
   handleRestoreIssue,
   handleGetProjectStats,
@@ -71,7 +72,6 @@ import {
   handlePauseIssue,
   handleMoveIssueToBacklog,
   // Task handlers
-  handleUpdateTaskStatus,
   handleLoadTaskSession,
   handleCompleteTaskSession,
   handleAbandonTaskSession,
@@ -221,8 +221,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     if (name === "update_issue") {
       return await handleUpdateIssue(issueToolContext, a);
     }
+    if (name === "close_issue") {
+      return await handleCloseIssue(issueToolContext, a);
+    }
     if (name === "delete_issue") {
-      return handleDeleteIssue(issueToolContext, a);
+      return await handleDeleteIssue(issueToolContext, a);
     }
     if (name === "restore_issue") {
       return handleRestoreIssue(issueToolContext, a);
@@ -252,9 +255,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     }
 
     // Task tools
-    if (name === "update_task_status") {
-      return await handleUpdateTaskStatus(taskToolContext, a);
-    }
     if (name === "load_task_session") {
       return await handleLoadTaskSession(taskToolContext, a);
     }
@@ -496,6 +496,7 @@ async function main() {
     templateService,
     planningService,
     githubSyncService,
+    githubCLI,
   };
 
   planToolContext = {

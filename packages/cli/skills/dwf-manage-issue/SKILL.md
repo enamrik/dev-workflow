@@ -1,7 +1,7 @@
 ---
 name: dwf-manage-issue
 description: "⚠️ For NEW work requests, use 'dwf-work-request' first - it routes here automatically. This skill handles the mechanics: requirements separation, template selection, priority/milestone assignment. Only invoke directly for EDITING existing issues: 'update issue #N', 'add acceptance criteria to #5', 'change priority of #3'. (project)"
-allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_task_labels, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone, mcp:dev-workflow-tracker:move_issue_to_backlog
+allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:close_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_task_labels, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone, mcp:dev-workflow-tracker:move_issue_to_backlog
 ---
 
 # Manage Issue Skill
@@ -124,20 +124,18 @@ When creating the issue, mention that implementation details will be captured in
 
 **IMPORTANT: Always ask user for confirmation before closing an issue.**
 
-1. **Verify all tasks are complete:**
-   - Check that all tasks in the plan are COMPLETED or ABANDONED
-   - If tasks remain BACKLOG, READY, or IN_PROGRESS, do not close
-
-2. **Ask for confirmation:**
+1. **Ask for confirmation:**
    - Summarize what was accomplished
    - Ask: "Should I close this issue?"
    - Wait for explicit user approval before proceeding
-   - Do NOT call `update_issue` with `status: "CLOSED"` without user saying yes
+   - Do NOT call `close_issue` without user saying yes
 
-3. **Close the issue (only after user confirms):**
-   - Call `update_issue` with `status: "CLOSED"`
+2. **Close the issue (only after user confirms):**
+   - Call `close_issue` with the issue number
+   - The tool validates all tasks are in terminal state (COMPLETED or ABANDONED)
+   - If tasks remain, the tool will return an error listing incomplete tasks
 
-4. **Report closure:**
+3. **Report closure:**
    - Confirm the issue is now CLOSED
    - Suggest next steps if applicable (other open issues, new work)
 
