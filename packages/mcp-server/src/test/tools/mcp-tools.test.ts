@@ -422,11 +422,11 @@ describe("MCP Tool: generate_plan", () => {
     expect(plan).toBeDefined();
     expect(plan?.summary).toBe("Test plan summary");
 
-    // Verify tasks in database
+    // Verify tasks in database (tasks start in PLANNED until issue is activated)
     const tasks = taskRepository.findByPlanId(plan!.id);
     expect(tasks).toHaveLength(3);
     expect(tasks[0]?.title).toBe("Task 1");
-    expect(tasks[0]?.status).toBe("BACKLOG");
+    expect(tasks[0]?.status).toBe("PLANNED");
   });
 
   it("should return error for non-existent issue", async () => {
@@ -483,6 +483,9 @@ describe("MCP Tool: update_task_status", () => {
     const tasks = taskRepository.findByPlanId(plan!.id);
     const taskId = tasks[0]!.id;
 
+    // Tasks start in PLANNED, move to BACKLOG first to simulate activation
+    taskRepository.updateStatus(taskId, "BACKLOG");
+
     // Update status
     const result = updateTaskStatusTool(taskRepository, {
       taskId,
@@ -516,7 +519,8 @@ describe("MCP Tool: update_task_status", () => {
     const tasks = taskRepository.findByPlanId(plan!.id);
     const taskId = tasks[0]!.id;
 
-    // Update to IN_PROGRESS then COMPLETED
+    // Tasks start in PLANNED, move through BACKLOG to IN_PROGRESS
+    taskRepository.updateStatus(taskId, "BACKLOG");
     updateTaskStatusTool(taskRepository, { taskId, status: "IN_PROGRESS" });
     const result = updateTaskStatusTool(taskRepository, {
       taskId,
@@ -636,6 +640,9 @@ describe("MCP Tool: delete_task", () => {
     const tasks = taskRepository.findByPlanId(plan!.id);
     const taskId = tasks[0]!.id;
 
+    // Tasks start in PLANNED, move to BACKLOG to simulate activation
+    taskRepository.updateStatus(taskId, "BACKLOG");
+
     // Delete task
     const result = deleteTaskTool(taskManagementService, { taskId });
 
@@ -670,7 +677,8 @@ describe("MCP Tool: delete_task", () => {
     const tasks = taskRepository.findByPlanId(plan!.id);
     const taskId = tasks[0]!.id;
 
-    // Start the task
+    // Tasks start in PLANNED, move through BACKLOG to IN_PROGRESS
+    taskRepository.updateStatus(taskId, "BACKLOG");
     taskRepository.updateStatus(taskId, "IN_PROGRESS", "test");
 
     // Try to delete
@@ -915,6 +923,9 @@ describe("MCP Tool: list_available_tasks", () => {
     const tasks = taskRepository.findByPlanId(plan!.id);
     const task = tasks[0]!;
 
+    // Tasks are created in PLANNED status, move to BACKLOG to simulate activation
+    taskRepository.updateStatus(task.id, "BACKLOG");
+
     // Check task availability
     const isAvailable = await taskSessionService.isTaskAvailable(task.id);
 
@@ -939,6 +950,9 @@ describe("MCP Tool: list_available_tasks", () => {
     const plan = planRepository.findByIssueId(issue!.id);
     const tasks = taskRepository.findByPlanId(plan!.id);
     const task = tasks[0]!;
+
+    // Tasks are created in PLANNED status, move to BACKLOG to simulate activation
+    taskRepository.updateStatus(task.id, "BACKLOG");
 
     // Close the issue (task remains BACKLOG)
     issueRepository.update(issue!.id, { status: "CLOSED" });
@@ -967,6 +981,9 @@ describe("MCP Tool: list_available_tasks", () => {
     const plan = planRepository.findByIssueId(issue!.id);
     const tasks = taskRepository.findByPlanId(plan!.id);
     const task = tasks[0]!;
+
+    // Tasks are created in PLANNED status, move to BACKLOG to simulate activation
+    taskRepository.updateStatus(task.id, "BACKLOG");
 
     // Close the issue
     issueRepository.update(issue!.id, { status: "CLOSED" });
