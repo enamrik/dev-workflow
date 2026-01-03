@@ -10,6 +10,7 @@ import type {
   TaskExecutionLog,
 } from "../../domain/task.js";
 import { isValidStatusTransition, getAllowedTransitions } from "../../domain/task.js";
+import type { GitHubSyncState } from "../../domain/github.js";
 import { InvalidStatusTransitionError } from "../../domain/errors.js";
 import * as schema from "../database/schema.js";
 
@@ -537,9 +538,9 @@ export class SqliteTaskRepository implements TaskRepository {
       throw new Error(`Task not found: ${id}`);
     }
 
-    if (task.status !== "BACKLOG" && task.status !== "READY") {
+    if (task.status !== "PLANNED" && task.status !== "BACKLOG" && task.status !== "READY") {
       throw new Error(
-        `Cannot delete task with status ${task.status}. Only BACKLOG or READY tasks can be deleted.`
+        `Cannot delete task with status ${task.status}. Only PLANNED, BACKLOG, or READY tasks can be deleted.`
       );
     }
 
@@ -581,6 +582,58 @@ export class SqliteTaskRepository implements TaskRepository {
     const updatedTask = this.findById(id);
     if (!updatedTask) {
       throw new Error(`Failed to restore task: ${id}`);
+    }
+
+    return updatedTask;
+  }
+
+  updateGitHubSync(taskId: string, syncState: GitHubSyncState): Task {
+    const now = new Date().toISOString();
+
+    this.db
+      .update(tasks)
+      .set({
+        githubIssueNumber: syncState.githubIssueNumber,
+        githubUrl: syncState.githubUrl,
+        githubNodeId: syncState.githubNodeId,
+        githubSyncStatus: syncState.syncStatus,
+        githubLastSyncedAt: syncState.lastSyncedAt,
+        githubLastSyncError: syncState.lastSyncError,
+        githubProjectItemId: syncState.projectItemId,
+        updatedAt: now,
+      })
+      .where(eq(tasks.id, taskId))
+      .run();
+
+    const updatedTask = this.findById(taskId);
+    if (!updatedTask) {
+      throw new Error(`Failed to update task GitHub sync: ${taskId}`);
+    }
+
+    return updatedTask;
+  }
+
+  clearGitHubSync(taskId: string): Task {
+    const now = new Date().toISOString();
+
+    this.db
+      .update(tasks)
+      .set({
+        githubIssueNumber: null,
+        githubUrl: null,
+        githubNodeId: null,
+        githubSyncStatus: null,
+        githubLastSyncedAt: null,
+        githubLastSyncError: null,
+        githubProjectItemId: null,
+        updatedAt: now,
+      })
+      .where(eq(tasks.id, taskId))
+      .run();
+
+    const updatedTask = this.findById(taskId);
+    if (!updatedTask) {
+      throw new Error(`Failed to clear task GitHub sync: ${taskId}`);
     }
 
     return updatedTask;
@@ -655,6 +708,28 @@ export class SqliteTaskRepository implements TaskRepository {
   }
 
   /**
+   * Map database row to domain GitHubSyncState object
+   *
+   * Returns undefined if task has no GitHub sync state.
+   */
+  private mapRowToGitHubSync(row: TaskRow): GitHubSyncState | undefined {
+    // If no sync status, task has never been synced
+    if (!row.githubSyncStatus) {
+      return undefined;
+    }
+
+    return {
+      githubIssueNumber: row.githubIssueNumber ?? null,
+      githubUrl: row.githubUrl ?? null,
+      githubNodeId: row.githubNodeId ?? null,
+      syncStatus: row.githubSyncStatus as GitHubSyncState["syncStatus"],
+      lastSyncedAt: row.githubLastSyncedAt ?? null,
+      lastSyncError: row.githubLastSyncError ?? null,
+      projectItemId: row.githubProjectItemId ?? null,
+    };
+  }
+
+  /**
    * Map database row to domain Task object
    *
    * Handles type conversion and null-to-undefined mapping for optional fields.
@@ -687,6 +762,7 @@ export class SqliteTaskRepository implements TaskRepository {
       prUrl: row.prUrl ?? undefined,
       prNumber: row.prNumber ?? undefined,
       prStatus: (row.prStatus as Task["prStatus"]) ?? undefined,
+      githubSync: this.mapRowToGitHubSync(row),
       startedAt: row.startedAt ?? undefined,
       submittedForReviewAt: row.submittedForReviewAt ?? undefined,
       completedAt: row.completedAt ?? undefined,

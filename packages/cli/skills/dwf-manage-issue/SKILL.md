@@ -1,7 +1,7 @@
 ---
 name: dwf-manage-issue
-description: "⚠️ For NEW work requests, use 'dwf-work-request' first - it routes here automatically. This skill handles the mechanics: requirements separation, template selection, priority/milestone assignment. Only invoke directly for EDITING existing issues: 'update issue #N', 'add acceptance criteria to #5', 'change priority of #3'."
-allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_task_labels, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone
+description: "⚠️ For NEW work requests, use 'dwf-work-request' first - it routes here automatically. This skill handles the mechanics: requirements separation, template selection, priority/milestone assignment. Only invoke directly for EDITING existing issues: 'update issue #N', 'add acceptance criteria to #5', 'change priority of #3'. (project)"
+allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_task_labels, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone, mcp:dev-workflow-tracker:move_issue_to_backlog
 ---
 
 # Manage Issue Skill
@@ -95,6 +95,7 @@ When creating the issue, mention that implementation details will be captured in
    - Call `create_issue` with requirement-level information
    - Do NOT put implementation details in the issue description
    - Acceptance criteria should be verifiable outcomes, not implementation steps
+   - **Issues are created in PLANNED status** (no GitHub sync yet)
 
 5. **Report and chain to planning WITH context:**
    - Show issue number (#N)
@@ -139,6 +140,32 @@ When creating the issue, mention that implementation details will be captured in
 4. **Report closure:**
    - Confirm the issue is now CLOSED
    - Suggest next steps if applicable (other open issues, new work)
+
+### For Activating Issues (PLANNED → OPEN)
+
+**IMPORTANT: NEVER auto-activate. ALWAYS ask user for confirmation before activating.**
+
+When an issue has a plan with PLANNED tasks and the user wants to start work:
+
+1. **Confirm the plan is finalized:**
+   - Show the plan summary and task list
+   - Ask: "Are you satisfied with this plan? Ready to activate and start work?"
+   - Wait for explicit user approval
+
+2. **Only after user confirms:**
+   - Call `move_issue_to_backlog` with the issue number
+   - This transitions: Issue PLANNED → OPEN, Tasks PLANNED → BACKLOG
+   - If GitHub sync is enabled, creates GitHub issues for each task
+
+3. **Report activation:**
+   - Confirm the issue is now OPEN
+   - Show how many tasks were activated
+   - If GitHub sync is enabled, mention GitHub issues were created
+
+**Do NOT call `move_issue_to_backlog` automatically.** This must always be user-initiated.
+
+**Detection:** If you see an issue in PLANNED status with PLANNED tasks, prompt the user:
+> "Issue #N has tasks in PLANNED status. Would you like to activate them to start work?"
 
 ## Priority Extraction
 

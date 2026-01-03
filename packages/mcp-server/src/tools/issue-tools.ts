@@ -86,7 +86,7 @@ export const issueToolDefinitions: ToolDefinition[] = [
       properties: {
         status: {
           type: "string",
-          enum: ["OPEN", "IN_PROGRESS", "CLOSED"],
+          enum: ["PLANNED", "OPEN", "IN_PROGRESS", "CLOSED"],
           description: "Filter by status",
         },
         type: {
@@ -248,7 +248,7 @@ export const issueToolDefinitions: ToolDefinition[] = [
             },
             status: {
               type: "string",
-              enum: ["OPEN", "IN_PROGRESS", "CLOSED"],
+              enum: ["PLANNED", "OPEN", "IN_PROGRESS", "CLOSED"],
             },
           },
           description: "Fields to update on the issue",
@@ -289,8 +289,8 @@ interface CreateIssueArgs {
 /**
  * Handle create_issue tool call
  *
- * If GitHub sync is enabled, creates on GitHub FIRST to ensure atomicity.
- * If GitHub sync fails, the entire operation fails (no partial state).
+ * Creates issues in PLANNED status. GitHub sync happens at the task level
+ * when the issue is activated via move_issue_to_backlog.
  */
 export async function handleCreateIssue(
   ctx: IssueToolContext,
@@ -331,40 +331,17 @@ export async function handleCreateIssue(
 
   const resolvedType = finalType || "FEATURE";
 
-  // If GitHub sync is enabled, create on GitHub FIRST (GitHub-first approach)
-  // This ensures atomicity: if GitHub fails, no local issue is created
-  let githubSync: GitHubSyncState | undefined;
-  let githubUrl: string | undefined;
-
-  if (ctx.githubSyncService.isEnabled()) {
-    try {
-      const { data, syncState } = await ctx.githubSyncService.createGitHubIssue(
-        title,
-        description,
-        acceptanceCriteria,
-        resolvedType
-      );
-      githubSync = syncState;
-      githubUrl = data.url;
-    } catch (error) {
-      // GitHub sync failed - fail the entire operation
-      return errorResponse(
-        `Failed to create GitHub issue: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
-
-  // Create issue using repository (with GitHub sync state if available)
+  // Create issue in PLANNED status
+  // GitHub sync happens at task level via move_issue_to_backlog
   const issue = ctx.issueRepository.create({
     title,
     description,
     acceptanceCriteria,
     type: resolvedType,
     priority: finalPriority,
-    status: "OPEN",
+    status: "PLANNED",
     templateUsed,
     createdBy: "claude-code",
-    githubSync,
   });
 
   // Emit issue:created event for real-time UI updates
@@ -382,9 +359,9 @@ export async function handleCreateIssue(
       title: issue.title,
       type: issue.type,
       priority: issue.priority,
+      status: issue.status,
       templateUsed: issue.templateUsed,
       url: `http://localhost:3000/issues/${issue.number}`,
-      githubUrl,
     },
   });
 }

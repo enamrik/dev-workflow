@@ -34,6 +34,7 @@ import {
   taskExecutionLogs,
   // GitHub integration
   GitHubSyncService,
+  TaskGitHubSyncService,
   NodeGitHubCLI,
   // Git worktree support
   NodeGitWorktreeService,
@@ -66,6 +67,7 @@ import {
   handleGeneratePlan,
   handleGetPlan,
   handlePauseIssue,
+  handleMoveIssueToBacklog,
   // Task handlers
   handleUpdateTaskStatus,
   handleStartTaskSession,
@@ -238,10 +240,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     if (name === "pause_issue") {
       return handlePauseIssue(planToolContext, a);
     }
+    if (name === "move_issue_to_backlog") {
+      return await handleMoveIssueToBacklog(planToolContext, a);
+    }
 
     // Task tools
     if (name === "update_task_status") {
-      return handleUpdateTaskStatus(taskToolContext, a);
+      return await handleUpdateTaskStatus(taskToolContext, a);
     }
     if (name === "start_task_session") {
       return await handleStartTaskSession(taskToolContext, a);
@@ -406,12 +411,21 @@ async function main() {
   // Initialize label service
   const labelService = new LabelService(trackDirectory);
 
-  // Initialize GitHub sync service
-  // Service reads config fresh from database on each call, so it handles
+  // Initialize GitHub sync services
+  // Services read config fresh from database on each call, so they handle
   // the case where GitHub sync is enabled after server start
   const githubCLI = new NodeGitHubCLI();
   const githubSyncService = new GitHubSyncService(
     issueRepository,
+    githubCLI,
+    projectRepository,
+    projectId
+  );
+  // TaskGitHubSyncService for task-level GitHub issue sync
+  const taskGitHubSyncService = new TaskGitHubSyncService(
+    taskRepository,
+    issueRepository,
+    planRepository,
     githubCLI,
     projectRepository,
     projectId
@@ -482,6 +496,7 @@ async function main() {
     planRepository,
     taskRepository,
     planningService,
+    taskGitHubSyncService,
   };
 
   taskToolContext = {
@@ -494,6 +509,7 @@ async function main() {
     labelService,
     taskExecutionLogsSchema: taskExecutionLogs,
     conflictDetectionService,
+    taskGitHubSyncService,
   };
 
   snapshotToolContext = {

@@ -29,6 +29,7 @@ export {
   handleGeneratePlan,
   handleGetPlan,
   handlePauseIssue,
+  handleMoveIssueToBacklog,
 } from "./plan-tools.js";
 
 // Task tools

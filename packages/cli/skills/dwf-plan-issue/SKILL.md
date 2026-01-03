@@ -1,7 +1,7 @@
 ---
 name: dwf-plan-issue
-description: Generate implementation plans with properly-scoped tasks. Auto-invoked when user wants to "plan issue", "create implementation plan", "break down into tasks", "plan #N", etc.
-allowed-tools: mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:generate_plan, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:list_available_skills
+description: Generate implementation plans with properly-scoped tasks. Auto-invoked when user wants to "plan issue", "create implementation plan", "break down into tasks", "plan #N", etc. (project)
+allowed-tools: mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:generate_plan, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:list_available_task_labels, mcp:dev-workflow-tracker:move_issue_to_backlog
 ---
 
 # Plan Issue Skill
@@ -83,6 +83,17 @@ If no context was passed, make reasonable decisions based on the codebase patter
 5. **Generate Plan:**
    - Call `generate_plan` with summary, approach, and tasks
    - Use appropriate complexity estimate (LOW, MEDIUM, HIGH, VERY_HIGH)
+   - **Tasks are created in PLANNED status** (no GitHub sync yet)
+
+6. **Ask for Confirmation (REQUIRED):**
+   - **NEVER auto-activate.** Always ask the user to confirm the plan first.
+   - Present the plan summary and ask: "Are you satisfied with this plan? Ready to activate and start work?"
+   - Wait for explicit user approval before calling `move_issue_to_backlog`
+
+7. **Activate on Confirmation:**
+   - Only after user confirms, call `move_issue_to_backlog` with the issue number
+   - This transitions: Issue PLANNED → OPEN, Tasks PLANNED → BACKLOG
+   - If GitHub sync is enabled, creates GitHub issues for each task
 
 ## When a Single Task is Enough
 
@@ -199,7 +210,10 @@ Implement session persistence using Redis, user profile storage, and the
 - Tests cover Redis connection failures gracefully
 
 ---
-Plan generated. Ready to start working on Task 1?
+Plan generated with 2 tasks in PLANNED status.
+
+**Are you satisfied with this plan? Ready to activate and start work?**
+(I'll create GitHub issues for each task if you confirm)
 ```
 
 ### Without Implementation Context (standalone invocation)
@@ -238,8 +252,10 @@ Implement caching middleware for GET endpoints with:
 - Tests verify caching behavior and edge cases
 
 ---
-Plan generated. This is a single-task plan since it's one deployable unit.
-Ready to start?
+Plan generated with 1 task in PLANNED status.
+
+**Are you satisfied with this plan? Ready to activate and start work?**
+(I'll create a GitHub issue for the task if you confirm)
 ```
 
 ## Error Handling
