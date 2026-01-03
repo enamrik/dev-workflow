@@ -3,6 +3,19 @@
  * These mirror the server-side types from @dev-workflow/core.
  */
 
+/**
+ * GitHub sync state for an issue
+ */
+export interface GitHubSyncState {
+  githubIssueNumber: number | null;
+  githubUrl: string | null;
+  githubNodeId: string | null;
+  syncStatus: "NOT_SYNCED" | "SYNCED" | "PUSH_FAILED";
+  lastSyncedAt: string | null;
+  lastSyncError: string | null;
+  projectItemId: string | null;
+}
+
 export interface Issue {
   id: string;
   number: number;
@@ -14,6 +27,8 @@ export interface Issue {
   acceptanceCriteria: string[];
   projectId: string;
   milestoneId: string | null;
+  /** GitHub sync state (optional - only present if synced to GitHub) */
+  githubSync?: GitHubSyncState;
   createdAt: string;
   updatedAt: string;
 }

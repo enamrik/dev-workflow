@@ -17,6 +17,7 @@ interface KanbanTask extends Task {
   issueNumber: number;
   issueTitle: string;
   issueType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
+  issueGithubUrl?: string;
   projectId?: string;
   projectName?: string;
 }
@@ -92,6 +93,7 @@ export function KanbanColumn({
                   issueNumber={task.issueNumber}
                   issueTitle={task.issueTitle}
                   issueType={task.issueType}
+                  issueGithubUrl={task.issueGithubUrl}
                   projectId={task.projectId}
                   projectName={task.projectName}
                 />

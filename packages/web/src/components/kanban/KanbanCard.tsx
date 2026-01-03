@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { clsx } from "clsx";
-import { Badge, Modal, Markdown, Tooltip } from "../ui";
+import { Badge, Modal, Markdown, Tooltip, GitHubLink } from "../ui";
 import { TaskTiming, TaskMetadataPanel, TaskActions } from "../tasks";
 import type { Task } from "@/lib/types";
 
@@ -22,6 +22,7 @@ interface KanbanCardProps {
   issueNumber: number;
   issueTitle: string;
   issueType: IssueType;
+  issueGithubUrl?: string;
   projectId?: string;
   projectName?: string;
 }
@@ -40,6 +41,7 @@ interface TaskModalContentProps {
   issueNumber: number;
   issueTitle: string;
   issueUrl: string;
+  issueGithubUrl?: string;
   projectId?: string;
 }
 
@@ -48,6 +50,7 @@ function TaskModalContent({
   issueNumber,
   issueTitle,
   issueUrl,
+  issueGithubUrl,
   projectId,
 }: TaskModalContentProps) {
   const [activeTab, setActiveTab] = useState<ModalTab>("task");
@@ -71,7 +74,16 @@ function TaskModalContent({
               {task.title}
             </div>
           </div>
-          <Badge variant="status" value={task.status} />
+          <div className="flex items-center gap-2">
+            {issueGithubUrl && (
+              <GitHubLink
+                url={issueGithubUrl}
+                label="Issue"
+                tooltip={`View issue on GitHub: ${issueGithubUrl}`}
+              />
+            )}
+            <Badge variant="status" value={task.status} />
+          </div>
         </div>
 
         {/* Tabs */}
@@ -325,6 +337,7 @@ export function KanbanCard({
   issueNumber,
   issueTitle,
   issueType,
+  issueGithubUrl,
   projectId,
   projectName,
 }: KanbanCardProps) {
@@ -352,6 +365,7 @@ export function KanbanCard({
         issueNumber={issueNumber}
         issueTitle={issueTitle}
         issueUrl={issueUrl}
+        issueGithubUrl={issueGithubUrl}
         projectId={projectId}
       />
     </Modal>

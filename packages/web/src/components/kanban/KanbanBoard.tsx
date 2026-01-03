@@ -6,6 +6,7 @@ interface KanbanTask extends Task {
   issueNumber: number;
   issueTitle: string;
   issueType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
+  issueGithubUrl?: string;
   projectId?: string;
   projectName?: string;
 }
@@ -28,6 +29,7 @@ export function KanbanBoard({
         issueNumber: issue.number,
         issueTitle: issue.title,
         issueType: issue.type,
+        issueGithubUrl: issue.githubSync?.githubUrl ?? undefined,
         projectId: issue.projectId,
         projectName,
       });
