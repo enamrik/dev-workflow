@@ -14,6 +14,7 @@ import type {
 } from "../domain/github.js";
 import type { GitHubCLI } from "../infrastructure/github/github-cli.js";
 import type { GitHubIssueSyncConfig, GitHubLabelsConfig } from "../infrastructure/database/schema.js";
+import type { ProjectRepository } from "../domain/project.js";
 
 /**
  * Error thrown when GitHub sync fails
@@ -36,13 +37,24 @@ export class GitHubSyncError extends Error {
  * - Push-only: local -> GitHub (no pull)
  * - GitHub-first on create: create on GitHub before local for atomicity
  * - Fail fast: if sync fails, operation fails (no partial state)
+ * - Config is read fresh from database on each call (not cached)
  */
 export class GitHubSyncService {
   constructor(
     private readonly issueRepository: IssueRepository,
     private readonly githubCLI: GitHubCLI,
-    private readonly config: GitHubIssueSyncConfig
+    private readonly projectRepository: ProjectRepository,
+    private readonly projectId: string
   ) {}
+
+  /**
+   * Get fresh GitHub sync config from the database
+   * This ensures we always use the latest config, even if updated after server start
+   */
+  private getConfig(): GitHubIssueSyncConfig | null {
+    const project = this.projectRepository.findById(this.projectId);
+    return project?.githubSync ?? null;
+  }
 
   /**
    * Create a GitHub issue for a new local issue
@@ -62,8 +74,14 @@ export class GitHubSyncService {
     acceptanceCriteria: string[],
     type: string
   ): Promise<{ data: GitHubIssueData; syncState: GitHubSyncState }> {
+    // Get fresh config from database
+    const config = this.getConfig();
+    if (!config?.enabled) {
+      throw new GitHubSyncError("GitHub sync is not enabled");
+    }
+
     // Build labels from config
-    const labels = this.buildLabels(type);
+    const labels = this.buildLabels(config, type);
 
     // Ensure labels exist on the repo
     await this.ensureLabelsExist(labels);
@@ -76,10 +94,10 @@ export class GitHubSyncService {
 
     // Add to project if configured
     let projectItemId: string | null = null;
-    if (this.config.projectId) {
+    if (config.projectId) {
       try {
         projectItemId = await this.githubCLI.addToProject(
-          this.config.projectId,
+          config.projectId,
           data.nodeId
         );
       } catch (error) {
@@ -115,6 +133,12 @@ export class GitHubSyncService {
     issue: Issue,
     updates: Partial<Issue>
   ): Promise<GitHubSyncState> {
+    // Get fresh config from database
+    const config = this.getConfig();
+    if (!config?.enabled) {
+      throw new GitHubSyncError("GitHub sync is not enabled");
+    }
+
     if (!issue.githubSync?.githubIssueNumber) {
       throw new GitHubSyncError("Issue has no GitHub link");
     }
@@ -130,7 +154,7 @@ export class GitHubSyncService {
     const status = updates.status ?? issue.status;
 
     // Build labels from config
-    const labels = this.buildLabels(type);
+    const labels = this.buildLabels(config, type);
 
     // Ensure labels exist on the repo
     await this.ensureLabelsExist(labels);
@@ -211,6 +235,15 @@ export class GitHubSyncService {
   }
 
   /**
+   * Check if GitHub sync is currently enabled
+   * This reads fresh config from the database
+   */
+  isEnabled(): boolean {
+    const config = this.getConfig();
+    return config?.enabled ?? false;
+  }
+
+  /**
    * Check if GitHub CLI is authenticated
    */
   async checkAuth(): Promise<boolean> {
@@ -221,12 +254,12 @@ export class GitHubSyncService {
   /**
    * Build labels array from issue type and config
    */
-  private buildLabels(type: string): string[] {
+  private buildLabels(config: GitHubIssueSyncConfig, type: string): string[] {
     const labels: string[] = [];
 
-    if (this.config.labels?.typeLabels) {
+    if (config.labels?.typeLabels) {
       const typeLabel =
-        this.config.labels.typeLabels[
+        config.labels.typeLabels[
           type as keyof GitHubLabelsConfig["typeLabels"]
         ];
       if (typeLabel) {
@@ -234,8 +267,8 @@ export class GitHubSyncService {
       }
     }
 
-    if (this.config.labels?.customLabels) {
-      labels.push(...this.config.labels.customLabels);
+    if (config.labels?.customLabels) {
+      labels.push(...config.labels.customLabels);
     }
 
     return labels;

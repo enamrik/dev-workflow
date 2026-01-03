@@ -406,18 +406,20 @@ async function main() {
   // Initialize label service
   const labelService = new LabelService(trackDirectory);
 
-  // Initialize GitHub sync service if configured in project
-  let githubSyncService: GitHubSyncService | undefined;
+  // Initialize GitHub sync service
+  // Service reads config fresh from database on each call, so it handles
+  // the case where GitHub sync is enabled after server start
+  const githubCLI = new NodeGitHubCLI();
+  const githubSyncService = new GitHubSyncService(
+    issueRepository,
+    githubCLI,
+    projectRepository,
+    projectId
+  );
   if (project.githubSync?.enabled) {
-    const githubCLI = new NodeGitHubCLI();
-    githubSyncService = new GitHubSyncService(
-      issueRepository,
-      githubCLI,
-      project.githubSync
-    );
     console.error("GitHub issue sync enabled (repository auto-detected from git remotes)");
   } else {
-    console.error("GitHub issue sync not configured");
+    console.error("GitHub issue sync not configured (can be enabled via update_settings)");
   }
 
   // Initialize application services
