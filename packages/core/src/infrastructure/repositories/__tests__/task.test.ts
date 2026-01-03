@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDatabase } from "../../../__tests__/setup.js";
 import { createRepositories, createTestIssue, createTestPlan, createTestTask } from "../../../__tests__/helpers.js";
+import { InvalidStatusTransitionError } from "../../../domain/errors.js";
 
 describe("SqliteTaskRepository", () => {
   let testDb: ReturnType<typeof createTestDatabase>;
@@ -123,7 +124,10 @@ describe("SqliteTaskRepository", () => {
 
     it("should set completedAt when status changes to COMPLETED", () => {
       const task = createTestTask(repos.taskRepository, planId);
+      // First move to IN_PROGRESS (valid from BACKLOG)
+      repos.taskRepository.updateStatus(task.id, "IN_PROGRESS", "test");
 
+      // Then complete (valid from IN_PROGRESS)
       const updated = repos.taskRepository.updateStatus(task.id, "COMPLETED", "test");
 
       expect(updated.completedAt).toBeDefined();
@@ -139,7 +143,10 @@ describe("SqliteTaskRepository", () => {
 
     it("should set submittedForReviewAt when status changes to PR_REVIEW", () => {
       const task = createTestTask(repos.taskRepository, planId);
+      // First move to IN_PROGRESS (valid from BACKLOG)
+      repos.taskRepository.updateStatus(task.id, "IN_PROGRESS", "test");
 
+      // Then submit for review (valid from IN_PROGRESS)
       const updated = repos.taskRepository.updateStatus(task.id, "PR_REVIEW", "test");
 
       expect(updated.status).toBe("PR_REVIEW");
@@ -161,6 +168,117 @@ describe("SqliteTaskRepository", () => {
       const completed = repos.taskRepository.updateStatus(task.id, "COMPLETED", "test");
       expect(completed.status).toBe("COMPLETED");
       expect(completed.completedAt).toBeDefined();
+    });
+
+    it("should return same task when transitioning to same status (no-op)", () => {
+      const task = createTestTask(repos.taskRepository, planId);
+
+      const result = repos.taskRepository.updateStatus(task.id, "BACKLOG", "test");
+
+      expect(result.status).toBe("BACKLOG");
+      expect(result.id).toBe(task.id);
+    });
+
+    describe("status transition validation", () => {
+      it("should reject BACKLOG -> COMPLETED (must go through IN_PROGRESS)", () => {
+        const task = createTestTask(repos.taskRepository, planId);
+
+        expect(() => {
+          repos.taskRepository.updateStatus(task.id, "COMPLETED", "test");
+        }).toThrow(InvalidStatusTransitionError);
+      });
+
+      it("should reject BACKLOG -> PR_REVIEW (must go through IN_PROGRESS)", () => {
+        const task = createTestTask(repos.taskRepository, planId);
+
+        expect(() => {
+          repos.taskRepository.updateStatus(task.id, "PR_REVIEW", "test");
+        }).toThrow(InvalidStatusTransitionError);
+      });
+
+      it("should reject IN_PROGRESS -> BACKLOG", () => {
+        const task = createTestTask(repos.taskRepository, planId);
+        repos.taskRepository.updateStatus(task.id, "IN_PROGRESS", "test");
+
+        expect(() => {
+          repos.taskRepository.updateStatus(task.id, "BACKLOG", "test");
+        }).toThrow(InvalidStatusTransitionError);
+      });
+
+      it("should reject IN_PROGRESS -> READY", () => {
+        const task = createTestTask(repos.taskRepository, planId);
+        repos.taskRepository.updateStatus(task.id, "IN_PROGRESS", "test");
+
+        expect(() => {
+          repos.taskRepository.updateStatus(task.id, "READY", "test");
+        }).toThrow(InvalidStatusTransitionError);
+      });
+
+      it("should reject PR_REVIEW -> IN_PROGRESS", () => {
+        const task = createTestTask(repos.taskRepository, planId);
+        repos.taskRepository.updateStatus(task.id, "IN_PROGRESS", "test");
+        repos.taskRepository.updateStatus(task.id, "PR_REVIEW", "test");
+
+        expect(() => {
+          repos.taskRepository.updateStatus(task.id, "IN_PROGRESS", "test");
+        }).toThrow(InvalidStatusTransitionError);
+      });
+
+      it("should reject COMPLETED -> any status (terminal state)", () => {
+        const task = createTestTask(repos.taskRepository, planId);
+        repos.taskRepository.updateStatus(task.id, "IN_PROGRESS", "test");
+        repos.taskRepository.updateStatus(task.id, "COMPLETED", "test");
+
+        expect(() => {
+          repos.taskRepository.updateStatus(task.id, "IN_PROGRESS", "test");
+        }).toThrow(InvalidStatusTransitionError);
+      });
+
+      it("should reject ABANDONED -> any status (terminal state)", () => {
+        const task = createTestTask(repos.taskRepository, planId);
+        repos.taskRepository.updateStatus(task.id, "ABANDONED", "test");
+
+        expect(() => {
+          repos.taskRepository.updateStatus(task.id, "IN_PROGRESS", "test");
+        }).toThrow(InvalidStatusTransitionError);
+      });
+
+      it("should allow READY -> BACKLOG (for pause_issue)", () => {
+        const task = createTestTask(repos.taskRepository, planId);
+        // First move to READY
+        repos.taskRepository.updateStatus(task.id, "READY", "test");
+
+        // Then back to BACKLOG (valid for pause_issue)
+        const updated = repos.taskRepository.updateStatus(task.id, "BACKLOG", "test");
+
+        expect(updated.status).toBe("BACKLOG");
+      });
+
+      it("should only allow READY -> BACKLOG (not BACKLOG -> BACKLOG)", () => {
+        const task = createTestTask(repos.taskRepository, planId);
+
+        // BACKLOG -> BACKLOG is a no-op, should return same task
+        const result = repos.taskRepository.updateStatus(task.id, "BACKLOG", "test");
+
+        expect(result.status).toBe("BACKLOG");
+      });
+
+      it("should include allowed transitions in error message", () => {
+        const task = createTestTask(repos.taskRepository, planId);
+
+        try {
+          repos.taskRepository.updateStatus(task.id, "COMPLETED", "test");
+          expect.fail("Should have thrown InvalidStatusTransitionError");
+        } catch (error) {
+          expect(error).toBeInstanceOf(InvalidStatusTransitionError);
+          const e = error as InvalidStatusTransitionError;
+          expect(e.fromStatus).toBe("BACKLOG");
+          expect(e.toStatus).toBe("COMPLETED");
+          expect(e.message).toContain("READY");
+          expect(e.message).toContain("IN_PROGRESS");
+          expect(e.message).toContain("ABANDONED");
+        }
+      });
     });
   });
 

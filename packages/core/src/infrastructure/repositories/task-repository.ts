@@ -9,6 +9,8 @@ import type {
   TaskStatusHistory,
   TaskExecutionLog,
 } from "../../domain/task.js";
+import { isValidStatusTransition, getAllowedTransitions } from "../../domain/task.js";
+import { InvalidStatusTransitionError } from "../../domain/errors.js";
 import * as schema from "../database/schema.js";
 
 /**
@@ -212,6 +214,23 @@ export class SqliteTaskRepository implements TaskRepository {
     const currentTask = this.findById(id);
     if (!currentTask) {
       throw new Error(`Task not found: ${id}`);
+    }
+
+    // Validate status transition
+    if (!isValidStatusTransition(currentTask.status, status)) {
+      const allowed = getAllowedTransitions(currentTask.status);
+      const allowedStr = allowed.length > 0 ? allowed.join(", ") : "none";
+      throw new InvalidStatusTransitionError(
+        id,
+        currentTask.status,
+        status,
+        `allowed transitions from ${currentTask.status}: ${allowedStr}`
+      );
+    }
+
+    // Skip update if status is the same (no-op)
+    if (currentTask.status === status) {
+      return currentTask;
     }
 
     const now = new Date().toISOString();

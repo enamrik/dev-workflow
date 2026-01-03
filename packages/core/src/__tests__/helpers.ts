@@ -159,6 +159,40 @@ export function createTestTask(
 }
 
 /**
+ * Transition a task through the valid state machine to COMPLETED
+ *
+ * Task transitions must follow the valid path:
+ * BACKLOG/READY -> IN_PROGRESS -> COMPLETED
+ */
+export function completeTask(
+  repo: SqliteTaskRepository,
+  taskId: string,
+  sessionId: string = "test-session",
+  notes: string = "Completed"
+): Task {
+  const task = repo.findById(taskId);
+  if (!task) {
+    throw new Error(`Task not found: ${taskId}`);
+  }
+
+  // Transition through valid states based on current status
+  if (task.status === "BACKLOG" || task.status === "READY") {
+    repo.updateStatus(taskId, "IN_PROGRESS", sessionId, "Started");
+  }
+
+  if (task.status === "IN_PROGRESS" || repo.findById(taskId)?.status === "IN_PROGRESS") {
+    return repo.updateStatus(taskId, "COMPLETED", sessionId, notes);
+  }
+
+  // Already completed or in another state
+  const currentTask = repo.findById(taskId);
+  if (!currentTask) {
+    throw new Error(`Task not found after update: ${taskId}`);
+  }
+  return currentTask;
+}
+
+/**
  * Create a full test scenario with issue, plan, and tasks
  */
 export function createTestScenario(
