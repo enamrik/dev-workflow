@@ -23,7 +23,7 @@ export interface AddManualTaskRequest {
  *
  * Responsibilities:
  * - Add manual tasks to plans
- * - Delete tasks (any task, manual or generated, if PENDING)
+ * - Delete tasks (any task, manual or generated, if BACKLOG or READY)
  * - Reorder tasks when needed
  *
  * Follows the Dependency Inversion Principle - depends on repository
@@ -97,7 +97,7 @@ export class TaskManagementService {
   /**
    * Delete a task (soft delete)
    *
-   * Can delete any task (manual or generated) as long as it's PENDING.
+   * Can delete any task (manual or generated) as long as it's BACKLOG or READY.
    * Tasks with other statuses cannot be deleted.
    *
    * @param taskId - Task UUID
@@ -114,9 +114,9 @@ export class TaskManagementService {
       throw new Error(`Task is already deleted: ${taskId}`);
     }
 
-    if (task.status !== "BACKLOG" && task.status !== "READY" && task.status !== "PENDING") {
+    if (task.status !== "BACKLOG" && task.status !== "READY") {
       throw new Error(
-        `Cannot delete task with status ${task.status}. Only BACKLOG, READY, or PENDING tasks can be deleted.`
+        `Cannot delete task with status ${task.status}. Only BACKLOG or READY tasks can be deleted.`
       );
     }
 

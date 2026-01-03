@@ -134,7 +134,7 @@ export function assertTasksExist(
 export function assertTaskStatus(
   db: Database.Database,
   taskId: string,
-  expectedStatus: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED"
+  expectedStatus: "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED"
 ): TaskRow {
   const task = db
     .prepare("SELECT * FROM tasks WHERE id = ?")
@@ -151,7 +151,7 @@ export function assertTaskStatus(
  */
 export function getTaskByStatus(
   db: Database.Database,
-  status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED",
+  status: "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED",
   planId?: string
 ): TaskRow | undefined {
   if (planId) {
@@ -221,7 +221,7 @@ export function countIssues(db: Database.Database): number {
  */
 export function countTasksByStatus(
   db: Database.Database,
-  status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED"
+  status: "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED"
 ): number {
   const result = db
     .prepare("SELECT COUNT(*) as count FROM tasks WHERE status = ?")

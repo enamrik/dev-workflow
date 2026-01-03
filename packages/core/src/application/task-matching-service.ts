@@ -40,7 +40,7 @@ export interface TaskMatchResult {
  * Matching rules:
  * - COMPLETED tasks: Always try to match (preserve work done)
  * - IN_PROGRESS tasks: Try to match (preserve current work)
- * - PENDING tasks: Match if high confidence (>0.8), otherwise create new
+ * - BACKLOG/READY tasks: Match if high confidence (>0.8), otherwise create new
  * - ABANDONED tasks: Never match (already obsolete)
  */
 export class TaskMatchingService {

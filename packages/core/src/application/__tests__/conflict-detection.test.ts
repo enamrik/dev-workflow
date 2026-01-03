@@ -32,11 +32,11 @@ describe("ConflictDetectionService", () => {
 
   describe("detectConflicts", () => {
     it("should return no conflicts when no prior tasks are completed", () => {
-      // Create two tasks, both PENDING
+      // Create two tasks, both BACKLOG
       createTestTask(repos.taskRepository, planId, { title: "Task 1" });
       const task2 = createTestTask(repos.taskRepository, planId, { title: "Task 2" });
 
-      // Task 1 is still PENDING, so no conflicts
+      // Task 1 is still BACKLOG, so no conflicts
       const result = conflictService.detectConflicts(task2.id);
 
       expect(result.hasConflicts).toBe(false);

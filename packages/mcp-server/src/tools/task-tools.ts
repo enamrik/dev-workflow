@@ -43,7 +43,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
         },
         status: {
           type: "string",
-          enum: ["BACKLOG", "READY", "PENDING", "IN_PROGRESS", "PR_REVIEW", "COMPLETED", "ABANDONED"],
+          enum: ["BACKLOG", "READY", "IN_PROGRESS", "PR_REVIEW", "COMPLETED", "ABANDONED"],
           description: "New status for the task",
         },
         notes: {
@@ -173,7 +173,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   {
     name: "list_available_tasks",
     description:
-      "List tasks available to work on (PENDING status, not locked by another session).",
+      "List tasks available to work on (BACKLOG or READY status, not locked by another session).",
     inputSchema: {
       type: "object",
       properties: {
@@ -321,7 +321,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "delete_task",
-    description: "Delete a task (soft delete). Only PENDING tasks can be deleted.",
+    description: "Delete a task (soft delete). Only BACKLOG or READY tasks can be deleted.",
     inputSchema: {
       type: "object",
       properties: {
@@ -767,9 +767,9 @@ function formatTaskRequirements(
 /**
  * Handle list_available_tasks tool call
  *
- * Returns all PENDING tasks with availability information.
+ * Returns all BACKLOG and READY tasks with availability information.
  * A task is available only if:
- * - Status is PENDING
+ * - Status is BACKLOG or READY
  * - All dependencies are satisfied (COMPLETED or ABANDONED)
  * - Not locked by another session
  */

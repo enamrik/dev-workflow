@@ -183,7 +183,7 @@ export class VersioningService {
       // Soft delete all current tasks that haven't been started
       const currentTasks = this.taskRepository.findByPlanId(plan.id, false);
       for (const task of currentTasks) {
-        if (task.status === "BACKLOG" || task.status === "READY" || task.status === "PENDING") {
+        if (task.status === "BACKLOG" || task.status === "READY") {
           this.taskRepository.softDelete(task.id, createdBy);
         }
       }

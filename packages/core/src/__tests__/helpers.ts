@@ -150,7 +150,7 @@ export function createTestTask(
     planId,
     title: overrides.title ?? "Test Task",
     description: overrides.description ?? "Test task description",
-    status: overrides.status ?? "PENDING",
+    status: overrides.status ?? "BACKLOG",
     source: overrides.source ?? "generated",
     acceptanceCriteria: overrides.acceptanceCriteria ?? [],
     estimatedMinutes: overrides.estimatedMinutes,

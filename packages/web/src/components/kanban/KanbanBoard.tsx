@@ -33,9 +33,9 @@ export function KanbanBoard({
   }
 
   // Group tasks by status (mapping ABANDONED to COMPLETED column)
-  // Ready column shows BACKLOG, READY, and PENDING (for backwards compatibility)
+  // Ready column shows BACKLOG and READY tasks
   const readyTasks = allTasks.filter(
-    (t) => t.status === "BACKLOG" || t.status === "READY" || t.status === "PENDING"
+    (t) => t.status === "BACKLOG" || t.status === "READY"
   );
   const inProgressTasks = allTasks.filter((t) => t.status === "IN_PROGRESS");
   const prReviewTasks = allTasks.filter((t) => t.status === "PR_REVIEW");
