@@ -14,7 +14,7 @@ import {
   type GitHubSyncState,
   type IssueType,
   type IssuePriority,
-  type IssueStatus,
+  type GitHubCLI,
 } from "@dev-workflow/core";
 import {
   type ToolDefinition,
@@ -230,12 +230,8 @@ export const issueToolDefinitions: ToolDefinition[] = [
               type: "string",
               enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
             },
-            status: {
-              type: "string",
-              enum: ["PLANNED", "OPEN", "IN_PROGRESS", "CLOSED"],
-            },
           },
-          description: "Fields to update on the issue",
+          description: "Fields to update on the issue (use close_issue to change status)",
         },
         regeneratePlan: {
           type: "boolean",
@@ -243,6 +239,22 @@ export const issueToolDefinitions: ToolDefinition[] = [
         },
       },
       required: ["updates"],
+    },
+  },
+  {
+    name: "close_issue",
+    description:
+      "Close an issue. Validates all tasks are in terminal state (COMPLETED or ABANDONED). " +
+      "Syncs to GitHub if the issue has a linked GitHub issue.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issueNumber: {
+          type: "number",
+          description: "Issue number (e.g., 123 for #123)",
+        },
+      },
+      required: ["issueNumber"],
     },
   },
   {
@@ -289,6 +301,8 @@ export interface IssueToolContext {
   planningService: PlanningService;
   /** GitHub sync service - always available, check isEnabled() before use */
   githubSyncService: GitHubSyncService;
+  /** GitHub CLI for direct operations like closing issues */
+  githubCLI: GitHubCLI;
 }
 
 /**
@@ -431,10 +445,10 @@ export function handleGetIssue(
  *
  * Soft deletes an issue. The issue will be excluded from search and work queue.
  */
-export function handleDeleteIssue(
+export async function handleDeleteIssue(
   ctx: IssueToolContext,
   args: { issueId?: string; issueNumber?: number }
-): ToolResponse {
+): Promise<ToolResponse> {
   const { issueId, issueNumber } = args;
 
   // Resolve issue from ID or number
@@ -455,11 +469,42 @@ export function handleDeleteIssue(
   }
 
   try {
+    const closedGitHubIssues: number[] = [];
+
+    // Close GitHub issues if sync is enabled
+    if (ctx.githubSyncService.isEnabled()) {
+      // Close task GitHub issues first
+      const plan = ctx.planRepository.findByIssueId(issue.id);
+      if (plan) {
+        const tasks = ctx.taskRepository.findByPlanId(plan.id);
+        for (const task of tasks) {
+          if (task.githubSync?.githubIssueNumber) {
+            try {
+              await ctx.githubCLI.closeIssue(task.githubSync.githubIssueNumber);
+              closedGitHubIssues.push(task.githubSync.githubIssueNumber);
+            } catch (error) {
+              console.warn(`Failed to close GitHub issue #${task.githubSync.githubIssueNumber}: ${error}`);
+            }
+          }
+        }
+      }
+
+      // Close the main issue's GitHub issue
+      if (issue.githubSync?.githubIssueNumber) {
+        try {
+          await ctx.githubCLI.closeIssue(issue.githubSync.githubIssueNumber);
+          closedGitHubIssues.push(issue.githubSync.githubIssueNumber);
+        } catch (error) {
+          console.warn(`Failed to close GitHub issue #${issue.githubSync.githubIssueNumber}: ${error}`);
+        }
+      }
+    }
+
     const deleted = ctx.issueRepository.delete(issue.id, "claude-code");
 
     return successResponse({
       success: true,
-      message: `Issue #${deleted.number} has been deleted`,
+      message: `Issue #${deleted.number} has been deleted${closedGitHubIssues.length > 0 ? ` (closed ${closedGitHubIssues.length} GitHub issue(s))` : ""}`,
       issue: {
         id: deleted.id,
         number: deleted.number,
@@ -468,6 +513,7 @@ export function handleDeleteIssue(
         deletedAt: deleted.deletedAt,
         deletedBy: deleted.deletedBy,
       },
+      closedGitHubIssues,
     });
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));
@@ -674,7 +720,6 @@ export async function handleUpdateIssue(
       acceptanceCriteria: string[];
       type: IssueType;
       priority: IssuePriority;
-      status: IssueStatus;
     }>;
     regeneratePlan?: boolean;
   }
@@ -728,6 +773,67 @@ export async function handleUpdateIssue(
   );
 
   return successResponse(result);
+}
+
+/**
+ * Handle close_issue tool call
+ *
+ * Closes an issue after validating all tasks are in terminal state.
+ * Syncs to GitHub if the issue has a linked GitHub issue.
+ */
+export async function handleCloseIssue(
+  ctx: IssueToolContext,
+  args: { issueNumber: number }
+): Promise<ToolResponse> {
+  const { issueNumber } = args;
+
+  // Find the issue
+  const issue = ctx.issueRepository.findByNumber(issueNumber);
+  if (!issue) {
+    return errorResponse(`Issue not found: #${issueNumber}`);
+  }
+
+  // Check if already closed
+  if (issue.status === "CLOSED") {
+    return errorResponse(`Issue #${issueNumber} is already closed`);
+  }
+
+  // Get the plan and tasks to validate they're all in terminal state
+  const plan = ctx.planRepository.findByIssueId(issue.id);
+  if (plan) {
+    const tasks = ctx.taskRepository.findByPlanId(plan.id);
+    const nonTerminalTasks = tasks.filter(
+      (t) => !t.isDeleted && t.status !== "COMPLETED" && t.status !== "ABANDONED"
+    );
+
+    if (nonTerminalTasks.length > 0) {
+      const taskList = nonTerminalTasks
+        .map((t) => `  - Task ${t.number}: ${t.title} (${t.status})`)
+        .join("\n");
+      return errorResponse(
+        `Cannot close issue #${issueNumber}. The following tasks are not complete:\n${taskList}`
+      );
+    }
+  }
+
+  // Close the GitHub issue first if synced
+  if (ctx.githubSyncService.isEnabled() && issue.githubSync?.githubIssueNumber) {
+    try {
+      await ctx.githubSyncService.updateGitHubIssue(issue, { status: "CLOSED" });
+    } catch (error) {
+      return errorResponse(
+        `Failed to close GitHub issue: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  // Update issue status to CLOSED
+  const updatedIssue = ctx.issueRepository.update(issue.id, { status: "CLOSED" });
+
+  return successResponse({
+    message: `Issue #${issueNumber} closed successfully`,
+    issue: updatedIssue,
+  });
 }
 
 /**

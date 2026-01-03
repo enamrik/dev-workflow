@@ -5,7 +5,6 @@
 import { eq, asc } from "drizzle-orm";
 import {
   taskExecutionLogs,
-  EventBus,
   type DatabaseService,
   type SqliteIssueRepository,
   type SqlitePlanRepository,
@@ -14,7 +13,6 @@ import {
   type TaskManagementService,
   type LabelService,
   type Label,
-  type TaskStatus,
   type TaskExecutionLogRow,
   type ConflictDetectionService,
   type ConflictWarning,
@@ -31,30 +29,6 @@ import {
  * Tool definitions for task operations
  */
 export const taskToolDefinitions: ToolDefinition[] = [
-  {
-    name: "update_task_status",
-    description:
-      "Update task status. Records change in history without creating snapshot.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        taskId: {
-          type: "string",
-          description: "Task UUID",
-        },
-        status: {
-          type: "string",
-          enum: ["BACKLOG", "READY", "IN_PROGRESS", "PR_REVIEW", "COMPLETED", "ABANDONED"],
-          description: "New status for the task",
-        },
-        notes: {
-          type: "string",
-          description: "Optional notes about status change",
-        },
-      },
-      required: ["taskId", "status"],
-    },
-  },
   {
     name: "load_task_session",
     description:
@@ -452,60 +426,6 @@ export interface TaskToolContext {
 }
 
 /**
- * Handle update_task_status tool call
- *
- * Updates task status and syncs to GitHub if task has GitHub sync enabled.
- */
-export async function handleUpdateTaskStatus(
-  ctx: TaskToolContext,
-  args: { taskId: string; status: TaskStatus; notes?: string }
-): Promise<ToolResponse> {
-  const { taskId, status, notes } = args;
-
-  // Get current task to capture previous status
-  const currentTask = ctx.taskRepository.findById(taskId);
-  if (!currentTask) {
-    return errorResponse(`Task not found: ${taskId}`);
-  }
-  const fromStatus = currentTask.status;
-
-  const updatedTask = ctx.taskRepository.updateStatus(
-    taskId,
-    status,
-    "claude-agent",
-    notes
-  );
-
-  // Emit task:status_changed event for real-time UI updates
-  const plan = ctx.planRepository.findById(currentTask.planId);
-  if (plan) {
-    const issue = ctx.issueRepository.findById(plan.issueId);
-    if (issue) {
-      const eventBus = EventBus.getInstance();
-      eventBus.emit("task:status_changed", {
-        taskId,
-        planId: currentTask.planId,
-        issueNumber: issue.number,
-        fromStatus,
-        toStatus: status,
-      });
-    }
-  }
-
-  // Sync to GitHub if task has GitHub sync enabled
-  if (ctx.taskGitHubSyncService && updatedTask.githubSync?.githubIssueNumber) {
-    try {
-      await ctx.taskGitHubSyncService.syncTaskStatus(taskId, status);
-    } catch (error) {
-      // Log but don't fail - GitHub sync is best effort after local update
-      console.warn(`Failed to sync task status to GitHub: ${error}`);
-    }
-  }
-
-  return successResponse(updatedTask);
-}
-
-/**
  * Handle load_task_session tool call
  *
  * Loads a task for execution with full context. Starts or resumes the session.
@@ -573,6 +493,21 @@ export async function handleLoadTaskSession(
       } catch (error) {
         // Log but don't fail - GitHub sync is best effort after local update
         console.warn(`Failed to sync task status to GitHub: ${error}`);
+      }
+    }
+
+    // Sync sibling tasks that transitioned from BACKLOG to READY
+    // When starting a task, all other BACKLOG tasks in the plan move to READY
+    if (ctx.taskGitHubSyncService && result.task.planId) {
+      const siblingTasks = ctx.taskRepository.findByPlanId(result.task.planId);
+      for (const sibling of siblingTasks) {
+        if (sibling.id !== taskId && sibling.status === "READY" && sibling.githubSync?.githubIssueNumber) {
+          try {
+            await ctx.taskGitHubSyncService.syncTaskStatus(sibling.id, "READY");
+          } catch (error) {
+            console.warn(`Failed to sync sibling task READY status to GitHub: ${error}`);
+          }
+        }
       }
     }
   }

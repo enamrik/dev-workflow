@@ -102,13 +102,10 @@ dogfood: install
 	@$(MAKE) build
 	@$(MAKE) link
 	@echo ""
-	@if [ -d ".track" ]; then \
-		echo "🔄 Updating existing dev-workflow installation..."; \
-		$(DEV_WORKFLOW) update; \
-	else \
-		echo "🚀 First-time setup - initializing dev-workflow..."; \
-		$(DEV_WORKFLOW) init; \
-	fi
+	@echo "🚀 Initializing dev-workflow..."
+	@$(DEV_WORKFLOW) init
+	@echo "🔄 Updating dev-workflow installation..."
+	@$(DEV_WORKFLOW) update
 	@echo ""
 	@echo "🐕 Ready to dogfood! You can now use dev-workflow anywhere on this machine."
 	@echo ""

@@ -17,6 +17,7 @@ export {
   handleUpdateTemplate,
   handleDeleteTemplate,
   handleUpdateIssue,
+  handleCloseIssue,
   handleDeleteIssue,
   handleRestoreIssue,
   handleGetProjectStats,
@@ -38,7 +39,6 @@ export {
 export {
   taskToolDefinitions,
   type TaskToolContext,
-  handleUpdateTaskStatus,
   handleLoadTaskSession,
   handleCompleteTaskSession,
   handleAbandonTaskSession,
