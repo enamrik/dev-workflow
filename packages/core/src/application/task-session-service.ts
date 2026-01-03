@@ -130,10 +130,10 @@ export class TaskSessionService {
       throw new Error(`Task not found: ${taskId}`);
     }
 
-    // Only PENDING tasks can be started
-    if (task.status !== "PENDING") {
+    // Only BACKLOG, READY, or PENDING tasks can be started
+    if (task.status !== "BACKLOG" && task.status !== "READY" && task.status !== "PENDING") {
       throw new Error(
-        `Task must be PENDING to start session. Current status: ${task.status}`
+        `Task must be BACKLOG, READY, or PENDING to start session. Current status: ${task.status}`
       );
     }
 
@@ -228,6 +228,20 @@ export class TaskSessionService {
       this.taskRepository.update(taskId, { branchName });
     }
     // mode === "main": no branch, no worktree - work directly on main
+
+    // Transition all BACKLOG tasks in this plan to READY
+    // This happens when any task in the plan is first started
+    const allPlanTasks = this.taskRepository.findByPlanId(task.planId);
+    for (const planTask of allPlanTasks) {
+      if (planTask.status === "BACKLOG" && planTask.id !== taskId) {
+        this.taskRepository.updateStatus(
+          planTask.id,
+          "READY",
+          sessionId,
+          "Plan activated - task moved from BACKLOG to READY"
+        );
+      }
+    }
 
     // Update task status to IN_PROGRESS and set session info
     this.taskRepository.updateStatus(
@@ -490,8 +504,8 @@ export class TaskSessionService {
       }
     }
 
-    // PENDING tasks are available if dependencies are satisfied
-    if (task.status === "PENDING") {
+    // BACKLOG, READY, and PENDING tasks are available if dependencies are satisfied
+    if (task.status === "BACKLOG" || task.status === "READY" || task.status === "PENDING") {
       return this.dependencyService.areDependenciesSatisfied(task);
     }
 

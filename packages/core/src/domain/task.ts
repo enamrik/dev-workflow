@@ -2,7 +2,7 @@
  * Domain types for Task entity
  */
 
-export type TaskStatus = "PENDING" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
+export type TaskStatus = "BACKLOG" | "READY" | "PENDING" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
 export type TaskSource = "generated" | "manual";
 export type PRStatus = "DRAFT" | "OPEN" | "MERGED" | "CLOSED";
 

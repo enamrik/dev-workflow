@@ -85,7 +85,7 @@ export class TaskManagementService {
       title,
       description,
       acceptanceCriteria: acceptanceCriteria ?? [],
-      status: "PENDING",
+      status: "BACKLOG",
       source: "manual", // Key difference from generated tasks!
       estimatedMinutes,
       isDeleted: false,
@@ -114,9 +114,9 @@ export class TaskManagementService {
       throw new Error(`Task is already deleted: ${taskId}`);
     }
 
-    if (task.status !== "PENDING") {
+    if (task.status !== "BACKLOG" && task.status !== "READY" && task.status !== "PENDING") {
       throw new Error(
-        `Cannot delete task with status ${task.status}. Only PENDING tasks can be deleted.`
+        `Cannot delete task with status ${task.status}. Only BACKLOG, READY, or PENDING tasks can be deleted.`
       );
     }
 

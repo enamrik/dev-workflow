@@ -393,7 +393,7 @@ export class PlanningService {
           title: result.newTask.title,
           description: result.newTask.description,
           acceptanceCriteria: result.newTask.acceptanceCriteria,
-          status: "PENDING",
+          status: "BACKLOG",
           source: "generated",
           estimatedMinutes: result.newTask.estimatedMinutes,
           isDeleted: false,
@@ -406,7 +406,7 @@ export class PlanningService {
 
     // Soft delete generated tasks that weren't matched
     for (const task of existingGeneratedTasks) {
-      if (!matchedTaskIds.has(task.id) && task.status === "PENDING") {
+      if (!matchedTaskIds.has(task.id) && (task.status === "BACKLOG" || task.status === "READY" || task.status === "PENDING")) {
         this.taskRepository.softDelete(task.id, generatedBy);
       }
     }
@@ -438,7 +438,7 @@ export class PlanningService {
         title: def.title,
         description: def.description,
         acceptanceCriteria: def.acceptanceCriteria,
-        status: "PENDING" as const,
+        status: "BACKLOG" as const,
         source: "generated" as const,
         isDeleted: false,
         estimatedMinutes: def.estimatedMinutes,
