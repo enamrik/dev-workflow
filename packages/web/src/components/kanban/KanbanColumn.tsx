@@ -16,6 +16,7 @@ const cardAnimation = {
 interface KanbanTask extends Task {
   issueNumber: number;
   issueTitle: string;
+  issueGithubUrl?: string;
   projectId?: string;
   projectName?: string;
 }
@@ -90,6 +91,7 @@ export function KanbanColumn({
                   task={task}
                   issueNumber={task.issueNumber}
                   issueTitle={task.issueTitle}
+                  issueGithubUrl={task.issueGithubUrl}
                   projectId={task.projectId}
                   projectName={task.projectName}
                 />
