@@ -74,11 +74,16 @@ function BoardPageContent() {
     );
   }
 
-  // Count total tasks
-  const totalTasks = issuesWithTasks.reduce(
-    (sum, item) => sum + item.tasks.length,
-    0
-  );
+  // Count active tasks (excluding BACKLOG, COMPLETED, and ABANDONED)
+  const activeTasks = issuesWithTasks.reduce((sum, item) => {
+    const activeCount = item.tasks.filter(
+      (t) =>
+        t.status === "READY" ||
+        t.status === "IN_PROGRESS" ||
+        t.status === "PR_REVIEW"
+    ).length;
+    return sum + activeCount;
+  }, 0);
 
   const headerTitle = issueNumber
     ? `Tasks for Issue #${issueNumber}`
@@ -106,7 +111,7 @@ function BoardPageContent() {
             <CardTitle>{headerTitle}</CardTitle>
           </div>
           <span className="text-gray-600 text-sm">
-            {totalTasks} task{totalTasks !== 1 ? "s" : ""}
+            {activeTasks} task{activeTasks !== 1 ? "s" : ""}
           </span>
         </CardHeader>
 
