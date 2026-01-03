@@ -518,9 +518,9 @@ export class SqliteTaskRepository implements TaskRepository {
       throw new Error(`Task not found: ${id}`);
     }
 
-    if (task.status !== "PENDING") {
+    if (task.status !== "BACKLOG" && task.status !== "READY" && task.status !== "PENDING") {
       throw new Error(
-        `Cannot delete task with status ${task.status}. Only PENDING tasks can be deleted.`
+        `Cannot delete task with status ${task.status}. Only BACKLOG, READY, or PENDING tasks can be deleted.`
       );
     }
 
