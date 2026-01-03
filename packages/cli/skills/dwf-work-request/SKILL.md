@@ -1,9 +1,11 @@
 ---
 name: dwf-work-request
-description: "⚠️ ENTRY POINT for ALL new work. Invoke FIRST when user wants anything built, fixed, added, or created. Triggers: 'add X', 'fix Y', 'implement Z', 'create issue', 'we need...', 'can you build...', 'make it...'. Do NOT use dwf-manage-issue directly for new work - use this router instead."
+description: "⚠️ ENTRY POINT for ALL new work, regardless of size. Invoke FIRST when user wants anything built, fixed, added, or created - even 'trivial' fixes. Triggers: 'add X', 'fix Y', 'implement Z', 'create issue', 'we need...', 'can you build...', 'make it...'. Do NOT use dwf-manage-issue directly for new work - use this router instead."
 ---
 
 # Work Request Skill
+
+> **⚠️ SIZE DOES NOT MATTER**: A 2-line fix gets an issue. A 200-line feature gets an issue. Do not invent exceptions based on perceived complexity or effort. If code changes, track it.
 
 ## Purpose
 
