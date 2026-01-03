@@ -7,10 +7,21 @@ import { Badge, Modal, Markdown, Tooltip, GitHubLink } from "../ui";
 import { TaskTiming, TaskMetadataPanel, TaskActions } from "../tasks";
 import type { Task } from "@/lib/types";
 
+type IssueType = "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
+
+// Issue type styles - tag background, text, and border colors
+const issueTypeConfig: Record<IssueType, { label: string; tag: string; border: string }> = {
+  FEATURE: { label: "feat", tag: "bg-emerald-50 text-emerald-600", border: "border-emerald-200" },
+  BUG: { label: "bug", tag: "bg-rose-50 text-rose-600", border: "border-rose-200" },
+  ENHANCEMENT: { label: "enh", tag: "bg-teal-50 text-teal-600", border: "border-teal-200" },
+  TASK: { label: "task", tag: "bg-gray-100 text-gray-500", border: "border-gray-200" },
+};
+
 interface KanbanCardProps {
   task: Task;
   issueNumber: number;
   issueTitle: string;
+  issueType: IssueType;
   issueGithubUrl?: string;
   projectId?: string;
   projectName?: string;
@@ -235,6 +246,7 @@ function CardContent({
   task,
   issueNumber,
   issueTitle,
+  issueType,
   issueUrl,
   projectId,
   projectName,
@@ -242,27 +254,31 @@ function CardContent({
   task: Task;
   issueNumber: number;
   issueTitle: string;
+  issueType: IssueType;
   issueUrl: string;
   projectId?: string;
   projectName?: string;
 }) {
-  const isCompleted = task.status === "COMPLETED";
-  const isInProgress = task.status === "IN_PROGRESS";
-  const isPRReview = task.status === "PR_REVIEW";
   const isAbandoned = task.status === "ABANDONED";
 
   return (
     <div
       className={clsx(
-        "bg-white rounded-lg shadow-sm border p-3 transition-shadow hover:shadow-md",
-        isCompleted && "border-green-200",
-        isInProgress && "border-orange-200",
-        isPRReview && "border-blue-200",
-        isAbandoned && "border-red-200 opacity-75",
-        !isCompleted && !isInProgress && !isPRReview && !isAbandoned && "border-gray-200"
+        "relative bg-white rounded-lg shadow-sm border border-gray-200 p-3 transition-shadow hover:shadow-md overflow-hidden",
+        isAbandoned && "opacity-75"
       )}
     >
-      {/* Task number and title at top */}
+      {/* Issue type tag - flush top right */}
+      <span
+        className={clsx(
+          "absolute top-0 right-0 text-[8px] font-medium uppercase px-1 py-px rounded-bl",
+          issueTypeConfig[issueType].tag
+        )}
+      >
+        {issueTypeConfig[issueType].label}
+      </span>
+
+      {/* Task number and title */}
       <div className="font-medium text-gray-800 text-sm mb-1">
         <Tooltip content={issueTitle} side="bottom">
           <Link
@@ -320,6 +336,7 @@ export function KanbanCard({
   task,
   issueNumber,
   issueTitle,
+  issueType,
   issueGithubUrl,
   projectId,
   projectName,
@@ -335,6 +352,7 @@ export function KanbanCard({
           task={task}
           issueNumber={issueNumber}
           issueTitle={issueTitle}
+          issueType={issueType}
           issueUrl={issueUrl}
           projectId={projectId}
           projectName={projectName}
