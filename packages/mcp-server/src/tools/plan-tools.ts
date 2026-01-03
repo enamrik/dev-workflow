@@ -50,7 +50,8 @@ export const planToolDefinitions: ToolDefinition[] = [
             properties: {
               id: {
                 type: "string",
-                description: "Task UUID (required for dependency tracking)",
+                description:
+                  "Short placeholder ID for this task (e.g., 'db', 'api', 'auth'). Used to reference this task in dependsOn. Real UUIDs are generated internally.",
               },
               title: { type: "string" },
               description: { type: "string" },
@@ -63,13 +64,13 @@ export const planToolDefinitions: ToolDefinition[] = [
                 type: "array",
                 items: { type: "string" },
                 description:
-                  "Array of task IDs this task depends on. Dependencies must be completed or abandoned before this task can start.",
+                  "Array of placeholder IDs this task depends on. References must match 'id' values of other tasks in this plan.",
               },
             },
             required: ["id", "title", "description"],
           },
           description:
-            "Array of task definitions. Use 'dependsOn' to specify dependencies between tasks.",
+            "Array of task definitions. Use short placeholder IDs (e.g., 'db', 'api') and reference them in 'dependsOn'. Real UUIDs are generated internally.",
         },
         estimatedComplexity: {
           type: "string",
@@ -130,14 +131,18 @@ export interface PlanToolContext {
 
 /**
  * Task definition for plan generation
+ *
+ * The 'id' field is a short placeholder (e.g., "db", "api") used to reference
+ * this task in dependsOn arrays. Real UUIDs are generated internally by the
+ * PlanningService.
  */
 interface TaskDefinition {
-  id: string; // Required for dependency tracking
+  id: string; // Short placeholder ID (e.g., "db", "api", "auth")
   title: string;
   description: string;
   acceptanceCriteria?: string[];
   estimatedMinutes?: number;
-  dependsOn?: string[]; // Task IDs this task depends on
+  dependsOn?: string[]; // Placeholder IDs of tasks this depends on
 }
 
 /**
@@ -177,6 +182,21 @@ export async function handleGeneratePlan(
 
   if (!resolvedIssueId) {
     return errorResponse("Either issueId or issueNumber is required");
+  }
+
+  // Validate dependsOn references - all must reference existing task IDs
+  const taskIds = new Set(tasks.map((t) => t.id));
+  for (const task of tasks) {
+    if (task.dependsOn) {
+      for (const depId of task.dependsOn) {
+        if (!taskIds.has(depId)) {
+          return errorResponse(
+            `Task '${task.id}' references non-existent dependency '${depId}'. ` +
+              `Available task IDs: ${Array.from(taskIds).join(", ")}`
+          );
+        }
+      }
+    }
   }
 
   // Ensure tasks have required fields with defaults
