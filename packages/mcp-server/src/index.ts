@@ -65,6 +65,7 @@ import {
   // Plan handlers
   handleGeneratePlan,
   handleGetPlan,
+  handlePauseIssue,
   // Task handlers
   handleUpdateTaskStatus,
   handleStartTaskSession,
@@ -233,6 +234,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     }
     if (name === "get_plan") {
       return handleGetPlan(planToolContext, a);
+    }
+    if (name === "pause_issue") {
+      return handlePauseIssue(planToolContext, a);
     }
 
     // Task tools

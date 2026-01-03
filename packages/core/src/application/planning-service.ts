@@ -415,6 +415,63 @@ export class PlanningService {
   }
 
   /**
+   * Pause an issue by moving all READY tasks back to BACKLOG
+   *
+   * This allows temporarily "deactivating" a plan. When work resumes
+   * (any task is started), the BACKLOG tasks will transition back to READY.
+   *
+   * Only affects READY tasks - IN_PROGRESS, PR_REVIEW, COMPLETED, and
+   * ABANDONED tasks are not changed.
+   *
+   * @param issueNumber - Issue number to pause
+   * @returns Object with count of tasks moved and the affected tasks
+   */
+  pauseIssue(issueNumber: number): { count: number; tasks: Task[] } {
+    // Find the issue
+    const issue = this.issueRepository.findByNumber(issueNumber);
+    if (!issue) {
+      throw new Error(`Issue not found: #${issueNumber}`);
+    }
+
+    // Find the plan for this issue
+    const plan = this.planRepository.findByIssueId(issue.id);
+    if (!plan) {
+      throw new Error(`No plan exists for issue #${issueNumber}`);
+    }
+
+    // Get all tasks for the plan
+    const allTasks = this.taskRepository.findByPlanId(plan.id, false);
+
+    // Move READY tasks back to BACKLOG
+    const movedTasks: Task[] = [];
+    for (const task of allTasks) {
+      if (task.status === "READY") {
+        const updatedTask = this.taskRepository.updateStatus(
+          task.id,
+          "BACKLOG",
+          "pause_issue",
+          "Issue paused - task moved from READY to BACKLOG"
+        );
+        movedTasks.push(updatedTask);
+      }
+    }
+
+    // Emit event for real-time UI updates
+    if (movedTasks.length > 0) {
+      this.eventBus.emit("issue:paused", {
+        issueId: issue.id,
+        issueNumber: issue.number,
+        tasksMovedCount: movedTasks.length,
+      });
+    }
+
+    return {
+      count: movedTasks.length,
+      tasks: movedTasks,
+    };
+  }
+
+  /**
    * Create all new tasks without matching
    */
   private createNewTasks(

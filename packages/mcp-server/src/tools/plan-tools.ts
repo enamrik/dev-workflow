@@ -101,6 +101,21 @@ export const planToolDefinitions: ToolDefinition[] = [
       },
     },
   },
+  {
+    name: "pause_issue",
+    description:
+      "Pause work on an issue by moving all READY tasks back to BACKLOG. This allows temporarily deactivating a plan. When work resumes (any task is started), the BACKLOG tasks will transition back to READY.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issueNumber: {
+          type: "number",
+          description: "Issue number (e.g., 123 for #123)",
+        },
+      },
+      required: ["issueNumber"],
+    },
+  },
 ];
 
 /**
@@ -218,4 +233,37 @@ export function handleGetPlan(
   const tasks = ctx.taskRepository.findByPlanId(plan.id);
 
   return successResponse({ plan, tasks });
+}
+
+/**
+ * Handle pause_issue tool call
+ *
+ * Moves all READY tasks back to BACKLOG, allowing the plan to be
+ * temporarily deactivated. When work resumes (any task is started),
+ * BACKLOG tasks will transition back to READY.
+ */
+export function handlePauseIssue(
+  ctx: PlanToolContext,
+  args: { issueNumber: number }
+): ToolResponse {
+  const { issueNumber } = args;
+
+  if (!issueNumber) {
+    return errorResponse("issueNumber is required");
+  }
+
+  const result = ctx.planningService.pauseIssue(issueNumber);
+
+  return successResponse({
+    message:
+      result.count > 0
+        ? `Paused issue #${issueNumber}: ${result.count} task(s) moved from READY to BACKLOG`
+        : `Issue #${issueNumber} has no READY tasks to pause`,
+    tasksMovedCount: result.count,
+    tasks: result.tasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+    })),
+  });
 }
