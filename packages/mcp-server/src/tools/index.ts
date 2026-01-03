@@ -28,6 +28,7 @@ export {
   type PlanToolContext,
   handleGeneratePlan,
   handleGetPlan,
+  handlePauseIssue,
 } from "./plan-tools.js";
 
 // Task tools

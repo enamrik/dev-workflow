@@ -1,7 +1,7 @@
 ---
 name: dwf-work-task
-description: Manage task execution lifecycle - start, complete, or abandon tasks. Supports 3 execution modes (isolated, branch, main) and PR-based workflow. Auto-invoked when user wants to "start task", "work on task", "complete task", "finish task", "abandon task", "submit for review", "merge PR", etc.
-allowed-tools: mcp:dev-workflow-tracker:get_task_for_session, mcp:dev-workflow-tracker:start_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status
+description: Manage task execution lifecycle - start, complete, or abandon tasks. Supports 3 execution modes (isolated, branch, main) and PR-based workflow. Auto-invoked when user wants to "start task", "work on task", "complete task", "finish task", "abandon task", "submit for review", "merge PR", "pause issue", etc.
+allowed-tools: mcp:dev-workflow-tracker:get_task_for_session, mcp:dev-workflow-tracker:start_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue
 ---
 
 # Work Task Skill
@@ -32,20 +32,34 @@ allowed-tools: mcp:dev-workflow-tracker:get_task_for_session, mcp:dev-workflow-t
 **Checking PR status:**
 - User mentions: "PR status", "check PR", "what's the PR status?"
 
+**Pausing an issue:**
+- User mentions: "pause issue", "pause work", "put issue on hold"
+- User needs to switch focus: "I need to work on something else first"
+
 ## Task Lifecycle
 
-The task lifecycle supports 3 execution modes with a PR-based review flow:
+Tasks start in BACKLOG status. When the first task in a plan is started, all other
+BACKLOG tasks automatically transition to READY. Both BACKLOG and READY tasks can
+be started.
+
+The `pause_issue` tool moves all READY tasks back to BACKLOG, allowing you to
+temporarily deactivate a plan. Starting any task again will transition remaining
+BACKLOG tasks back to READY.
 
 ```
-                    PENDING
+                    BACKLOG
                        │
-         ┌─────────────┼─────────────┐
-         │             │             │
-     isolated        branch         main
-     (default)                       │
-         │             │             │
-         ▼             ▼             ▼
-    IN_PROGRESS   IN_PROGRESS   IN_PROGRESS
+                       │ (first task started → others become READY)
+                       ▼
+                     READY ←── pause_issue ──┐
+                       │                     │
+         ┌─────────────┼─────────────┐       │
+         │             │             │       │
+     isolated        branch         main     │
+     (default)                       │       │
+         │             │             │       │
+         ▼             ▼             ▼       │
+    IN_PROGRESS   IN_PROGRESS   IN_PROGRESS ─┘
     (worktree)    (branch)      (main)
          │             │             │
          ▼             ▼             │
@@ -80,7 +94,9 @@ The task lifecycle supports 3 execution modes with a PR-based review flow:
 
 | From | To | Trigger |
 |------|-----|---------|
-| PENDING | IN_PROGRESS | `start_task_session` |
+| BACKLOG | IN_PROGRESS | `start_task_session` (also moves other BACKLOG → READY) |
+| READY | IN_PROGRESS | `start_task_session` |
+| READY | BACKLOG | `pause_issue` (moves all READY tasks) |
 | IN_PROGRESS | PR_REVIEW | `submit_for_review` (isolated/branch modes) |
 | IN_PROGRESS | COMPLETED | `complete_task` (main mode only) |
 | PR_REVIEW | COMPLETED | `complete_task` (after PR merged) |
@@ -197,6 +213,26 @@ After implementing the task, submit for PR review:
 3. **Report and suggest:**
    - Show task is now ABANDONED
    - Suggest alternatives (different approach, re-plan issue)
+
+### To Pause an Issue
+
+Pausing an issue moves all READY tasks back to BACKLOG, allowing the plan to be
+temporarily deactivated. This is useful when switching focus to another issue.
+
+1. **Pause the issue:**
+   - Call `pause_issue` with the issue number
+   - All READY tasks will move to BACKLOG
+
+2. **Report results:**
+   - Show how many tasks were moved
+   - Explain that starting any task will reactivate the plan
+
+3. **When work resumes:**
+   - Starting any BACKLOG or READY task will transition all BACKLOG tasks to READY
+   - The plan is now "active" again
+
+**Note:** IN_PROGRESS, PR_REVIEW, COMPLETED, and ABANDONED tasks are not affected
+by pause. Only READY tasks are moved.
 
 ## Execution Mode Details
 
@@ -479,6 +515,23 @@ Proceeding with abandonment...
 Task "Add OAuth2 authentication with Google provider" is now ABANDONED.
 
 Would you like to re-plan issue #5 with a different approach?
+```
+
+### Pausing an Issue
+
+**User:** "I need to pause issue #5, something urgent came up"
+
+**Response:**
+```
+Pausing issue #5...
+
+Moved 3 tasks from READY to BACKLOG:
+- Task 2: Add session management
+- Task 3: Implement user profile
+- Task 4: Add logout functionality
+
+Issue #5 is now paused. When you're ready to resume, just start
+any task and the remaining BACKLOG tasks will transition back to READY.
 ```
 
 ## Error Handling
