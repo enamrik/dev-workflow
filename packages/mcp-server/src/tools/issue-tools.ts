@@ -270,8 +270,8 @@ export interface IssueToolContext {
   issueRepository: SqliteIssueRepository;
   templateService: TemplateService;
   planningService: PlanningService;
-  /** Optional GitHub sync service - present if GitHub integration is enabled */
-  githubSyncService?: GitHubSyncService;
+  /** GitHub sync service - always available, check isEnabled() before use */
+  githubSyncService: GitHubSyncService;
 }
 
 /**
@@ -336,7 +336,7 @@ export async function handleCreateIssue(
   let githubSync: GitHubSyncState | undefined;
   let githubUrl: string | undefined;
 
-  if (ctx.githubSyncService) {
+  if (ctx.githubSyncService.isEnabled()) {
     try {
       const { data, syncState } = await ctx.githubSyncService.createGitHubIssue(
         title,
@@ -703,7 +703,7 @@ export async function handleUpdateIssue(
   // This ensures atomicity: if GitHub fails, no local update is made
   let updatedGithubSync: GitHubSyncState | undefined;
 
-  if (ctx.githubSyncService && issue.githubSync?.githubIssueNumber) {
+  if (ctx.githubSyncService.isEnabled() && issue.githubSync?.githubIssueNumber) {
     try {
       updatedGithubSync = await ctx.githubSyncService.updateGitHubIssue(
         issue,
