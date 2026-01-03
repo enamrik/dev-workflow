@@ -203,7 +203,23 @@ Useful Make commands for development:
 make dogfood            # Full reset + build + link + init
 make test               # Run unit tests
 make test-e2e           # Run E2E tests (requires Claude CLI)
+make ui-dev-local       # Start UI dev server with local test data
 ```
+
+### Working in Worktrees
+
+When working on UI changes in an isolated worktree (via `start_task_session` with `mode: "isolated"`), always run the dev server to let the user verify changes:
+
+```bash
+make ui-dev-local
+```
+
+This command:
+1. Installs dependencies if needed (`make worktree-setup`)
+2. Creates a local `.track/` directory with test data
+3. Starts the Next.js dev server at http://localhost:3457
+
+**After completing UI work in a worktree**, always offer to run `make ui-dev-local` so the user can visually verify the changes before submitting for review.
 
 ### Database Migrations
 

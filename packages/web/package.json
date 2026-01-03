@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@dev-workflow/core": "workspace:*",
+    "@radix-ui/react-tooltip": "^1.2.8",
     "@tanstack/react-query": "^5.17.0",
     "better-sqlite3": "^12.5.0",
     "clsx": "^2.1.0",
