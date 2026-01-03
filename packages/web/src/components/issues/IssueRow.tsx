@@ -34,16 +34,11 @@ export function IssueRow({ item }: IssueRowProps) {
         {issue.number}
       </td>
       <td className="py-3 px-3 font-medium text-gray-800">{issue.title}</td>
-      <td className="py-3 px-3 w-32 text-sm">
+      <td className="py-3 px-3 w-32">
         {projectName ? (
-          <Link
-            href={`/issues?project=${encodeURIComponent(issue.projectId)}`}
-            className="text-blue-600 hover:underline"
-            onClick={(e) => e.stopPropagation()}
-            title={`Filter by ${projectName}`}
-          >
+          <span className="text-xs text-gray-500 bg-gray-50 border border-gray-200 px-2 py-0.5 rounded">
             {projectName}
-          </Link>
+          </span>
         ) : (
           <span className="text-gray-400">-</span>
         )}
