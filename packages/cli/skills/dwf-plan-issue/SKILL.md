@@ -263,6 +263,27 @@ Before assigning labels to tasks:
 
 Only use labels from the available labels list. Do not invent labels.
 
+## Task IDs and Dependencies
+
+When calling `generate_plan`, use **short placeholder IDs** for tasks instead of UUIDs. The tool generates real UUIDs internally.
+
+**Example with dependencies:**
+```json
+{
+  "tasks": [
+    {"id": "db", "title": "Set up database schema", "description": "..."},
+    {"id": "api", "title": "Add API endpoints", "description": "...", "dependsOn": ["db"]},
+    {"id": "ui", "title": "Build UI components", "description": "...", "dependsOn": ["api"]}
+  ]
+}
+```
+
+**Guidelines:**
+- Use short, descriptive IDs: `"db"`, `"api"`, `"auth"`, `"tests"`
+- Reference dependencies by their placeholder ID
+- All `dependsOn` references must match an `id` in the tasks array
+- For single-task plans, the ID can be anything (e.g., `"main"` or `"task1"`)
+
 ## Notes
 
 - **Fewer, well-defined tasks > many granular tasks**
