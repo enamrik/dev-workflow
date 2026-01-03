@@ -144,6 +144,8 @@ ui: ui-stop build
 
 ui-dev:
 	@-lsof -ti :3457 | xargs kill 2>/dev/null || true
+	@echo "🧹 Clearing Next.js cache..."
+	@rm -rf packages/web/.next packages/web/node_modules/.cache
 	@echo "🔥 Starting UI in dev mode (hot reload enabled)..."
 	@echo "   http://localhost:3457"
 	@(cd packages/web && npx wait-on tcp:3457 && open http://localhost:3457) &
@@ -154,10 +156,8 @@ local-track:
 
 # Ensure worktree is ready for development (deps installed, packages built)
 worktree-setup:
-	@if [ ! -d "node_modules" ]; then \
-		echo "📦 Installing dependencies..."; \
-		pnpm install; \
-	fi
+	@echo "📦 Ensuring dependencies are up to date..."
+	@pnpm install
 	@if [ ! -d "packages/core/dist" ]; then \
 		echo "🔨 Building packages..."; \
 		pnpm build; \
@@ -166,7 +166,7 @@ worktree-setup:
 ui-dev-local: worktree-setup local-track
 	@-lsof -ti :3457 | xargs kill 2>/dev/null || true
 	@echo "🧹 Clearing Next.js cache..."
-	@rm -rf packages/web/.next
+	@rm -rf packages/web/.next packages/web/node_modules/.cache
 	@echo "🔥 Starting UI in dev mode with local data..."
 	@echo "   http://localhost:3457"
 	@echo "   Using: TRACK_DIR=$$(pwd)/.track"

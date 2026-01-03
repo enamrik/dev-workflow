@@ -216,6 +216,22 @@ When starting with `mode: "isolated"`:
 - Changes that might conflict with other work
 - Team workflows requiring code review
 
+**CRITICAL: Always use the worktree path for ALL operations**
+
+When a task is started in isolated mode, `start_task_session` returns a `worktreePath`. You MUST use this path for ALL file operations during the task:
+
+- **Read/Edit/Write tools**: Always use the full worktree path (e.g., `/Users/.../.track/project/worktrees/issue-N-task-N/path/to/file`)
+- **Bash commands**: Always `cd` to the worktree path or use absolute paths within the worktree
+- **Glob/Grep tools**: Always specify the worktree path in the `path` parameter
+
+**NEVER** fall back to the main repo path. The main repo may be on a different branch or have different content. All changes for the PR must be made in the worktree.
+
+Common mistake to avoid:
+```
+❌ Read("/Users/user/code/project/Makefile")           # Main repo - WRONG
+✅ Read("/Users/user/.track/project/worktrees/issue-1-task-1/Makefile")  # Worktree - CORRECT
+```
+
 ### Branch Mode
 
 **Only use when the user explicitly requests it** (e.g., "branch mode", "no worktree").
