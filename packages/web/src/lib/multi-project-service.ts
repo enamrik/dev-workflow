@@ -65,6 +65,7 @@ export interface ProjectIssueWithPlanInfo {
     completed: number;
     inProgress: number;
   };
+  projectName?: string;
 }
 
 /**
@@ -275,6 +276,7 @@ export class MultiProjectService {
           issue,
           hasPlan: !!plan,
           taskCounts,
+          projectName: project.name,
         });
       }
     }

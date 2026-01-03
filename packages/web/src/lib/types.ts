@@ -88,6 +88,7 @@ export interface ProjectIssueWithPlanInfo {
     completed: number;
     inProgress: number;
   };
+  projectName?: string;
 }
 
 export interface ProjectIssueWithTasks {
