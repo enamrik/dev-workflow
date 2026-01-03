@@ -95,11 +95,6 @@ export default function IssueDetailPage({ params }: PageProps) {
           &larr; Back to Issues
         </Link>
         <h2 className="text-lg font-semibold text-gray-600 mb-2">
-          {projectId && (
-            <span className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded mr-2">
-              {projectId}
-            </span>
-          )}
           Issue #{issue.number}
         </h2>
       </div>

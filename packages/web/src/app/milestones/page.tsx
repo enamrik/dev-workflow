@@ -69,11 +69,13 @@ function MilestonesPageContent() {
         </span>
       </CardHeader>
 
-      <ProjectFilter
-        projects={projects}
-        value={projectFilter}
-        onChange={handleProjectChange}
-      />
+      <div className="mb-4">
+        <ProjectFilter
+          projects={projects}
+          value={projectFilter}
+          onChange={handleProjectChange}
+        />
+      </div>
 
       <Timeline milestones={milestones} />
     </Card>
