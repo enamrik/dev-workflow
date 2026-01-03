@@ -212,21 +212,24 @@ async function handleEnableGitHub(
     );
   }
 
-  // Step 3: Verify project if provided
+  // Step 3: Verify project if provided and get URL
+  let projectUrl: string | undefined;
   if (github?.projectId) {
-    const projectExists = await ctx.githubCLI.checkProject(github.projectId);
-    if (!projectExists) {
+    const projectDetails = await ctx.githubCLI.getProjectDetails(github.projectId);
+    if (!projectDetails) {
       return errorResponse(
         `GitHub Project ${github.projectId} not found or not accessible. ` +
           `Ensure the Project ID is correct (format: PVT_...).`
       );
     }
+    projectUrl = projectDetails.url;
   }
 
   // Step 4: Build and save config with defaults for missing label config
   const syncConfig: GitHubIssueSyncConfig = {
     enabled: true,
     projectId: github?.projectId,
+    projectUrl,
     labels: github?.labels
       ? {
           typeLabels: {
@@ -321,20 +324,23 @@ async function handleConfigureGitHub(
       );
     }
 
-    // If projectId is being added/changed, validate it
+    // If projectId is being added/changed, validate it and get URL
+    let projectUrl = currentSync.projectUrl;
     if (github.projectId && github.projectId !== currentSync.projectId) {
-      const projectExists = await ctx.githubCLI.checkProject(github.projectId);
-      if (!projectExists) {
+      const projectDetails = await ctx.githubCLI.getProjectDetails(github.projectId);
+      if (!projectDetails) {
         return errorResponse(
           `GitHub Project ${github.projectId} not found or not accessible.`
         );
       }
+      projectUrl = projectDetails.url;
     }
 
     // Merge with existing config (don't allow changing enabled via configure)
     const updatedConfig: GitHubIssueSyncConfig = {
       ...currentSync,
       projectId: github.projectId ?? currentSync.projectId,
+      projectUrl: github.projectId ? projectUrl : currentSync.projectUrl,
       labels: github.labels
         ? {
             typeLabels: {

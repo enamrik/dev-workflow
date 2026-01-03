@@ -17,6 +17,7 @@ import {
   type WorktreeInfo,
   type TaskStatusHistory,
   type TaskExecutionLog,
+  type GitHubIssueSyncConfig,
 } from "@dev-workflow/core";
 
 /**
@@ -27,6 +28,8 @@ export interface Project {
   readonly name: string;
   readonly trackDirectory: string;
   readonly gitRoot: string;
+  /** GitHub sync configuration (optional - only present if configured) */
+  readonly githubSync?: GitHubIssueSyncConfig | null;
 }
 
 /**
@@ -251,6 +254,7 @@ export class MultiProjectService {
         name: p.name,
         trackDirectory,
         gitRoot: gitRoot ?? "", // Empty string if not found
+        githubSync: p.githubSync ?? null,
       });
     }
 
