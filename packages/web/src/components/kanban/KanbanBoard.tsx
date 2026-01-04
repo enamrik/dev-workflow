@@ -45,6 +45,7 @@ interface KanbanTask extends Task {
   issueComputedStatus: ComputedIssueStatus;
   projectId?: string;
   projectName?: string;
+  projectSlug?: string;
 }
 
 interface KanbanBoardProps {
@@ -60,7 +61,7 @@ export function KanbanBoard({
 }: KanbanBoardProps) {
   // Flatten all tasks and add issue context
   const allTasks: KanbanTask[] = [];
-  for (const { issue, tasks, projectName } of issuesWithTasks) {
+  for (const { issue, tasks, projectName, projectSlug } of issuesWithTasks) {
     const issueComputedStatus = computeIssueStatus(issue, tasks);
     for (const task of tasks) {
       allTasks.push({
@@ -72,6 +73,7 @@ export function KanbanBoard({
         issueComputedStatus,
         projectId: issue.projectId,
         projectName,
+        projectSlug,
       });
     }
   }
@@ -133,6 +135,7 @@ export function KanbanBoard({
         ...task,
         projectId: task.projectId,
         projectName: task.projectName,
+        projectSlug: task.projectSlug,
         issueType: task.issueType,
         issueComputedStatus,
       });
