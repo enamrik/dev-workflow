@@ -199,20 +199,49 @@ After implementing the task, submit for PR review:
    - Common validations: `make test`, `pnpm test`, `pnpm typecheck`, `pnpm lint`
    - If validation fails → fix issues before submitting
 
-3. **Create git commit:**
+3. **Rebase on latest main:**
+   - Fetch and rebase on the latest main branch before pushing
+   - Run: `git fetch origin main && git rebase origin/main`
+   - If conflicts occur:
+     - Attempt to resolve them automatically based on the task context
+     - Use `git add <resolved-files>` and `git rebase --continue`
+     - If a conflict is ambiguous or risky, ask the user for guidance
+   - After rebase completes, **re-run full validation** (check CLAUDE.md, package.json scripts, or Makefile for the project's validation commands)
+   - If validation fails after conflict resolution, fix the issues before proceeding
+   - **Why:** Ensures your PR is up-to-date with main, reduces merge conflicts, and catches integration issues early
+
+4. **Create git commit:**
    - Stage all changes related to the task
    - Create a commit with a clear message describing the work done
    - Include task context in commit message (e.g., "Implement X for issue #N")
 
-4. **Submit for review:**
+5. **Submit for review:**
    - Call `submit_for_review` with task ID
    - This atomically: pushes branch, creates PR, transitions to PR_REVIEW
    - Show the PR URL to user
 
-5. **Report status:**
+6. **Report status:**
    - Task is now in PR_REVIEW
    - PR is open and ready for review
-   - User can still push changes to the PR branch
+   - User can still push changes to the PR branch (see below)
+
+### Pushing Additional Changes to a PR
+
+When the user needs to push more changes to an existing PR (e.g., addressing review feedback):
+
+1. **Make the requested changes**
+2. **Rebase on latest main before pushing:**
+   - Run: `git fetch origin main && git rebase origin/main`
+   - If conflicts occur:
+     - Attempt to resolve them automatically based on context
+     - Use `git add <resolved-files>` and `git rebase --continue`
+     - If a conflict is ambiguous or risky, ask the user for guidance
+   - **Re-run full validation** after rebase (check CLAUDE.md, package.json scripts, or Makefile for commands)
+   - If validation fails, fix the issues before pushing
+   - **Why:** Keeps the PR up-to-date, prevents merge conflicts, ensures CI passes
+3. **Commit and push:**
+   - Stage and commit the changes
+   - Push to the PR branch: `git push` (or `git push --force-with-lease` after rebase)
 
 ### To Complete a Task
 
@@ -466,6 +495,11 @@ Here's a summary of what was completed:
 Running validation...
   - pnpm typecheck: PASSED
   - pnpm test: PASSED
+
+Rebasing on latest main...
+  - git fetch origin main
+  - git rebase origin/main
+  - No conflicts, rebase successful
 
 Creating git commit...
   [issue-5/task-1-add-oauth abc1234] Add OAuth2 authentication with Google
