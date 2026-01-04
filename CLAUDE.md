@@ -230,6 +230,16 @@ If you rebuild packages manually (e.g., `pnpm build`), you can restart the MCP s
 
 **Note**: CLI commands like `dev-workflow update` do NOT have stale code issues - they start fresh each invocation.
 
+### Task Completion Cleanup
+
+After completing a task via the `dwf-work-task` skill (PR merged and worktree cleaned up), run:
+
+```bash
+git fetch --prune
+```
+
+This removes local references to remote branches that have been deleted on GitHub, keeping the local repository clean of stale `origin/*` references.
+
 ### Pre-Push Validation
 
 **IMPORTANT: Always run `make prep` before pushing to remote (PR or main branch).**
