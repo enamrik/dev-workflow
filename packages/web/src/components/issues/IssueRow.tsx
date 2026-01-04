@@ -18,8 +18,8 @@ export function IssueRow({ item }: IssueRowProps) {
     : `/issues/${issue.number}`;
 
   const boardUrl = issue.projectId
-    ? `/?project=${encodeURIComponent(issue.projectId)}&issue=${issue.number}`
-    : `/?issue=${issue.number}`;
+    ? `/?project=${encodeURIComponent(issue.projectId)}`
+    : "/";
 
   function handleRowClick() {
     router.push(issueUrl);

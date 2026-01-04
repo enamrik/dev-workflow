@@ -1,7 +1,6 @@
 "use client";
 
 import { Suspense, useState, useEffect } from "react";
-import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useTasks } from "@/hooks";
 import { useProjectContext } from "@/contexts";
@@ -26,8 +25,6 @@ function BoardPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const { projectId, isLoading: projectsLoading } = useProjectContext();
-  const issueFilter = searchParams.get("issue");
-  const issueNumber = issueFilter ? parseInt(issueFilter, 10) : undefined;
 
   // Initialize from localStorage (source of truth), fall back to URL
   const [showBacklog, setShowBacklog] = useState<boolean>(() => {
@@ -63,19 +60,12 @@ function BoardPageContent() {
     refetch,
   } = useTasks({
     project: projectId || undefined,
-    issue: issueNumber,
   });
 
   const issuesWithTasks = tasksResponse?.issuesWithTasks ?? [];
   const completedTasks = tasksResponse?.completedTasks ?? [];
 
   const isLoading = projectsLoading || tasksLoading;
-
-  function clearIssueFilter() {
-    const newParams = new URLSearchParams(searchParams.toString());
-    newParams.delete("issue");
-    router.push(`/?${newParams.toString()}`);
-  }
 
   function handleShowBacklogChange(checked: boolean) {
     // Update state
@@ -128,31 +118,11 @@ function BoardPageContent() {
     return sum + activeCount;
   }, 0);
 
-  const headerTitle = issueNumber
-    ? `Tasks for Issue #${issueNumber}`
-    : "Task Board";
-
-  const issueDetailUrl = issueNumber
-    ? projectId
-      ? `/projects/${encodeURIComponent(projectId)}/issues/${issueNumber}`
-      : `/issues/${issueNumber}`
-    : null;
-
   return (
     <Card padding="none">
       <div className="p-6 pb-0">
         <CardHeader>
-          <div className="flex items-center gap-4">
-            {issueNumber && (
-              <button
-                onClick={clearIssueFilter}
-                className="text-gray-600 hover:text-gray-800 text-sm"
-              >
-                &larr; All Tasks
-              </button>
-            )}
-            <CardTitle>{headerTitle}</CardTitle>
-          </div>
+          <CardTitle>Task Board</CardTitle>
           <span className="text-gray-600 text-sm">
             {activeTasks} task{activeTasks !== 1 ? "s" : ""}
           </span>
@@ -164,14 +134,6 @@ function BoardPageContent() {
             checked={showBacklog}
             onChange={handleShowBacklogChange}
           />
-          {issueDetailUrl && (
-            <Link
-              href={issueDetailUrl}
-              className="text-sm text-blue-600 hover:underline"
-            >
-              View Issue Details
-            </Link>
-          )}
         </div>
       </div>
 

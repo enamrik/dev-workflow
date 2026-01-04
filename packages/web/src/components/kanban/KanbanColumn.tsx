@@ -4,7 +4,7 @@ import { clsx } from "clsx";
 import { AnimatePresence, motion } from "framer-motion";
 import { KanbanCard } from "./KanbanCard";
 import { Tooltip } from "../ui";
-import type { Task } from "@/lib/types";
+import type { Task, ComputedIssueStatus } from "@/lib/types";
 
 const cardAnimation = {
   initial: { opacity: 0, scale: 0.95 },
@@ -18,6 +18,7 @@ interface KanbanTask extends Task {
   issueTitle: string;
   issueType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
   issueGithubUrl?: string;
+  issueComputedStatus: ComputedIssueStatus;
   projectId?: string;
   projectName?: string;
 }
@@ -100,6 +101,7 @@ export function KanbanColumn({
                   issueTitle={task.issueTitle}
                   issueType={task.issueType}
                   issueGithubUrl={task.issueGithubUrl}
+                  issueComputedStatus={task.issueComputedStatus}
                   projectId={task.projectId}
                   projectName={task.projectName}
                 />

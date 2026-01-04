@@ -1,12 +1,42 @@
 import { KanbanColumn } from "./KanbanColumn";
 import { EmptyState } from "../ui";
-import type { ProjectIssueWithTasks, Task, CompletedTask } from "@/lib/types";
+import type { ProjectIssueWithTasks, Task, CompletedTask, Issue, ComputedIssueStatus } from "@/lib/types";
+
+/**
+ * Compute issue status based on issue state and task progress.
+ * Mirrors the server-side logic in multi-project-service.ts.
+ */
+function computeIssueStatus(issue: Issue, tasks: Task[]): ComputedIssueStatus {
+  if (issue.status === "PLANNED") {
+    return "PLANNED";
+  }
+  if (issue.status === "CLOSED") {
+    return "CLOSED";
+  }
+  if (tasks.length === 0) {
+    return "OPEN";
+  }
+
+  const completed = tasks.filter((t) => t.status === "COMPLETED").length;
+  const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
+  const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
+  const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
+
+  if (completed + abandoned === tasks.length) {
+    return "TASKS_DONE";
+  }
+  if (inProgress === 0 && prReview === 0) {
+    return "OPEN";
+  }
+  return "IN_PROGRESS";
+}
 
 interface KanbanTask extends Task {
   issueNumber: number;
   issueTitle: string;
   issueType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
   issueGithubUrl?: string;
+  issueComputedStatus: ComputedIssueStatus;
   projectId?: string;
   projectName?: string;
 }
@@ -25,6 +55,7 @@ export function KanbanBoard({
   // Flatten all tasks and add issue context
   const allTasks: KanbanTask[] = [];
   for (const { issue, tasks, projectName } of issuesWithTasks) {
+    const issueComputedStatus = computeIssueStatus(issue, tasks);
     for (const task of tasks) {
       allTasks.push({
         ...task,
@@ -32,6 +63,7 @@ export function KanbanBoard({
         issueTitle: issue.title,
         issueType: issue.type,
         issueGithubUrl: issue.githubSync?.githubUrl ?? undefined,
+        issueComputedStatus,
         projectId: issue.projectId,
         projectName,
       });
@@ -93,11 +125,15 @@ export function KanbanBoard({
 
   for (const task of completedTasks) {
     if (!openIssueCompletedIds.has(task.id)) {
+      // Map issueStatus to ComputedIssueStatus for completed tasks from closed issues
+      const issueComputedStatus: ComputedIssueStatus =
+        task.issueStatus === "CLOSED" ? "CLOSED" : "TASKS_DONE";
       doneTasks.push({
         ...task,
         projectId: task.projectId,
         projectName: task.projectName,
         issueType: task.issueType,
+        issueComputedStatus,
       });
     }
   }
