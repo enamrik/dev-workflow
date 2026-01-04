@@ -115,6 +115,23 @@ export const planToolDefinitions: ToolDefinition[] = [
     },
   },
   {
+    name: "move_issue_to_ready",
+    description:
+      "Mark an issue as 'next up' by moving all BACKLOG tasks to READY. " +
+      "This allows signaling an issue is ready for work without starting any specific task. " +
+      "Idempotent: does nothing if tasks are not in BACKLOG state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issueNumber: {
+          type: "number",
+          description: "Issue number (e.g., 123 for #123)",
+        },
+      },
+      required: ["issueNumber"],
+    },
+  },
+  {
     name: "move_issue_to_backlog",
     description:
       "Move a PLANNED issue to OPEN and activate all PLANNED tasks to BACKLOG. " +
@@ -312,6 +329,44 @@ export function handlePauseIssue(
       status: t.status,
     })),
   });
+}
+
+/**
+ * Handle move_issue_to_ready tool call
+ *
+ * Moves all BACKLOG tasks to READY, allowing the user to mark an issue
+ * as "next up" without starting any specific task.
+ * Idempotent: does nothing if no BACKLOG tasks exist.
+ */
+export function handleMoveIssueToReady(
+  ctx: PlanToolContext,
+  args: { issueNumber: number }
+): ToolResponse {
+  const { issueNumber } = args;
+
+  if (!issueNumber) {
+    return errorResponse("issueNumber is required");
+  }
+
+  try {
+    const result = ctx.planningService.readyIssue(issueNumber);
+
+    return successResponse({
+      message:
+        result.count > 0
+          ? `Issue #${issueNumber} is ready: ${result.count} task(s) moved from BACKLOG to READY`
+          : `Issue #${issueNumber} has no BACKLOG tasks to ready`,
+      tasksMovedCount: result.count,
+      tasks: result.tasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+      })),
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return errorResponse(errorMessage);
+  }
 }
 
 /**

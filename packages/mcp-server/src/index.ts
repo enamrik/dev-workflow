@@ -67,6 +67,7 @@ import {
   handleGeneratePlan,
   handleGetPlan,
   handlePauseIssue,
+  handleMoveIssueToReady,
   handleMoveIssueToBacklog,
   // Task handlers
   handleLoadTaskSession,
@@ -245,6 +246,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     }
     if (name === "pause_issue") {
       return handlePauseIssue(planToolContext, a);
+    }
+    if (name === "move_issue_to_ready") {
+      return handleMoveIssueToReady(planToolContext, a);
     }
     if (name === "move_issue_to_backlog") {
       return await handleMoveIssueToBacklog(planToolContext, a);
