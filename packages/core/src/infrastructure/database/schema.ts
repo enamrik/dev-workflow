@@ -390,6 +390,10 @@ export const projects = sqliteTable("projects", {
   // Human-readable project name (typically the folder name)
   name: text("name").notNull(),
 
+  // URL-safe unique slug: {name}-{gitRootHash.slice(0,6)}
+  // Used for readable URLs like /projects/dev-workflow-b9bccf/issues/40
+  slug: text("slug").notNull().unique(),
+
   // GitHub issue sync configuration (JSON)
   githubSync: text("github_sync", { mode: "json" }).$type<GitHubIssueSyncConfig | null>(),
 
