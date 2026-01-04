@@ -49,7 +49,7 @@ export const prToolDefinitions: ToolDefinition[] = [
         title: {
           type: "string",
           description:
-            "PR title. Defaults to '[#issueNumber.taskNumber] taskTitle'. Uses GitHub issue number if task has one linked.",
+            "PR title. Defaults to '[#N] taskTitle' if task has linked GitHub issue, otherwise just 'taskTitle' (no prefix).",
         },
         body: {
           type: "string",
@@ -310,10 +310,19 @@ export async function handleSubmitForReview(
   }
 
   // 4. Build PR title
-  // Use GitHub issue number if task has one, otherwise use dev-workflow issue number
-  // Format: [#N.T] where N is issue number and T is task number
-  const issueNum = task.githubSync?.githubIssueNumber ?? issue.number;
-  const prTitle = title ?? `[#${issueNum}.${task.number}] ${task.title}`;
+  // Only include GitHub issue number prefix if task has a linked GitHub issue
+  // If no GitHub issue linked, use plain title (no prefix)
+  // Never include task number in title - that's internal dev-workflow numbering
+  let prTitle: string;
+  if (title) {
+    prTitle = title;
+  } else if (task.githubSync?.githubIssueNumber) {
+    // Task has linked GitHub issue - use [#N] prefix
+    prTitle = `[#${task.githubSync.githubIssueNumber}] ${task.title}`;
+  } else {
+    // No GitHub issue - use plain title
+    prTitle = task.title;
+  }
 
   // 5. Build PR body with GitHub issue linking
   let prBody = body ?? task.description;
@@ -331,11 +340,12 @@ export async function handleSubmitForReview(
     footerLines.push(`Part of #${issue.githubSync.githubIssueNumber}`);
   }
 
-  // Add footer with task reference
+  // Add footer with GitHub issue links and dev-workflow task reference
   if (footerLines.length > 0) {
     prBody += "\n\n---\n" + footerLines.join("\n");
   }
-  prBody += `\n\n_Task ${issue.number}.${task.number}: ${task.title}_`;
+  // Add dev-workflow task reference as footer note (not in title to avoid confusing teammates)
+  prBody += `\n\nTask ${issue.number}.${task.number}: ${task.title}`;
 
   // 6. Determine base branch
   const targetBranch = baseBranch ?? "main";
