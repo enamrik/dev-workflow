@@ -103,38 +103,106 @@ describe("getTaskTimingMessage", () => {
     vi.useRealTimers();
   });
 
-  it("returns null for backlog tasks", () => {
+  it("returns duration for backlog tasks with createdAt", () => {
+    const task = {
+      status: "BACKLOG",
+      createdAt: "2024-01-15T10:00:00Z",
+    };
+    expect(getTaskTimingMessage(task)).toBe("2h");
+  });
+
+  it("returns duration for ready tasks with createdAt", () => {
+    const task = {
+      status: "READY",
+      createdAt: "2024-01-14T12:00:00Z",
+    };
+    expect(getTaskTimingMessage(task)).toBe("1d");
+  });
+
+  it("returns null for backlog tasks without createdAt", () => {
     expect(getTaskTimingMessage({ status: "BACKLOG" })).toBeNull();
   });
 
-  it("returns 'Started X ago' for in-progress tasks", () => {
+  it("returns just duration for in-progress tasks", () => {
     const task = {
       status: "IN_PROGRESS",
       startedAt: "2024-01-15T10:00:00Z",
     };
-    expect(getTaskTimingMessage(task)).toBe("Started 2h ago");
+    expect(getTaskTimingMessage(task)).toBe("2h");
   });
 
-  it("returns 'Completed in X' for completed tasks", () => {
+  it("returns just duration (cycle time) for completed tasks", () => {
     const task = {
       status: "COMPLETED",
       startedAt: "2024-01-15T10:00:00Z",
       completedAt: "2024-01-15T11:30:00Z",
     };
-    expect(getTaskTimingMessage(task)).toBe("Completed in 1h 30m");
+    expect(getTaskTimingMessage(task)).toBe("1h 30m");
   });
 
-  it("returns 'Abandoned after X' for abandoned tasks", () => {
+  it("returns just duration for abandoned tasks", () => {
     const task = {
       status: "ABANDONED",
       startedAt: "2024-01-15T10:00:00Z",
       abandonedAt: "2024-01-15T10:45:00Z",
     };
-    expect(getTaskTimingMessage(task)).toBe("Abandoned after 45m");
+    expect(getTaskTimingMessage(task)).toBe("45m");
   });
 
-  it("returns null for tasks without startedAt", () => {
+  it("returns null for in-progress tasks without startedAt", () => {
     expect(getTaskTimingMessage({ status: "IN_PROGRESS" })).toBeNull();
+  });
+
+  it("returns null for completed tasks without required timestamps", () => {
     expect(getTaskTimingMessage({ status: "COMPLETED" })).toBeNull();
+    expect(getTaskTimingMessage({ status: "COMPLETED", startedAt: "2024-01-15T10:00:00Z" })).toBeNull();
+  });
+
+  it("returns duration for PR_REVIEW tasks based on submittedForReviewAt", () => {
+    const task = {
+      status: "PR_REVIEW",
+      submittedForReviewAt: "2024-01-15T11:00:00Z",
+    };
+    expect(getTaskTimingMessage(task)).toBe("1h");
+  });
+
+  describe("detailed variant", () => {
+    it("returns 'Backlog: X' for backlog tasks", () => {
+      const task = { status: "BACKLOG", createdAt: "2024-01-15T10:00:00Z" };
+      expect(getTaskTimingMessage(task, "detailed")).toBe("Backlog: 2h");
+    });
+
+    it("returns 'Ready: X' for ready tasks", () => {
+      const task = { status: "READY", createdAt: "2024-01-15T10:00:00Z" };
+      expect(getTaskTimingMessage(task, "detailed")).toBe("Ready: 2h");
+    });
+
+    it("returns 'In progress: X' for in-progress tasks", () => {
+      const task = { status: "IN_PROGRESS", startedAt: "2024-01-15T10:00:00Z" };
+      expect(getTaskTimingMessage(task, "detailed")).toBe("In progress: 2h");
+    });
+
+    it("returns 'In review: X' for PR_REVIEW tasks", () => {
+      const task = { status: "PR_REVIEW", submittedForReviewAt: "2024-01-15T11:00:00Z" };
+      expect(getTaskTimingMessage(task, "detailed")).toBe("In review: 1h");
+    });
+
+    it("returns 'Completed: X' for completed tasks", () => {
+      const task = {
+        status: "COMPLETED",
+        startedAt: "2024-01-15T10:00:00Z",
+        completedAt: "2024-01-15T11:30:00Z",
+      };
+      expect(getTaskTimingMessage(task, "detailed")).toBe("Completed: 1h 30m");
+    });
+
+    it("returns 'Abandoned: X' for abandoned tasks", () => {
+      const task = {
+        status: "ABANDONED",
+        startedAt: "2024-01-15T10:00:00Z",
+        abandonedAt: "2024-01-15T10:45:00Z",
+      };
+      expect(getTaskTimingMessage(task, "detailed")).toBe("Abandoned: 45m");
+    });
   });
 });

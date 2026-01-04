@@ -121,10 +121,7 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
 
         <div className="flex flex-col items-end gap-2 flex-shrink-0">
           <Badge variant="status" value={task.status} />
-          <TaskTiming task={task} className="text-xs" />
-          {task.estimatedMinutes && (
-            <span className="text-xs text-gray-500">Est: {task.estimatedMinutes}m</span>
-          )}
+          <TaskTiming task={task} className="text-xs" variant="detailed" />
         </div>
       </div>
 
