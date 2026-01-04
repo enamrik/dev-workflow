@@ -41,7 +41,6 @@ export {
   taskToolDefinitions,
   type TaskToolContext,
   handleLoadTaskSession,
-  handleCompleteTaskSession,
   handleAbandonTaskSession,
   handleGetTask,
   handleListAvailableTasks,

@@ -335,22 +335,30 @@ export class TaskSessionService {
    * Abandon the current session
    *
    * Workflow:
-   * 1. Validate session ownership
+   * 1. Validate session ownership (skipped if force=true)
    * 2. Update task status to ABANDONED
    * 3. Cleanup worktree if present (and delete the branch)
    * 4. Clear session association
+   *
+   * @param force - Bypass session ownership validation when state has drifted
    */
-  async abandonTaskSession(taskId: string, sessionId: string, reason?: string): Promise<Task> {
+  async abandonTaskSession(
+    taskId: string,
+    sessionId: string,
+    reason?: string,
+    force: boolean = false
+  ): Promise<Task> {
     // Get task and validate
     const task = this.taskRepository.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
 
-    // Validate session ownership (allow abandoning if no session or matching session)
-    if (task.sessionId && task.sessionId !== sessionId) {
+    // Validate session ownership (allow abandoning if no session, matching session, or force=true)
+    if (task.sessionId && task.sessionId !== sessionId && !force) {
       throw new Error(
-        `Task is not associated with session ${sessionId}. Current session: ${task.sessionId}`
+        `Task is not associated with session ${sessionId}. Current session: ${task.sessionId}. ` +
+          "Use force=true to bypass this check if the session has drifted."
       );
     }
 

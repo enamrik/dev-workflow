@@ -38,7 +38,8 @@ export const prToolDefinitions: ToolDefinition[] = [
     description:
       "⚠️ Prefer 'dwf-work-task' skill for proper workflow. " +
       "Submit a task for PR review. Atomically: pushes branch, creates PR, transitions status to PR_REVIEW. " +
-      "Task must be IN_PROGRESS with a worktree/branch.",
+      "Task must be IN_PROGRESS with a worktree/branch. " +
+      "Use force=true to bypass status validation when task state has drifted (e.g., branch already pushed).",
     inputSchema: {
       type: "object",
       properties: {
@@ -63,6 +64,12 @@ export const prToolDefinitions: ToolDefinition[] = [
           type: "string",
           description: "Target branch for the PR (default: main)",
         },
+        force: {
+          type: "boolean",
+          description:
+            "Bypass status validation. Use when task state has drifted " +
+            "(e.g., branch already pushed but task not in IN_PROGRESS). Requires user confirmation before use.",
+        },
       },
       required: ["taskId"],
     },
@@ -73,7 +80,8 @@ export const prToolDefinitions: ToolDefinition[] = [
       "⚠️ Prefer 'dwf-work-task' skill for proper workflow. " +
       "Complete a task after PR is merged. Atomically: verifies PR is merged, pulls main, " +
       "cleans up worktree/branch, transitions status to COMPLETED. " +
-      "Task must be in PR_REVIEW status with a merged PR.",
+      "Task must be in PR_REVIEW status with a merged PR. " +
+      "Use force=true to bypass state validation when task state has drifted (e.g., PR already merged but task status is wrong).",
     inputSchema: {
       type: "object",
       properties: {
@@ -84,6 +92,12 @@ export const prToolDefinitions: ToolDefinition[] = [
         sessionId: {
           type: "string",
           description: "Claude session ID",
+        },
+        force: {
+          type: "boolean",
+          description:
+            "Bypass state machine validation. Use when task state has drifted from reality " +
+            "(e.g., task is IN_PROGRESS but PR is already merged). Requires user confirmation before use.",
         },
       },
       required: ["taskId", "sessionId"],
@@ -198,6 +212,10 @@ export async function handleGetTaskPRStatus(
  *
  * Atomically: pushes branch, creates PR, transitions status to PR_REVIEW.
  * Task must be IN_PROGRESS with a worktree/branch.
+ *
+ * When force=true:
+ * - Bypasses status validation
+ * - Use when task state has drifted (e.g., branch already pushed but task not in IN_PROGRESS)
  */
 export async function handleSubmitForReview(
   ctx: PRToolContext,
@@ -207,9 +225,10 @@ export async function handleSubmitForReview(
     body?: string;
     draft?: boolean;
     baseBranch?: string;
+    force?: boolean;
   }
 ): Promise<ToolResponse> {
-  const { taskId, title, body, draft = false, baseBranch } = args;
+  const { taskId, title, body, draft = false, baseBranch, force = false } = args;
 
   // 1. Get task and validate state
   const task = ctx.taskRepository.findById(taskId);
@@ -217,9 +236,10 @@ export async function handleSubmitForReview(
     return errorResponse(`Task not found: ${taskId}`);
   }
 
-  if (task.status !== "IN_PROGRESS") {
+  if (task.status !== "IN_PROGRESS" && !force) {
     return errorResponse(
-      `Task must be IN_PROGRESS to submit for review. Current status: ${task.status}`
+      `Task must be IN_PROGRESS to submit for review. Current status: ${task.status}. ` +
+        "Use force=true to bypass this check if the task state has drifted."
     );
   }
 
@@ -229,10 +249,10 @@ export async function handleSubmitForReview(
     );
   }
 
-  if (task.prNumber) {
+  if (task.prNumber && !force) {
     return errorResponse(
       `Task already has a PR: #${task.prNumber} (${task.prUrl}). ` +
-        "Use get_task_pr_status to check its state."
+        "Use get_task_pr_status to check its state, or use force=true to create a new PR."
     );
   }
 
@@ -258,6 +278,7 @@ export async function handleSubmitForReview(
       return successResponse({
         success: true,
         adopted: true,
+        forced: force,
         task: {
           id: taskId,
           status: "PR_REVIEW",
@@ -372,6 +393,7 @@ export async function handleSubmitForReview(
 
     return successResponse({
       success: true,
+      forced: force,
       task: {
         id: taskId,
         status: "PR_REVIEW",
@@ -409,15 +431,21 @@ export async function handleSubmitForReview(
  * For tasks without branches (main mode):
  * - Directly completes the task, skips PR check
  * - Task must be IN_PROGRESS
+ *
+ * When force=true:
+ * - Bypasses state machine validation (status checks)
+ * - Still verifies PR is merged for branch/isolated modes (unless no PR exists)
+ * - Use when task state has drifted from reality
  */
 export async function handleCompleteTask(
   ctx: PRToolContext,
   args: {
     taskId: string;
     sessionId: string;
+    force?: boolean;
   }
 ): Promise<ToolResponse> {
-  const { taskId, sessionId } = args;
+  const { taskId, sessionId, force = false } = args;
 
   // 1. Get task and validate
   const task = ctx.taskRepository.findById(taskId);
@@ -432,9 +460,10 @@ export async function handleCompleteTask(
 
   if (isMainMode) {
     // Main mode: skip PR, complete directly from IN_PROGRESS
-    if (task.status !== "IN_PROGRESS") {
+    if (task.status !== "IN_PROGRESS" && !force) {
       return errorResponse(
-        `Task must be IN_PROGRESS to complete (main mode). Current status: ${task.status}`
+        `Task must be IN_PROGRESS to complete (main mode). Current status: ${task.status}. ` +
+          "Use force=true to bypass this check if the task state has drifted."
       );
     }
 
@@ -470,30 +499,42 @@ export async function handleCompleteTask(
   }
 
   // Branch/Isolated mode: require PR_REVIEW and merged PR
-  if (task.status !== "PR_REVIEW") {
+  if (task.status !== "PR_REVIEW" && !force) {
     return errorResponse(
       `Task must be in PR_REVIEW status to complete. Current status: ${task.status}. ` +
-        "Use submit_for_review first to create a PR."
+        "Use submit_for_review first to create a PR, or use force=true to bypass this check."
     );
   }
 
-  if (!task.prNumber) {
+  // If no PR exists and not forcing, error out
+  if (!task.prNumber && !force) {
     return errorResponse(
-      "Task does not have a PR. This is unexpected for a task in PR_REVIEW status."
+      "Task does not have a PR. Use submit_for_review first to create a PR, " +
+        "or use force=true to complete without PR verification."
     );
   }
 
   // 2. Check PR status - must be merged (gh CLI auto-detects repo)
-  const pr = await ctx.githubCLI.getPR(task.prNumber);
-  if (!pr) {
-    return errorResponse(`PR #${task.prNumber} not found on GitHub.`);
-  }
-
-  if (!pr.merged) {
-    return errorResponse(
-      `PR #${task.prNumber} is not merged yet. Current state: ${pr.state}. ` +
-        "Merge the PR on GitHub before completing the task."
-    );
+  // Skip PR verification entirely if force=true and no PR exists
+  let prMerged = false;
+  if (task.prNumber) {
+    const pr = await ctx.githubCLI.getPR(task.prNumber);
+    if (!pr) {
+      if (!force) {
+        return errorResponse(`PR #${task.prNumber} not found on GitHub.`);
+      }
+      // Force mode: continue without PR verification
+    } else if (!pr.merged) {
+      if (!force) {
+        return errorResponse(
+          `PR #${task.prNumber} is not merged yet. Current state: ${pr.state}. ` +
+            "Merge the PR on GitHub before completing the task, or use force=true to bypass."
+        );
+      }
+      // Force mode: continue even if PR is not merged
+    } else {
+      prMerged = true;
+    }
   }
 
   // 3. Pull main to get merged changes
@@ -533,11 +574,16 @@ export async function handleCompleteTask(
     }
   }
 
-  // 5. Update PR status to MERGED
-  ctx.taskRepository.updatePRStatus(taskId, "MERGED");
+  // 5. Update PR status to MERGED (only if PR was actually merged)
+  if (prMerged && task.prNumber) {
+    ctx.taskRepository.updatePRStatus(taskId, "MERGED");
+  }
 
   // 6. Update task status to COMPLETED
-  ctx.taskRepository.updateStatus(taskId, "COMPLETED", sessionId, `PR #${task.prNumber} merged`);
+  const completionNote = force
+    ? `Force completed${task.prNumber ? ` (PR #${task.prNumber})` : ""}`
+    : `PR #${task.prNumber} merged`;
+  ctx.taskRepository.updateStatus(taskId, "COMPLETED", sessionId, completionNote);
 
   // 7. Clear session association
   ctx.taskRepository.clearSession(taskId);
@@ -555,6 +601,10 @@ export async function handleCompleteTask(
   // 9. Find next available task
   const nextTask = findNextAvailableTask(ctx, task.planId);
 
+  const message = force
+    ? `Task force-completed.${task.prNumber ? ` PR #${task.prNumber} status: ${prMerged ? "merged" : "not verified"}.` : ""} ${hasWorktree ? "Worktree" : "Branch"} cleaned up.`
+    : `Task completed. PR #${task.prNumber} was merged, ${hasWorktree ? "worktree" : "branch"} cleaned up.`;
+
   return successResponse({
     success: true,
     task: {
@@ -562,13 +612,16 @@ export async function handleCompleteTask(
       status: "COMPLETED",
       mode: hasWorktree ? "isolated" : "branch",
     },
-    pr: {
-      number: task.prNumber,
-      url: task.prUrl,
-      merged: true,
-    },
+    pr: task.prNumber
+      ? {
+          number: task.prNumber,
+          url: task.prUrl,
+          merged: prMerged,
+        }
+      : undefined,
     nextTask,
-    message: `Task completed. PR #${task.prNumber} was merged, ${hasWorktree ? "worktree" : "branch"} cleaned up.`,
+    forced: force,
+    message,
   });
 }
 

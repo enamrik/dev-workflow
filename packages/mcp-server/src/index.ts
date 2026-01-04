@@ -71,7 +71,6 @@ import {
   handleMoveIssueToBacklog,
   // Task handlers
   handleLoadTaskSession,
-  handleCompleteTaskSession,
   handleAbandonTaskSession,
   handleGetTask,
   handleListAvailableTasks,
@@ -258,9 +257,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     // Task tools
     if (name === "load_task_session") {
       return await handleLoadTaskSession(taskToolContext, a);
-    }
-    if (name === "complete_task_session") {
-      return await handleCompleteTaskSession(taskToolContext, a);
     }
     if (name === "abandon_task_session") {
       return await handleAbandonTaskSession(taskToolContext, a);
