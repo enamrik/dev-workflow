@@ -105,23 +105,36 @@ describe("submit_for_review", () => {
       expect(prTitle).toBe("Update feature");
     });
 
-    it("should use GitHub issue number prefix when task has linked GitHub issue", async () => {
+    it("should use parent issue's GitHub issue number prefix when parent issue is synced", async () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
       const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
 
-      // Create dev-workflow issue #1
+      // Create dev-workflow issue #1 with linked GitHub issue #100
       const issue = createTestIssue(ctx.issueRepository, {
         title: "Test Issue",
       });
+      ctx.issueRepository.update(issue.id, {
+        githubSync: {
+          githubIssueNumber: 100,
+          githubUrl: "https://github.com/test/repo/issues/100",
+          githubNodeId: "I_test_100",
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          projectItemId: null,
+        },
+      });
+
       const plan = createTestPlan(ctx.planRepository, issue.id);
       const task = createTestTask(ctx.taskRepository, plan.id, {
         title: "Implement feature",
         status: "IN_PROGRESS",
       });
 
-      // Set up task with branch, worktree, and linked GitHub issue #42
+      // Set up task with branch, worktree, and its own GitHub issue #42
+      // (The task's GitHub issue should NOT be used in the PR title)
       ctx.taskRepository.update(task.id, {
         branchName: "issue-1/task-1-implement-feature",
         worktreePath: "/tmp/worktree/issue-1-task-1",
@@ -142,13 +155,62 @@ describe("submit_for_review", () => {
       // Assert
       expect(result.isError).toBeFalsy();
 
-      // Verify the PR was created with GitHub issue number in title (no task number)
+      // Verify the PR was created with PARENT issue's GitHub number (100), not task's (42)
       const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
       expect(createPRCalls).toHaveLength(1);
 
       const [, , prTitle] = createPRCalls[0]!.args as [string, string, string, string, boolean];
-      // Should use GitHub issue number (42) with no task number suffix
-      expect(prTitle).toBe("[#42] Implement feature");
+      // Should use parent issue's GitHub issue number (100), NOT task's (42)
+      expect(prTitle).toBe("[#100] Implement feature");
+    });
+
+    it("should use plain title when parent issue has no GitHub issue even if task does", async () => {
+      // Arrange
+      const mockGitHubCLI = new MockGitHubCLI();
+      const mockGitWorktreeService = new MockGitWorktreeService();
+      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+
+      // Create dev-workflow issue #1 WITHOUT GitHub sync
+      const issue = createTestIssue(ctx.issueRepository, {
+        title: "Test Issue",
+      });
+      // Note: issue.githubSync is undefined/null
+
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Implement feature",
+        status: "IN_PROGRESS",
+      });
+
+      // Set up task with branch, worktree, and linked GitHub issue #42
+      // But parent issue has no GitHub issue, so this should NOT be used in title
+      ctx.taskRepository.update(task.id, {
+        branchName: "issue-1/task-1-implement-feature",
+        worktreePath: "/tmp/worktree/issue-1-task-1",
+      });
+      ctx.taskRepository.updateGitHubSync(task.id, {
+        githubIssueNumber: 42,
+        githubUrl: "https://github.com/test/repo/issues/42",
+        githubNodeId: "I_test_42",
+        syncStatus: "SYNCED",
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: null,
+        projectItemId: null,
+      });
+
+      // Act
+      const result = await handleSubmitForReview(ctx, { taskId: task.id });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+
+      // Verify the PR was created with plain title (no prefix)
+      // Because parent issue has no GitHub issue, even though task does
+      const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
+      expect(createPRCalls).toHaveLength(1);
+
+      const [, , prTitle] = createPRCalls[0]!.args as [string, string, string, string, boolean];
+      expect(prTitle).toBe("Implement feature");
     });
 
     it("should include dev-workflow task reference in PR body footer", async () => {
