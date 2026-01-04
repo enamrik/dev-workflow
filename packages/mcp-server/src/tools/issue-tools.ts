@@ -295,13 +295,20 @@ export const issueToolDefinitions: ToolDefinition[] = [
     name: "close_issue",
     description:
       "Close an issue. Validates all tasks are in terminal state (COMPLETED or ABANDONED). " +
-      "Syncs to GitHub if the issue has a linked GitHub issue.",
+      "Syncs to GitHub if the issue has a linked GitHub issue. " +
+      "Use force=true to bypass task state validation when issue state has drifted.",
     inputSchema: {
       type: "object",
       properties: {
         issueNumber: {
           type: "number",
           description: "Issue number (e.g., 123 for #123)",
+        },
+        force: {
+          type: "boolean",
+          description:
+            "Bypass task state validation. Use when issue state has drifted " +
+            "(e.g., all work is done but some tasks weren't marked complete). Requires user confirmation before use.",
         },
       },
       required: ["issueNumber"],
@@ -911,12 +918,16 @@ export async function handleUpdateIssue(
  *
  * Closes an issue after validating all tasks are in terminal state.
  * Syncs to GitHub if the issue has a linked GitHub issue.
+ *
+ * When force=true:
+ * - Bypasses task state validation
+ * - Use when issue state has drifted (e.g., all work is done but tasks weren't marked complete)
  */
 export async function handleCloseIssue(
   ctx: IssueToolContext,
-  args: { issueNumber: number }
+  args: { issueNumber: number; force?: boolean }
 ): Promise<ToolResponse> {
-  const { issueNumber } = args;
+  const { issueNumber, force = false } = args;
 
   // Find the issue
   const issue = ctx.issueRepository.findByNumber(issueNumber);
@@ -931,18 +942,20 @@ export async function handleCloseIssue(
 
   // Get the plan and tasks to validate they're all in terminal state
   const plan = ctx.planRepository.findByIssueId(issue.id);
+  let nonTerminalTasks: { number: number; title: string; status: string }[] = [];
   if (plan) {
     const tasks = ctx.taskRepository.findByPlanId(plan.id);
-    const nonTerminalTasks = tasks.filter(
+    nonTerminalTasks = tasks.filter(
       (t) => !t.isDeleted && t.status !== "COMPLETED" && t.status !== "ABANDONED"
     );
 
-    if (nonTerminalTasks.length > 0) {
+    if (nonTerminalTasks.length > 0 && !force) {
       const taskList = nonTerminalTasks
         .map((t) => `  - Task ${t.number}: ${t.title} (${t.status})`)
         .join("\n");
       return errorResponse(
-        `Cannot close issue #${issueNumber}. The following tasks are not complete:\n${taskList}`
+        `Cannot close issue #${issueNumber}. The following tasks are not complete:\n${taskList}\n` +
+          "Use force=true to close anyway if the work is actually done."
       );
     }
   }
@@ -961,9 +974,17 @@ export async function handleCloseIssue(
   // Update issue status to CLOSED
   const updatedIssue = ctx.issueRepository.update(issue.id, { status: "CLOSED" });
 
+  const message = force && nonTerminalTasks.length > 0
+    ? `Issue #${issueNumber} force-closed (${nonTerminalTasks.length} task(s) were not in terminal state)`
+    : `Issue #${issueNumber} closed successfully`;
+
   return successResponse({
-    message: `Issue #${issueNumber} closed successfully`,
+    message,
     issue: updatedIssue,
+    forced: force,
+    skippedTasks: force && nonTerminalTasks.length > 0
+      ? nonTerminalTasks.map((t) => ({ number: t.number, title: t.title, status: t.status }))
+      : undefined,
   });
 }
 

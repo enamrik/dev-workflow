@@ -170,6 +170,79 @@ describe("TaskSessionService", () => {
     });
   });
 
+  describe("abandonTaskSession with force mode", () => {
+    it("should reject abandoning task with wrong session id without force", async () => {
+      // Arrange: Create issue with plan and start a task
+      const issue = createTestIssue(repos.issueRepository);
+      const plan = createTestPlan(repos.planRepository, issue.id);
+      const task = createTestTask(repos.taskRepository, plan.id, {
+        title: "Task 1",
+        status: "BACKLOG",
+      });
+
+      // Start with session 1
+      await taskSessionService.startTaskSession({
+        taskId: task.id,
+        sessionId: "session-1",
+        mode: "main",
+      });
+
+      // Act & Assert: Try to abandon with session 2 - should fail
+      await expect(
+        taskSessionService.abandonTaskSession(task.id, "session-2", "wrong session")
+      ).rejects.toThrow(/Task is not associated with session session-2/);
+    });
+
+    it("should allow abandoning task with wrong session id when force=true", async () => {
+      // Arrange: Create issue with plan and start a task
+      const issue = createTestIssue(repos.issueRepository);
+      const plan = createTestPlan(repos.planRepository, issue.id);
+      const task = createTestTask(repos.taskRepository, plan.id, {
+        title: "Task 1",
+        status: "BACKLOG",
+      });
+
+      // Start with session 1
+      await taskSessionService.startTaskSession({
+        taskId: task.id,
+        sessionId: "session-1",
+        mode: "main",
+      });
+
+      // Act: Abandon with session 2 using force=true
+      const abandonedTask = await taskSessionService.abandonTaskSession(
+        task.id,
+        "session-2",
+        "state drifted, forcing",
+        true // force=true
+      );
+
+      // Assert: Task should be abandoned despite session mismatch
+      expect(abandonedTask.status).toBe("ABANDONED");
+    });
+
+    it("should allow abandoning task without session when force=true", async () => {
+      // Arrange: Create a task that's IN_PROGRESS but has no session (orphaned state)
+      const issue = createTestIssue(repos.issueRepository);
+      const plan = createTestPlan(repos.planRepository, issue.id);
+      const task = createTestTask(repos.taskRepository, plan.id, {
+        title: "Task 1",
+        status: "IN_PROGRESS", // Simulate orphaned state
+      });
+
+      // Act: Abandon with any session using force=true
+      const abandonedTask = await taskSessionService.abandonTaskSession(
+        task.id,
+        "any-session",
+        "recovering from orphaned state",
+        true // force=true
+      );
+
+      // Assert: Task should be abandoned
+      expect(abandonedTask.status).toBe("ABANDONED");
+    });
+  });
+
   describe("isTaskAvailable", () => {
     it("should return true for BACKLOG tasks", async () => {
       const issue = createTestIssue(repos.issueRepository);

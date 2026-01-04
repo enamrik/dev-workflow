@@ -55,32 +55,10 @@ export const taskToolDefinitions: ToolDefinition[] = [
     },
   },
   {
-    name: "complete_task_session",
-    description:
-      "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Completes the current task. Marks task as COMPLETED.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        taskId: {
-          type: "string",
-          description: "Task UUID",
-        },
-        sessionId: {
-          type: "string",
-          description: "Claude session ID",
-        },
-        notes: {
-          type: "string",
-          description: "Completion notes",
-        },
-      },
-      required: ["taskId", "sessionId"],
-    },
-  },
-  {
     name: "abandon_task_session",
     description:
-      "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Abandons the current task. Marks task as ABANDONED.",
+      "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Abandons the current task. Marks task as ABANDONED. " +
+      "Use force=true to bypass session ownership validation when state has drifted.",
     inputSchema: {
       type: "object",
       properties: {
@@ -95,6 +73,12 @@ export const taskToolDefinitions: ToolDefinition[] = [
         reason: {
           type: "string",
           description: "Reason for abandonment",
+        },
+        force: {
+          type: "boolean",
+          description:
+            "Bypass session ownership validation. Use when task state has drifted " +
+            "(e.g., session expired but task is still IN_PROGRESS). Requires user confirmation before use.",
         },
       },
       required: ["taskId", "sessionId"],
@@ -582,47 +566,21 @@ function formatConflictWarnings(warnings: ConflictWarning[]): string {
   return lines.join("\n");
 }
 
-/**
- * Handle complete_task_session tool call
- */
-export async function handleCompleteTaskSession(
-  ctx: TaskToolContext,
-  args: { taskId: string; sessionId: string; notes?: string }
-): Promise<ToolResponse> {
-  const { taskId, sessionId, notes } = args;
-
-  const task = await ctx.taskSessionService.completeTaskSession({
-    taskId,
-    sessionId,
-    notes,
-  });
-
-  // Sync to GitHub if task has GitHub sync enabled
-  if (ctx.taskGitHubSyncService && task.githubSync?.githubIssueNumber) {
-    try {
-      await ctx.taskGitHubSyncService.syncTaskStatus(taskId, "COMPLETED");
-    } catch (error) {
-      // Log but don't fail - GitHub sync is best effort after local update
-      console.warn(`Failed to sync task status to GitHub: ${error}`);
-    }
-  }
-
-  return successResponse({
-    success: true,
-    task,
-  });
-}
 
 /**
  * Handle abandon_task_session tool call
+ *
+ * When force=true:
+ * - Bypasses session ownership validation
+ * - Use when task state has drifted (e.g., session expired but task is still IN_PROGRESS)
  */
 export async function handleAbandonTaskSession(
   ctx: TaskToolContext,
-  args: { taskId: string; sessionId: string; reason?: string }
+  args: { taskId: string; sessionId: string; reason?: string; force?: boolean }
 ): Promise<ToolResponse> {
-  const { taskId, sessionId, reason } = args;
+  const { taskId, sessionId, reason, force = false } = args;
 
-  const task = await ctx.taskSessionService.abandonTaskSession(taskId, sessionId, reason);
+  const task = await ctx.taskSessionService.abandonTaskSession(taskId, sessionId, reason, force);
 
   // Sync to GitHub if task has GitHub sync enabled
   if (ctx.taskGitHubSyncService && task.githubSync?.githubIssueNumber) {
@@ -637,6 +595,8 @@ export async function handleAbandonTaskSession(
   return successResponse({
     success: true,
     task,
+    forced: force,
+    message: force ? "Task force-abandoned" : "Task abandoned",
   });
 }
 
