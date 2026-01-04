@@ -1,6 +1,13 @@
 import { eq, max, and, asc, inArray, desc, sql } from "drizzle-orm";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { tasks, taskStatusHistory, taskExecutionLogs, TaskRow, TaskStatusHistoryRow, TaskExecutionLogRow } from "../database/schema.js";
+import {
+  tasks,
+  taskStatusHistory,
+  taskExecutionLogs,
+  TaskRow,
+  TaskStatusHistoryRow,
+  TaskExecutionLogRow,
+} from "../database/schema.js";
 import type {
   Task,
   TaskRepository,
@@ -72,9 +79,7 @@ export class SqliteTaskRepository implements TaskRepository {
     return task;
   }
 
-  createMany(
-    tasksData: Omit<Task, "number" | "order" | "createdAt" | "updatedAt">[]
-  ): Task[] {
+  createMany(tasksData: Omit<Task, "number" | "order" | "createdAt" | "updatedAt">[]): Task[] {
     if (tasksData.length === 0) {
       return [];
     }
@@ -138,11 +143,7 @@ export class SqliteTaskRepository implements TaskRepository {
   }
 
   findById(id: string): Task | null {
-    const result = this.db
-      .select()
-      .from(tasks)
-      .where(eq(tasks.id, id))
-      .get();
+    const result = this.db.select().from(tasks).where(eq(tasks.id, id)).get();
 
     return result ? this.mapRowToTask(result) : null;
   }
@@ -152,11 +153,7 @@ export class SqliteTaskRepository implements TaskRepository {
       return [];
     }
 
-    const results = this.db
-      .select()
-      .from(tasks)
-      .where(inArray(tasks.id, ids))
-      .all();
+    const results = this.db.select().from(tasks).where(inArray(tasks.id, ids)).all();
 
     return results.map((row) => this.mapRowToTask(row));
   }
@@ -205,12 +202,7 @@ export class SqliteTaskRepository implements TaskRepository {
     return results.map((row) => this.mapRowToTask(row));
   }
 
-  updateStatus(
-    id: string,
-    status: TaskStatus,
-    changedBy?: string,
-    notes?: string
-  ): Task {
+  updateStatus(id: string, status: TaskStatus, changedBy?: string, notes?: string): Task {
     // Get current task
     const currentTask = this.findById(id);
     if (!currentTask) {
@@ -340,11 +332,7 @@ export class SqliteTaskRepository implements TaskRepository {
       updates.lastSessionActivityAt = lastSessionActivityAt;
     }
 
-    this.db
-      .update(tasks)
-      .set(updates)
-      .where(eq(tasks.id, taskId))
-      .run();
+    this.db.update(tasks).set(updates).where(eq(tasks.id, taskId)).run();
 
     const updatedTask = this.findById(taskId);
     if (!updatedTask) {
@@ -418,12 +406,7 @@ export class SqliteTaskRepository implements TaskRepository {
     return updatedTask;
   }
 
-  updatePRInfo(
-    taskId: string,
-    prUrl: string,
-    prNumber: number,
-    prStatus: Task["prStatus"]
-  ): Task {
+  updatePRInfo(taskId: string, prUrl: string, prNumber: number, prStatus: Task["prStatus"]): Task {
     const now = new Date().toISOString();
 
     this.db
@@ -509,9 +492,7 @@ export class SqliteTaskRepository implements TaskRepository {
 
   update(
     id: string,
-    data: Partial<
-      Omit<Task, "id" | "planId" | "order" | "createdAt" | "isDeleted">
-    >
+    data: Partial<Omit<Task, "id" | "planId" | "order" | "createdAt" | "isDeleted">>
   ): Task {
     const now = new Date().toISOString();
 

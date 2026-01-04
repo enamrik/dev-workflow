@@ -98,10 +98,7 @@ export class TemplateService {
 
       return discovery;
     } catch (error) {
-      throw new TemplateServiceError(
-        "Failed to discover templates",
-        error
-      );
+      throw new TemplateServiceError("Failed to discover templates", error);
     }
   }
 
@@ -152,11 +149,7 @@ export class TemplateService {
       lower.includes("better")
     ) {
       selectedFilename = "enhancement.md";
-    } else if (
-      lower.includes("task") ||
-      lower.includes("chore") ||
-      lower.includes("setup")
-    ) {
+    } else if (lower.includes("task") || lower.includes("chore") || lower.includes("setup")) {
       selectedFilename = "task.md";
     } else {
       selectedFilename = "feature.md";
@@ -200,7 +193,9 @@ export class TemplateService {
    * @param filename - Template filename (e.g., "feature.md")
    * @returns Template with source info, or null if not found
    */
-  async getTemplate(filename: string): Promise<{ template: Template; source: "user" | "default" } | null> {
+  async getTemplate(
+    filename: string
+  ): Promise<{ template: Template; source: "user" | "default" } | null> {
     const discovery = await this.discoverTemplates();
 
     // Check user templates first
@@ -234,7 +229,9 @@ export class TemplateService {
     // Check if user template already exists
     const existing = await this.getTemplate(filename);
     if (existing?.source === "user") {
-      throw new TemplateServiceError(`User template '${filename}' already exists. Use updateTemplate to modify it.`);
+      throw new TemplateServiceError(
+        `User template '${filename}' already exists. Use updateTemplate to modify it.`
+      );
     }
 
     try {
@@ -392,10 +389,7 @@ export class TemplateService {
 
       return templates;
     } catch (error) {
-      throw new TemplateServiceError(
-        `Failed to load templates from ${dirPath}`,
-        error
-      );
+      throw new TemplateServiceError(`Failed to load templates from ${dirPath}`, error);
     }
   }
 
@@ -410,14 +404,9 @@ export class TemplateService {
    * @param defaultTemplates - Default templates
    * @returns Merged and sorted template list
    */
-  private mergeTemplates(
-    userTemplates: Template[],
-    defaultTemplates: Template[]
-  ): Template[] {
+  private mergeTemplates(userTemplates: Template[], defaultTemplates: Template[]): Template[] {
     // Create map of user templates by filename for O(1) lookup
-    const userMap = new Map(
-      userTemplates.map((t) => [t.filename, t])
-    );
+    const userMap = new Map(userTemplates.map((t) => [t.filename, t]));
 
     // Start with all user templates
     const merged = [...userTemplates];

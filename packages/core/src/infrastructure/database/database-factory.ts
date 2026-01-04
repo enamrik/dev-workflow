@@ -1,6 +1,6 @@
-import { DatabaseAdapter } from './database-adapter.js';
-import { NativeAdapter } from './native-adapter.js';
-import { WasmAdapter } from './wasm-adapter.js';
+import { DatabaseAdapter } from "./database-adapter.js";
+import { NativeAdapter } from "./native-adapter.js";
+import { WasmAdapter } from "./wasm-adapter.js";
 
 /**
  * Detects available SQLite backend and creates appropriate adapter
@@ -17,9 +17,9 @@ export class DatabaseFactory {
 
   private static async isNativeAvailable(): Promise<boolean> {
     try {
-      const Database = await import('better-sqlite3');
+      const Database = await import("better-sqlite3");
       // Try to instantiate to verify bindings work
-      const testDb = new Database.default(':memory:');
+      const testDb = new Database.default(":memory:");
       testDb.close();
       return true;
     } catch {
@@ -28,9 +28,9 @@ export class DatabaseFactory {
   }
 
   private static async createNativeAdapter(dbPath: string): Promise<NativeAdapter> {
-    const Database = await import('better-sqlite3');
+    const Database = await import("better-sqlite3");
     const db = new Database.default(dbPath);
-    db.pragma('foreign_keys = ON');
+    db.pragma("foreign_keys = ON");
     return new NativeAdapter(db);
   }
 

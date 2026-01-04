@@ -9,16 +9,19 @@ allowed-tools: mcp:dev-workflow-tracker:create_milestone, mcp:dev-workflow-track
 ## When to Invoke
 
 **Create operations:**
+
 - User mentions: "create milestone", "new milestone", "add milestone"
 - User describes time-bounded goal: "by end of Q1", "release in 2 weeks", "sprint goal"
 - User wants to group issues: "group these issues together", "plan a release"
 
 **Update operations:**
+
 - User mentions: "update milestone M1", "change milestone", "extend deadline"
 - User wants to modify: "push back the due date", "rename milestone"
 - User references milestone: "M3 needs to include...", "milestone 2 is complete"
 
 **Assignment operations:**
+
 - User wants to assign: "add issue #5 to M1", "include #3 in the milestone"
 - User wants to unassign: "remove issue #2 from milestone", "unassign from M1"
 - User mentions milestone in issue context: "create issue for M2", "this is part of milestone 1"
@@ -28,6 +31,7 @@ allowed-tools: mcp:dev-workflow-tracker:create_milestone, mcp:dev-workflow-track
 ### What is a Milestone?
 
 A milestone is a **time-bounded goal** that groups related issues:
+
 - Has a **start date** and **end date**
 - Has a **status**: PLANNED, IN_PROGRESS, COMPLETED, DELAYED
 - Contains **zero or more issues**
@@ -39,12 +43,12 @@ Milestones are numbered sequentially per project: M1, M2, M3, etc.
 
 ### Status Meanings
 
-| Status | Meaning |
-|--------|---------|
-| **PLANNED** | Future milestone, not yet started |
-| **IN_PROGRESS** | Currently active, work is ongoing |
-| **COMPLETED** | All work finished, goal achieved |
-| **DELAYED** | Behind schedule, past end date but not complete |
+| Status          | Meaning                                         |
+| --------------- | ----------------------------------------------- |
+| **PLANNED**     | Future milestone, not yet started               |
+| **IN_PROGRESS** | Currently active, work is ongoing               |
+| **COMPLETED**   | All work finished, goal achieved                |
+| **DELAYED**     | Behind schedule, past end date but not complete |
 
 ## Process
 
@@ -112,6 +116,7 @@ Milestones are numbered sequentially per project: M1, M2, M3, etc.
 ## Date Handling
 
 Convert relative dates to absolute ISO format:
+
 - "next week" → calculate actual date
 - "end of month" → last day of current month
 - "Q1" → appropriate quarter end date
@@ -122,6 +127,7 @@ Always confirm dates with user before creating.
 ## Integration with Issue Management
 
 When creating issues with the dwf-manage-issue skill, if user mentions a milestone:
+
 - Note the milestone reference
 - After issue creation, assign to the milestone
 - Report the assignment in the response
@@ -129,6 +135,7 @@ When creating issues with the dwf-manage-issue skill, if user mentions a milesto
 ## Error Handling
 
 If MCP tool call fails:
+
 - Explain the error clearly
 - Common issues:
   - Invalid date format (must be YYYY-MM-DD)
@@ -143,6 +150,7 @@ If MCP tool call fails:
 **User:** "Create a milestone for our Q1 release, starting January 1st and ending March 31st"
 
 **Response:**
+
 ```
 Created milestone M1: Q1 Release
   Start: 2025-01-01
@@ -157,6 +165,7 @@ Would you like to assign any existing issues to this milestone?
 **User:** "Add issues #1, #3, and #5 to M1"
 
 **Response:**
+
 ```
 Assigned issues to milestone M1:
   - #1: Add user authentication
@@ -171,6 +180,7 @@ M1 Progress: 0/3 issues completed (3 open)
 **User:** "Show me milestone M1"
 
 **Response:**
+
 ```
 Milestone M1: Q1 Release
   Status: IN_PROGRESS
@@ -189,6 +199,7 @@ Progress: 1/3 completed
 **User:** "Mark M1 as completed"
 
 **Response:**
+
 ```
 Updated milestone M1:
   Status: PLANNED → COMPLETED

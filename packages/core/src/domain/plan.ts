@@ -61,10 +61,7 @@ export interface PlanRepository {
    * @param data - Partial plan data to update
    * @returns The updated plan
    */
-  update(
-    id: string,
-    data: Partial<Omit<Plan, "id" | "issueId" | "createdAt">>
-  ): Plan;
+  update(id: string, data: Partial<Omit<Plan, "id" | "issueId" | "createdAt">>): Plan;
 
   /**
    * Delete a plan

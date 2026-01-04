@@ -13,15 +13,10 @@ interface StatusHistoryTimelineProps {
 /**
  * Displays task status transitions as a vertical timeline.
  */
-export function StatusHistoryTimeline({
-  history,
-  className,
-}: StatusHistoryTimelineProps) {
+export function StatusHistoryTimeline({ history, className }: StatusHistoryTimelineProps) {
   if (history.length === 0) {
     return (
-      <div className={clsx("text-sm text-gray-500", className)}>
-        No status changes recorded
-      </div>
+      <div className={clsx("text-sm text-gray-500", className)}>No status changes recorded</div>
     );
   }
 
@@ -59,7 +54,8 @@ export function StatusHistoryTimeline({
               <Badge variant="status" value={entry.toStatus} />
               {entry.durationInStatus && (
                 <span className="text-xs text-gray-500">
-                  ({formatDuration(entry.durationInStatus)} in {entry.fromStatus.toLowerCase().replace("_", " ")})
+                  ({formatDuration(entry.durationInStatus)} in{" "}
+                  {entry.fromStatus.toLowerCase().replace("_", " ")})
                 </span>
               )}
             </div>
@@ -67,11 +63,7 @@ export function StatusHistoryTimeline({
               {formatDateTime(entry.changedAt)}
               {entry.changedBy && <span> by {entry.changedBy}</span>}
             </div>
-            {entry.notes && (
-              <div className="mt-1 text-sm text-gray-600 italic">
-                {entry.notes}
-              </div>
-            )}
+            {entry.notes && <div className="mt-1 text-sm text-gray-600 italic">{entry.notes}</div>}
           </div>
         </div>
       ))}

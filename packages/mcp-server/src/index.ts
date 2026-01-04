@@ -10,10 +10,7 @@
 import * as path from "node:path";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 // Import everything from core
 import {
@@ -129,8 +126,7 @@ import {
 // Get paths from environment
 const DATABASE_PATH = process.env["DATABASE_PATH"] || "./data/workflow.db";
 const PROJECT_ID = process.env["PROJECT_ID"];
-const TEMPLATES_PATH =
-  process.env["TEMPLATES_PATH"] || "./.track/config/issues/templates/";
+const TEMPLATES_PATH = process.env["TEMPLATES_PATH"] || "./.track/config/issues/templates/";
 const GIT_ROOT = process.env["GIT_ROOT"];
 
 // PROJECT_ID is required for the MCP server to scope data to the correct project
@@ -462,21 +458,14 @@ async function main() {
     issueRepository
   );
 
-  const templateService = new TemplateService(
-    fileSystem,
-    userTemplatesPath,
-    defaultTemplatesPath
-  );
+  const templateService = new TemplateService(fileSystem, userTemplatesPath, defaultTemplatesPath);
 
   // Initialize git worktree service for isolated task execution
   // projectRoot comes from GIT_ROOT environment variable (set at startup)
   const gitWorktreeService = new NodeGitWorktreeService(projectRoot);
 
   // Initialize conflict detection service
-  const conflictDetectionService = new ConflictDetectionService(
-    db,
-    taskRepository
-  );
+  const conflictDetectionService = new ConflictDetectionService(db, taskRepository);
 
   const taskSessionService = new TaskSessionService(
     taskRepository,
@@ -558,9 +547,7 @@ async function main() {
   await server.connect(transport);
   console.error("dev-workflow MCP server running on stdio");
   console.error(`Database: ${DATABASE_PATH}`);
-  console.error(
-    `Templates: ${defaultTemplatesPath} (defaults), ${userTemplatesPath} (user)`
-  );
+  console.error(`Templates: ${defaultTemplatesPath} (defaults), ${userTemplatesPath} (user)`);
 }
 
 main().catch((error) => {

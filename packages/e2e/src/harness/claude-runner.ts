@@ -31,10 +31,7 @@ export interface ClaudeOptions {
 /**
  * Run claude CLI with a prompt, optionally streaming output to test stdout
  */
-export async function runClaude(
-  prompt: string,
-  options: ClaudeOptions
-): Promise<ClaudeResult> {
+export async function runClaude(prompt: string, options: ClaudeOptions): Promise<ClaudeResult> {
   const args = ["--print", prompt];
   const streamOutput = options.streamOutput ?? true;
   const timeout = options.timeout ?? 60000;
@@ -48,8 +45,7 @@ export async function runClaude(
   }
 
   return new Promise((resolve, reject) => {
-    const truncatedPrompt =
-      prompt.length > 50 ? `${prompt.slice(0, 50)}...` : prompt;
+    const truncatedPrompt = prompt.length > 50 ? `${prompt.slice(0, 50)}...` : prompt;
     console.log(`\n🤖 Running claude: "${truncatedPrompt}"\n`);
 
     const spawnOptions: SpawnOptions = {
@@ -138,10 +134,7 @@ export async function isClaudeAvailable(): Promise<boolean> {
 /**
  * Run a simple claude command and check for success
  */
-export async function runClaudeSimple(
-  prompt: string,
-  cwd: string
-): Promise<boolean> {
+export async function runClaudeSimple(prompt: string, cwd: string): Promise<boolean> {
   try {
     const result = await runClaude(prompt, {
       cwd,

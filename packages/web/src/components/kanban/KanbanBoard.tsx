@@ -1,6 +1,12 @@
 import { KanbanColumn } from "./KanbanColumn";
 import { EmptyState } from "../ui";
-import type { ProjectIssueWithTasks, Task, CompletedTask, Issue, ComputedIssueStatus } from "@/lib/types";
+import type {
+  ProjectIssueWithTasks,
+  Task,
+  CompletedTask,
+  Issue,
+  ComputedIssueStatus,
+} from "@/lib/types";
 
 /**
  * Compute issue status based on issue state and task progress.
@@ -71,10 +77,7 @@ export function KanbanBoard({
   }
 
   // Sort helper: newest first (descending by date string)
-  const sortNewestFirst = <T,>(
-    tasks: T[],
-    getDate: (task: T) => string | undefined
-  ): T[] =>
+  const sortNewestFirst = <T,>(tasks: T[], getDate: (task: T) => string | undefined): T[] =>
     [...tasks].sort((a, b) => {
       const dateA = getDate(a) ?? "";
       const dateB = getDate(b) ?? "";
@@ -113,9 +116,7 @@ export function KanbanBoard({
   // For Done column: merge completed tasks from open issues with completedTasks prop
   // The completedTasks prop includes tasks from closed issues (last 7 days, max 20)
   const openIssueCompletedIds = new Set(
-    allTasks
-      .filter((t) => t.status === "COMPLETED" || t.status === "ABANDONED")
-      .map((t) => t.id)
+    allTasks.filter((t) => t.status === "COMPLETED" || t.status === "ABANDONED").map((t) => t.id)
   );
 
   // Add completed tasks from completedTasks that aren't already in openIssueCompletedIds
@@ -186,11 +187,7 @@ export function KanbanBoard({
         </div>
       )}
       <KanbanColumn title="Ready" status="READY" tasks={readyTasks} />
-      <KanbanColumn
-        title="In Progress"
-        status="IN_PROGRESS"
-        tasks={inProgressTasks}
-      />
+      <KanbanColumn title="In Progress" status="IN_PROGRESS" tasks={inProgressTasks} />
       <KanbanColumn
         title="In Review"
         status="PR_REVIEW"

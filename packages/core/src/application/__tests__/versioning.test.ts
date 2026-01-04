@@ -85,11 +85,7 @@ describe("VersioningService", () => {
         "MANUAL",
         "test"
       );
-      services.versioningService.createSnapshot(
-        scenario.issue.number,
-        "MANUAL",
-        "test"
-      );
+      services.versioningService.createSnapshot(scenario.issue.number, "MANUAL", "test");
 
       // Check that first snapshot was archived
       const history = services.versioningService.getSnapshotHistory(scenario.issue.number);
@@ -103,11 +99,7 @@ describe("VersioningService", () => {
       const scenario = createTestScenario(repos);
 
       // Create initial snapshot
-      services.versioningService.createSnapshot(
-        scenario.issue.number,
-        "MANUAL",
-        "test"
-      );
+      services.versioningService.createSnapshot(scenario.issue.number, "MANUAL", "test");
 
       // Modify live state
       repos.issueRepository.update(scenario.issue.id, {
@@ -115,17 +107,10 @@ describe("VersioningService", () => {
       });
 
       // Create another snapshot
-      services.versioningService.createSnapshot(
-        scenario.issue.number,
-        "MANUAL",
-        "test"
-      );
+      services.versioningService.createSnapshot(scenario.issue.number, "MANUAL", "test");
 
       // View old snapshot
-      const oldState = services.versioningService.viewSnapshot(
-        scenario.issue.number,
-        1
-      );
+      const oldState = services.versioningService.viewSnapshot(scenario.issue.number, 1);
 
       // Should show original title
       expect(oldState.issue.title).toBe(scenario.issue.title);
@@ -142,11 +127,7 @@ describe("VersioningService", () => {
       const originalTitle = scenario.issue.title;
 
       // Create snapshot
-      services.versioningService.createSnapshot(
-        scenario.issue.number,
-        "MANUAL",
-        "test"
-      );
+      services.versioningService.createSnapshot(scenario.issue.number, "MANUAL", "test");
 
       // Modify live state
       repos.issueRepository.update(scenario.issue.id, {
@@ -154,11 +135,7 @@ describe("VersioningService", () => {
       });
 
       // Create another snapshot
-      services.versioningService.createSnapshot(
-        scenario.issue.number,
-        "MANUAL",
-        "test"
-      );
+      services.versioningService.createSnapshot(scenario.issue.number, "MANUAL", "test");
 
       // Revert to version 1
       services.versioningService.revertToSnapshot(
@@ -177,17 +154,9 @@ describe("VersioningService", () => {
       const scenario = createTestScenario(repos);
 
       // Create snapshots
-      services.versioningService.createSnapshot(
-        scenario.issue.number,
-        "MANUAL",
-        "test"
-      );
+      services.versioningService.createSnapshot(scenario.issue.number, "MANUAL", "test");
       repos.issueRepository.update(scenario.issue.id, { title: "Changed" });
-      services.versioningService.createSnapshot(
-        scenario.issue.number,
-        "MANUAL",
-        "test"
-      );
+      services.versioningService.createSnapshot(scenario.issue.number, "MANUAL", "test");
 
       // Get snapshot count before revert
       const historyBefore = services.versioningService.getSnapshotHistory(scenario.issue.number);

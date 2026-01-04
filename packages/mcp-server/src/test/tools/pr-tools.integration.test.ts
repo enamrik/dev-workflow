@@ -13,10 +13,7 @@ import {
   SqliteProjectRepository,
   TaskGitHubSyncService,
 } from "@dev-workflow/core";
-import {
-  handleSubmitForReview,
-  type PRToolContext,
-} from "../../tools/pr-tools.js";
+import { handleSubmitForReview, type PRToolContext } from "../../tools/pr-tools.js";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as schema from "@dev-workflow/core";
 

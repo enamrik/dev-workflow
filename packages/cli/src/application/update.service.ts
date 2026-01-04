@@ -16,7 +16,10 @@ import {
 import { UIService } from "./ui.service.js";
 
 export class UpdateError extends Error {
-  constructor(message: string, public readonly cause?: unknown) {
+  constructor(
+    message: string,
+    public readonly cause?: unknown
+  ) {
     super(message);
     this.name = "UpdateError";
   }
@@ -148,7 +151,11 @@ export class UpdateService {
    */
   private getOldStyleTrackDirectory(): string {
     const folderName = path.basename(this.workingDirectory);
-    const hash = crypto.createHash("sha256").update(this.workingDirectory).digest("hex").slice(0, 6);
+    const hash = crypto
+      .createHash("sha256")
+      .update(this.workingDirectory)
+      .digest("hex")
+      .slice(0, 6);
     return path.join(resolveGlobalTrackDir(), `${folderName}-${hash}`);
   }
 
@@ -156,7 +163,11 @@ export class UpdateService {
    * Migrate track directory from old naming (path-based hash) to new naming (git-based hash).
    * Returns info about what was migrated.
    */
-  async migrateTrackDirectory(): Promise<{ migrated: boolean; oldPath?: string; newPath?: string }> {
+  async migrateTrackDirectory(): Promise<{
+    migrated: boolean;
+    oldPath?: string;
+    newPath?: string;
+  }> {
     const newTrackDir = this.resolver.getTrackDirectory();
     const oldTrackDir = this.getOldStyleTrackDirectory();
 
@@ -181,7 +192,10 @@ export class UpdateService {
       await fs.rename(oldTrackDir, newTrackDir);
       return { migrated: true, oldPath: oldTrackDir, newPath: newTrackDir };
     } catch (error) {
-      throw new UpdateError(`Failed to migrate track directory from ${oldTrackDir} to ${newTrackDir}`, error);
+      throw new UpdateError(
+        `Failed to migrate track directory from ${oldTrackDir} to ${newTrackDir}`,
+        error
+      );
     }
   }
 

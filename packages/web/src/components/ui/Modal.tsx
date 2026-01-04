@@ -1,12 +1,6 @@
 "use client";
 
-import React, {
-  useState,
-  useEffect,
-  useRef,
-  useCallback,
-  type ReactNode,
-} from "react";
+import React, { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { clsx } from "clsx";
 
@@ -33,13 +27,10 @@ export function Modal({
     setIsOpen(false);
   }, []);
 
-  const handleToggle = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      setIsOpen((prev) => !prev);
-    },
-    []
-  );
+  const handleToggle = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsOpen((prev) => !prev);
+  }, []);
 
   // Close on Escape key
   useEffect(() => {

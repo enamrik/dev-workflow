@@ -54,9 +54,7 @@ export function ExecutionLogList({
                   ))}
                 </div>
               )}
-              <div className="mt-1 text-xs text-gray-500">
-                {formatDateTime(log.createdAt)}
-              </div>
+              <div className="mt-1 text-xs text-gray-500">{formatDateTime(log.createdAt)}</div>
             </div>
           ))}
         </div>

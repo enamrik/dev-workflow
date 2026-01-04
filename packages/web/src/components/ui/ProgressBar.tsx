@@ -45,10 +45,7 @@ export function ProgressBar({
       </div>
       {showLabel && (
         <span
-          className={clsx(
-            "text-gray-600 whitespace-nowrap",
-            size === "sm" ? "text-xs" : "text-sm"
-          )}
+          className={clsx("text-gray-600 whitespace-nowrap", size === "sm" ? "text-xs" : "text-sm")}
         >
           {completed}/{total}
         </span>

@@ -77,8 +77,6 @@ export class DependencyService {
     const dependencyTasks = this.taskRepository.findByIds(task.dependsOn);
 
     // Filter to only blocking (unsatisfied) dependencies
-    return dependencyTasks.filter(
-      (depTask) => !SATISFIED_STATUSES.has(depTask.status)
-    );
+    return dependencyTasks.filter((depTask) => !SATISFIED_STATUSES.has(depTask.status));
   }
 }

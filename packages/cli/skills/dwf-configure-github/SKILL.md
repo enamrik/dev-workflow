@@ -9,27 +9,33 @@ allowed-tools: mcp:dev-workflow-tracker:update_settings
 ## When to Invoke
 
 **Enable GitHub sync:**
+
 - User mentions: "enable GitHub", "set up GitHub sync", "connect to GitHub"
 - User wants syncing: "sync issues to GitHub", "push issues to GitHub"
 - User references repo: "link this to my GitHub repo"
 
 **Configure GitHub Projects:**
+
 - User mentions: "add to project board", "GitHub Projects", "project ID"
 - User wants project integration: "add issues to my project"
 
 **Configure labels:**
+
 - User mentions: "GitHub labels", "configure labels", "change label mapping"
 - User wants custom labels: "add label to all issues"
 
 **Disable GitHub:**
+
 - User mentions: "disable GitHub", "turn off sync", "disconnect GitHub"
 
 **Check status:**
+
 - User asks: "is GitHub enabled?", "GitHub status", "check GitHub config"
 
 ## Prerequisites
 
 Before enabling GitHub sync, the following must be true:
+
 1. **gh CLI installed** - User must have GitHub CLI installed
 2. **gh CLI authenticated** - User must have run `gh auth login`
 3. **Repository access** - User must have access to the target repository
@@ -45,6 +51,7 @@ Before enabling GitHub sync, the following must be true:
 2. **Verify gh CLI is authenticated:**
    - The `get_settings` response includes `githubCLI.authenticated`
    - If NOT authenticated, stop and guide user:
+
      ```
      GitHub CLI is not authenticated. Please run:
 
@@ -129,12 +136,12 @@ Before enabling GitHub sync, the following must be true:
 
 ## Error Handling
 
-| Error | User Guidance |
-|-------|---------------|
-| "gh is not authenticated" | Run `gh auth login` first |
-| "Repository not found" | Check owner/repo spelling and access permissions |
-| "Project not found" | Verify Project ID in GitHub Project settings → ... → Copy ID |
-| "Config not found" | Run `dev-workflow init` first |
+| Error                     | User Guidance                                                |
+| ------------------------- | ------------------------------------------------------------ |
+| "gh is not authenticated" | Run `gh auth login` first                                    |
+| "Repository not found"    | Check owner/repo spelling and access permissions             |
+| "Project not found"       | Verify Project ID in GitHub Project settings → ... → Copy ID |
+| "Config not found"        | Run `dev-workflow init` first                                |
 
 ## Finding GitHub Project ID
 
@@ -156,6 +163,7 @@ To find your GitHub Project ID:
 **User:** "I want to sync issues to GitHub"
 
 **Response:**
+
 ```
 I'll help you set up GitHub sync. Let me first check if the gh CLI is authenticated.
 
@@ -168,6 +176,7 @@ Please provide in the format: owner/repo (e.g., myorg/myproject)
 **User:** "anthropics/claude-code"
 
 **Response:**
+
 ```
 Got it. A couple more questions:
 
@@ -185,6 +194,7 @@ Got it. A couple more questions:
 **User:** "No project, default labels are fine"
 
 **Response:**
+
 ```
 [Calls enable_github with owner/repo]
 
@@ -204,6 +214,7 @@ When you create issues, they'll automatically appear on GitHub.
 **User:** "Is GitHub sync enabled?"
 
 **Response:**
+
 ```
 [Calls get_settings]
 
@@ -224,6 +235,7 @@ GitHub Integration Status:
 **User:** "Enable GitHub sync for myorg/myrepo"
 
 **Response:**
+
 ```
 [Calls get_settings, sees githubCLI.authenticated = false]
 

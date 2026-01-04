@@ -79,13 +79,10 @@ export function assertIssueExists(
  * Assert that an issue exists by number
  * @returns The found issue
  */
-export function assertIssueByNumber(
-  db: Database.Database,
-  issueNumber: number
-): IssueRow {
-  const issue = db
-    .prepare("SELECT * FROM issues WHERE number = ?")
-    .get(issueNumber) as IssueRow | undefined;
+export function assertIssueByNumber(db: Database.Database, issueNumber: number): IssueRow {
+  const issue = db.prepare("SELECT * FROM issues WHERE number = ?").get(issueNumber) as
+    | IssueRow
+    | undefined;
 
   expect(issue, `Expected issue #${issueNumber} to exist`).toBeDefined();
   return issue!;
@@ -95,13 +92,10 @@ export function assertIssueByNumber(
  * Assert that a plan exists for an issue
  * @returns The found plan
  */
-export function assertPlanExists(
-  db: Database.Database,
-  issueId: string
-): PlanRow {
-  const plan = db
-    .prepare("SELECT * FROM plans WHERE issue_id = ?")
-    .get(issueId) as PlanRow | undefined;
+export function assertPlanExists(db: Database.Database, issueId: string): PlanRow {
+  const plan = db.prepare("SELECT * FROM plans WHERE issue_id = ?").get(issueId) as
+    | PlanRow
+    | undefined;
 
   expect(plan, `Expected plan to exist for issue ${issueId}`).toBeDefined();
   return plan!;
@@ -111,11 +105,7 @@ export function assertPlanExists(
  * Assert that tasks exist for a plan
  * @returns The tasks
  */
-export function assertTasksExist(
-  db: Database.Database,
-  planId: string,
-  minCount = 1
-): TaskRow[] {
+export function assertTasksExist(db: Database.Database, planId: string, minCount = 1): TaskRow[] {
   const tasks = db
     .prepare('SELECT * FROM tasks WHERE plan_id = ? ORDER BY "order"')
     .all(planId) as TaskRow[];
@@ -136,9 +126,7 @@ export function assertTaskStatus(
   taskId: string,
   expectedStatus: "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED"
 ): TaskRow {
-  const task = db
-    .prepare("SELECT * FROM tasks WHERE id = ?")
-    .get(taskId) as TaskRow | undefined;
+  const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId) as TaskRow | undefined;
 
   expect(task, `Expected task ${taskId} to exist`).toBeDefined();
   expect(task!.status).toBe(expectedStatus);
@@ -167,27 +155,17 @@ export function getTaskByStatus(
 /**
  * Assert that a file exists in the test directory
  */
-export function assertFileExists(
-  harness: E2ETestHarness,
-  relativePath: string
-): void {
-  expect(
-    harness.fileExists(relativePath),
-    `Expected file to exist: ${relativePath}`
-  ).toBe(true);
+export function assertFileExists(harness: E2ETestHarness, relativePath: string): void {
+  expect(harness.fileExists(relativePath), `Expected file to exist: ${relativePath}`).toBe(true);
 }
 
 /**
  * Assert that a file does not exist in the test directory
  */
-export function assertFileNotExists(
-  harness: E2ETestHarness,
-  relativePath: string
-): void {
-  expect(
-    harness.fileExists(relativePath),
-    `Expected file to NOT exist: ${relativePath}`
-  ).toBe(false);
+export function assertFileNotExists(harness: E2ETestHarness, relativePath: string): void {
+  expect(harness.fileExists(relativePath), `Expected file to NOT exist: ${relativePath}`).toBe(
+    false
+  );
 }
 
 /**
@@ -200,10 +178,9 @@ export function assertFileContains(
 ): void {
   assertFileExists(harness, relativePath);
   const content = harness.readFile(relativePath);
-  expect(
-    content,
-    `Expected ${relativePath} to contain "${expectedContent}"`
-  ).toContain(expectedContent);
+  expect(content, `Expected ${relativePath} to contain "${expectedContent}"`).toContain(
+    expectedContent
+  );
 }
 
 /**
@@ -223,8 +200,8 @@ export function countTasksByStatus(
   db: Database.Database,
   status: "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED"
 ): number {
-  const result = db
-    .prepare("SELECT COUNT(*) as count FROM tasks WHERE status = ?")
-    .get(status) as { count: number };
+  const result = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE status = ?").get(status) as {
+    count: number;
+  };
   return result.count;
 }

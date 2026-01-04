@@ -11,12 +11,7 @@ import {
   type Project,
   type ProjectRepository,
 } from "@dev-workflow/core";
-import {
-  type ToolDefinition,
-  type ToolResponse,
-  successResponse,
-  errorResponse,
-} from "./types.js";
+import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
 /**
  * Type for GitHub labels configuration (used in tool arguments)
@@ -46,12 +41,7 @@ export const settingsToolDefinitions: ToolDefinition[] = [
       properties: {
         action: {
           type: "string",
-          enum: [
-            "get_settings",
-            "enable_github",
-            "disable_github",
-            "configure_github",
-          ],
+          enum: ["get_settings", "enable_github", "disable_github", "configure_github"],
           description:
             "The settings action to perform: get_settings returns current config, " +
             "enable_github enables GitHub issue sync with validation, " +
@@ -63,8 +53,7 @@ export const settingsToolDefinitions: ToolDefinition[] = [
           properties: {
             projectId: {
               type: "string",
-              description:
-                "GitHub Project ID for Projects integration (optional, format: PVT_...)",
+              description: "GitHub Project ID for Projects integration (optional, format: PVT_...)",
             },
             labels: {
               type: "object",
@@ -170,9 +159,7 @@ async function handleGetSettings(ctx: SettingsToolContext): Promise<ToolResponse
       projectName: project.name,
       gitRoot: ctx.gitRoot,
       gitRootHash: project.gitRootHash,
-      github: project.githubSync
-        ? { syncIssues: project.githubSync }
-        : null,
+      github: project.githubSync ? { syncIssues: project.githubSync } : null,
       githubCLI: {
         authenticated: isGitHubAuthenticated,
       },
@@ -199,9 +186,7 @@ async function handleEnableGitHub(
   // Step 1: Check gh CLI authentication
   const isAuthenticated = await ctx.githubCLI.checkAuth();
   if (!isAuthenticated) {
-    return errorResponse(
-      "GitHub CLI (gh) is not authenticated. Run 'gh auth login' first."
-    );
+    return errorResponse("GitHub CLI (gh) is not authenticated. Run 'gh auth login' first.");
   }
 
   // Step 2: Verify we're in a GitHub repository
@@ -319,9 +304,7 @@ async function handleConfigureGitHub(
     const currentSync = project.githubSync;
 
     if (!currentSync) {
-      return errorResponse(
-        "GitHub issue sync is not enabled. Use enable_github action first."
-      );
+      return errorResponse("GitHub issue sync is not enabled. Use enable_github action first.");
     }
 
     // If projectId is being added/changed, validate it and get URL
@@ -329,9 +312,7 @@ async function handleConfigureGitHub(
     if (github.projectId && github.projectId !== currentSync.projectId) {
       const projectDetails = await ctx.githubCLI.getProjectDetails(github.projectId);
       if (!projectDetails) {
-        return errorResponse(
-          `GitHub Project ${github.projectId} not found or not accessible.`
-        );
+        return errorResponse(`GitHub Project ${github.projectId} not found or not accessible.`);
       }
       projectUrl = projectDetails.url;
     }
@@ -348,22 +329,14 @@ async function handleConfigureGitHub(
                 github.labels.typeLabels?.FEATURE ??
                 currentSync.labels?.typeLabels.FEATURE ??
                 "feature",
-              BUG:
-                github.labels.typeLabels?.BUG ??
-                currentSync.labels?.typeLabels.BUG ??
-                "bug",
+              BUG: github.labels.typeLabels?.BUG ?? currentSync.labels?.typeLabels.BUG ?? "bug",
               ENHANCEMENT:
                 github.labels.typeLabels?.ENHANCEMENT ??
                 currentSync.labels?.typeLabels.ENHANCEMENT ??
                 "enhancement",
-              TASK:
-                github.labels.typeLabels?.TASK ??
-                currentSync.labels?.typeLabels.TASK ??
-                "task",
+              TASK: github.labels.typeLabels?.TASK ?? currentSync.labels?.typeLabels.TASK ?? "task",
             },
-            customLabels:
-              github.labels.customLabels ??
-              currentSync.labels?.customLabels,
+            customLabels: github.labels.customLabels ?? currentSync.labels?.customLabels,
           }
         : currentSync.labels,
       enabled: currentSync.enabled, // Preserve enabled state

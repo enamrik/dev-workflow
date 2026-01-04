@@ -51,7 +51,10 @@ export class TemplateParser {
     const match = content.match(frontmatterRegex);
 
     if (!match) {
-      throw new TemplateParseError("No frontmatter found. Templates must start with YAML frontmatter between --- markers.", filename);
+      throw new TemplateParseError(
+        "No frontmatter found. Templates must start with YAML frontmatter between --- markers.",
+        filename
+      );
     }
 
     const [, frontmatter, body] = match;
@@ -127,7 +130,10 @@ export class TemplateParser {
    */
   private parsePriority(value: unknown, filename: string): IssuePriority {
     if (typeof value !== "string") {
-      throw new TemplateParseError("Missing or invalid 'priority' field. Must be a string.", filename);
+      throw new TemplateParseError(
+        "Missing or invalid 'priority' field. Must be a string.",
+        filename
+      );
     }
 
     const validPriorities: IssuePriority[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
@@ -140,5 +146,4 @@ export class TemplateParser {
 
     return value as IssuePriority;
   }
-
 }

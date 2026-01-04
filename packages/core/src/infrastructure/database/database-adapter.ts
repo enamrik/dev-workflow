@@ -6,7 +6,7 @@ export interface DatabaseAdapter {
   exec(sql: string): void;
   prepare<T = any>(sql: string): PreparedStatement<T>;
   close(): void;
-  readonly type: 'native' | 'wasm';
+  readonly type: "native" | "wasm";
 }
 
 export interface PreparedStatement<T = any> {

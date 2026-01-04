@@ -7,9 +7,7 @@ import type { GitHubIssueSyncConfig } from "../../infrastructure/database/schema
 /**
  * Mock GitOperations for testing
  */
-function createMockGitOperations(
-  overrides: Partial<GitOperations> = {}
-): GitOperations {
+function createMockGitOperations(overrides: Partial<GitOperations> = {}): GitOperations {
   return {
     getInitialCommitHash: vi.fn().mockResolvedValue("abc123def456"),
     isGitRepository: vi.fn().mockResolvedValue(true),
@@ -74,9 +72,7 @@ describe("ProjectService", () => {
       });
       service = new ProjectService(repos.projectRepository, mockGitOps);
 
-      await expect(service.getOrCreateProject("/not/a/repo")).rejects.toThrow(
-        ProjectError
-      );
+      await expect(service.getOrCreateProject("/not/a/repo")).rejects.toThrow(ProjectError);
       await expect(service.getOrCreateProject("/not/a/repo")).rejects.toThrow(
         "Not a git repository"
       );
@@ -209,9 +205,9 @@ describe("ProjectService", () => {
     });
 
     it("should throw ProjectError for non-existent project", () => {
-      expect(() =>
-        service.updateGitHubSync("non-existent", { enabled: true })
-      ).toThrow(ProjectError);
+      expect(() => service.updateGitHubSync("non-existent", { enabled: true })).toThrow(
+        ProjectError
+      );
     });
   });
 
@@ -278,9 +274,7 @@ describe("ProjectService", () => {
     });
 
     it("should throw ProjectError for non-existent project", () => {
-      expect(() => service.update("non-existent", { name: "new-name" })).toThrow(
-        ProjectError
-      );
+      expect(() => service.update("non-existent", { name: "new-name" })).toThrow(ProjectError);
     });
   });
 });

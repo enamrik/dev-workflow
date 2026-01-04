@@ -141,9 +141,7 @@ describe("ProjectContext", () => {
       result.current.setProjectId("");
     });
 
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith(
-      "dev-workflow-selected-project"
-    );
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith("dev-workflow-selected-project");
   });
 
   it("updates URL when projectId changes", () => {

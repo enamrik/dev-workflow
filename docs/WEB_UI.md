@@ -11,6 +11,7 @@ dev-workflow ui
 ```
 
 The server will:
+
 1. Find an available port (between 3000-9000)
 2. Start a Fastify server
 3. Open your default browser automatically
@@ -21,6 +22,7 @@ The server will:
 ### Issues List (`/`)
 
 The home page displays all issues with:
+
 - Issue number and title
 - Type badge (FEATURE, BUG, ENHANCEMENT, TASK)
 - Priority indicator
@@ -33,6 +35,7 @@ Click any issue to view details.
 ### Issue Detail (`/issues/:number`)
 
 View complete issue information:
+
 - Full description
 - Acceptance criteria checklist
 - Labels
@@ -44,6 +47,7 @@ View complete issue information:
 ### Kanban Board (`/kanban`)
 
 Visual task board organized by status columns:
+
 - **PENDING** - Tasks not yet started
 - **IN_PROGRESS** - Tasks currently being worked on
 - **COMPLETED** - Finished tasks
@@ -54,6 +58,7 @@ Tasks are grouped by their parent issue for context.
 ## Architecture
 
 The web UI is built with:
+
 - **Fastify** - Fast, low-overhead web framework
 - **Server-side HTML** - No client-side JavaScript framework
 - **Static CSS** - Simple, responsive styles

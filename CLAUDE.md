@@ -5,6 +5,7 @@ This document defines the coding standards and architectural principles for the 
 ## Core Principles
 
 ### 1. Object-Oriented Programming (OOP)
+
 - Use classes to encapsulate behavior and state
 - Favor composition over inheritance
 - Encapsulate what varies
@@ -12,33 +13,40 @@ This document defines the coding standards and architectural principles for the 
 ### 2. SOLID Principles
 
 #### Single Responsibility Principle (SRP)
+
 - Each class should have one, and only one, reason to change
 - Example: `FileSystem` handles file operations, `ConfigManager` handles configuration
 
 #### Open/Closed Principle (OCP)
+
 - Classes should be open for extension but closed for modification
 - Use interfaces and abstract classes for extensibility
 
 #### Liskov Substitution Principle (LSP)
+
 - Subtypes must be substitutable for their base types
 - Interfaces should define contracts that implementations honor
 
 #### Interface Segregation Principle (ISP)
+
 - No client should be forced to depend on methods it does not use
 - Create focused, specific interfaces
 
 #### Dependency Inversion Principle (DIP)
+
 - Depend on abstractions, not concretions
 - Use dependency injection for all dependencies
 
 ### 3. Domain-Driven Design (DDD)
 
 #### Rich Domain Models
+
 - Business logic belongs in domain entities
 - Entities should be self-validating
 - Use value objects for concepts without identity
 
 Example:
+
 ```typescript
 class Issue {
   private constructor(
@@ -49,12 +57,7 @@ class Issue {
   ) {}
 
   static create(title: string): Issue {
-    return new Issue(
-      IssueId.generate(),
-      IssueNumber.next(),
-      Title.create(title),
-      IssueStatus.Open
-    );
+    return new Issue(IssueId.generate(), IssueNumber.next(), Title.create(title), IssueStatus.Open);
   }
 
   close(): void {
@@ -67,16 +70,19 @@ class Issue {
 ```
 
 #### Ubiquitous Language
+
 - Use the same terminology in code as the business domain
 - Example: `Issue`, `Plan`, `Task`, not `Record`, `Item`, `Thing`
 
 #### Bounded Contexts
+
 - Separate concerns into clear boundaries
 - Example: `issue-tracking`, `planning`, `github-integration`
 
 ### 4. Dependency Injection
 
 #### Constructor Injection (Preferred)
+
 ```typescript
 class IssueService {
   constructor(
@@ -87,6 +93,7 @@ class IssueService {
 ```
 
 #### Interface-based Dependencies
+
 ```typescript
 interface IssueRepository {
   save(issue: Issue): Promise<void>;
@@ -101,6 +108,7 @@ class SqliteIssueRepository implements IssueRepository {
 ### 5. Clean Code Practices
 
 #### Naming
+
 - Use descriptive, intention-revealing names
 - Avoid abbreviations unless universally understood
 - Classes: nouns (User, Issue, Plan)
@@ -108,18 +116,21 @@ class SqliteIssueRepository implements IssueRepository {
 - Booleans: is/has/can prefix (isOpen, hasChildren, canClose)
 
 #### Functions
+
 - Keep functions small (< 20 lines ideally)
 - One level of abstraction per function
 - Minimize parameters (< 3 ideally)
 - No side effects in query methods
 
 #### Comments
+
 - Code should be self-documenting
 - Use comments for "why", not "what"
 - Document complex business rules
 - Keep comments up to date or delete them
 
 #### Error Handling
+
 - Use custom error classes for domain errors
 - Don't return null - use Option/Maybe pattern or throw
 - Fail fast - validate at boundaries
@@ -161,6 +172,7 @@ packages/
 ## Testing Standards
 
 ### Unit Tests
+
 - Test behavior, not implementation
 - Use mocks for dependencies
 - One assertion per test (when possible)
@@ -191,6 +203,7 @@ describe("Issue", () => {
 ```
 
 ### Integration Tests
+
 - Test complete workflows
 - Use real implementations where possible
 - Clean up after tests (database, files)
@@ -215,12 +228,14 @@ make ui-dev-local
 ```
 
 This command:
+
 1. Installs dependencies if needed (`make worktree-setup`)
 2. Creates a local `.track/` directory with test data
 3. **Detects if running in a worktree** and calculates a unique port (3500 + issue % 100)
 4. Starts the Next.js dev server and opens browser with issue filter querystring
 
 For example, in worktree `issue-54-task-1`:
+
 - Port: 3554 (3500 + 54 % 100)
 - URL: http://localhost:3554/?issue=54
 
@@ -243,6 +258,7 @@ Ports are in range 3500-3599 using modulo to handle high issue numbers.
 **IMPORTANT: NEVER delete `~/.track/workflow.db`!** This file contains all issue tracking data.
 
 When making schema changes:
+
 1. Update the schema in `packages/core/src/infrastructure/database/schema.ts`
 2. Run `pnpm drizzle-kit generate` in `packages/core` to create an incremental migration
 3. Run `dev-workflow update` to apply the migration
@@ -254,12 +270,14 @@ The generated migration will contain only the changes (ALTER TABLE statements), 
 ### Type Safety
 
 #### Never Use `any` or Type Assertions to Escape Type System
+
 - **NEVER** use `as any` to bypass type checking
 - **NEVER** use `@ts-ignore` or `@ts-expect-error` comments
 - If the type system is complaining, fix the types - don't silence it
 - Type assertions (`as Type`) should be rare and well-justified
 
 **Bad:**
+
 ```typescript
 // ❌ NEVER DO THIS
 await (this.fileSystem as any).copyDirectory(source, dest);
@@ -270,6 +288,7 @@ const result = unsafeOperation();
 ```
 
 **Good:**
+
 ```typescript
 // ✅ Add the method to the interface
 interface FileSystem {
@@ -281,6 +300,7 @@ await this.fileSystem.copyDirectory(source, dest);
 ```
 
 #### General Type Safety Rules
+
 - Avoid `any` - use `unknown` if type is truly unknown
 - Use strict mode with all strict flags enabled
 - Define explicit return types for public methods
@@ -304,7 +324,9 @@ class IssueId {
 ```
 
 #### TypeScript Configuration
+
 Our `tsconfig.json` enforces maximum type safety:
+
 ```json
 {
   "compilerOptions": {
@@ -327,11 +349,13 @@ Our `tsconfig.json` enforces maximum type safety:
 ```
 
 ### Immutability
+
 - Prefer `readonly` for properties
 - Use `const` for variables
 - Return new objects instead of mutating
 
 ### Async/Await
+
 - Always use async/await over callbacks
 - Handle errors explicitly
 - Don't mix promises and async/await

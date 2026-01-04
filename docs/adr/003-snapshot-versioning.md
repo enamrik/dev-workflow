@@ -7,11 +7,13 @@ Accepted
 ## Context
 
 Issues evolve over time:
+
 - Requirements get refined
 - Plans get regenerated with different approaches
 - Tasks get added, modified, or abandoned
 
 We needed version history that:
+
 1. Captures complete state at any point
 2. Allows reverting to previous versions
 3. Maintains audit trail for accountability
@@ -26,7 +28,7 @@ Use **full-state snapshots** that capture issue + plan + tasks as a unit.
 interface Snapshot {
   id: string;
   issueNumber: number;
-  version: number;              // 1, 2, 3, ...
+  version: number; // 1, 2, 3, ...
   status: "ACTIVE" | "ARCHIVED";
   snapshotType: "MANUAL" | "ISSUE_UPDATE" | "PLAN_REGENERATION";
 
@@ -100,6 +102,7 @@ interface Change {
 ```
 
 Rejected because:
+
 - Complex to reconstruct state at any point
 - Diff conflicts when multiple fields change
 - Hard to ensure consistency across related entities
@@ -115,6 +118,7 @@ interface DomainEvent {
 ```
 
 Rejected because:
+
 - Overkill for this use case
 - Requires rebuilding state from events
 - Adds significant complexity
@@ -124,6 +128,7 @@ Rejected because:
 Just update in place, no history.
 
 Rejected because:
+
 - No way to recover from mistakes
 - No audit trail
 - Users lose context of how issue evolved

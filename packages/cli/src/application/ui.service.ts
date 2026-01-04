@@ -3,13 +3,21 @@ import * as path from "node:path";
 import { createRequire } from "node:module";
 import open from "open";
 import { FileSystem } from "../infrastructure/file-system.js";
-import { getDaemonPort, saveDaemonPort, clearDaemonPort, isPortInUse } from "../infrastructure/port-manager.js";
+import {
+  getDaemonPort,
+  saveDaemonPort,
+  clearDaemonPort,
+  isPortInUse,
+} from "../infrastructure/port-manager.js";
 import { TrackDirectoryResolver } from "@dev-workflow/core";
 
 const require = createRequire(import.meta.url);
 
 export class UIError extends Error {
-  constructor(message: string, public readonly cause?: unknown) {
+  constructor(
+    message: string,
+    public readonly cause?: unknown
+  ) {
     super(message);
     this.name = "UIError";
   }
@@ -56,9 +64,7 @@ export class UIService {
   static async startMultiProject(): Promise<void> {
     try {
       // Use PORT env var if set, otherwise find available port (preferring default)
-      const port = process.env["PORT"]
-        ? parseInt(process.env["PORT"], 10)
-        : await getDaemonPort();
+      const port = process.env["PORT"] ? parseInt(process.env["PORT"], 10) : await getDaemonPort();
 
       // Save the port so clients can find us
       saveDaemonPort(port);
@@ -122,7 +128,6 @@ export class UIService {
 
       process.on("SIGINT", () => shutdown("SIGINT"));
       process.on("SIGTERM", () => shutdown("SIGTERM"));
-
     } catch (error) {
       clearDaemonPort();
       throw new UIError("Failed to start UI server", error);
@@ -138,7 +143,7 @@ export class UIService {
       if (await isPortInUse(port)) {
         return;
       }
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
     throw new UIError(`Server did not start within ${timeoutMs}ms`);
   }

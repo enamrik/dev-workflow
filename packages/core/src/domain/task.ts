@@ -4,7 +4,14 @@
 
 import type { GitHubSyncState } from "./github.js";
 
-export type TaskStatus = "PLANNED" | "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
+export type TaskStatus =
+  | "PLANNED"
+  | "BACKLOG"
+  | "READY"
+  | "IN_PROGRESS"
+  | "PR_REVIEW"
+  | "COMPLETED"
+  | "ABANDONED";
 
 /**
  * Valid task status transitions
@@ -238,12 +245,7 @@ export interface TaskRepository {
    * @param notes - Optional notes about the change
    * @returns The updated task
    */
-  updateStatus(
-    id: string,
-    status: TaskStatus,
-    changedBy?: string,
-    notes?: string
-  ): Task;
+  updateStatus(id: string, status: TaskStatus, changedBy?: string, notes?: string): Task;
 
   /**
    * Get the next order number for a plan
@@ -375,9 +377,7 @@ export interface TaskRepository {
    */
   update(
     id: string,
-    data: Partial<
-      Omit<Task, "id" | "planId" | "order" | "createdAt" | "isDeleted">
-    >
+    data: Partial<Omit<Task, "id" | "planId" | "order" | "createdAt" | "isDeleted">>
   ): Task;
 
   /**

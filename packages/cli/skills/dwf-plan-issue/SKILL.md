@@ -44,10 +44,12 @@ Ask yourself: "Would I commit and deploy this alone?"
 ## Information Flow from manage-issue
 
 When chained from `manage-issue`, you may receive additional context:
+
 - **Approach details**: Technology choices, architecture decisions (e.g., "Use passport.js", "Store in Redis")
 - **Specifics**: Exact endpoints, file paths, configuration (e.g., "/auth/callback")
 
 Incorporate these into your plan:
+
 - **Approach details** → Go into the Plan's "approach" field and inform task design
 - **Specifics** → Go into task descriptions and acceptance criteria
 
@@ -118,6 +120,7 @@ Many issues need only ONE task. This is perfectly fine and often correct:
 ## When to Split into Multiple Tasks
 
 Split when:
+
 - Different parts can genuinely be deployed independently
 - Different parts touch completely separate subsystems
 - One part is blocked waiting for external dependencies
@@ -157,6 +160,7 @@ Symptoms: [from issue description]
 Reproduction: [from issue steps to reproduce]
 
 **Acceptance Criteria:**
+
 - [ ] Bug is fixed and verified with reproduction steps
 - [ ] Root cause documented in task progress log
 - [ ] Regression test added to prevent recurrence
@@ -176,6 +180,7 @@ Reproduction: [from issue steps to reproduce]
 
 **Description:**
 Implement Google OAuth2 authentication flow including:
+
 - OAuth callback handler
 - User session creation
 - Token refresh logic
@@ -184,6 +189,7 @@ Implement Google OAuth2 authentication flow including:
 Includes unit tests for token handling and integration tests for the OAuth flow.
 
 **Acceptance Criteria:**
+
 - [ ] User can sign in with Google
 - [ ] Session persists across browser refresh
 - [ ] Expired tokens trigger re-authentication
@@ -194,8 +200,8 @@ Includes unit tests for token handling and integration tests for the OAuth flow.
 
 Task 1: "Add OAuth callback handler"
 Task 2: "Add session management"
-Task 3: "Write tests for OAuth"  ← WRONG: Tests should be in Task 1!
-Task 4: "Add error handling"     ← WRONG: Should be part of the feature!
+Task 3: "Write tests for OAuth" ← WRONG: Tests should be in Task 1!
+Task 4: "Add error handling" ← WRONG: Should be part of the feature!
 
 ## Example Plan Output
 
@@ -206,6 +212,7 @@ Task 4: "Add error handling"     ← WRONG: Should be part of the feature!
 **User:** "Plan issue #1 - Add user authentication with OAuth"
 
 **Response:**
+
 ```
 Analyzing issue #1: Add user authentication with OAuth
 
@@ -270,6 +277,7 @@ Plan generated with 2 tasks in PLANNED status.
 **User:** "Plan issue #5 - Add caching to API responses"
 
 **Response:**
+
 ```
 Analyzing issue #5: Add caching to API responses
 
@@ -314,6 +322,7 @@ Plan generated with 1 task in PLANNED status.
 **User:** "Plan issue #7 - Login fails silently when session expires"
 
 **Response:**
+
 ```
 Analyzing issue #7: Login fails silently when session expires
 
@@ -359,10 +368,12 @@ Plan generated with 1 task in PLANNED status.
 ## Error Handling
 
 If issue not found:
+
 - Explain the error
 - Suggest checking the issue number with `search_issues`
 
 If issue has no description/acceptance criteria:
+
 - Ask the user for more context before planning
 - Suggest updating the issue first with manage-issue
 
@@ -371,6 +382,7 @@ If issue has no description/acceptance criteria:
 **IMPORTANT: Task labels must exist before assignment.** Labels are markdown files in `.track/labels/` that provide contextual guidance during task execution.
 
 Before assigning labels to tasks:
+
 1. Call `list_available_task_labels` to see what labels exist
 2. Only use labels that have a corresponding file in `.track/labels/`
 3. If no matching label file exists, do NOT assign that label
@@ -382,17 +394,19 @@ Only use labels from the available labels list. Do not invent labels.
 When calling `generate_plan`, use **short placeholder IDs** for tasks instead of UUIDs. The tool generates real UUIDs internally.
 
 **Example with dependencies:**
+
 ```json
 {
   "tasks": [
-    {"id": "db", "title": "Set up database schema", "description": "..."},
-    {"id": "api", "title": "Add API endpoints", "description": "...", "dependsOn": ["db"]},
-    {"id": "ui", "title": "Build UI components", "description": "...", "dependsOn": ["api"]}
+    { "id": "db", "title": "Set up database schema", "description": "..." },
+    { "id": "api", "title": "Add API endpoints", "description": "...", "dependsOn": ["db"] },
+    { "id": "ui", "title": "Build UI components", "description": "...", "dependsOn": ["api"] }
   ]
 }
 ```
 
 **Guidelines:**
+
 - Use short, descriptive IDs: `"db"`, `"api"`, `"auth"`, `"tests"`
 - Reference dependencies by their placeholder ID
 - All `dependsOn` references must match an `id` in the tasks array

@@ -58,7 +58,11 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
             isInProgress && "bg-orange-500 text-white",
             isPRReview && "bg-blue-500 text-white",
             isAbandoned && "bg-red-500 text-white",
-            !isCompleted && !isInProgress && !isPRReview && !isAbandoned && "bg-gray-300 text-gray-600"
+            !isCompleted &&
+              !isInProgress &&
+              !isPRReview &&
+              !isAbandoned &&
+              "bg-gray-300 text-gray-600"
           )}
         >
           {getStatusIcon(task.status)}

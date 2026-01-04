@@ -15,13 +15,7 @@ interface SelectProps {
   className?: string;
 }
 
-export function Select({
-  options,
-  value,
-  onChange,
-  placeholder,
-  className,
-}: SelectProps) {
+export function Select({ options, value, onChange, placeholder, className }: SelectProps) {
   return (
     <select
       value={value}
@@ -34,9 +28,7 @@ export function Select({
         className
       )}
     >
-      {placeholder && (
-        <option value="">{placeholder}</option>
-      )}
+      {placeholder && <option value="">{placeholder}</option>}
       {options.map((option) => (
         <option key={option.value} value={option.value}>
           {option.label}

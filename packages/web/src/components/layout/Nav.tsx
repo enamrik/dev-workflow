@@ -21,20 +21,17 @@ export function Nav() {
     <header className="bg-white border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-6">
-          <Link href="/" className="text-lg font-semibold text-gray-800 hover:text-gray-600 transition-colors">
+          <Link
+            href="/"
+            className="text-lg font-semibold text-gray-800 hover:text-gray-600 transition-colors"
+          >
             Dev Workflow
           </Link>
-          <ProjectFilter
-            projects={projects}
-            value={projectId}
-            onChange={setProjectId}
-          />
+          <ProjectFilter projects={projects} value={projectId} onChange={setProjectId} />
         </div>
         <nav className="flex items-center gap-1">
           {navItems.map((item) => {
-            const isActive = item.href === "/"
-              ? pathname === "/"
-              : pathname.startsWith(item.href);
+            const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
 
             return (
               <Link

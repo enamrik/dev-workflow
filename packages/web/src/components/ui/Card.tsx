@@ -15,13 +15,7 @@ const paddingStyles = {
 
 export function Card({ children, className, padding = "md" }: CardProps) {
   return (
-    <div
-      className={clsx(
-        "bg-white rounded-lg shadow-sm",
-        paddingStyles[padding],
-        className
-      )}
-    >
+    <div className={clsx("bg-white rounded-lg shadow-sm", paddingStyles[padding], className)}>
       {children}
     </div>
   );
@@ -34,14 +28,7 @@ interface CardHeaderProps {
 
 export function CardHeader({ children, className }: CardHeaderProps) {
   return (
-    <div
-      className={clsx(
-        "flex items-center justify-between mb-6",
-        className
-      )}
-    >
-      {children}
-    </div>
+    <div className={clsx("flex items-center justify-between mb-6", className)}>{children}</div>
   );
 }
 
@@ -51,9 +38,5 @@ interface CardTitleProps {
 }
 
 export function CardTitle({ children, className }: CardTitleProps) {
-  return (
-    <h2 className={clsx("text-xl font-semibold text-gray-800", className)}>
-      {children}
-    </h2>
-  );
+  return <h2 className={clsx("text-xl font-semibold text-gray-800", className)}>{children}</h2>;
 }

@@ -17,7 +17,10 @@ import type { Issue, IssueRepository } from "../domain/issue.js";
 import type { PlanRepository } from "../domain/plan.js";
 import type { GitHubSyncState } from "../domain/github.js";
 import type { GitHubCLI } from "../infrastructure/github/github-cli.js";
-import type { GitHubIssueSyncConfig, GitHubLabelsConfig } from "../infrastructure/database/schema.js";
+import type {
+  GitHubIssueSyncConfig,
+  GitHubLabelsConfig,
+} from "../infrastructure/database/schema.js";
 import type { ProjectRepository } from "../domain/project.js";
 
 /**
@@ -225,10 +228,7 @@ export class TaskGitHubSyncService {
     let projectItemId: string | null = null;
     if (config.projectId) {
       try {
-        projectItemId = await this.githubCLI.addToProject(
-          config.projectId,
-          data.nodeId
-        );
+        projectItemId = await this.githubCLI.addToProject(config.projectId, data.nodeId);
 
         if (!projectItemId) {
           throw new TaskGitHubSyncError(
@@ -299,7 +299,11 @@ export class TaskGitHubSyncService {
 
     // Move in project kanban if configured
     if (config.projectId && task.githubSync.projectItemId) {
-      const result = await this.moveToColumn(task.githubSync.projectItemId, config.projectId, newStatus);
+      const result = await this.moveToColumn(
+        task.githubSync.projectItemId,
+        config.projectId,
+        newStatus
+      );
       if (!result.success && result.error) {
         syncError = result.error;
       }
@@ -339,10 +343,7 @@ export class TaskGitHubSyncService {
           });
         } catch (error) {
           // Log but don't fail - best effort to close abandoned issues
-          console.warn(
-            `Failed to close GitHub issue for abandoned task ${taskId}:`,
-            error
-          );
+          console.warn(`Failed to close GitHub issue for abandoned task ${taskId}:`, error);
         }
       }
     }
@@ -376,8 +377,7 @@ export class TaskGitHubSyncService {
     const labels: string[] = [];
 
     if (config.labels?.typeLabels) {
-      const typeLabel =
-        config.labels.typeLabels[type as keyof GitHubLabelsConfig["typeLabels"]];
+      const typeLabel = config.labels.typeLabels[type as keyof GitHubLabelsConfig["typeLabels"]];
       if (typeLabel) {
         labels.push(typeLabel);
       }
@@ -533,9 +533,7 @@ export class TaskGitHubSyncService {
       };
 
       const fields = data.data?.node?.fields?.nodes ?? [];
-      const statusField = fields.find(
-        (f) => f.name?.toLowerCase() === "status" && f.options
-      );
+      const statusField = fields.find((f) => f.name?.toLowerCase() === "status" && f.options);
 
       if (!statusField?.id || !statusField?.options) {
         return null;
@@ -590,9 +588,7 @@ export class TaskGitHubSyncService {
     ]);
 
     if (!result.success) {
-      throw new TaskGitHubSyncError(
-        `Failed to update project item field: ${result.stderr}`
-      );
+      throw new TaskGitHubSyncError(`Failed to update project item field: ${result.stderr}`);
     }
   }
 }

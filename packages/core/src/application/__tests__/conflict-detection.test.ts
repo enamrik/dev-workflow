@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDatabase } from "../../__tests__/setup.js";
-import { createRepositories, createTestIssue, createTestPlan, createTestTask, completeTask } from "../../__tests__/helpers.js";
+import {
+  createRepositories,
+  createTestIssue,
+  createTestPlan,
+  createTestTask,
+  completeTask,
+} from "../../__tests__/helpers.js";
 import { ConflictDetectionService } from "../conflict-detection-service.js";
 import { taskExecutionLogs } from "../../infrastructure/database/schema.js";
 
@@ -20,10 +26,7 @@ describe("ConflictDetectionService", () => {
     planId = plan.id;
 
     // Create conflict detection service
-    conflictService = new ConflictDetectionService(
-      testDb.db,
-      repos.taskRepository
-    );
+    conflictService = new ConflictDetectionService(testDb.db, repos.taskRepository);
   });
 
   afterEach(() => {
@@ -69,14 +72,17 @@ describe("ConflictDetectionService", () => {
       completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
 
       // Log that task 1 modified src/components/Button.tsx
-      testDb.db.insert(taskExecutionLogs).values({
-        id: crypto.randomUUID(),
-        taskId: task1.id,
-        sessionId: "session-1",
-        message: "Updated Button component",
-        filesModified: ["src/components/Button.tsx"],
-        createdAt: new Date().toISOString(),
-      }).run();
+      testDb.db
+        .insert(taskExecutionLogs)
+        .values({
+          id: crypto.randomUUID(),
+          taskId: task1.id,
+          sessionId: "session-1",
+          message: "Updated Button component",
+          filesModified: ["src/components/Button.tsx"],
+          createdAt: new Date().toISOString(),
+        })
+        .run();
 
       const result = conflictService.detectConflicts(task2.id);
 
@@ -97,14 +103,17 @@ describe("ConflictDetectionService", () => {
 
       completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
 
-      testDb.db.insert(taskExecutionLogs).values({
-        id: crypto.randomUUID(),
-        taskId: task1.id,
-        sessionId: "session-1",
-        message: "Modified files in components",
-        filesModified: ["src/components/Header.tsx", "src/components/Footer.tsx"],
-        createdAt: new Date().toISOString(),
-      }).run();
+      testDb.db
+        .insert(taskExecutionLogs)
+        .values({
+          id: crypto.randomUUID(),
+          taskId: task1.id,
+          sessionId: "session-1",
+          message: "Modified files in components",
+          filesModified: ["src/components/Header.tsx", "src/components/Footer.tsx"],
+          createdAt: new Date().toISOString(),
+        })
+        .run();
 
       const result = conflictService.detectConflicts(task2.id);
 
@@ -122,14 +131,17 @@ describe("ConflictDetectionService", () => {
 
       completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
 
-      testDb.db.insert(taskExecutionLogs).values({
-        id: crypto.randomUUID(),
-        taskId: task1.id,
-        sessionId: "session-1",
-        message: "Modified auth",
-        filesModified: ["src/auth/login.ts"],
-        createdAt: new Date().toISOString(),
-      }).run();
+      testDb.db
+        .insert(taskExecutionLogs)
+        .values({
+          id: crypto.randomUUID(),
+          taskId: task1.id,
+          sessionId: "session-1",
+          message: "Modified auth",
+          filesModified: ["src/auth/login.ts"],
+          createdAt: new Date().toISOString(),
+        })
+        .run();
 
       const result = conflictService.detectConflicts(task2.id);
 
@@ -148,23 +160,29 @@ describe("ConflictDetectionService", () => {
       completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
       completeTask(repos.taskRepository, task2.id, "session-2", "Completed");
 
-      testDb.db.insert(taskExecutionLogs).values({
-        id: crypto.randomUUID(),
-        taskId: task1.id,
-        sessionId: "session-1",
-        message: "Initial index update",
-        filesModified: ["src/index.ts"],
-        createdAt: new Date().toISOString(),
-      }).run();
+      testDb.db
+        .insert(taskExecutionLogs)
+        .values({
+          id: crypto.randomUUID(),
+          taskId: task1.id,
+          sessionId: "session-1",
+          message: "Initial index update",
+          filesModified: ["src/index.ts"],
+          createdAt: new Date().toISOString(),
+        })
+        .run();
 
-      testDb.db.insert(taskExecutionLogs).values({
-        id: crypto.randomUUID(),
-        taskId: task2.id,
-        sessionId: "session-2",
-        message: "Follow-up index update",
-        filesModified: ["src/index.ts"],
-        createdAt: new Date().toISOString(),
-      }).run();
+      testDb.db
+        .insert(taskExecutionLogs)
+        .values({
+          id: crypto.randomUUID(),
+          taskId: task2.id,
+          sessionId: "session-2",
+          message: "Follow-up index update",
+          filesModified: ["src/index.ts"],
+          createdAt: new Date().toISOString(),
+        })
+        .run();
 
       const result = conflictService.detectConflicts(task3.id);
 
@@ -196,23 +214,29 @@ describe("ConflictDetectionService", () => {
       completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
       completeTask(repos.taskRepository, task2.id, "session-2", "Completed");
 
-      testDb.db.insert(taskExecutionLogs).values({
-        id: crypto.randomUUID(),
-        taskId: task1.id,
-        sessionId: "session-1",
-        message: "First task",
-        filesModified: ["src/a.ts", "src/b.ts"],
-        createdAt: new Date().toISOString(),
-      }).run();
+      testDb.db
+        .insert(taskExecutionLogs)
+        .values({
+          id: crypto.randomUUID(),
+          taskId: task1.id,
+          sessionId: "session-1",
+          message: "First task",
+          filesModified: ["src/a.ts", "src/b.ts"],
+          createdAt: new Date().toISOString(),
+        })
+        .run();
 
-      testDb.db.insert(taskExecutionLogs).values({
-        id: crypto.randomUUID(),
-        taskId: task2.id,
-        sessionId: "session-2",
-        message: "Second task",
-        filesModified: ["src/c.ts"],
-        createdAt: new Date().toISOString(),
-      }).run();
+      testDb.db
+        .insert(taskExecutionLogs)
+        .values({
+          id: crypto.randomUUID(),
+          taskId: task2.id,
+          sessionId: "session-2",
+          message: "Second task",
+          filesModified: ["src/c.ts"],
+          createdAt: new Date().toISOString(),
+        })
+        .run();
 
       const result = conflictService.getModifiedFilesForPlan(planId);
 
@@ -229,23 +253,29 @@ describe("ConflictDetectionService", () => {
       completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
       completeTask(repos.taskRepository, task2.id, "session-2", "Completed");
 
-      testDb.db.insert(taskExecutionLogs).values({
-        id: crypto.randomUUID(),
-        taskId: task1.id,
-        sessionId: "session-1",
-        message: "First modification",
-        filesModified: ["src/shared.ts"],
-        createdAt: new Date().toISOString(),
-      }).run();
+      testDb.db
+        .insert(taskExecutionLogs)
+        .values({
+          id: crypto.randomUUID(),
+          taskId: task1.id,
+          sessionId: "session-1",
+          message: "First modification",
+          filesModified: ["src/shared.ts"],
+          createdAt: new Date().toISOString(),
+        })
+        .run();
 
-      testDb.db.insert(taskExecutionLogs).values({
-        id: crypto.randomUUID(),
-        taskId: task2.id,
-        sessionId: "session-2",
-        message: "Second modification",
-        filesModified: ["src/shared.ts"],
-        createdAt: new Date().toISOString(),
-      }).run();
+      testDb.db
+        .insert(taskExecutionLogs)
+        .values({
+          id: crypto.randomUUID(),
+          taskId: task2.id,
+          sessionId: "session-2",
+          message: "Second modification",
+          filesModified: ["src/shared.ts"],
+          createdAt: new Date().toISOString(),
+        })
+        .run();
 
       const result = conflictService.getModifiedFilesForPlan(planId);
 

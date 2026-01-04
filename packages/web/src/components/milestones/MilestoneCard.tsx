@@ -52,11 +52,7 @@ export function MilestoneCard({ data }: MilestoneCardProps) {
             {progress.closed}/{progress.total} issues ({progress.percentage}%)
           </span>
         </div>
-        <ProgressBar
-          completed={progress.closed}
-          total={progress.total}
-          showLabel={false}
-        />
+        <ProgressBar completed={progress.closed} total={progress.total} showLabel={false} />
       </div>
 
       {/* Issues list */}
@@ -64,19 +60,14 @@ export function MilestoneCard({ data }: MilestoneCardProps) {
         {issues.length > 0 ? (
           <ul className="space-y-2">
             {issues.map((issue) => (
-              <li
-                key={issue.number}
-                className="flex items-center gap-2 text-sm"
-              >
+              <li key={issue.number} className="flex items-center gap-2 text-sm">
                 <Link
                   href={`/projects/${encodeURIComponent(milestone.projectId)}/issues/${issue.number}`}
                   className="text-blue-600 hover:underline font-medium"
                 >
                   #{issue.number}
                 </Link>
-                <span className="text-gray-700 truncate flex-1">
-                  {truncate(issue.title, 40)}
-                </span>
+                <span className="text-gray-700 truncate flex-1">{truncate(issue.title, 40)}</span>
                 <Badge variant="status" value={issue.computedStatus} />
               </li>
             ))}

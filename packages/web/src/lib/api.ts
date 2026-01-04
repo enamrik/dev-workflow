@@ -13,10 +13,7 @@ import { ApiError } from "./types";
 
 const API_BASE = "/api";
 
-async function apiClient<T>(
-  endpoint: string,
-  options?: RequestInit
-): Promise<T> {
+async function apiClient<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers: {
@@ -33,9 +30,7 @@ async function apiClient<T>(
   return response.json();
 }
 
-function buildQueryString(
-  params: Record<string, string | number | undefined>
-): string {
+function buildQueryString(params: Record<string, string | number | undefined>): string {
   const searchParams = new URLSearchParams();
 
   for (const [key, value] of Object.entries(params)) {
@@ -58,9 +53,7 @@ export interface IssuesFilters {
   project?: string;
 }
 
-export function getIssues(
-  filters?: IssuesFilters
-): Promise<ProjectIssueWithPlanInfo[]> {
+export function getIssues(filters?: IssuesFilters): Promise<ProjectIssueWithPlanInfo[]> {
   const query = buildQueryString({
     project: filters?.project,
   });
@@ -68,13 +61,8 @@ export function getIssues(
   return apiClient<ProjectIssueWithPlanInfo[]>(`/issues${query}`);
 }
 
-export function getIssue(
-  projectId: string,
-  issueNumber: number
-): Promise<IssueDetail> {
-  return apiClient<IssueDetail>(
-    `/projects/${encodeURIComponent(projectId)}/issues/${issueNumber}`
-  );
+export function getIssue(projectId: string, issueNumber: number): Promise<IssueDetail> {
+  return apiClient<IssueDetail>(`/projects/${encodeURIComponent(projectId)}/issues/${issueNumber}`);
 }
 
 // Tasks
@@ -95,9 +83,7 @@ export interface MilestonesFilters {
   project?: string;
 }
 
-export function getMilestones(
-  filters?: MilestonesFilters
-): Promise<MilestoneWithIssues[]> {
+export function getMilestones(filters?: MilestonesFilters): Promise<MilestoneWithIssues[]> {
   const query = buildQueryString({
     project: filters?.project,
   });
@@ -110,9 +96,7 @@ export interface WorktreesFilters {
   project?: string;
 }
 
-export async function getWorktrees(
-  filters?: WorktreesFilters
-): Promise<Worktree[]> {
+export async function getWorktrees(filters?: WorktreesFilters): Promise<Worktree[]> {
   const query = buildQueryString({
     project: filters?.project,
   });
@@ -150,10 +134,7 @@ export function getTaskExecutionLogs(
   );
 }
 
-export function getTaskDependencies(
-  projectId: string,
-  taskId: string
-): Promise<Task[]> {
+export function getTaskDependencies(projectId: string, taskId: string): Promise<Task[]> {
   return apiClient<Task[]>(
     `/projects/${encodeURIComponent(projectId)}/tasks/${taskId}/dependencies`
   );

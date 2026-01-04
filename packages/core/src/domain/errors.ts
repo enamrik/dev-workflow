@@ -29,9 +29,7 @@ export class InvalidDependencyError extends Error {
     public readonly taskTitle: string,
     public readonly invalidDependencyId: string
   ) {
-    super(
-      `Task "${taskTitle}" (${taskId}) depends on unknown task: ${invalidDependencyId}`
-    );
+    super(`Task "${taskTitle}" (${taskId}) depends on unknown task: ${invalidDependencyId}`);
     this.name = "InvalidDependencyError";
   }
 }
@@ -51,12 +49,8 @@ export class DependencyNotSatisfiedError extends Error {
       status: string;
     }>
   ) {
-    const blocking = blockingTasks
-      .map((t) => `"${t.title}" (${t.status})`)
-      .join(", ");
-    super(
-      `Cannot start task "${taskTitle}": blocked by unsatisfied dependencies: ${blocking}`
-    );
+    const blocking = blockingTasks.map((t) => `"${t.title}" (${t.status})`).join(", ");
+    super(`Cannot start task "${taskTitle}": blocked by unsatisfied dependencies: ${blocking}`);
     this.name = "DependencyNotSatisfiedError";
   }
 }
@@ -81,9 +75,7 @@ export class InvalidStatusTransitionError extends Error {
     public readonly reason?: string
   ) {
     const reasonPart = reason ? `: ${reason}` : "";
-    super(
-      `Cannot transition task from ${fromStatus} to ${toStatus}${reasonPart}`
-    );
+    super(`Cannot transition task from ${fromStatus} to ${toStatus}${reasonPart}`);
     this.name = "InvalidStatusTransitionError";
   }
 }

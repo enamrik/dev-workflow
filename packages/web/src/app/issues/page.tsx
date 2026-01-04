@@ -20,7 +20,13 @@ const DEFAULT_PAGE_SIZE = 25;
 
 export default function IssuesPage() {
   return (
-    <Suspense fallback={<Card><LoadingState message="Loading..." /></Card>}>
+    <Suspense
+      fallback={
+        <Card>
+          <LoadingState message="Loading..." />
+        </Card>
+      }
+    >
       <IssuesPageContent />
     </Suspense>
   );
@@ -142,11 +148,7 @@ function IssuesPageContent() {
           placeholder="Search issues..."
           className="max-w-md"
         />
-        <Checkbox
-          label="Show closed"
-          checked={showClosed}
-          onChange={handleShowClosedChange}
-        />
+        <Checkbox label="Show closed" checked={showClosed} onChange={handleShowClosedChange} />
       </div>
 
       <IssueTable issues={paginatedIssues} />

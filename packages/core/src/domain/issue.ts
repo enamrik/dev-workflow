@@ -112,10 +112,7 @@ export interface IssueRepository {
    * @param data - Partial issue data to update (cannot update id, number, or createdAt)
    * @returns The updated issue
    */
-  update(
-    id: string,
-    data: Partial<Omit<Issue, "id" | "number" | "createdAt">>
-  ): Issue;
+  update(id: string, data: Partial<Omit<Issue, "id" | "number" | "createdAt">>): Issue;
 
   /**
    * Soft delete an issue

@@ -14,6 +14,7 @@ Tasks need lifecycle hooks for quality gates (e.g., run tests before completing)
 - Some need security scanning
 
 We needed a system that's:
+
 1. Flexible enough for varied requirements
 2. Simple enough to configure
 3. Composable for combining behaviors
@@ -60,17 +61,18 @@ Tasks reference hooks via `hookConfigLabels` array:
 
 ### Hook Stages
 
-| Stage | When | Must Pass? |
-|-------|------|------------|
-| preStart | Before IN_PROGRESS | Yes |
-| postStart | After IN_PROGRESS | No |
-| preComplete | Before COMPLETED | Yes |
-| postComplete | After COMPLETED | No |
-| onAbandon | When abandoned | No |
+| Stage        | When               | Must Pass? |
+| ------------ | ------------------ | ---------- |
+| preStart     | Before IN_PROGRESS | Yes        |
+| postStart    | After IN_PROGRESS  | No         |
+| preComplete  | Before COMPLETED   | Yes        |
+| postComplete | After COMPLETED    | No         |
+| onAbandon    | When abandoned     | No         |
 
 ### Hook Merging
 
 When a task has multiple labels, hooks are merged by stage:
+
 - Same-stage hooks execute in label order
 - First failure stops execution (for mustPass hooks)
 
@@ -112,6 +114,7 @@ interface Task {
 ```
 
 Rejected because:
+
 - Complex to reason about (which level wins?)
 - Hard to see effective hooks for a task
 - Override semantics become confusing
@@ -119,22 +122,22 @@ Rejected because:
 ### Single Hook Per Task
 
 ```typescript
-hookConfig: "unit-tests" // Only one allowed
+hookConfig: "unit-tests"; // Only one allowed
 ```
 
 Rejected because:
+
 - Can't combine behaviors
 - Forces creation of many combination configs (unit-and-e2e, unit-and-security, etc.)
 
 ### Inline Hook Definitions
 
 ```typescript
-hooks: [
-  { stage: "preComplete", command: "pnpm test" }
-]
+hooks: [{ stage: "preComplete", command: "pnpm test" }];
 ```
 
 Rejected because:
+
 - No reusability across tasks
 - Bloats task data
 - Hard to update hooks across many tasks

@@ -13,12 +13,7 @@ import {
   type PRStatus,
   type TaskGitHubSyncService,
 } from "@dev-workflow/core";
-import {
-  type ToolDefinition,
-  type ToolResponse,
-  successResponse,
-  errorResponse,
-} from "./types.js";
+import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
 /**
  * Tool definitions for PR operations
@@ -26,8 +21,7 @@ import {
 export const prToolDefinitions: ToolDefinition[] = [
   {
     name: "get_task_pr_status",
-    description:
-      "Get the PR status for a task. Returns PR details if one exists.",
+    description: "Get the PR status for a task. Returns PR details if one exists.",
     inputSchema: {
       type: "object",
       properties: {
@@ -54,7 +48,8 @@ export const prToolDefinitions: ToolDefinition[] = [
         },
         title: {
           type: "string",
-          description: "PR title. Defaults to '[#issueNumber.taskNumber] taskTitle'. Uses GitHub issue number if task has one linked.",
+          description:
+            "PR title. Defaults to '[#issueNumber.taskNumber] taskTitle'. Uses GitHub issue number if task has one linked.",
         },
         body: {
           type: "string",
@@ -111,10 +106,7 @@ export interface PRToolContext {
 /**
  * Map GitHub PR state to our PRStatus type
  */
-function mapGitHubStateToPRStatus(
-  state: "OPEN" | "CLOSED" | "MERGED",
-  isDraft: boolean
-): PRStatus {
+function mapGitHubStateToPRStatus(state: "OPEN" | "CLOSED" | "MERGED", isDraft: boolean): PRStatus {
   if (state === "MERGED") return "MERGED";
   if (state === "CLOSED") return "CLOSED";
   if (isDraft) return "DRAFT";
@@ -240,7 +232,7 @@ export async function handleSubmitForReview(
   if (task.prNumber) {
     return errorResponse(
       `Task already has a PR: #${task.prNumber} (${task.prUrl}). ` +
-      "Use get_task_pr_status to check its state."
+        "Use get_task_pr_status to check its state."
     );
   }
 
@@ -305,9 +297,7 @@ export async function handleSubmitForReview(
         task.worktreePath
       );
       if (!pushResult.success) {
-        return errorResponse(
-          `Failed to push branch: ${pushResult.stderr || pushResult.stdout}`
-        );
+        return errorResponse(`Failed to push branch: ${pushResult.stderr || pushResult.stdout}`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -352,13 +342,7 @@ export async function handleSubmitForReview(
 
   // 7. Create the PR (gh CLI auto-detects repo from git remotes)
   try {
-    const pr = await ctx.githubCLI.createPR(
-      task.branchName,
-      targetBranch,
-      prTitle,
-      prBody,
-      draft
-    );
+    const pr = await ctx.githubCLI.createPR(task.branchName, targetBranch, prTitle, prBody, draft);
 
     // 8. Store PR info on task
     const prStatus = mapGitHubStateToPRStatus(pr.state, pr.isDraft);
@@ -446,12 +430,7 @@ export async function handleCompleteTask(
     }
 
     // Update task status to COMPLETED
-    ctx.taskRepository.updateStatus(
-      taskId,
-      "COMPLETED",
-      sessionId,
-      "Completed (main mode, no PR)"
-    );
+    ctx.taskRepository.updateStatus(taskId, "COMPLETED", sessionId, "Completed (main mode, no PR)");
 
     // Clear session association
     ctx.taskRepository.clearSession(taskId);
@@ -485,7 +464,7 @@ export async function handleCompleteTask(
   if (task.status !== "PR_REVIEW") {
     return errorResponse(
       `Task must be in PR_REVIEW status to complete. Current status: ${task.status}. ` +
-      "Use submit_for_review first to create a PR."
+        "Use submit_for_review first to create a PR."
     );
   }
 
@@ -504,7 +483,7 @@ export async function handleCompleteTask(
   if (!pr.merged) {
     return errorResponse(
       `PR #${task.prNumber} is not merged yet. Current state: ${pr.state}. ` +
-      "Merge the PR on GitHub before completing the task."
+        "Merge the PR on GitHub before completing the task."
     );
   }
 
@@ -549,12 +528,7 @@ export async function handleCompleteTask(
   ctx.taskRepository.updatePRStatus(taskId, "MERGED");
 
   // 6. Update task status to COMPLETED
-  ctx.taskRepository.updateStatus(
-    taskId,
-    "COMPLETED",
-    sessionId,
-    `PR #${task.prNumber} merged`
-  );
+  ctx.taskRepository.updateStatus(taskId, "COMPLETED", sessionId, `PR #${task.prNumber} merged`);
 
   // 7. Clear session association
   ctx.taskRepository.clearSession(taskId);
@@ -598,7 +572,14 @@ export async function handleCompleteTask(
 function findNextAvailableTask(
   ctx: PRToolContext,
   currentPlanId: string
-): { id: string; number: number; title: string; issueNumber: number; issueTitle: string; status: string } | null {
+): {
+  id: string;
+  number: number;
+  title: string;
+  issueNumber: number;
+  issueTitle: string;
+  status: string;
+} | null {
   // First, check same plan for READY tasks
   const samePlanTasks = ctx.taskRepository.findByPlanId(currentPlanId);
   const readyTask = samePlanTasks.find((t) => t.status === "READY");

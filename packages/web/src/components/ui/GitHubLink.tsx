@@ -15,12 +15,7 @@ interface GitHubLinkProps {
  * External link to a GitHub resource (issue, PR, project).
  * Follows the PR link pattern: blue text with external link icon, opens in new tab.
  */
-export function GitHubLink({
-  url,
-  label = "GitHub",
-  tooltip,
-  className,
-}: GitHubLinkProps) {
+export function GitHubLink({ url, label = "GitHub", tooltip, className }: GitHubLinkProps) {
   return (
     <Tooltip content={tooltip ?? url}>
       <a
@@ -51,12 +46,7 @@ function GitHubIcon({ className }: { className?: string }) {
 
 function ExternalLinkIcon({ className }: { className?: string }) {
   return (
-    <svg
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
         strokeLinecap="round"
         strokeLinejoin="round"

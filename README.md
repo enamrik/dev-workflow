@@ -42,6 +42,7 @@ dev-workflow init
 ```
 
 This will:
+
 1. Create `.track/` directory with configuration and templates
 2. Install skills to `.claude/skills/dev-workflow/`
 3. Install subagents to `.claude/agents/dev-workflow/`
@@ -100,6 +101,7 @@ Claude will automatically create an issue using the appropriate template.
 ### 3. Programmatic (via MCP)
 
 Claude Code agents can call MCP tools directly:
+
 - `create_issue` - Create a new issue
 - `get_issue` - Get issue by ID or number
 - `list_issues` - List issues with filters
@@ -128,13 +130,16 @@ labels: []
 # Feature: [Title]
 
 ## Description
+
 [Brief description]
 
 ## Acceptance Criteria
+
 - [ ] Criterion 1
 - [ ] Criterion 2
 
 ## Context
+
 [Additional context]
 ```
 
@@ -248,6 +253,7 @@ make test-npm-install
 ```
 
 This script:
+
 1. Packs `@dev-workflow/cli` and `@dev-workflow/mcp-server` into tarballs
 2. Creates a temporary directory
 3. Installs the packages via `npm install`
@@ -299,6 +305,7 @@ MIT
 ## Contributing
 
 We welcome contributions! Please:
+
 1. Create an issue describing what you want to work on
 2. Fork the repository
 3. Create a feature branch
