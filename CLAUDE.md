@@ -225,6 +225,7 @@ make ui-dev-local       # Start UI dev server with local test data
 `make dogfood` automatically kills the running MCP server process after rebuilding. Claude Code will restart it on the next MCP tool call, loading the fresh code.
 
 If you rebuild packages manually (e.g., `pnpm build`), you can restart the MCP server by:
+
 - Running `pkill -f "dev-workflow.*mcp"` in terminal, OR
 - Running `/mcp` in Claude Code
 

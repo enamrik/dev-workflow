@@ -6,6 +6,7 @@ Execute each section in order and verify the expected results.
 ## Prerequisites
 
 Before running this test:
+
 1. Ensure MCP server is running with latest code: `/mcp`
 2. Ensure `gh` CLI is authenticated: `gh auth status`
 
@@ -74,6 +75,7 @@ Args:
 ```
 
 **Expected Result**:
+
 - Issue status: OPEN
 - Task status: BACKLOG
 - GitHub issue created
@@ -130,6 +132,7 @@ Args:
 ```
 
 **Expected Result**:
+
 - Task status: IN_PROGRESS
 - Worktree created
 - Branch created
@@ -195,6 +198,7 @@ Args:
 ```
 
 **Expected Result**:
+
 - Task status: PR_REVIEW
 - PR created
 
@@ -306,12 +310,15 @@ gh pr close [PR_NUMBER] --comment "Test cleanup"
 ### Sync Not Working (GitHub column not updating)
 
 1. **Check if MCP server has latest code**:
+
    ```bash
    pnpm --filter @dev-workflow/core build && pnpm --filter @dev-workflow/mcp-server build
    ```
+
    Then restart MCP server with `/mcp`
 
 2. **Check task sync state in database**:
+
    ```bash
    sqlite3 ~/.track/workflow.db "SELECT github_sync_status, github_last_sync_error FROM tasks WHERE id = '[TASK_ID]'"
    ```
@@ -319,6 +326,7 @@ gh pr close [PR_NUMBER] --comment "Test cleanup"
    If `github_last_sync_error` has a value, that's the problem.
 
 3. **Check project configuration**:
+
    ```bash
    sqlite3 ~/.track/workflow.db "SELECT github_sync FROM projects WHERE id = 'de15066e-7af0-458e-bf9d-d383110f7d30'"
    ```
@@ -326,6 +334,7 @@ gh pr close [PR_NUMBER] --comment "Test cleanup"
    Should have `enabled: true` and `projectId` set.
 
 4. **Manually fix a stuck GitHub issue**:
+
    ```bash
    # Get the project item ID
    gh api graphql -f query='query { repository(owner: "enamrik", name: "dev-workflow") { issue(number: [GITHUB_ISSUE_NUMBER]) { projectItems(first: 5) { nodes { id } } } } }'
@@ -379,13 +388,13 @@ query {
 
 ## Test Results Template
 
-| Step | Expected | Actual | Pass/Fail |
-|------|----------|--------|-----------|
-| 1. Create Issue | PLANNED | | |
-| 2. Generate Plan | 1 task PLANNED | | |
-| 3. Move to Backlog | GitHub issue created, Backlog column | | |
-| 4. Start Task | IN_PROGRESS, "In progress" column | | |
-| 5. Make Commit | Commit created | | |
-| 6. Submit for Review | PR_REVIEW, "In review" column | | |
-| 7. Complete/Abandon | COMPLETED/ABANDONED, "Done" column, CLOSED | | |
-| 8. Cleanup | Issue deleted | | |
+| Step                 | Expected                                   | Actual | Pass/Fail |
+| -------------------- | ------------------------------------------ | ------ | --------- |
+| 1. Create Issue      | PLANNED                                    |        |           |
+| 2. Generate Plan     | 1 task PLANNED                             |        |           |
+| 3. Move to Backlog   | GitHub issue created, Backlog column       |        |           |
+| 4. Start Task        | IN_PROGRESS, "In progress" column          |        |           |
+| 5. Make Commit       | Commit created                             |        |           |
+| 6. Submit for Review | PR_REVIEW, "In review" column              |        |           |
+| 7. Complete/Abandon  | COMPLETED/ABANDONED, "Done" column, CLOSED |        |           |
+| 8. Cleanup           | Issue deleted                              |        |           |
