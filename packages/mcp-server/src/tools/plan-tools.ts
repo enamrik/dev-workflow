@@ -190,19 +190,24 @@ export async function handleGeneratePlan(
     preserveExistingTasks = true,
   } = args;
 
-  // Resolve issue ID from number if needed
-  let resolvedIssueId = issueId;
-  if (!resolvedIssueId && issueNumber) {
-    const issue = ctx.issueRepository.findByNumber(issueNumber);
-    if (!issue) {
-      return errorResponse(`Issue not found: #${issueNumber}`);
-    }
-    resolvedIssueId = issue.id;
+  // Resolve issue from ID or number
+  const issue = issueId
+    ? ctx.issueRepository.findById(issueId)
+    : issueNumber
+      ? ctx.issueRepository.findByNumber(issueNumber)
+      : null;
+
+  if (!issue) {
+    return errorResponse(
+      issueId
+        ? `Issue not found: ${issueId}`
+        : issueNumber
+          ? `Issue not found: #${issueNumber}`
+          : "Either issueId or issueNumber is required"
+    );
   }
 
-  if (!resolvedIssueId) {
-    return errorResponse("Either issueId or issueNumber is required");
-  }
+  const resolvedIssueId = issue.id;
 
   // Validate dependsOn references - all must reference existing task IDs
   const taskIds = new Set(tasks.map((t) => t.id));
@@ -239,7 +244,10 @@ export async function handleGeneratePlan(
     preserveExistingTasks,
   });
 
-  return successResponse(result);
+  return successResponse({
+    ...result,
+    url: `http://127.0.0.1:3456/projects/${issue.projectId}/issues/${issue.number}`,
+  });
 }
 
 /**

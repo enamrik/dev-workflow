@@ -392,7 +392,7 @@ export async function handleCreateIssue(
       priority: issue.priority,
       status: issue.status,
       templateUsed: issue.templateUsed,
-      url: `http://localhost:3000/issues/${issue.number}`,
+      url: `http://127.0.0.1:3456/projects/${issue.projectId}/issues/${issue.number}`,
     },
   });
 }
