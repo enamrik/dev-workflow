@@ -325,13 +325,23 @@ export async function handleSubmitForReview(
   // 5. Build PR body with GitHub issue linking
   let prBody = body ?? task.description;
 
-  // Add "Closes #N" if the issue is synced to GitHub
-  if (issue.githubSync?.githubIssueNumber) {
-    const closesLine = `\nCloses #${issue.githubSync.githubIssueNumber}`;
-    prBody = prBody + "\n\n---\n" + closesLine;
+  // Build footer with GitHub issue links
+  const footerLines: string[] = [];
+
+  // Link to the task's GitHub issue (closes it when PR is merged)
+  if (task.githubSync?.githubIssueNumber) {
+    footerLines.push(`Closes #${task.githubSync.githubIssueNumber}`);
   }
 
-  // Add task reference
+  // Reference the parent issue for context (without closing it)
+  if (issue.githubSync?.githubIssueNumber) {
+    footerLines.push(`Part of #${issue.githubSync.githubIssueNumber}`);
+  }
+
+  // Add footer with task reference
+  if (footerLines.length > 0) {
+    prBody += "\n\n---\n" + footerLines.join("\n");
+  }
   prBody += `\n\n_Task ${issue.number}.${task.number}: ${task.title}_`;
 
   // 6. Determine base branch
@@ -380,7 +390,10 @@ export async function handleSubmitForReview(
         baseBranch: pr.baseBranch,
       },
       message: `Created PR #${pr.number} and transitioned task to PR_REVIEW: ${pr.url}`,
-      linkedToGitHubIssue: issue.githubSync?.githubIssueNumber
+      linkedToTaskGitHubIssue: task.githubSync?.githubIssueNumber
+        ? `#${task.githubSync.githubIssueNumber}`
+        : null,
+      linkedToParentGitHubIssue: issue.githubSync?.githubIssueNumber
         ? `#${issue.githubSync.githubIssueNumber}`
         : null,
     });
