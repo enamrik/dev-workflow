@@ -24,9 +24,10 @@ interface KanbanTask extends Task {
 
 interface KanbanColumnProps {
   title: string;
-  status: "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED";
+  status: "PLANNED" | "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED";
   tasks: KanbanTask[];
   tooltip?: string;
+  stacked?: boolean;
 }
 
 export function KanbanColumn({
@@ -34,8 +35,10 @@ export function KanbanColumn({
   status,
   tasks,
   tooltip,
+  stacked = false,
 }: KanbanColumnProps) {
   const headerColor = {
+    PLANNED: "bg-purple-100",
     BACKLOG: "bg-gray-100",
     READY: "bg-gray-100",
     IN_PROGRESS: "bg-orange-100",
@@ -79,7 +82,10 @@ export function KanbanColumn({
       </div>
 
       {/* Column content */}
-      <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[calc(100vh-280px)] scrollbar-auto-hide">
+      <div className={clsx(
+        "flex-1 p-2 space-y-2 overflow-y-auto scrollbar-auto-hide",
+        stacked ? "max-h-[calc((100vh-280px)/2-16px)]" : "max-h-[calc(100vh-280px)]"
+      )}>
         <AnimatePresence mode="popLayout">
           {tasks.length > 0 ? (
             tasks.map((task) => (

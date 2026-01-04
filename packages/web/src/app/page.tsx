@@ -117,7 +117,7 @@ function BoardPageContent() {
 
         <div className="flex items-center justify-between mb-4">
           <Checkbox
-            label="Show backlog"
+            label="Show backlog/planned"
             checked={showBacklog}
             onChange={handleShowBacklogChange}
           />
