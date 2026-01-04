@@ -311,7 +311,14 @@ function CardContent({
               </span>
             </Tooltip>
           )}
-          {isAbandoned && <Badge variant="status" value="ABANDONED" />}
+          {/* Abandoned indicator - small X icon */}
+          {isAbandoned && (
+            <Tooltip content="Abandoned" side="top">
+              <span className="text-red-400 cursor-help">
+                <AbandonedIcon />
+              </span>
+            </Tooltip>
+          )}
           {task.labels.length > 0 && (
             <div className="flex gap-1 flex-wrap">
               {task.labels.slice(0, 2).map((label) => (
@@ -396,6 +403,14 @@ function BranchIcon() {
         strokeWidth={2}
         d="M13 10V3L4 14h7v7l9-11h-7z"
       />
+    </svg>
+  );
+}
+
+function AbandonedIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
     </svg>
   );
 }
