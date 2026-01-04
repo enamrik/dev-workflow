@@ -216,8 +216,23 @@ Useful Make commands for development:
 make dogfood            # Full reset + build + link + init
 make test               # Run unit tests
 make test-e2e           # Run E2E tests (requires Claude CLI)
+make prep               # Run all checks before pushing (REQUIRED before push)
 make ui-dev-local       # Start UI dev server with local test data
 ```
+
+### Pre-Push Validation
+
+**IMPORTANT: Always run `make prep` before pushing to remote (PR or main branch).**
+
+This command runs all validation checks in order with fail-fast behavior:
+
+1. Type checking (`pnpm typecheck`)
+2. Linting (`pnpm lint`)
+3. Format checking (`pnpm format:check`)
+4. Unit tests (`pnpm test`)
+5. Integration tests (`pnpm test:integration`)
+
+E2E tests are excluded because they use the Claude CLI and cost money. Integration tests provide comprehensive coverage by testing real code with mocked external boundaries.
 
 ### Working in Worktrees
 

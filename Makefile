@@ -5,7 +5,7 @@ export PNPM_HOME
 export PATH := $(PNPM_HOME):$(PATH)
 DEV_WORKFLOW := $(PNPM_HOME)/dev-workflow
 
-.PHONY: help install build clean reset init dogfood test test-npm-install test-mcp test-e2e link unlink flatten-migrations ui ui-dev ui-stop local-track ui-dev-local worktree-setup
+.PHONY: help install build clean reset init dogfood test test-npm-install test-mcp test-e2e link unlink flatten-migrations ui ui-dev ui-stop local-track ui-dev-local worktree-setup prep
 
 help:
 	@echo "dev-workflow - Makefile commands"
@@ -21,6 +21,7 @@ help:
 	@echo "  make dogfood          - Build + link + update (or init if first time)"
 	@echo "  make test             - Run unit tests"
 	@echo "  make test-e2e         - Run E2E tests (requires Claude CLI)"
+	@echo "  make prep             - Run all checks before pushing (typecheck, lint, format, tests)"
 	@echo "  make test-npm-install - Test npm install scenario (simulates user install)"
 	@echo "  make test-mcp         - Test MCP server startup and migrations"
 	@echo "  make flatten-migrations - Delete all migrations and regenerate (dev only)"
@@ -128,6 +129,29 @@ test-mcp:
 test-e2e: build
 	@echo "🧪 Running E2E tests (requires Claude CLI)..."
 	@cd packages/e2e && pnpm test:e2e
+
+# Pre-push validation: runs all checks before pushing to remote
+# Fails fast on first error - no point continuing if typecheck fails
+# E2E tests are excluded (they use Claude CLI and cost money)
+prep:
+	@echo "🔍 Running pre-push validation..."
+	@echo ""
+	@echo "Step 1/5: Type checking..."
+	@pnpm typecheck
+	@echo ""
+	@echo "Step 2/5: Linting..."
+	@pnpm lint
+	@echo ""
+	@echo "Step 3/5: Format checking..."
+	@pnpm format:check
+	@echo ""
+	@echo "Step 4/5: Unit tests..."
+	@pnpm test
+	@echo ""
+	@echo "Step 5/5: Integration tests..."
+	@pnpm test:integration
+	@echo ""
+	@echo "✅ All checks passed! Ready to push."
 
 flatten-migrations:
 	@./scripts/flatten-migrations.sh
