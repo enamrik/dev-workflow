@@ -17,9 +17,7 @@ export function IssueRow({ item }: IssueRowProps) {
     ? `/projects/${encodeURIComponent(issue.projectId)}/issues/${issue.number}`
     : `/issues/${issue.number}`;
 
-  const boardUrl = issue.projectId
-    ? `/?project=${encodeURIComponent(issue.projectId)}`
-    : "/";
+  const boardUrl = issue.projectId ? `/?project=${encodeURIComponent(issue.projectId)}` : "/";
 
   function handleRowClick() {
     router.push(issueUrl);
@@ -30,9 +28,7 @@ export function IssueRow({ item }: IssueRowProps) {
       className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
       onClick={handleRowClick}
     >
-      <td className="py-3 px-3 w-20 font-semibold text-gray-600">
-        {issue.number}
-      </td>
+      <td className="py-3 px-3 w-20 font-semibold text-gray-600">{issue.number}</td>
       <td className="py-3 px-3">
         <div className="font-medium text-gray-800">{issue.title}</div>
         {(projectName || milestoneTitle) && (
@@ -82,12 +78,7 @@ interface TasksStatusProps {
   };
 }
 
-function TasksStatus({
-  issueUrl,
-  boardUrl,
-  hasPlan,
-  taskCounts,
-}: TasksStatusProps) {
+function TasksStatus({ issueUrl, boardUrl, hasPlan, taskCounts }: TasksStatusProps) {
   if (!hasPlan) {
     return <span className="text-gray-400">-</span>;
   }
@@ -114,12 +105,7 @@ function TasksStatus({
         onClick={(e) => e.stopPropagation()}
         title="View tasks on board"
       >
-        <ProgressBar
-          completed={completed}
-          total={total}
-          inProgress={inProgress}
-          size="sm"
-        />
+        <ProgressBar completed={completed} total={total} inProgress={inProgress} size="sm" />
       </Link>
       {inProgress > 0 && (
         <span

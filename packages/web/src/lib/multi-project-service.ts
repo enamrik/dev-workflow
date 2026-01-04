@@ -588,9 +588,7 @@ export class MultiProjectService {
     }
 
     // Sort by start date
-    return allMilestones.sort(
-      (a, b) => a.milestone.startDate.localeCompare(b.milestone.startDate)
-    );
+    return allMilestones.sort((a, b) => a.milestone.startDate.localeCompare(b.milestone.startDate));
   }
 
   /**

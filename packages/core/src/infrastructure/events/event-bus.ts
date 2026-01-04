@@ -9,9 +9,7 @@ import type {
 /**
  * Listener function type for domain events
  */
-export type DomainEventListener<T extends DomainEventType> = (
-  event: DomainEvent<T>
-) => void;
+export type DomainEventListener<T extends DomainEventType> = (event: DomainEvent<T>) => void;
 
 /**
  * EventBus for domain events
@@ -68,10 +66,7 @@ export class EventBus {
    * @param type - Event type
    * @param payload - Event payload matching the event type
    */
-  emit<T extends DomainEventType>(
-    type: T,
-    payload: DomainEventPayload[T]
-  ): void {
+  emit<T extends DomainEventType>(type: T, payload: DomainEventPayload[T]): void {
     const event: DomainEvent<T> = {
       type,
       timestamp: new Date().toISOString(),
@@ -89,10 +84,7 @@ export class EventBus {
    * @param listener - Callback function
    * @returns Unsubscribe function
    */
-  on<T extends DomainEventType>(
-    type: T,
-    listener: DomainEventListener<T>
-  ): () => void {
+  on<T extends DomainEventType>(type: T, listener: DomainEventListener<T>): () => void {
     this.emitter.on(type, listener);
     return () => this.emitter.off(type, listener);
   }
@@ -114,10 +106,7 @@ export class EventBus {
    * @param type - Event type to subscribe to
    * @param listener - Callback function (called once then removed)
    */
-  once<T extends DomainEventType>(
-    type: T,
-    listener: DomainEventListener<T>
-  ): void {
+  once<T extends DomainEventType>(type: T, listener: DomainEventListener<T>): void {
     this.emitter.once(type, listener);
   }
 }

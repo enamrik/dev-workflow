@@ -81,15 +81,10 @@ export function useWebSocket() {
       );
       reconnectAttemptsRef.current++;
 
-      console.log(
-        `[WS] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`
-      );
+      console.log(`[WS] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);
 
       setTimeout(() => {
-        if (
-          !socketRef.current ||
-          socketRef.current.readyState === WebSocket.CLOSED
-        ) {
+        if (!socketRef.current || socketRef.current.readyState === WebSocket.CLOSED) {
           connect();
         }
       }, delay);

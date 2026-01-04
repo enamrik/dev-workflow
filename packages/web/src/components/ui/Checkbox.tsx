@@ -9,12 +9,7 @@ interface CheckboxProps {
   className?: string;
 }
 
-export function Checkbox({
-  label,
-  checked,
-  onChange,
-  className,
-}: CheckboxProps) {
+export function Checkbox({ label, checked, onChange, className }: CheckboxProps) {
   return (
     <label
       className={clsx(

@@ -1,6 +1,14 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useProjects } from "@/hooks";
 import type { Project } from "@/lib/types";
@@ -69,41 +77,43 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, searchParams, router, projectId]);
 
-  const setProjectId = useCallback((newProjectId: string) => {
-    // Mark this as a user action so the effect doesn't override it
-    isUserActionRef.current = true;
+  const setProjectId = useCallback(
+    (newProjectId: string) => {
+      // Mark this as a user action so the effect doesn't override it
+      isUserActionRef.current = true;
 
-    setProjectIdState(newProjectId);
+      setProjectIdState(newProjectId);
 
-    // Persist to localStorage
-    if (newProjectId) {
-      localStorage.setItem(STORAGE_KEY, newProjectId);
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
+      // Persist to localStorage
+      if (newProjectId) {
+        localStorage.setItem(STORAGE_KEY, newProjectId);
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+      }
 
-    // Update URL
-    const newParams = new URLSearchParams(searchParams.toString());
-    if (newProjectId) {
-      newParams.set("project", newProjectId);
-    } else {
-      newParams.delete("project");
-    }
-    router.push(`${pathname}?${newParams.toString()}`);
-  }, [searchParams, pathname, router]);
-
-  const value = useMemo(() => ({
-    projectId,
-    setProjectId,
-    projects,
-    isLoading,
-  }), [projectId, setProjectId, projects, isLoading]);
-
-  return (
-    <ProjectContext.Provider value={value}>
-      {children}
-    </ProjectContext.Provider>
+      // Update URL
+      const newParams = new URLSearchParams(searchParams.toString());
+      if (newProjectId) {
+        newParams.set("project", newProjectId);
+      } else {
+        newParams.delete("project");
+      }
+      router.push(`${pathname}?${newParams.toString()}`);
+    },
+    [searchParams, pathname, router]
   );
+
+  const value = useMemo(
+    () => ({
+      projectId,
+      setProjectId,
+      projects,
+      isLoading,
+    }),
+    [projectId, setProjectId, projects, isLoading]
+  );
+
+  return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;
 }
 
 export function useProjectContext() {

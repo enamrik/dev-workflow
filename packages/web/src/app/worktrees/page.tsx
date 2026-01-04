@@ -3,13 +3,7 @@
 import { Suspense } from "react";
 import { useWorktrees, usePruneWorktrees } from "@/hooks";
 import { useProjectContext } from "@/contexts";
-import {
-  Card,
-  Badge,
-  LoadingState,
-  ErrorState,
-  EmptyState,
-} from "@/components/ui";
+import { Card, Badge, LoadingState, ErrorState, EmptyState } from "@/components/ui";
 import type { Worktree } from "@/lib/types";
 
 function formatBytes(bytes: number): string {
@@ -28,7 +22,13 @@ function formatPath(path: string): string {
 
 export default function WorktreesPage() {
   return (
-    <Suspense fallback={<Card><LoadingState message="Loading..." /></Card>}>
+    <Suspense
+      fallback={
+        <Card>
+          <LoadingState message="Loading..." />
+        </Card>
+      }
+    >
       <WorktreesPageContent />
     </Suspense>
   );
@@ -37,7 +37,12 @@ export default function WorktreesPage() {
 function WorktreesPageContent() {
   const { projectId } = useProjectContext();
 
-  const { data: worktrees, isLoading, error, refetch } = useWorktrees({ project: projectId || undefined });
+  const {
+    data: worktrees,
+    isLoading,
+    error,
+    refetch,
+  } = useWorktrees({ project: projectId || undefined });
   const pruneMutation = usePruneWorktrees();
 
   const handlePrune = async (projectId: string) => {
@@ -54,24 +59,23 @@ function WorktreesPageContent() {
   const orphanedWorktrees = worktrees?.filter((w) => !w.taskId) ?? [];
 
   // Group worktrees by project
-  const worktreesByProject = worktrees?.reduce<Record<string, Worktree[]>>((acc, w) => {
-    const existing = acc[w.projectId];
-    if (existing) {
-      existing.push(w);
-    } else {
-      acc[w.projectId] = [w];
-    }
-    return acc;
-  }, {}) ?? {};
+  const worktreesByProject =
+    worktrees?.reduce<Record<string, Worktree[]>>((acc, w) => {
+      const existing = acc[w.projectId];
+      if (existing) {
+        existing.push(w);
+      } else {
+        acc[w.projectId] = [w];
+      }
+      return acc;
+    }, {}) ?? {};
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-800">Worktrees</h1>
-        <p className="text-gray-600 mt-1">
-          Git worktrees for isolated task execution
-        </p>
+        <p className="text-gray-600 mt-1">Git worktrees for isolated task execution</p>
       </div>
 
       {/* Summary stats */}
@@ -82,9 +86,7 @@ function WorktreesPageContent() {
         </Card>
         <Card className="p-4">
           <div className="text-sm text-gray-500">Total Disk Usage</div>
-          <div className="text-2xl font-bold text-gray-800">
-            {formatBytes(totalDiskUsage)}
-          </div>
+          <div className="text-2xl font-bold text-gray-800">{formatBytes(totalDiskUsage)}</div>
         </Card>
         <Card className="p-4">
           <div className="text-sm text-gray-500">Orphaned</div>
@@ -160,9 +162,7 @@ function WorktreeCard({ worktree }: WorktreeCardProps) {
   return (
     <div
       className={`p-4 rounded-lg border ${
-        isOrphaned
-          ? "bg-orange-50 border-orange-200"
-          : "bg-gray-50 border-gray-200"
+        isOrphaned ? "bg-orange-50 border-orange-200" : "bg-gray-50 border-gray-200"
       }`}
     >
       <div className="flex items-start justify-between">
@@ -170,9 +170,7 @@ function WorktreeCard({ worktree }: WorktreeCardProps) {
           {/* Branch name */}
           <div className="flex items-center gap-2">
             <BranchIcon className="text-gray-500" />
-            <code className="font-mono text-sm text-gray-800 truncate">
-              {worktree.branch}
-            </code>
+            <code className="font-mono text-sm text-gray-800 truncate">{worktree.branch}</code>
             {isOrphaned && (
               <Badge variant="status" value="ORPHANED" className="bg-orange-100 text-orange-700" />
             )}
@@ -191,11 +189,7 @@ function WorktreeCard({ worktree }: WorktreeCardProps) {
               </span>{" "}
               <span className="text-gray-800">{worktree.taskTitle}</span>
               {worktree.taskStatus && (
-                <Badge
-                  variant="status"
-                  value={worktree.taskStatus}
-                  className="ml-2"
-                />
+                <Badge variant="status" value={worktree.taskStatus} className="ml-2" />
               )}
             </div>
           )}
@@ -206,9 +200,7 @@ function WorktreeCard({ worktree }: WorktreeCardProps) {
           <div className="text-sm font-medium text-gray-800">
             {worktree.diskUsageBytes ? formatBytes(worktree.diskUsageBytes) : "-"}
           </div>
-          <div className="text-xs text-gray-500">
-            {worktree.head.substring(0, 7)}
-          </div>
+          <div className="text-xs text-gray-500">{worktree.head.substring(0, 7)}</div>
         </div>
       </div>
     </div>
@@ -217,12 +209,7 @@ function WorktreeCard({ worktree }: WorktreeCardProps) {
 
 function BranchIcon({ className }: { className?: string }) {
   return (
-    <svg
-      className={`w-4 h-4 ${className}`}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
+    <svg className={`w-4 h-4 ${className}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
         strokeLinecap="round"
         strokeLinejoin="round"

@@ -13,7 +13,10 @@ import { InstallService } from "./install.service.js";
 import { FileSystem } from "../infrastructure/file-system.js";
 
 export class ArchiveError extends Error {
-  constructor(message: string, public readonly cause?: unknown) {
+  constructor(
+    message: string,
+    public readonly cause?: unknown
+  ) {
     super(message);
     this.name = "ArchiveError";
   }
@@ -43,7 +46,7 @@ export class ArchiveService {
       const worktrees = await gitWorktreeService.listWorktrees();
 
       // Filter out main worktree - only count non-main worktrees
-      const nonMainWorktrees = worktrees.filter(wt => !wt.isMain);
+      const nonMainWorktrees = worktrees.filter((wt) => !wt.isMain);
       return nonMainWorktrees.length > 0;
     } catch {
       // If git worktree command fails, assume no worktrees
@@ -100,7 +103,9 @@ export class ArchiveService {
     // Check for in-progress tasks
     const hasActiveTasks = await this.hasInProgressTasks(projectId);
     if (hasActiveTasks) {
-      errors.push("Tasks are in progress (IN_PROGRESS or PR_REVIEW). Complete or abandon them before archiving.");
+      errors.push(
+        "Tasks are in progress (IN_PROGRESS or PR_REVIEW). Complete or abandon them before archiving."
+      );
     }
 
     return {
@@ -181,16 +186,12 @@ export class ArchiveService {
     const validation = await this.validateForNuke(project.id);
     if (!validation.valid) {
       throw new ArchiveError(
-        `Cannot nuke project:\n${validation.errors.map(e => `  - ${e}`).join("\n")}`
+        `Cannot nuke project:\n${validation.errors.map((e) => `  - ${e}`).join("\n")}`
       );
     }
 
     // Remove Claude integration (uninit)
-    const uninstaller = new UninstallService(
-      this.fileSystem,
-      this.workingDirectory,
-      this.resolver
-    );
+    const uninstaller = new UninstallService(this.fileSystem, this.workingDirectory, this.resolver);
     await uninstaller.removeSkills();
     await uninstaller.unregisterMCPServer();
 
@@ -274,16 +275,12 @@ export class ArchiveService {
     const validation = await this.validateForArchive(project.id);
     if (!validation.valid) {
       throw new ArchiveError(
-        `Cannot archive project:\n${validation.errors.map(e => `  - ${e}`).join("\n")}`
+        `Cannot archive project:\n${validation.errors.map((e) => `  - ${e}`).join("\n")}`
       );
     }
 
     // Remove Claude integration (uninit)
-    const uninstaller = new UninstallService(
-      this.fileSystem,
-      this.workingDirectory,
-      this.resolver
-    );
+    const uninstaller = new UninstallService(this.fileSystem, this.workingDirectory, this.resolver);
     await uninstaller.removeSkills();
     await uninstaller.unregisterMCPServer();
 

@@ -7,12 +7,7 @@ import {
   type SqliteIssueRepository,
   type MilestoneStatus,
 } from "@dev-workflow/core";
-import {
-  type ToolDefinition,
-  type ToolResponse,
-  successResponse,
-  errorResponse,
-} from "./types.js";
+import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
 /**
  * Context for milestone tools

@@ -1,11 +1,7 @@
 import { eq, max, and, asc } from "drizzle-orm";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { milestones, MilestoneRow } from "../database/schema.js";
-import type {
-  Milestone,
-  MilestoneRepository,
-  MilestoneFilters,
-} from "../../domain/milestone.js";
+import type { Milestone, MilestoneRepository, MilestoneFilters } from "../../domain/milestone.js";
 import * as schema from "../database/schema.js";
 
 /**
@@ -73,9 +69,7 @@ export class SqliteMilestoneRepository implements MilestoneRepository {
     const result = this.db
       .select()
       .from(milestones)
-      .where(
-        and(eq(milestones.projectId, this.projectId), eq(milestones.number, number))
-      )
+      .where(and(eq(milestones.projectId, this.projectId), eq(milestones.number, number)))
       .get();
 
     return result ? this.mapRowToMilestone(result) : null;

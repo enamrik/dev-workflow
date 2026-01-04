@@ -1,10 +1,7 @@
 import { eq, max, and, desc } from "drizzle-orm";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { snapshots, SnapshotRow } from "../database/schema.js";
-import type {
-  Snapshot,
-  SnapshotRepository,
-} from "../../domain/snapshot.js";
+import type { Snapshot, SnapshotRepository } from "../../domain/snapshot.js";
 import * as schema from "../database/schema.js";
 
 /**

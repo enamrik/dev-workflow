@@ -51,10 +51,7 @@ export {
 // Local config types (for config.json - machine-specific settings)
 export { LocalConfigSchema } from "./infrastructure/database/schema.js";
 export type { LocalConfig } from "./infrastructure/database/schema.js";
-export {
-  GitHubSyncService,
-  GitHubSyncError,
-} from "./application/github-sync-service.js";
+export { GitHubSyncService, GitHubSyncError } from "./application/github-sync-service.js";
 export {
   TaskGitHubSyncService,
   TaskGitHubSyncError,
@@ -74,7 +71,11 @@ export { DatabaseService } from "./infrastructure/database/database.js";
 // Re-export sql from drizzle-orm for raw SQL queries
 export { sql } from "drizzle-orm";
 export { DatabaseFactory } from "./infrastructure/database/database-factory.js";
-export type { DatabaseAdapter, PreparedStatement, RunResult } from "./infrastructure/database/database-adapter.js";
+export type {
+  DatabaseAdapter,
+  PreparedStatement,
+  RunResult,
+} from "./infrastructure/database/database-adapter.js";
 export { NativeAdapter } from "./infrastructure/database/native-adapter.js";
 export { WasmAdapter } from "./infrastructure/database/wasm-adapter.js";
 
@@ -92,7 +93,10 @@ export { NodeFileSystem } from "./infrastructure/file-system/file-system.js";
 
 // Infrastructure - Templates
 export { TemplateParser, TemplateParseError } from "./infrastructure/templates/template-parser.js";
-export { TemplateService, TemplateServiceError } from "./infrastructure/templates/template-service.js";
+export {
+  TemplateService,
+  TemplateServiceError,
+} from "./infrastructure/templates/template-service.js";
 
 // Infrastructure - GitHub
 export {

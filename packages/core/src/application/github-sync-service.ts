@@ -7,13 +7,12 @@
  */
 
 import type { Issue, IssueRepository } from "../domain/issue.js";
-import type {
-  GitHubSyncState,
-  GitHubSyncResult,
-  GitHubIssueData,
-} from "../domain/github.js";
+import type { GitHubSyncState, GitHubSyncResult, GitHubIssueData } from "../domain/github.js";
 import type { GitHubCLI } from "../infrastructure/github/github-cli.js";
-import type { GitHubIssueSyncConfig, GitHubLabelsConfig } from "../infrastructure/database/schema.js";
+import type {
+  GitHubIssueSyncConfig,
+  GitHubLabelsConfig,
+} from "../infrastructure/database/schema.js";
 import type { ProjectRepository } from "../domain/project.js";
 
 /**
@@ -96,10 +95,7 @@ export class GitHubSyncService {
     let projectItemId: string | null = null;
     if (config.projectId) {
       try {
-        projectItemId = await this.githubCLI.addToProject(
-          config.projectId,
-          data.nodeId
-        );
+        projectItemId = await this.githubCLI.addToProject(config.projectId, data.nodeId);
 
         // Verify the association succeeded - projectItemId should be a valid string
         if (!projectItemId) {
@@ -142,10 +138,7 @@ export class GitHubSyncService {
    * @param updates - The updates being applied
    * @returns Updated sync state
    */
-  async updateGitHubIssue(
-    issue: Issue,
-    updates: Partial<Issue>
-  ): Promise<GitHubSyncState> {
+  async updateGitHubIssue(issue: Issue, updates: Partial<Issue>): Promise<GitHubSyncState> {
     // Get fresh config from database
     const config = this.getConfig();
     if (!config?.enabled) {
@@ -161,8 +154,7 @@ export class GitHubSyncService {
     // Merge updates with current values
     const title = updates.title ?? issue.title;
     const description = updates.description ?? issue.description;
-    const acceptanceCriteria =
-      updates.acceptanceCriteria ?? issue.acceptanceCriteria;
+    const acceptanceCriteria = updates.acceptanceCriteria ?? issue.acceptanceCriteria;
     const type = updates.type ?? issue.type;
     const status = updates.status ?? issue.status;
 
@@ -223,8 +215,7 @@ export class GitHubSyncService {
         projectItemId: syncState.projectItemId ?? undefined,
       };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
 
       // Update issue with error state
       this.issueRepository.update(issue.id, {
@@ -263,7 +254,6 @@ export class GitHubSyncService {
     return this.githubCLI.checkAuth();
   }
 
-
   /**
    * Build labels array from issue type and config
    */
@@ -271,10 +261,7 @@ export class GitHubSyncService {
     const labels: string[] = [];
 
     if (config.labels?.typeLabels) {
-      const typeLabel =
-        config.labels.typeLabels[
-          type as keyof GitHubLabelsConfig["typeLabels"]
-        ];
+      const typeLabel = config.labels.typeLabels[type as keyof GitHubLabelsConfig["typeLabels"]];
       if (typeLabel) {
         labels.push(typeLabel);
       }
@@ -290,10 +277,7 @@ export class GitHubSyncService {
   /**
    * Build issue body from description and acceptance criteria
    */
-  private buildIssueBody(
-    description: string,
-    acceptanceCriteria: string[]
-  ): string {
+  private buildIssueBody(description: string, acceptanceCriteria: string[]): string {
     const sections: string[] = [description];
 
     if (acceptanceCriteria.length > 0) {

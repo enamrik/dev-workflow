@@ -4,7 +4,10 @@ import { FileSystem } from "../infrastructure/file-system.js";
 import { TrackDirectoryResolver } from "@dev-workflow/core";
 
 export class UninstallError extends Error {
-  constructor(message: string, public readonly cause?: unknown) {
+  constructor(
+    message: string,
+    public readonly cause?: unknown
+  ) {
     super(message);
     this.name = "UninstallError";
   }
@@ -40,14 +43,10 @@ export class UninstallService {
         const entries = await this.fileSystem.readdirWithFileTypes(skillsBaseDir);
         for (const entry of entries) {
           if (entry.isDirectory() && entry.name.startsWith("dwf-")) {
-            await this.fileSystem.rmdir(
-              path.join(skillsBaseDir, entry.name),
-              { recursive: true }
-            );
+            await this.fileSystem.rmdir(path.join(skillsBaseDir, entry.name), { recursive: true });
           }
         }
       }
-
     } catch (error) {
       throw new UninstallError("Failed to remove skills", error);
     }

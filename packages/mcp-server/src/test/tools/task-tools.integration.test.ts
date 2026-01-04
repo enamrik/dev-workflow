@@ -55,10 +55,7 @@ function createTaskToolContext(testDb: TestDatabase): TaskToolContext {
   const mockGitWorktreeService = new MockGitWorktreeService();
   const mockGitHubCLI = new MockGitHubCLI();
 
-  const conflictDetectionService = new ConflictDetectionService(
-    db,
-    repos.taskRepository
-  );
+  const conflictDetectionService = new ConflictDetectionService(db, repos.taskRepository);
 
   const taskSessionService = new TaskSessionService(
     repos.taskRepository,

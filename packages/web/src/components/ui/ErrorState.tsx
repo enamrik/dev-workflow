@@ -9,26 +9,11 @@ interface ErrorStateProps {
   className?: string;
 }
 
-export function ErrorState({
-  title = "Error",
-  message,
-  onRetry,
-  className,
-}: ErrorStateProps) {
+export function ErrorState({ title = "Error", message, onRetry, className }: ErrorStateProps) {
   return (
-    <div
-      className={clsx(
-        "flex flex-col items-center justify-center py-12 text-center",
-        className
-      )}
-    >
+    <div className={clsx("flex flex-col items-center justify-center py-12 text-center", className)}>
       <div className="w-12 h-12 mb-4 flex items-center justify-center rounded-full bg-red-100">
-        <svg
-          className="w-6 h-6 text-red-600"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
+        <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"

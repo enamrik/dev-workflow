@@ -27,101 +27,107 @@ export type LocalConfig = z.infer<typeof LocalConfigSchema>;
  * - Scalar fields (id, number, title, type, priority, status) as standard SQLite columns (indexed, queryable)
  * - Array fields (acceptanceCriteria) as JSON columns (flexible, type-safe)
  */
-export const issues = sqliteTable("issues", {
-  // Primary key and unique identifier
-  id: text("id").primaryKey(),
+export const issues = sqliteTable(
+  "issues",
+  {
+    // Primary key and unique identifier
+    id: text("id").primaryKey(),
 
-  // Project identifier (e.g., "dev-workflow-abc123")
-  projectId: text("project_id").notNull(),
+    // Project identifier (e.g., "dev-workflow-abc123")
+    projectId: text("project_id").notNull(),
 
-  // Issue number within the project (e.g., #1, #2, #3)
-  // Unique per project, not globally
-  number: integer("number").notNull(),
+    // Issue number within the project (e.g., #1, #2, #3)
+    // Unique per project, not globally
+    number: integer("number").notNull(),
 
-  // Core issue fields
-  title: text("title").notNull(),
-  description: text("description").notNull(),
-  type: text("type").notNull(), // 'FEATURE' | 'BUG' | 'ENHANCEMENT' | 'TASK'
-  priority: text("priority").notNull(), // 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
-  status: text("status").notNull(), // 'PLANNED' | 'OPEN' | 'IN_PROGRESS' | 'CLOSED'
+    // Core issue fields
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    type: text("type").notNull(), // 'FEATURE' | 'BUG' | 'ENHANCEMENT' | 'TASK'
+    priority: text("priority").notNull(), // 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+    status: text("status").notNull(), // 'PLANNED' | 'OPEN' | 'IN_PROGRESS' | 'CLOSED'
 
-  // JSON columns for arrays (flexible, auto-serialized by Drizzle)
-  acceptanceCriteria: text("acceptance_criteria", { mode: "json" })
-    .$type<string[]>()
-    .notNull()
-    .default(sql`'[]'`),
+    // JSON columns for arrays (flexible, auto-serialized by Drizzle)
+    acceptanceCriteria: text("acceptance_criteria", { mode: "json" })
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'`),
 
-  // Optional metadata fields
-  templateUsed: text("template_used"),
-  createdBy: text("created_by"),
+    // Optional metadata fields
+    templateUsed: text("template_used"),
+    createdBy: text("created_by"),
 
-  // Timestamps (stored as ISO strings)
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
+    // Timestamps (stored as ISO strings)
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
 
-  // GitHub sync state columns
-  githubIssueNumber: integer("github_issue_number"),
-  githubUrl: text("github_url"),
-  githubNodeId: text("github_node_id"),
-  githubSyncStatus: text("github_sync_status"), // 'NOT_SYNCED' | 'SYNCED' | 'PUSH_FAILED'
-  githubLastSyncedAt: text("github_last_synced_at"),
-  githubLastSyncError: text("github_last_sync_error"),
-  githubProjectItemId: text("github_project_item_id"),
+    // GitHub sync state columns
+    githubIssueNumber: integer("github_issue_number"),
+    githubUrl: text("github_url"),
+    githubNodeId: text("github_node_id"),
+    githubSyncStatus: text("github_sync_status"), // 'NOT_SYNCED' | 'SYNCED' | 'PUSH_FAILED'
+    githubLastSyncedAt: text("github_last_synced_at"),
+    githubLastSyncError: text("github_last_sync_error"),
+    githubProjectItemId: text("github_project_item_id"),
 
-  // Milestone association (optional)
-  milestoneId: text("milestone_id"),
+    // Milestone association (optional)
+    milestoneId: text("milestone_id"),
 
-  // Soft delete support
-  isDeleted: integer("is_deleted", { mode: "boolean" }).notNull().default(false),
-  deletedAt: text("deleted_at"),
-  deletedBy: text("deleted_by"),
-}, (table) => ({
-  // Issue number must be unique within a project
-  projectNumberIdx: uniqueIndex("issues_project_number_idx").on(table.projectId, table.number),
-}));
+    // Soft delete support
+    isDeleted: integer("is_deleted", { mode: "boolean" }).notNull().default(false),
+    deletedAt: text("deleted_at"),
+    deletedBy: text("deleted_by"),
+  },
+  (table) => ({
+    // Issue number must be unique within a project
+    projectNumberIdx: uniqueIndex("issues_project_number_idx").on(table.projectId, table.number),
+  })
+);
 
 /**
  * Snapshots table schema
  *
  * Groups issue+plan+tasks into versioned snapshots for complete version tracking.
  */
-export const snapshots = sqliteTable("snapshots", {
-  // Primary key
-  id: text("id").primaryKey(),
+export const snapshots = sqliteTable(
+  "snapshots",
+  {
+    // Primary key
+    id: text("id").primaryKey(),
 
-  // Project identifier (e.g., "dev-workflow-abc123")
-  projectId: text("project_id").notNull(),
+    // Project identifier (e.g., "dev-workflow-abc123")
+    projectId: text("project_id").notNull(),
 
-  // Link to issue number (not id, for easier querying)
-  issueNumber: integer("issue_number").notNull(),
+    // Link to issue number (not id, for easier querying)
+    issueNumber: integer("issue_number").notNull(),
 
-  // Version tracking
-  version: integer("version").notNull(),
-  status: text("status").notNull(), // 'ACTIVE' | 'ARCHIVED'
-  snapshotType: text("snapshot_type").notNull(), // 'MANUAL' | 'ISSUE_UPDATE' | 'PLAN_REGENERATION'
+    // Version tracking
+    version: integer("version").notNull(),
+    status: text("status").notNull(), // 'ACTIVE' | 'ARCHIVED'
+    snapshotType: text("snapshot_type").notNull(), // 'MANUAL' | 'ISSUE_UPDATE' | 'PLAN_REGENERATION'
 
-  // Complete state capture (JSON blobs)
-  issueState: text("issue_state", { mode: "json" })
-    .$type<SnapshotIssueState>()
-    .notNull(),
-  planState: text("plan_state", { mode: "json" }).$type<SnapshotPlanState | null>(),
-  tasksState: text("tasks_state", { mode: "json" })
-    .$type<SnapshotTaskState[]>()
-    .notNull()
-    .default(sql`'[]'`),
+    // Complete state capture (JSON blobs)
+    issueState: text("issue_state", { mode: "json" }).$type<SnapshotIssueState>().notNull(),
+    planState: text("plan_state", { mode: "json" }).$type<SnapshotPlanState | null>(),
+    tasksState: text("tasks_state", { mode: "json" })
+      .$type<SnapshotTaskState[]>()
+      .notNull()
+      .default(sql`'[]'`),
 
-  // Metadata
-  createdBy: text("created_by").notNull(),
-  createdAt: text("created_at").notNull(),
-  notes: text("notes"),
-}, (table) => ({
-  // Snapshot version must be unique within a project and issue
-  projectIssueVersionIdx: uniqueIndex("snapshots_project_issue_version_idx").on(
-    table.projectId,
-    table.issueNumber,
-    table.version
-  ),
-}));
+    // Metadata
+    createdBy: text("created_by").notNull(),
+    createdAt: text("created_at").notNull(),
+    notes: text("notes"),
+  },
+  (table) => ({
+    // Snapshot version must be unique within a project and issue
+    projectIssueVersionIdx: uniqueIndex("snapshots_project_issue_version_idx").on(
+      table.projectId,
+      table.issueNumber,
+      table.version
+    ),
+  })
+);
 
 /**
  * Plans table schema
@@ -303,35 +309,42 @@ export const taskExecutionLogs = sqliteTable("task_execution_logs", {
  *
  * Time-bounded collections of issues displayed on a timeline.
  */
-export const milestones = sqliteTable("milestones", {
-  // Primary key
-  id: text("id").primaryKey(),
+export const milestones = sqliteTable(
+  "milestones",
+  {
+    // Primary key
+    id: text("id").primaryKey(),
 
-  // Project identifier (e.g., "dev-workflow-abc123")
-  projectId: text("project_id").notNull(),
+    // Project identifier (e.g., "dev-workflow-abc123")
+    projectId: text("project_id").notNull(),
 
-  // Milestone number within the project (e.g., M1, M2, M3)
-  // Unique per project
-  number: integer("number").notNull(),
+    // Milestone number within the project (e.g., M1, M2, M3)
+    // Unique per project
+    number: integer("number").notNull(),
 
-  // Core milestone fields
-  title: text("title").notNull(),
-  description: text("description").notNull().default(""),
+    // Core milestone fields
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
 
-  // Date range (stored as ISO date strings YYYY-MM-DD)
-  startDate: text("start_date").notNull(),
-  endDate: text("end_date").notNull(),
+    // Date range (stored as ISO date strings YYYY-MM-DD)
+    startDate: text("start_date").notNull(),
+    endDate: text("end_date").notNull(),
 
-  // Status tracking
-  status: text("status").notNull(), // 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'DELAYED'
+    // Status tracking
+    status: text("status").notNull(), // 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'DELAYED'
 
-  // Timestamps (stored as ISO datetime strings)
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-}, (table) => ({
-  // Milestone number must be unique within a project
-  projectNumberIdx: uniqueIndex("milestones_project_number_idx").on(table.projectId, table.number),
-}));
+    // Timestamps (stored as ISO datetime strings)
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => ({
+    // Milestone number must be unique within a project
+    projectNumberIdx: uniqueIndex("milestones_project_number_idx").on(
+      table.projectId,
+      table.number
+    ),
+  })
+);
 
 /**
  * GitHub labels configuration
@@ -378,8 +391,7 @@ export const projects = sqliteTable("projects", {
   name: text("name").notNull(),
 
   // GitHub issue sync configuration (JSON)
-  githubSync: text("github_sync", { mode: "json" })
-    .$type<GitHubIssueSyncConfig | null>(),
+  githubSync: text("github_sync", { mode: "json" }).$type<GitHubIssueSyncConfig | null>(),
 
   // Archive status - archived projects are hidden from UI by default
   isArchived: integer("is_archived", { mode: "boolean" }).notNull().default(false),

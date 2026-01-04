@@ -117,14 +117,9 @@ export class VersioningService {
     notes?: string
   ): Snapshot {
     // Find the target snapshot
-    const targetSnapshot = this.snapshotRepository.findByVersion(
-      issueNumber,
-      version
-    );
+    const targetSnapshot = this.snapshotRepository.findByVersion(issueNumber, version);
     if (!targetSnapshot) {
-      throw new Error(
-        `Snapshot not found: issue #${issueNumber} version ${version}`
-      );
+      throw new Error(`Snapshot not found: issue #${issueNumber} version ${version}`);
     }
 
     // Create backup snapshot of current state before reverting
@@ -252,14 +247,9 @@ export class VersioningService {
    * @returns Snapshot data with captured state
    */
   viewSnapshot(issueNumber: number, version: number): SnapshotData {
-    const snapshot = this.snapshotRepository.findByVersion(
-      issueNumber,
-      version
-    );
+    const snapshot = this.snapshotRepository.findByVersion(issueNumber, version);
     if (!snapshot) {
-      throw new Error(
-        `Snapshot not found: issue #${issueNumber} version ${version}`
-      );
+      throw new Error(`Snapshot not found: issue #${issueNumber} version ${version}`);
     }
 
     return {

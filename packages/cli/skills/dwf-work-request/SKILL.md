@@ -10,6 +10,7 @@ description: "⚠️ ENTRY POINT for ALL new work, regardless of size. Invoke FI
 ## Purpose
 
 All work should be tracked as issues before implementation begins. This ensures:
+
 - Requirements are captured and clarified upfront
 - Work is visible and searchable
 - Progress can be tracked
@@ -19,19 +20,19 @@ All work should be tracked as issues before implementation begins. This ensures:
 
 This skill should activate whenever the user describes work to be done:
 
-| User Says | This Is Work |
-|-----------|--------------|
-| "Add a logout button" | Feature request |
-| "Fix the login bug" | Bug report |
-| "Can you implement dark mode?" | Feature request |
-| "We need better error handling" | Enhancement |
-| "Refactor the API layer" | Technical task |
-| "Make the search faster" | Performance improvement |
-| "Look into why X is slow" | Investigation (likely a bug) |
-| "X isn't working as expected" | Bug investigation |
-| "We need to investigate Y" | Bug investigation |
-| "Build a dashboard for..." | Feature request |
-| "Update the form to include..." | Enhancement |
+| User Says                       | This Is Work                 |
+| ------------------------------- | ---------------------------- |
+| "Add a logout button"           | Feature request              |
+| "Fix the login bug"             | Bug report                   |
+| "Can you implement dark mode?"  | Feature request              |
+| "We need better error handling" | Enhancement                  |
+| "Refactor the API layer"        | Technical task               |
+| "Make the search faster"        | Performance improvement      |
+| "Look into why X is slow"       | Investigation (likely a bug) |
+| "X isn't working as expected"   | Bug investigation            |
+| "We need to investigate Y"      | Bug investigation            |
+| "Build a dashboard for..."      | Feature request              |
+| "Update the form to include..." | Enhancement                  |
 
 ## What To Do
 
@@ -44,6 +45,7 @@ When you recognize a work request:
 ## Exceptions - When NOT to Track
 
 Skip issue creation only when:
+
 - User explicitly says "don't create an issue" or "just do it quick"
 - User is just asking questions, not requesting work
 - **Pure exploration** - User is exploring/reading code to understand how it works (e.g., "how does the auth system work?", "explain this code")
@@ -59,6 +61,7 @@ Skip issue creation only when:
 - **Question that reveals a bug** (needs issue): "Why does X show Y?" → if investigation reveals incorrect behavior, create an issue BEFORE fixing
 
 For bug investigations:
+
 1. Start investigating to confirm the issue exists
 2. **Once you confirm it's a bug**, create an issue to track it
 3. Continue investigation and fix as part of that issue
@@ -76,6 +79,7 @@ Skill(skill: "dwf-manage-issue")
 ```
 
 Pass along any context the user provided - requirements, preferences, constraints. The manage-issue skill will:
+
 - Separate requirements from implementation details
 - Create the issue with proper structure
 - Chain to planning automatically
@@ -85,6 +89,7 @@ Pass along any context the user provided - requirements, preferences, constraint
 **User:** "Can you add a way for users to export their data as CSV?"
 
 **Your response:**
+
 ```
 I'll track this as an issue so we can plan it properly.
 

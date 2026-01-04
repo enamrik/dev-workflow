@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse("WebSocket connections require custom server", {
       status: 426,
       headers: {
-        "Upgrade": "websocket",
+        Upgrade: "websocket",
       },
     });
   }

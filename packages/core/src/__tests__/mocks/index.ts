@@ -16,7 +16,4 @@ export {
   type MockGitWorktreeConfig,
 } from "./mock-git-worktree-service.js";
 
-export {
-  MockFileSystem,
-  type MockFileSystemCall,
-} from "./mock-file-system.js";
+export { MockFileSystem, type MockFileSystemCall } from "./mock-file-system.js";

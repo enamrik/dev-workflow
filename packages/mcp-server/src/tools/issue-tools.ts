@@ -17,12 +17,7 @@ import {
   type IssueStatus,
   type GitHubCLI,
 } from "@dev-workflow/core";
-import {
-  type ToolDefinition,
-  type ToolResponse,
-  successResponse,
-  errorResponse,
-} from "./types.js";
+import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
 /**
  * Computed issue status based on task progress.
@@ -80,7 +75,8 @@ function computeIssueStatus(
 export const issueToolDefinitions: ToolDefinition[] = [
   {
     name: "create_issue",
-    description: "⚠️ Prefer 'dwf-manage-issue' skill for proper workflow. Creates a new issue in the task tracker.",
+    description:
+      "⚠️ Prefer 'dwf-manage-issue' skill for proper workflow. Creates a new issue in the task tracker.",
     inputSchema: {
       type: "object",
       properties: {
@@ -174,7 +170,8 @@ export const issueToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "list_templates",
-    description: "List available issue templates. Returns both user-defined and default templates with their metadata.",
+    description:
+      "List available issue templates. Returns both user-defined and default templates with their metadata.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -182,7 +179,8 @@ export const issueToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "get_template",
-    description: "Get a single issue template by filename with its full content and source information.",
+    description:
+      "Get a single issue template by filename with its full content and source information.",
     inputSchema: {
       type: "object",
       properties: {
@@ -227,8 +225,7 @@ export const issueToolDefinitions: ToolDefinition[] = [
         },
         content: {
           type: "string",
-          description:
-            "New template content in markdown with YAML frontmatter",
+          description: "New template content in markdown with YAML frontmatter",
         },
       },
       required: ["filename", "content"],
@@ -310,7 +307,8 @@ export const issueToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "get_project_stats",
-    description: "Get project statistics: issue and task counts by status. Use this for a quick overview without loading all issues.",
+    description:
+      "Get project statistics: issue and task counts by status. Use this for a quick overview without loading all issues.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -318,7 +316,8 @@ export const issueToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "search_issues",
-    description: "Search issues by keyword in title or description. Returns slim results (number, title, status, type, priority). Max 10 results.",
+    description:
+      "Search issues by keyword in title or description. Returns slim results (number, title, status, type, priority). Max 10 results.",
     inputSchema: {
       type: "object",
       properties: {
@@ -332,7 +331,8 @@ export const issueToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "get_work_queue",
-    description: "Get prioritized work queue: top 3 issues and top 3 tasks to work on next. Considers status, priority, milestone deadlines, and task readiness.",
+    description:
+      "Get prioritized work queue: top 3 issues and top 3 tasks to work on next. Considers status, priority, milestone deadlines, and task readiness.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -459,9 +459,7 @@ export function handleGetIssue(
 ): ToolResponse {
   const { id, number, includePlan = false } = args;
 
-  const issue = id
-    ? ctx.issueRepository.findById(id)
-    : ctx.issueRepository.findByNumber(number!);
+  const issue = id ? ctx.issueRepository.findById(id) : ctx.issueRepository.findByNumber(number!);
 
   if (!issue) {
     return errorResponse("Issue not found");
@@ -517,7 +515,7 @@ export async function handleDeleteIssue(
   const { issueId, issueNumber } = args;
 
   // Resolve issue from ID or number
-  let issue = issueId
+  const issue = issueId
     ? ctx.issueRepository.findById(issueId)
     : issueNumber !== undefined
       ? ctx.issueRepository.findByNumber(issueNumber)
@@ -548,7 +546,9 @@ export async function handleDeleteIssue(
               await ctx.githubCLI.closeIssue(task.githubSync.githubIssueNumber);
               closedGitHubIssues.push(task.githubSync.githubIssueNumber);
             } catch (error) {
-              console.warn(`Failed to close GitHub issue #${task.githubSync.githubIssueNumber}: ${error}`);
+              console.warn(
+                `Failed to close GitHub issue #${task.githubSync.githubIssueNumber}: ${error}`
+              );
             }
           }
         }
@@ -560,7 +560,9 @@ export async function handleDeleteIssue(
           await ctx.githubCLI.closeIssue(issue.githubSync.githubIssueNumber);
           closedGitHubIssues.push(issue.githubSync.githubIssueNumber);
         } catch (error) {
-          console.warn(`Failed to close GitHub issue #${issue.githubSync.githubIssueNumber}: ${error}`);
+          console.warn(
+            `Failed to close GitHub issue #${issue.githubSync.githubIssueNumber}: ${error}`
+          );
         }
       }
     }
@@ -641,9 +643,7 @@ export function handleRestoreIssue(
 /**
  * Handle list_templates tool call
  */
-export async function handleListTemplates(
-  ctx: IssueToolContext
-): Promise<ToolResponse> {
+export async function handleListTemplates(ctx: IssueToolContext): Promise<ToolResponse> {
   try {
     const templates = await ctx.templateService.getAvailableTemplates();
     const discovery = await ctx.templateService.discoverTemplates();
@@ -792,7 +792,7 @@ export async function handleUpdateIssue(
   const { issueId, issueNumber, updates, regeneratePlan = false } = args;
 
   // Resolve issue from ID or number
-  let issue = issueId
+  const issue = issueId
     ? ctx.issueRepository.findById(issueId)
     : issueNumber
       ? ctx.issueRepository.findByNumber(issueNumber)
@@ -814,10 +814,7 @@ export async function handleUpdateIssue(
 
   if (ctx.githubSyncService.isEnabled() && issue.githubSync?.githubIssueNumber) {
     try {
-      updatedGithubSync = await ctx.githubSyncService.updateGitHubIssue(
-        issue,
-        updates
-      );
+      updatedGithubSync = await ctx.githubSyncService.updateGitHubIssue(issue, updates);
     } catch (error) {
       // GitHub sync failed - fail the entire operation
       return errorResponse(
@@ -831,11 +828,7 @@ export async function handleUpdateIssue(
     ? { ...updates, githubSync: updatedGithubSync }
     : updates;
 
-  const result = ctx.planningService.updateIssue(
-    issue.id,
-    updatesWithSync,
-    regeneratePlan
-  );
+  const result = ctx.planningService.updateIssue(issue.id, updatesWithSync, regeneratePlan);
 
   return successResponse(result);
 }
@@ -940,10 +933,7 @@ export function handleGetProjectStats(ctx: IssueToolContext): ToolResponse {
  *
  * Searches issues by keyword in title or description.
  */
-export function handleSearchIssues(
-  ctx: IssueToolContext,
-  args: { query: string }
-): ToolResponse {
+export function handleSearchIssues(ctx: IssueToolContext, args: { query: string }): ToolResponse {
   const { query } = args;
 
   if (!query || query.trim().length === 0) {
@@ -1018,8 +1008,7 @@ function calculateIssueScore(
   }
 
   // Age tiebreaker (older = slightly higher priority, max 5 points)
-  const ageInDays =
-    (Date.now() - new Date(issue.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+  const ageInDays = (Date.now() - new Date(issue.createdAt).getTime()) / (1000 * 60 * 60 * 24);
   score += Math.min(5, ageInDays / 10);
 
   return score;
@@ -1033,12 +1022,8 @@ function calculateIssueScore(
 export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
   // Get all milestones for date lookups
   const milestones = ctx.milestoneRepository.findMany();
-  const milestoneEndDates = new Map(
-    milestones.map((m) => [m.id, m.endDate])
-  );
-  const milestoneNames = new Map(
-    milestones.map((m) => [m.id, m.title])
-  );
+  const milestoneEndDates = new Map(milestones.map((m) => [m.id, m.endDate]));
+  const milestoneNames = new Map(milestones.map((m) => [m.id, m.title]));
 
   // Get actionable issues (PLANNED needs confirmation, OPEN/IN_PROGRESS need work)
   const activeIssues = ctx.issueRepository
@@ -1071,9 +1056,7 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
     const tasks = ctx.taskRepository.findByPlanId(plan.id);
 
     // Only include available tasks (READY or BACKLOG with satisfied dependencies)
-    const availableTasks = tasks.filter(
-      (t) => t.status === "READY" || t.status === "BACKLOG"
-    );
+    const availableTasks = tasks.filter((t) => t.status === "READY" || t.status === "BACKLOG");
 
     for (const task of availableTasks) {
       let score = 0;
@@ -1167,7 +1150,7 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
   }));
 
   return successResponse({
-    issues: topIssues.map(({ score, ...rest }) => rest),
+    issues: topIssues.map(({ score: _score, ...rest }) => rest),
     tasks: topTasks,
   });
 }

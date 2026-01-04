@@ -196,10 +196,7 @@ export class MockGitWorktreeService implements GitWorktreeService {
     return worktreePath;
   }
 
-  async removeWorktree(
-    worktreePath: string,
-    _deleteBranch = false
-  ): Promise<void> {
+  async removeWorktree(worktreePath: string, _deleteBranch = false): Promise<void> {
     this.recordCall("removeWorktree", [worktreePath, _deleteBranch]);
     this.checkError("removeWorktree");
 

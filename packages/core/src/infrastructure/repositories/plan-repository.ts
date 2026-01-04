@@ -43,29 +43,18 @@ export class SqlitePlanRepository implements PlanRepository {
   }
 
   findById(id: string): Plan | null {
-    const result = this.db
-      .select()
-      .from(plans)
-      .where(eq(plans.id, id))
-      .get();
+    const result = this.db.select().from(plans).where(eq(plans.id, id)).get();
 
     return result ? this.mapRowToPlan(result) : null;
   }
 
   findByIssueId(issueId: string): Plan | null {
-    const result = this.db
-      .select()
-      .from(plans)
-      .where(eq(plans.issueId, issueId))
-      .get();
+    const result = this.db.select().from(plans).where(eq(plans.issueId, issueId)).get();
 
     return result ? this.mapRowToPlan(result) : null;
   }
 
-  update(
-    id: string,
-    data: Partial<Omit<Plan, "id" | "issueId" | "createdAt">>
-  ): Plan {
+  update(id: string, data: Partial<Omit<Plan, "id" | "issueId" | "createdAt">>): Plan {
     const now = new Date().toISOString();
 
     this.db

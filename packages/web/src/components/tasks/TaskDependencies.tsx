@@ -12,10 +12,7 @@ interface TaskDependenciesProps {
 /**
  * Shows tasks that this task depends on with status indicators.
  */
-export function TaskDependencies({
-  dependencies,
-  className,
-}: TaskDependenciesProps) {
+export function TaskDependencies({ dependencies, className }: TaskDependenciesProps) {
   if (dependencies.length === 0) {
     return null;
   }
@@ -37,10 +34,7 @@ export function TaskDependencies({
       </div>
       <div className="space-y-1">
         {dependencies.map((task) => (
-          <div
-            key={task.id}
-            className="flex items-center gap-2 text-sm pl-6"
-          >
+          <div key={task.id} className="flex items-center gap-2 text-sm pl-6">
             <StatusIcon status={task.status} />
             <span className="text-gray-600 truncate flex-1">{task.title}</span>
             <Badge variant="status" value={task.status} className="text-xs" />

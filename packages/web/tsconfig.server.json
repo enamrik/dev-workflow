@@ -19,6 +19,11 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true
   },
-  "include": ["server.ts", "src/server/**/*", "src/lib/multi-project-service.ts", "src/lib/types.ts"],
+  "include": [
+    "server.ts",
+    "src/server/**/*",
+    "src/lib/multi-project-service.ts",
+    "src/lib/types.ts"
+  ],
   "exclude": ["node_modules"]
 }

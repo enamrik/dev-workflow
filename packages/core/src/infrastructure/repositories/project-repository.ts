@@ -19,9 +19,7 @@ import * as schema from "../database/schema.js";
  * since it manages projects themselves.
  */
 export class SqliteProjectRepository implements ProjectRepository {
-  constructor(
-    private readonly db: BetterSQLite3Database<typeof schema>
-  ) {}
+  constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
 
   create(data: CreateProjectData): Project {
     const id = crypto.randomUUID();
@@ -57,11 +55,7 @@ export class SqliteProjectRepository implements ProjectRepository {
   }
 
   findById(id: string): Project | null {
-    const result = this.db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, id))
-      .get();
+    const result = this.db.select().from(projects).where(eq(projects.id, id)).get();
 
     return result ? this.mapRowToProject(result) : null;
   }
@@ -108,10 +102,7 @@ export class SqliteProjectRepository implements ProjectRepository {
   }
 
   delete(id: string): void {
-    this.db
-      .delete(projects)
-      .where(eq(projects.id, id))
-      .run();
+    this.db.delete(projects).where(eq(projects.id, id)).run();
   }
 
   archive(id: string): Project {
@@ -162,28 +153,16 @@ export class SqliteProjectRepository implements ProjectRepository {
     // task_execution_logs cascade from tasks
 
     // 1. Delete snapshots for this project
-    this.db
-      .delete(snapshots)
-      .where(eq(snapshots.projectId, id))
-      .run();
+    this.db.delete(snapshots).where(eq(snapshots.projectId, id)).run();
 
     // 2. Delete milestones for this project
-    this.db
-      .delete(milestones)
-      .where(eq(milestones.projectId, id))
-      .run();
+    this.db.delete(milestones).where(eq(milestones.projectId, id)).run();
 
     // 3. Delete issues for this project (cascades to plans, tasks, etc.)
-    this.db
-      .delete(issues)
-      .where(eq(issues.projectId, id))
-      .run();
+    this.db.delete(issues).where(eq(issues.projectId, id)).run();
 
     // 4. Finally delete the project itself
-    this.db
-      .delete(projects)
-      .where(eq(projects.id, id))
-      .run();
+    this.db.delete(projects).where(eq(projects.id, id)).run();
   }
 
   /**

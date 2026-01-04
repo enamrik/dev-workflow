@@ -60,18 +60,12 @@ export function TaskMetadataPanel({
   const { data, isLoading, error } = useTaskMetadata(projectId, task.id);
 
   if (isLoading) {
-    return (
-      <div className={clsx("py-4 text-sm text-gray-500", className)}>
-        Loading metadata...
-      </div>
-    );
+    return <div className={clsx("py-4 text-sm text-gray-500", className)}>Loading metadata...</div>;
   }
 
   if (error) {
     return (
-      <div className={clsx("py-4 text-sm text-red-500", className)}>
-        Failed to load metadata
-      </div>
+      <div className={clsx("py-4 text-sm text-red-500", className)}>Failed to load metadata</div>
     );
   }
 
@@ -83,11 +77,7 @@ export function TaskMetadataPanel({
     <div className={clsx("space-y-4", className)}>
       {/* Consolidated actions section */}
       {hasActions && (
-        <TaskActions
-          task={task}
-          issueNumber={issueNumber}
-          showCopyCommand={!hideCopyCommand}
-        />
+        <TaskActions task={task} issueNumber={issueNumber} showCopyCommand={!hideCopyCommand} />
       )}
 
       {/* PR status badge (shown separately for visibility) */}
@@ -99,9 +89,7 @@ export function TaskMetadataPanel({
       )}
 
       {/* Dependencies */}
-      {dependencies.length > 0 && (
-        <TaskDependencies dependencies={dependencies} />
-      )}
+      {dependencies.length > 0 && <TaskDependencies dependencies={dependencies} />}
 
       {/* Time breakdown */}
       {task.startedAt && (

@@ -10,12 +10,7 @@ import type {
   PlanComplexity,
   TaskGitHubSyncService,
 } from "@dev-workflow/core";
-import {
-  type ToolDefinition,
-  type ToolResponse,
-  successResponse,
-  errorResponse,
-} from "./types.js";
+import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
 /**
  * Tool definitions for plan operations

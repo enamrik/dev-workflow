@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDatabase } from "../../../__tests__/setup.js";
-import { createRepositories, createTestIssue, createTestPlan, createTestTask } from "../../../__tests__/helpers.js";
+import {
+  createRepositories,
+  createTestIssue,
+  createTestPlan,
+  createTestTask,
+} from "../../../__tests__/helpers.js";
 import type { GitHubIssueSyncConfig } from "../../database/schema.js";
 
 describe("SqliteProjectRepository", () => {

@@ -105,9 +105,7 @@ export interface SnapshotRepository {
    * @param snapshot - Snapshot data (without id, projectId, version, createdAt which are generated)
    * @returns The created snapshot with id, projectId, version, and timestamp assigned
    */
-  create(
-    snapshot: Omit<Snapshot, "id" | "projectId" | "version" | "createdAt">
-  ): Snapshot;
+  create(snapshot: Omit<Snapshot, "id" | "projectId" | "version" | "createdAt">): Snapshot;
 
   /**
    * Find a snapshot by its UUID

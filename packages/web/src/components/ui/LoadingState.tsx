@@ -5,16 +5,10 @@ interface LoadingStateProps {
   className?: string;
 }
 
-export function LoadingState({
-  message = "Loading...",
-  className,
-}: LoadingStateProps) {
+export function LoadingState({ message = "Loading...", className }: LoadingStateProps) {
   return (
     <div
-      className={clsx(
-        "flex flex-col items-center justify-center py-12 text-gray-500",
-        className
-      )}
+      className={clsx("flex flex-col items-center justify-center py-12 text-gray-500", className)}
     >
       <div className="w-8 h-8 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin mb-4" />
       <p className="text-sm">{message}</p>

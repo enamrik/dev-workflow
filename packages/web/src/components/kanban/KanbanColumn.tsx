@@ -51,10 +51,7 @@ export function KanbanColumn({
     <div className="flex flex-col flex-1 min-w-[220px] bg-gray-50 rounded-lg">
       {/* Column header */}
       <div
-        className={clsx(
-          "flex items-center justify-between px-3 py-2 rounded-t-lg",
-          headerColor
-        )}
+        className={clsx("flex items-center justify-between px-3 py-2 rounded-t-lg", headerColor)}
       >
         <div className="flex items-center gap-1">
           <h3 className="font-semibold text-gray-800">{title}</h3>
@@ -77,24 +74,20 @@ export function KanbanColumn({
             </Tooltip>
           )}
         </div>
-        <span className="text-sm text-gray-600 bg-white px-2 py-0.5 rounded">
-          {tasks.length}
-        </span>
+        <span className="text-sm text-gray-600 bg-white px-2 py-0.5 rounded">{tasks.length}</span>
       </div>
 
       {/* Column content */}
-      <div className={clsx(
-        "flex-1 p-2 space-y-2 overflow-y-auto scrollbar-auto-hide",
-        stacked ? "max-h-[calc((100vh-280px)/2-16px)]" : "max-h-[calc(100vh-280px)]"
-      )}>
+      <div
+        className={clsx(
+          "flex-1 p-2 space-y-2 overflow-y-auto scrollbar-auto-hide",
+          stacked ? "max-h-[calc((100vh-280px)/2-16px)]" : "max-h-[calc(100vh-280px)]"
+        )}
+      >
         <AnimatePresence mode="popLayout">
           {tasks.length > 0 ? (
             tasks.map((task) => (
-              <motion.div
-                key={task.id}
-                layoutId={task.id}
-                {...cardAnimation}
-              >
+              <motion.div key={task.id} layoutId={task.id} {...cardAnimation}>
                 <KanbanCard
                   task={task}
                   issueNumber={task.issueNumber}

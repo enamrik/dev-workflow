@@ -51,10 +51,7 @@ export class TaskMatchingService {
    * @param existingTasks - Existing tasks from previous version
    * @returns Array of match results indicating which tasks to create/preserve
    */
-  matchTasks(
-    newTasks: TaskDefinition[],
-    existingTasks: Task[]
-  ): TaskMatchResult[] {
+  matchTasks(newTasks: TaskDefinition[], existingTasks: Task[]): TaskMatchResult[] {
     const results: TaskMatchResult[] = [];
     const matchedExistingTaskIds = new Set<string>();
 
@@ -94,11 +91,7 @@ export class TaskMatchingService {
           action: "PRESERVE",
           preservedStatus: bestMatch!.status,
         });
-      } else if (
-        bestScore >= 0.5 &&
-        bestMatch &&
-        bestMatch.status === "COMPLETED"
-      ) {
+      } else if (bestScore >= 0.5 && bestMatch && bestMatch.status === "COMPLETED") {
         // Medium confidence but preserve completed work anyway
         matchedExistingTaskIds.add(bestMatch.id);
         results.push({
@@ -130,14 +123,8 @@ export class TaskMatchingService {
    * @param existingTask - Existing task
    * @returns Match score between 0.0 (no match) and 1.0 (perfect match)
    */
-  private calculateMatchScore(
-    newTask: TaskDefinition,
-    existingTask: Task
-  ): number {
-    const titleScore = this.calculateTitleSimilarity(
-      newTask.title,
-      existingTask.title
-    );
+  private calculateMatchScore(newTask: TaskDefinition, existingTask: Task): number {
+    const titleScore = this.calculateTitleSimilarity(newTask.title, existingTask.title);
     const descScore = this.calculateDescriptionSimilarity(
       newTask.description,
       existingTask.description

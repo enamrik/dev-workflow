@@ -8,7 +8,13 @@ import { Card, CardHeader, CardTitle, LoadingState, ErrorState } from "@/compone
 
 export default function MilestonesPage() {
   return (
-    <Suspense fallback={<Card><LoadingState message="Loading..." /></Card>}>
+    <Suspense
+      fallback={
+        <Card>
+          <LoadingState message="Loading..." />
+        </Card>
+      }
+    >
       <MilestonesPageContent />
     </Suspense>
   );

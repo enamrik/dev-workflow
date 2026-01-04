@@ -12,6 +12,7 @@ Tasks need to be executed by Claude sessions. We identified two conflicting user
 2. **Parallel execution**: Users want multiple tasks running simultaneously with isolated context budgets
 
 These needs conflict because:
+
 - Real-time visibility requires execution in the current session
 - Parallel execution requires spawning subagents (which don't stream intermediate steps)
 
@@ -24,11 +25,13 @@ Support **both modes** and let the user choose based on their needs.
 Task executes directly in the current Claude session.
 
 **Characteristics:**
+
 - User sees every tool call, file edit, and reasoning step
 - Single task at a time
 - Shares context budget with main conversation
 
 **Flow:**
+
 ```
 Main Session
      │
@@ -44,12 +47,14 @@ Main Session
 Task executes in a spawned subagent.
 
 **Characteristics:**
+
 - No real-time streaming of intermediate steps
 - Parallel execution possible (multiple subagents)
 - Each subagent gets fresh context budget
 - Audit trail via execution logs
 
 **Flow:**
+
 ```
 Main Session                         Subagent
      │                                   │

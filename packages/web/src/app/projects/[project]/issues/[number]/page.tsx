@@ -80,8 +80,7 @@ export default function IssueDetailPage({ params }: PageProps) {
     { id: "plan", label: plan ? "Plan \u2713" : "Plan" },
     {
       id: "tasks",
-      label:
-        tasks.length > 0 ? `Tasks (${taskCounts.completed}/${taskCounts.total})` : "Tasks",
+      label: tasks.length > 0 ? `Tasks (${taskCounts.completed}/${taskCounts.total})` : "Tasks",
     },
   ];
 
@@ -95,9 +94,7 @@ export default function IssueDetailPage({ params }: PageProps) {
         >
           &larr; Back to Issues
         </Link>
-        <h2 className="text-lg font-semibold text-gray-600 mb-2">
-          Issue #{issue.number}
-        </h2>
+        <h2 className="text-lg font-semibold text-gray-600 mb-2">Issue #{issue.number}</h2>
       </div>
 
       {/* Title and badges */}
@@ -159,11 +156,7 @@ function DetailsTab({ issue }: DetailsTabProps) {
           <ul className="space-y-2">
             {issue.acceptanceCriteria.map((criterion, idx) => (
               <li key={idx} className="flex items-start gap-2">
-                <input
-                  type="checkbox"
-                  disabled
-                  className="mt-1 rounded border-gray-300"
-                />
+                <input type="checkbox" disabled className="mt-1 rounded border-gray-300" />
                 <span className="text-gray-800">{criterion}</span>
               </li>
             ))}
@@ -291,11 +284,7 @@ function formatDate(isoString: string): string {
  * - IN_PROGRESS: Some tasks not completed AND no tasks in BACKLOG/READY (work has started)
  * - OPEN: Plan exists but work not started (tasks in BACKLOG/READY), or no plan/tasks yet
  */
-function computeIssueStatus(
-  issue: Issue,
-  plan: Plan | null,
-  tasks: Task[]
-): ComputedIssueStatus {
+function computeIssueStatus(issue: Issue, plan: Plan | null, tasks: Task[]): ComputedIssueStatus {
   // Explicitly closed issues stay CLOSED
   if (issue.status === "CLOSED") {
     return "CLOSED";
