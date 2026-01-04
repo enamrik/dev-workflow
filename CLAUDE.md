@@ -220,6 +220,16 @@ make prep               # Run all checks before pushing (REQUIRED before push)
 make ui-dev-local       # Start UI dev server with local test data
 ```
 
+### MCP Server Auto-Restart
+
+`make dogfood` automatically kills the running MCP server process after rebuilding. Claude Code will restart it on the next MCP tool call, loading the fresh code.
+
+If you rebuild packages manually (e.g., `pnpm build`), you can restart the MCP server by:
+- Running `pkill -f "dev-workflow.*mcp"` in terminal, OR
+- Running `/mcp` in Claude Code
+
+**Note**: CLI commands like `dev-workflow update` do NOT have stale code issues - they start fresh each invocation.
+
 ### Pre-Push Validation
 
 **IMPORTANT: Always run `make prep` before pushing to remote (PR or main branch).**
@@ -399,6 +409,16 @@ Our `tsconfig.json` enforces maximum type safety:
 - [ ] Business logic in domain layer
 - [ ] Infrastructure concerns separated
 - [ ] TypeScript strict mode compliant
+
+## Testing GitHub Sync
+
+If you suspect GitHub sync issues (e.g., project column not updating after `submit_for_review`), run the test workflow:
+
+```
+Read scripts/test-workflow.md and execute the test workflow
+```
+
+This script tests the full issue lifecycle with verification steps using `gh api graphql` and `sqlite3` queries.
 
 ## Claude Code Skills vs Task Labels
 

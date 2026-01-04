@@ -18,7 +18,7 @@ help:
 	@echo "  make unlink           - Uninstall global dev-workflow"
 	@echo "  make reset            - Uninstall dev-workflow (run 'dev-workflow uninit')"
 	@echo "  make init             - Initialize dev-workflow in this repository"
-	@echo "  make dogfood          - Build + link + update (or init if first time)"
+	@echo "  make dogfood          - Build + link + update + restart MCP server"
 	@echo "  make test             - Run unit tests"
 	@echo "  make test-e2e         - Run E2E tests (requires Claude CLI)"
 	@echo "  make prep             - Run all checks before pushing (typecheck, lint, format, tests)"
@@ -107,6 +107,10 @@ dogfood: install
 	@$(DEV_WORKFLOW) init
 	@echo "🔄 Updating dev-workflow installation..."
 	@$(DEV_WORKFLOW) update
+	@echo ""
+	@echo "🔄 Restarting MCP server (if running)..."
+	@-pkill -f "dev-workflow.*mcp" 2>/dev/null || true
+	@echo "✓ MCP server will restart automatically on next tool call"
 	@echo ""
 	@echo "🐕 Ready to dogfood! You can now use dev-workflow anywhere on this machine."
 	@echo ""
