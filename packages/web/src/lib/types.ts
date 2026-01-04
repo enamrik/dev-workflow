@@ -100,6 +100,7 @@ export interface GitHubIssueSyncConfig {
 export interface Project {
   id: string;
   name: string;
+  slug: string;
   trackDirectory: string;
   gitRoot: string;
   /** GitHub sync configuration (optional - only present if configured) */
@@ -132,6 +133,7 @@ export interface ProjectIssueWithPlanInfo {
    */
   computedStatus: ComputedIssueStatus;
   projectName?: string;
+  projectSlug?: string;
   milestoneNumber?: number;
   milestoneTitle?: string;
 }
@@ -143,6 +145,7 @@ export interface ProjectIssueWithTasks {
   milestoneNumber?: number;
   milestoneTitle?: string;
   projectName?: string;
+  projectSlug?: string;
 }
 
 /**
@@ -151,6 +154,7 @@ export interface ProjectIssueWithTasks {
 export interface CompletedTask extends Task {
   projectId: string;
   projectName: string;
+  projectSlug: string;
   issueNumber: number;
   issueTitle: string;
   issueType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
