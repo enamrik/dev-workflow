@@ -39,9 +39,12 @@ export function KanbanBoard({
   }
 
   // Group tasks by status (mapping ABANDONED to COMPLETED column)
-  // Backlog column shows BACKLOG tasks when showBacklog is enabled
+  // Backlog and Planned columns show when showBacklog is enabled
   const backlogTasks = showBacklog
     ? allTasks.filter((t) => t.status === "BACKLOG")
+    : [];
+  const plannedTasks = showBacklog
+    ? allTasks.filter((t) => t.status === "PLANNED")
     : [];
   // Ready column shows only READY tasks (BACKLOG tasks are paused/inactive)
   const readyTasks = allTasks.filter((t) => t.status === "READY");
@@ -84,6 +87,7 @@ export function KanbanBoard({
 
   const hasAnyTasks =
     backlogTasks.length > 0 ||
+    plannedTasks.length > 0 ||
     readyTasks.length > 0 ||
     inProgressTasks.length > 0 ||
     prReviewTasks.length > 0 ||
@@ -101,12 +105,22 @@ export function KanbanBoard({
   return (
     <div className="flex gap-4 overflow-x-auto pb-4">
       {showBacklog && (
-        <KanbanColumn
-          title="Backlog"
-          status="BACKLOG"
-          tasks={backlogTasks}
-          tooltip="Inactive tasks waiting to be started"
-        />
+        <div className="flex flex-col gap-2 min-w-[220px] flex-1">
+          <KanbanColumn
+            title="Backlog"
+            status="BACKLOG"
+            tasks={backlogTasks}
+            tooltip="Inactive tasks waiting to be started"
+            stacked
+          />
+          <KanbanColumn
+            title="Planned"
+            status="PLANNED"
+            tasks={plannedTasks}
+            tooltip="Tasks in planned issues not yet moved to backlog"
+            stacked
+          />
+        </div>
       )}
       <KanbanColumn title="Ready" status="READY" tasks={readyTasks} />
       <KanbanColumn
