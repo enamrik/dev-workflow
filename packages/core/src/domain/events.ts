@@ -10,6 +10,7 @@ export type DomainEventType =
   | "issue:updated"
   | "issue:closed"
   | "issue:paused"
+  | "issue:readied"
   | "plan:generated"
   | "plan:updated"
   | "task:created"
@@ -30,6 +31,11 @@ export interface DomainEventPayload {
   "issue:updated": { issueId: string; issueNumber: number; fields: string[] };
   "issue:closed": { issueId: string; issueNumber: number };
   "issue:paused": {
+    issueId: string;
+    issueNumber: number;
+    tasksMovedCount: number;
+  };
+  "issue:readied": {
     issueId: string;
     issueNumber: number;
     tasksMovedCount: number;

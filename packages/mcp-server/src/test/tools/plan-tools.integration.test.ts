@@ -17,6 +17,7 @@ import {
 import {
   handleGeneratePlan,
   handleGetPlan,
+  handleMoveIssueToReady,
   handleMoveIssueToBacklog,
   type PlanToolContext,
 } from "../../tools/plan-tools.js";
@@ -206,6 +207,81 @@ describe("Plan Tools Integration", () => {
       const plan = ctx.planRepository.findByIssueId(issue.id);
       const tasks = ctx.taskRepository.findByPlanId(plan!.id);
       expect(tasks.every((t) => t.status === "BACKLOG")).toBe(true);
+    });
+  });
+
+  describe("handleMoveIssueToReady", () => {
+    it("should move BACKLOG tasks to READY", async () => {
+      // Create issue and plan, then activate to BACKLOG
+      const issue = createTestIssue(ctx.issueRepository, { status: "PLANNED" });
+      await handleGeneratePlan(ctx, {
+        issueNumber: issue.number,
+        summary: "Test plan",
+        approach: "Test approach",
+        tasks: [
+          { id: "t1", title: "Task 1", description: "Desc 1" },
+          { id: "t2", title: "Task 2", description: "Desc 2" },
+        ],
+        estimatedComplexity: "LOW",
+      });
+
+      // Move to backlog first (PLANNED -> BACKLOG)
+      await handleMoveIssueToBacklog(ctx, { issueNumber: issue.number });
+
+      // Now move to ready (BACKLOG -> READY)
+      const result = handleMoveIssueToReady(ctx, { issueNumber: issue.number });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.tasksMovedCount).toBe(2);
+      expect(content.message).toContain("is ready");
+
+      // Verify database state
+      const plan = ctx.planRepository.findByIssueId(issue.id);
+      const tasks = ctx.taskRepository.findByPlanId(plan!.id);
+      expect(tasks.every((t) => t.status === "READY")).toBe(true);
+    });
+
+    it("should do nothing when no BACKLOG tasks exist", async () => {
+      // Create issue and plan, activate to BACKLOG, then move to READY
+      const issue = createTestIssue(ctx.issueRepository, { status: "PLANNED" });
+      await handleGeneratePlan(ctx, {
+        issueNumber: issue.number,
+        summary: "Test plan",
+        approach: "Test approach",
+        tasks: [{ id: "t1", title: "Task 1", description: "Desc 1" }],
+        estimatedComplexity: "LOW",
+      });
+
+      await handleMoveIssueToBacklog(ctx, { issueNumber: issue.number });
+      handleMoveIssueToReady(ctx, { issueNumber: issue.number });
+
+      // Call again - should be idempotent (no BACKLOG tasks to move)
+      const result = handleMoveIssueToReady(ctx, { issueNumber: issue.number });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.tasksMovedCount).toBe(0);
+      expect(content.message).toContain("has no BACKLOG tasks");
+    });
+
+    it("should return error for non-existent issue", () => {
+      const result = handleMoveIssueToReady(ctx, { issueNumber: 99999 });
+
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(false);
+      expect(content.error).toContain("Issue not found");
+    });
+
+    it("should return error when no plan exists", () => {
+      // Create issue without a plan
+      const issue = createTestIssue(ctx.issueRepository);
+
+      const result = handleMoveIssueToReady(ctx, { issueNumber: issue.number });
+
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(false);
+      expect(content.error).toContain("No plan exists");
     });
   });
 });

@@ -32,6 +32,7 @@ export {
   handleGeneratePlan,
   handleGetPlan,
   handlePauseIssue,
+  handleMoveIssueToReady,
   handleMoveIssueToBacklog,
 } from "./plan-tools.js";
 

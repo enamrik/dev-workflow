@@ -465,6 +465,63 @@ export class PlanningService {
   }
 
   /**
+   * Ready an issue by moving all BACKLOG tasks to READY
+   *
+   * This allows marking an issue as "next up" without starting any task.
+   * The user can then decide which task to start first.
+   *
+   * Only affects BACKLOG tasks - other statuses are not changed.
+   * This is idempotent - if there are no BACKLOG tasks, it does nothing.
+   *
+   * @param issueNumber - Issue number to ready
+   * @returns Object with count of tasks moved and the affected tasks
+   */
+  readyIssue(issueNumber: number): { count: number; tasks: Task[] } {
+    // Find the issue
+    const issue = this.issueRepository.findByNumber(issueNumber);
+    if (!issue) {
+      throw new Error(`Issue not found: #${issueNumber}`);
+    }
+
+    // Find the plan for this issue
+    const plan = this.planRepository.findByIssueId(issue.id);
+    if (!plan) {
+      throw new Error(`No plan exists for issue #${issueNumber}`);
+    }
+
+    // Get all tasks for the plan
+    const allTasks = this.taskRepository.findByPlanId(plan.id, false);
+
+    // Move BACKLOG tasks to READY
+    const movedTasks: Task[] = [];
+    for (const task of allTasks) {
+      if (task.status === "BACKLOG") {
+        const updatedTask = this.taskRepository.updateStatus(
+          task.id,
+          "READY",
+          "ready_issue",
+          "Issue readied - task moved from BACKLOG to READY"
+        );
+        movedTasks.push(updatedTask);
+      }
+    }
+
+    // Emit event for real-time UI updates
+    if (movedTasks.length > 0) {
+      this.eventBus.emit("issue:readied", {
+        issueId: issue.id,
+        issueNumber: issue.number,
+        tasksMovedCount: movedTasks.length,
+      });
+    }
+
+    return {
+      count: movedTasks.length,
+      tasks: movedTasks,
+    };
+  }
+
+  /**
    * Create all new tasks without matching
    */
   private createNewTasks(
