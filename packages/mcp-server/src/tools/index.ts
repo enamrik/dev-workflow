@@ -86,6 +86,7 @@ export {
   handleUpdateMilestone,
   handleDeleteMilestone,
   handleAssignIssueToMilestone,
+  handleRemoveIssueFromMilestone,
 } from "./milestone-tools.js";
 
 // Worktree tools

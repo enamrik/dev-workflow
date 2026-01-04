@@ -1,7 +1,7 @@
 ---
 name: dwf-manage-milestone
 description: Manage milestones - time-bounded goals that group related issues. Use for creating, updating, and organizing issues into milestones for project planning.
-allowed-tools: mcp:dev-workflow-tracker:create_milestone, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:update_milestone, mcp:dev-workflow-tracker:delete_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone, mcp:dev-workflow-tracker:search_issues
+allowed-tools: mcp:dev-workflow-tracker:create_milestone, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:update_milestone, mcp:dev-workflow-tracker:delete_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone, mcp:dev-workflow-tracker:remove_issue_from_milestone, mcp:dev-workflow-tracker:search_issues
 ---
 
 # Manage Milestone Skill
@@ -98,14 +98,23 @@ Milestones are numbered sequentially per project: M1, M2, M3, etc.
    - Call `get_issue` to verify issue exists
    - Call `get_milestone` to verify milestone exists
 
-2. **Assign or unassign:**
-   - Call `assign_issue_to_milestone`
-   - Include milestoneNumber to assign
-   - Omit milestoneNumber to unassign
+2. **Assign the issue:**
+   - Call `assign_issue_to_milestone` with both issueNumber and milestoneNumber
 
 3. **Report:**
    - Confirm the assignment
    - Show current milestone progress
+
+### For Removing Issues from Milestones
+
+1. **Verify issue exists:**
+   - Call `get_issue` to verify issue exists and is assigned to a milestone
+
+2. **Remove from milestone:**
+   - Call `remove_issue_from_milestone` with the issueNumber
+
+3. **Report:**
+   - Confirm the removal
 
 ### For Listing Milestones
 
@@ -173,6 +182,18 @@ Assigned issues to milestone M1:
   - #5: Add password reset
 
 M1 Progress: 0/3 issues completed (3 open)
+```
+
+### Removing an Issue from a Milestone
+
+**User:** "Remove issue #3 from M1"
+
+**Response:**
+
+```
+Removed issue #3 from milestone M1.
+
+M1 Progress: 0/2 issues completed (2 open)
 ```
 
 ### Viewing Milestone Status
