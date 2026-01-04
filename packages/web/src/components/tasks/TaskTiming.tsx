@@ -5,35 +5,37 @@ import { getTaskTimingMessage } from "@/lib/duration";
 import type { Task } from "@/lib/types";
 
 interface TaskTimingProps {
-  task: Pick<Task, "status" | "startedAt" | "submittedForReviewAt" | "completedAt" | "abandonedAt">;
+  task: Pick<Task, "status" | "createdAt" | "startedAt" | "submittedForReviewAt" | "completedAt" | "abandonedAt">;
   className?: string;
+  /** "compact" shows just duration, "detailed" includes context prefix */
+  variant?: "compact" | "detailed";
 }
 
 /**
  * Displays task timing information based on status.
  * For in-progress tasks, updates every minute to show live elapsed time.
  */
-export function TaskTiming({ task, className = "" }: TaskTimingProps) {
+export function TaskTiming({ task, className = "", variant = "compact" }: TaskTimingProps) {
   const [message, setMessage] = useState<string | null>(() =>
-    getTaskTimingMessage(task)
+    getTaskTimingMessage(task, variant)
   );
 
   useEffect(() => {
     // Update message immediately when task changes
-    setMessage(getTaskTimingMessage(task));
+    setMessage(getTaskTimingMessage(task, variant));
 
-    // For in-progress or in-review tasks, update every minute
-    const isActiveTask = (task.status === "IN_PROGRESS" || task.status === "PR_REVIEW") && task.startedAt;
-    if (isActiveTask) {
+    // For active statuses (not completed/abandoned), update every minute
+    const isActiveStatus = ["BACKLOG", "READY", "IN_PROGRESS", "PR_REVIEW"].includes(task.status);
+    if (isActiveStatus) {
       const interval = setInterval(() => {
-        setMessage(getTaskTimingMessage(task));
+        setMessage(getTaskTimingMessage(task, variant));
       }, 60000); // Update every minute
 
       return () => clearInterval(interval);
     }
 
     return undefined;
-  }, [task, task.status, task.startedAt, task.submittedForReviewAt, task.completedAt, task.abandonedAt]);
+  }, [task, task.status, task.createdAt, task.startedAt, task.submittedForReviewAt, task.completedAt, task.abandonedAt, variant]);
 
   if (!message) {
     return null;

@@ -71,31 +71,68 @@ export function getTaskDuration(task: {
 }
 
 /**
- * Returns a human-readable timing message for a task.
+ * Returns the duration a task has been in its current status.
+ * For COMPLETED tasks, returns the cycle time (IN_PROGRESS to COMPLETED).
+ *
+ * @param variant - "compact" returns just duration (e.g., "2h"),
+ *                  "detailed" includes context (e.g., "Active 2h")
  */
-export function getTaskTimingMessage(task: {
-  status: string;
-  startedAt?: string;
-  completedAt?: string;
-  abandonedAt?: string;
-}): string | null {
-  const duration = getTaskDuration(task);
-
-  if (duration === null) {
-    return null;
-  }
-
-  const formatted = formatDuration(duration);
+export function getTaskTimingMessage(
+  task: {
+    status: string;
+    createdAt?: string;
+    startedAt?: string;
+    submittedForReviewAt?: string;
+    completedAt?: string;
+    abandonedAt?: string;
+  },
+  variant: "compact" | "detailed" = "compact"
+): string | null {
+  const now = Date.now();
 
   switch (task.status) {
-    case "IN_PROGRESS":
-      return `Started ${formatted} ago`;
-    case "PR_REVIEW":
-      return `In review for ${formatted}`;
-    case "COMPLETED":
-      return `Completed in ${formatted}`;
-    case "ABANDONED":
-      return `Abandoned after ${formatted}`;
+    case "BACKLOG": {
+      // Time since task was created (waiting to be started)
+      if (!task.createdAt) return null;
+      const duration = now - new Date(task.createdAt).getTime();
+      const formatted = formatDuration(duration);
+      return variant === "detailed" ? `Backlog: ${formatted}` : formatted;
+    }
+    case "READY": {
+      // Time since task was created (waiting to be started)
+      if (!task.createdAt) return null;
+      const duration = now - new Date(task.createdAt).getTime();
+      const formatted = formatDuration(duration);
+      return variant === "detailed" ? `Ready: ${formatted}` : formatted;
+    }
+    case "IN_PROGRESS": {
+      // Time since work started
+      if (!task.startedAt) return null;
+      const duration = now - new Date(task.startedAt).getTime();
+      const formatted = formatDuration(duration);
+      return variant === "detailed" ? `In progress: ${formatted}` : formatted;
+    }
+    case "PR_REVIEW": {
+      // Time since submitted for review
+      if (!task.submittedForReviewAt) return null;
+      const duration = now - new Date(task.submittedForReviewAt).getTime();
+      const formatted = formatDuration(duration);
+      return variant === "detailed" ? `In review: ${formatted}` : formatted;
+    }
+    case "COMPLETED": {
+      // Cycle time: from IN_PROGRESS to COMPLETED
+      if (!task.startedAt || !task.completedAt) return null;
+      const duration = new Date(task.completedAt).getTime() - new Date(task.startedAt).getTime();
+      const formatted = formatDuration(duration);
+      return variant === "detailed" ? `Completed: ${formatted}` : formatted;
+    }
+    case "ABANDONED": {
+      // Time from start to abandonment
+      if (!task.startedAt || !task.abandonedAt) return null;
+      const duration = new Date(task.abandonedAt).getTime() - new Date(task.startedAt).getTime();
+      const formatted = formatDuration(duration);
+      return variant === "detailed" ? `Abandoned: ${formatted}` : formatted;
+    }
     default:
       return null;
   }
