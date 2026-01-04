@@ -4,7 +4,9 @@ import * as schema from "./schema.js";
 import { DatabaseFactory } from "./database-factory.js";
 import type { DatabaseAdapter } from "./database-adapter.js";
 import * as path from "node:path";
+import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
+import { sql } from "drizzle-orm";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,6 +57,11 @@ export class DatabaseService {
    *
    * Uses drizzle-kit generated migrations from the drizzle/ folder.
    * Migrations are executed in order based on the journal.
+   *
+   * After running, verifies all journal entries are applied to catch
+   * any silent failures from drizzle's timestamp-based migration tracking.
+   *
+   * @throws Error if migrations fail or if verification detects missing migrations
    */
   runMigrations(): void {
     // Path to drizzle migrations folder (relative to compiled JS in dist/)
@@ -63,6 +70,46 @@ export class DatabaseService {
 
     // Use Drizzle's built-in migrator which tracks applied migrations automatically
     migrate(this.db, { migrationsFolder });
+
+    // Verify all migrations were applied
+    this.verifyMigrations(migrationsFolder);
+  }
+
+  /**
+   * Verify all journal entries have corresponding records in __drizzle_migrations.
+   *
+   * Drizzle's migrator uses timestamp-based comparison which can silently skip
+   * migrations if they're added out of order. This verification catches such cases.
+   *
+   * @throws Error if any migrations are missing from the database
+   */
+  private verifyMigrations(migrationsFolder: string): void {
+    const journalPath = path.join(migrationsFolder, "meta/_journal.json");
+
+    // If no journal exists, nothing to verify
+    if (!fs.existsSync(journalPath)) {
+      return;
+    }
+
+    const journal = JSON.parse(fs.readFileSync(journalPath, "utf-8")) as {
+      entries: Array<{ idx: number; tag: string; when: number }>;
+    };
+
+    // Get count of applied migrations
+    const result = this.db.all<{ count: number }>(
+      sql`SELECT COUNT(*) as count FROM __drizzle_migrations`
+    );
+    const appliedCount = result[0]?.count ?? 0;
+    const expectedCount = journal.entries.length;
+
+    if (appliedCount < expectedCount) {
+      const missing = expectedCount - appliedCount;
+      throw new Error(
+        `Migration verification failed: Expected ${expectedCount} migrations but found ${appliedCount}. ` +
+          `${missing} migration(s) were not applied. ` +
+          `This may indicate a stale dist/drizzle folder. Try running 'pnpm build' to rebuild.`
+      );
+    }
   }
 
   /**
