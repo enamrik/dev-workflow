@@ -16,6 +16,7 @@ export * from "./domain/github.js";
 export * from "./domain/milestone.js";
 export * from "./domain/project.js";
 export * from "./domain/errors.js";
+export * from "./domain/backup.js";
 
 // Application services
 export { PlanningService } from "./application/planning-service.js";
@@ -64,6 +65,7 @@ export {
   NodeGitOperations,
   type GitOperations,
 } from "./application/project-service.js";
+export { BackupService } from "./application/backup-service.js";
 
 // Infrastructure - Database
 export * from "./infrastructure/database/schema.js";
@@ -86,6 +88,15 @@ export { SqliteTaskRepository } from "./infrastructure/repositories/task-reposit
 export { SqliteSnapshotRepository } from "./infrastructure/repositories/snapshot-repository.js";
 export { SqliteMilestoneRepository } from "./infrastructure/repositories/milestone-repository.js";
 export { SqliteProjectRepository } from "./infrastructure/repositories/project-repository.js";
+export {
+  SqliteGlobalSettingsRepository,
+  SettingKeys,
+  type GlobalSettingsRepository,
+  type SettingKey,
+} from "./infrastructure/repositories/global-settings-repository.js";
+
+// Infrastructure - Backup
+export { S3BackupProvider } from "./infrastructure/backup/s3-backup-provider.js";
 
 // Infrastructure - File System
 export type { FileSystem } from "./infrastructure/file-system/file-system.js";
