@@ -5,9 +5,40 @@ import Link from "next/link";
 import { clsx } from "clsx";
 import { Badge, Modal, Markdown, Tooltip, GitHubLink } from "../ui";
 import { TaskTiming, TaskMetadataPanel, TaskActions } from "../tasks";
-import type { Task } from "@/lib/types";
+import type { Task, ComputedIssueStatus } from "@/lib/types";
 
 type IssueType = "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
+
+// Issue status dot colors - matches the status badge colors from Badge.tsx
+const issueStatusDotColors: Record<ComputedIssueStatus, string> = {
+  PLANNED: "bg-gray-500",       // Falls back to default (gray)
+  OPEN: "bg-green-600",         // bg-green-100 text-green-800
+  IN_PROGRESS: "bg-orange-500", // bg-orange-100 text-orange-700
+  TASKS_DONE: "bg-green-600",   // bg-green-100 text-green-800
+  CLOSED: "bg-gray-400",        // bg-gray-200 text-gray-700
+};
+
+// Human-readable status labels for tooltip
+const issueStatusLabels: Record<ComputedIssueStatus, string> = {
+  PLANNED: "Planned",
+  OPEN: "Open",
+  IN_PROGRESS: "In Progress",
+  TASKS_DONE: "Tasks Done",
+  CLOSED: "Closed",
+};
+
+function StatusDot({ status }: { status: ComputedIssueStatus }) {
+  return (
+    <Tooltip content={`Issue not closed (${issueStatusLabels[status]})`} side="top">
+      <span
+        className={clsx(
+          "inline-block w-2 h-2 rounded-full cursor-help",
+          issueStatusDotColors[status]
+        )}
+      />
+    </Tooltip>
+  );
+}
 
 // Issue type styles - tag background, text, and border colors
 const issueTypeConfig: Record<IssueType, { label: string; tag: string; border: string }> = {
@@ -23,6 +54,7 @@ interface KanbanCardProps {
   issueTitle: string;
   issueType: IssueType;
   issueGithubUrl?: string;
+  issueComputedStatus: ComputedIssueStatus;
   projectId?: string;
   projectName?: string;
 }
@@ -251,6 +283,7 @@ function CardContent({
   issueTitle,
   issueType,
   issueUrl,
+  issueComputedStatus,
   projectId,
   projectName,
 }: {
@@ -259,6 +292,7 @@ function CardContent({
   issueTitle: string;
   issueType: IssueType;
   issueUrl: string;
+  issueComputedStatus: ComputedIssueStatus;
   projectId?: string;
   projectName?: string;
 }) {
@@ -310,15 +344,19 @@ function CardContent({
           <TaskTiming task={task} className="text-gray-500" />
           {/* Show PR indicator on card */}
           {task.prUrl && (
-            <span className="text-blue-500" title={`PR #${task.prNumber}`}>
-              <PRIcon />
-            </span>
+            <Tooltip content={`PR #${task.prNumber}`} side="top">
+              <span className="text-blue-500 cursor-help">
+                <PRIcon />
+              </span>
+            </Tooltip>
           )}
           {/* Show worktree indicator on card */}
           {task.worktreePath && (
-            <span className="text-gray-500" title="Has worktree">
-              <BranchIcon />
-            </span>
+            <Tooltip content="Has worktree" side="top">
+              <span className="text-gray-500 cursor-help">
+                <BranchIcon />
+              </span>
+            </Tooltip>
           )}
           {isAbandoned && <Badge variant="status" value="ABANDONED" />}
           {task.labels.length > 0 && (
@@ -327,6 +365,10 @@ function CardContent({
                 <Badge key={label} variant="label" value={label} />
               ))}
             </div>
+          )}
+          {/* Issue status indicator - only show for completed tasks whose issue isn't closed yet */}
+          {task.status === "COMPLETED" && issueComputedStatus !== "CLOSED" && (
+            <StatusDot status={issueComputedStatus} />
           )}
         </div>
       </div>
@@ -340,6 +382,7 @@ export function KanbanCard({
   issueTitle,
   issueType,
   issueGithubUrl,
+  issueComputedStatus,
   projectId,
   projectName,
 }: KanbanCardProps) {
@@ -356,6 +399,7 @@ export function KanbanCard({
           issueTitle={issueTitle}
           issueType={issueType}
           issueUrl={issueUrl}
+          issueComputedStatus={issueComputedStatus}
           projectId={projectId}
           projectName={projectName}
         />

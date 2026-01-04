@@ -80,13 +80,11 @@ export function getIssue(
 // Tasks
 export interface TasksFilters {
   project?: string;
-  issue?: number;
 }
 
 export function getTasks(filters?: TasksFilters): Promise<TasksResponse> {
   const query = buildQueryString({
     project: filters?.project,
-    issue: filters?.issue,
   });
 
   return apiClient<TasksResponse>(`/tasks${query}`);

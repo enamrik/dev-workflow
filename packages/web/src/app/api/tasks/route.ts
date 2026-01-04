@@ -7,12 +7,10 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const projectFilter = searchParams.get("project") ?? undefined;
-    const issueParam = searchParams.get("issue");
-    const issueFilter = issueParam ? parseInt(issueParam, 10) : undefined;
 
     const service = getMultiProjectService();
 
-    const issuesWithTasks = await service.listTasks(projectFilter, issueFilter);
+    const issuesWithTasks = await service.listTasks(projectFilter);
     const completedTasks = await service.listCompletedTasks(projectFilter);
 
     return NextResponse.json({
