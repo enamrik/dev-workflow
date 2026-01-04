@@ -120,6 +120,7 @@ export interface MilestoneWithIssues {
     number: number;
     title: string;
     status: string;
+    computedStatus: ComputedIssueStatus;
     type: string;
   }[];
   progress: {
@@ -516,7 +517,7 @@ export class MultiProjectService {
       ? projects.filter((p) => p.id === projectFilter)
       : projects;
 
-    await this.ensureConnection();
+    const { planRepository, taskRepository } = await this.ensureConnection();
     const allMilestones: MilestoneWithIssues[] = [];
 
     for (const project of filteredProjects) {
@@ -527,6 +528,48 @@ export class MultiProjectService {
       for (const milestone of milestones) {
         const issues = issueRepository.findMany({ milestoneId: milestone.id });
         const closedIssues = issues.filter((i) => i.status === "CLOSED").length;
+
+        // Compute status for each issue
+        const issuesWithComputedStatus = issues.map((issue) => {
+          let computedStatus: ComputedIssueStatus;
+
+          if (issue.status === "PLANNED") {
+            computedStatus = "PLANNED";
+          } else if (issue.status === "CLOSED") {
+            computedStatus = "CLOSED";
+          } else {
+            const plan = planRepository.findByIssueId(issue.id);
+            if (!plan) {
+              computedStatus = "OPEN";
+            } else {
+              const tasks = taskRepository.findByPlanId(plan.id);
+              if (tasks.length === 0) {
+                computedStatus = "OPEN";
+              } else {
+                const completed = tasks.filter((t) => t.status === "COMPLETED").length;
+                const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
+                const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
+                const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
+
+                if (completed + abandoned === tasks.length) {
+                  computedStatus = "TASKS_DONE";
+                } else if (inProgress === 0 && prReview === 0) {
+                  computedStatus = "OPEN";
+                } else {
+                  computedStatus = "IN_PROGRESS";
+                }
+              }
+            }
+          }
+
+          return {
+            number: issue.number,
+            title: issue.title,
+            status: issue.status,
+            computedStatus,
+            type: issue.type,
+          };
+        });
 
         allMilestones.push({
           milestone: {
@@ -542,12 +585,7 @@ export class MultiProjectService {
             createdAt: milestone.createdAt,
             updatedAt: milestone.updatedAt,
           },
-          issues: issues.map((i) => ({
-            number: i.number,
-            title: i.title,
-            status: i.status,
-            type: i.type,
-          })),
+          issues: issuesWithComputedStatus,
           progress: {
             total: issues.length,
             closed: closedIssues,

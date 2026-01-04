@@ -177,6 +177,7 @@ export interface MilestoneWithIssues {
     number: number;
     title: string;
     status: string;
+    computedStatus: ComputedIssueStatus;
     type: string;
   }[];
   progress: {
