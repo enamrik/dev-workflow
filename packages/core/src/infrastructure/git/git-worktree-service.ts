@@ -214,6 +214,23 @@ export class NodeGitWorktreeService implements GitWorktreeService {
     if (branchToDelete) {
       // Use -D to force delete even if not fully merged
       await this.run(["branch", "-D", branchToDelete]);
+
+      // Also delete the remote branch if it exists
+      // First check if the remote branch exists (it may have been auto-deleted by GitHub)
+      const checkResult = await this.run(["ls-remote", "--heads", "origin", branchToDelete]);
+      if (checkResult.success && checkResult.stdout.trim()) {
+        // Remote branch exists, delete it
+        const remoteResult = await this.run([
+          "push",
+          "origin",
+          "--delete",
+          "--no-verify",
+          branchToDelete,
+        ]);
+        if (!remoteResult.success) {
+          console.warn(`Failed to delete remote branch ${branchToDelete}: ${remoteResult.stderr}`);
+        }
+      }
     }
   }
 

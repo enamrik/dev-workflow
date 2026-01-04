@@ -486,6 +486,7 @@ async function main() {
     planningService,
     githubSyncService,
     githubCLI,
+    gitWorktreeService,
   };
 
   planToolContext = {

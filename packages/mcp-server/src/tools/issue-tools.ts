@@ -16,6 +16,7 @@ import {
   type IssuePriority,
   type IssueStatus,
   type GitHubCLI,
+  type GitWorktreeService,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -354,6 +355,8 @@ export interface IssueToolContext {
   githubSyncService: GitHubSyncService;
   /** GitHub CLI for direct operations like closing issues */
   githubCLI: GitHubCLI;
+  /** Git worktree service for cleanup operations */
+  gitWorktreeService?: GitWorktreeService;
 }
 
 /**
@@ -533,23 +536,77 @@ export async function handleDeleteIssue(
 
   try {
     const closedGitHubIssues: number[] = [];
+    const cleanedUpBranches: string[] = [];
+
+    // Get plan and tasks first (needed for both cleanup and GitHub sync)
+    const plan = ctx.planRepository.findByIssueId(issue.id);
+    const tasks = plan ? ctx.taskRepository.findByPlanId(plan.id) : [];
+
+    // Clean up worktrees and branches for all tasks
+    if (ctx.gitWorktreeService && plan) {
+      for (const task of tasks) {
+        // Clean up worktree if present
+        if (task.worktreePath) {
+          try {
+            // Remove worktree and delete local + remote branches (abandoned work)
+            await ctx.gitWorktreeService.removeWorktree(task.worktreePath, true);
+            if (task.branchName) {
+              cleanedUpBranches.push(task.branchName);
+            }
+          } catch {
+            console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
+          }
+          // Clear worktree info from task
+          ctx.taskRepository.clearWorktreeInfo(task.id);
+        } else if (task.branchName) {
+          // No worktree but has branch - delete it (handles branch mode or pushed branches)
+          try {
+            // Delete local branch
+            await ctx.gitWorktreeService.run(["branch", "-D", task.branchName]);
+          } catch {
+            // Local branch may not exist, ignore
+          }
+
+          // Delete remote branch if it exists
+          try {
+            const checkResult = await ctx.gitWorktreeService.run([
+              "ls-remote",
+              "--heads",
+              "origin",
+              task.branchName,
+            ]);
+            if (checkResult.success && checkResult.stdout.trim()) {
+              await ctx.gitWorktreeService.run([
+                "push",
+                "origin",
+                "--delete",
+                "--no-verify",
+                task.branchName,
+              ]);
+              cleanedUpBranches.push(task.branchName);
+            }
+          } catch {
+            console.warn(`Failed to delete remote branch: ${task.branchName}`);
+          }
+
+          // Clear branch info from task
+          ctx.taskRepository.update(task.id, { branchName: undefined });
+        }
+      }
+    }
 
     // Close GitHub issues if sync is enabled
     if (ctx.githubSyncService.isEnabled()) {
       // Close task GitHub issues first
-      const plan = ctx.planRepository.findByIssueId(issue.id);
-      if (plan) {
-        const tasks = ctx.taskRepository.findByPlanId(plan.id);
-        for (const task of tasks) {
-          if (task.githubSync?.githubIssueNumber) {
-            try {
-              await ctx.githubCLI.closeIssue(task.githubSync.githubIssueNumber);
-              closedGitHubIssues.push(task.githubSync.githubIssueNumber);
-            } catch (error) {
-              console.warn(
-                `Failed to close GitHub issue #${task.githubSync.githubIssueNumber}: ${error}`
-              );
-            }
+      for (const task of tasks) {
+        if (task.githubSync?.githubIssueNumber) {
+          try {
+            await ctx.githubCLI.closeIssue(task.githubSync.githubIssueNumber);
+            closedGitHubIssues.push(task.githubSync.githubIssueNumber);
+          } catch (error) {
+            console.warn(
+              `Failed to close GitHub issue #${task.githubSync.githubIssueNumber}: ${error}`
+            );
           }
         }
       }
@@ -569,9 +626,21 @@ export async function handleDeleteIssue(
 
     const deleted = ctx.issueRepository.delete(issue.id, "claude-code");
 
+    // Build message with cleanup details
+    const messageParts: string[] = [`Issue #${deleted.number} has been deleted`];
+    if (closedGitHubIssues.length > 0) {
+      messageParts.push(`closed ${closedGitHubIssues.length} GitHub issue(s)`);
+    }
+    if (cleanedUpBranches.length > 0) {
+      messageParts.push(`cleaned up ${cleanedUpBranches.length} branch(es)`);
+    }
+
     return successResponse({
       success: true,
-      message: `Issue #${deleted.number} has been deleted${closedGitHubIssues.length > 0 ? ` (closed ${closedGitHubIssues.length} GitHub issue(s))` : ""}`,
+      message:
+        messageParts.length > 1
+          ? `${messageParts[0]} (${messageParts.slice(1).join(", ")})`
+          : messageParts[0],
       issue: {
         id: deleted.id,
         number: deleted.number,
@@ -581,6 +650,7 @@ export async function handleDeleteIssue(
         deletedBy: deleted.deletedBy,
       },
       closedGitHubIssues,
+      cleanedUpBranches,
     });
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));
