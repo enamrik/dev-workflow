@@ -1,8 +1,7 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
-import { useSearchParams, useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { useIssue } from "@/hooks";
 import { TaskList } from "@/components/tasks";
@@ -31,16 +30,14 @@ interface PageProps {
 
 export default function IssueDetailPage({ params }: PageProps) {
   const { project: projectId, number } = use(params);
-  const searchParams = useSearchParams();
-  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<TabId>("details");
 
   const issueNumber = number ? parseInt(number, 10) : undefined;
-  const activeTab = (searchParams.get("tab") as TabId) || "details";
 
   const { data, isLoading, error, refetch } = useIssue(projectId, issueNumber);
 
   function handleTabChange(tabId: string) {
-    router.push(`/projects/${projectId}/issues/${number}?tab=${tabId}`);
+    setActiveTab(tabId as TabId);
   }
 
   if (isLoading) {
@@ -73,7 +70,8 @@ export default function IssueDetailPage({ params }: PageProps) {
   // Compute single status from issue state and tasks
   const computedStatus = computeIssueStatus(issue, plan, tasks);
 
-  const backUrl = projectId ? `/?project=${encodeURIComponent(projectId)}` : "/";
+  // Back URL just goes to root - the useUrlState hook will restore _state on navigation
+  const backUrl = "/";
 
   const tabs = [
     { id: "details", label: "Details" },

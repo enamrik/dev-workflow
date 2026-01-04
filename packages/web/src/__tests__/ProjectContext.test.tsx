@@ -28,6 +28,60 @@ vi.mock("../hooks", () => ({
     data: mockProjects,
     isLoading: false,
   }),
+  useUrlState: () => {
+    // Re-use the mock localStorage state for useUrlState
+    const stored = localStorageMock.getItem("dev-workflow-url-state");
+    const state = stored ? JSON.parse(stored) : {};
+    return {
+      state,
+      setState: (newState: Record<string, unknown>) => {
+        if (Object.keys(newState).length > 0) {
+          localStorageMock.setItem("dev-workflow-url-state", JSON.stringify(newState));
+        } else {
+          localStorageMock.removeItem("dev-workflow-url-state");
+        }
+        // Build _state param
+        const encoded =
+          Object.keys(newState).length > 0
+            ? btoa(JSON.stringify(newState))
+                .replace(/\+/g, "-")
+                .replace(/\//g, "_")
+                .replace(/=+$/, "")
+            : null;
+        const params = new URLSearchParams();
+        if (encoded) {
+          params.set("_state", encoded);
+        }
+        mockPush(`/?${params.toString()}`);
+      },
+      setProperty: (key: string, value: unknown) => {
+        const stored = localStorageMock.getItem("dev-workflow-url-state");
+        const currentState = stored ? JSON.parse(stored) : {};
+        const newState = { ...currentState, [key]: value };
+        if (value === undefined) {
+          delete newState[key];
+        }
+        if (Object.keys(newState).length > 0) {
+          localStorageMock.setItem("dev-workflow-url-state", JSON.stringify(newState));
+        } else {
+          localStorageMock.removeItem("dev-workflow-url-state");
+        }
+        // Build _state param
+        const encoded =
+          Object.keys(newState).length > 0
+            ? btoa(JSON.stringify(newState))
+                .replace(/\+/g, "-")
+                .replace(/\//g, "_")
+                .replace(/=+$/, "")
+            : null;
+        const params = new URLSearchParams();
+        if (encoded) {
+          params.set("_state", encoded);
+        }
+        mockPush(`/?${params.toString()}`);
+      },
+    };
+  },
 }));
 
 // Mock localStorage
@@ -48,6 +102,8 @@ const localStorageMock = (() => {
 })();
 
 Object.defineProperty(window, "localStorage", { value: localStorageMock });
+
+const URL_STATE_KEY = "dev-workflow-url-state";
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -85,11 +141,11 @@ describe("ProjectContext", () => {
     expect(result.current.isLoading).toBe(false);
   });
 
-  it("initializes projectId from localStorage over URL", () => {
-    // localStorage takes precedence
+  it("initializes projectId from localStorage", () => {
+    // Set up localStorage with URL state
     localStorageMock.getItem.mockImplementation((key: string) => {
-      if (key === "dev-workflow-selected-project") {
-        return "proj-1";
+      if (key === URL_STATE_KEY) {
+        return JSON.stringify({ project: "proj-1" });
       }
       return null;
     });
@@ -101,17 +157,13 @@ describe("ProjectContext", () => {
     expect(result.current.projectId).toBe("proj-1");
   });
 
-  it("initializes projectId from URL when localStorage is empty", () => {
-    // This test verifies URL fallback - but since useState runs with window.location.search
-    // and our mock doesn't affect that, we test the localStorage path instead
+  it("initializes projectId as empty when localStorage is empty", () => {
     localStorageMock.getItem.mockReturnValue(null);
 
     const { result } = renderHook(() => useProjectContext(), {
       wrapper: createWrapper(),
     });
 
-    // With no localStorage and mocked searchParams not affecting window.location,
-    // projectId starts empty
     expect(result.current.projectId).toBe("");
   });
 
@@ -125,13 +177,18 @@ describe("ProjectContext", () => {
     });
 
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
-      "dev-workflow-selected-project",
-      "proj-1"
+      URL_STATE_KEY,
+      JSON.stringify({ project: "proj-1" })
     );
   });
 
   it("removes from localStorage when projectId is cleared", () => {
-    localStorageMock.getItem.mockReturnValue("proj-1");
+    localStorageMock.getItem.mockImplementation((key: string) => {
+      if (key === URL_STATE_KEY) {
+        return JSON.stringify({ project: "proj-1" });
+      }
+      return null;
+    });
 
     const { result } = renderHook(() => useProjectContext(), {
       wrapper: createWrapper(),
@@ -141,10 +198,10 @@ describe("ProjectContext", () => {
       result.current.setProjectId("");
     });
 
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith("dev-workflow-selected-project");
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith(URL_STATE_KEY);
   });
 
-  it("updates URL when projectId changes", () => {
+  it("updates URL with _state param when projectId changes", () => {
     const { result } = renderHook(() => useProjectContext(), {
       wrapper: createWrapper(),
     });
@@ -153,11 +210,20 @@ describe("ProjectContext", () => {
       result.current.setProjectId("proj-1");
     });
 
-    expect(mockPush).toHaveBeenCalledWith("/?project=proj-1");
+    // Should be called with base64 encoded _state param
+    expect(mockPush).toHaveBeenCalled();
+    const calledWith = mockPush.mock.calls[0]?.[0] as string | undefined;
+    expect(calledWith).toBeDefined();
+    expect(calledWith).toContain("_state=");
   });
 
-  it("removes project param from URL when projectId is cleared", () => {
-    mockSearchParams = new URLSearchParams("?project=proj-1");
+  it("removes _state param from URL when projectId is cleared", () => {
+    localStorageMock.getItem.mockImplementation((key: string) => {
+      if (key === URL_STATE_KEY) {
+        return JSON.stringify({ project: "proj-1" });
+      }
+      return null;
+    });
 
     const { result } = renderHook(() => useProjectContext(), {
       wrapper: createWrapper(),
