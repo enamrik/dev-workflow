@@ -31,11 +31,32 @@ describe("SqliteProjectRepository", () => {
       expect(project.id).toBeDefined();
       expect(project.gitRootHash).toBe("abc123def456");
       expect(project.name).toBe("test-project");
+      expect(project.slug).toBe("test-project-abc123");
       expect(project.githubSync).toBeNull();
       expect(project.isArchived).toBe(false);
       expect(project.archivedAt).toBeNull();
       expect(project.createdAt).toBeDefined();
       expect(project.updatedAt).toBeDefined();
+    });
+
+    it("should generate a URL-safe slug from name and hash", () => {
+      const project = repos.projectRepository.create({
+        gitRootHash: "b9bccf123456",
+        name: "Dev Workflow",
+      });
+
+      // Slug should be lowercased, spaces replaced with dashes
+      expect(project.slug).toBe("dev-workflow-b9bccf");
+    });
+
+    it("should handle special characters in project name for slug", () => {
+      const project = repos.projectRepository.create({
+        gitRootHash: "xyz789abc123",
+        name: "My.Project_Name",
+      });
+
+      // Special characters replaced with dashes
+      expect(project.slug).toBe("my-project-name-xyz789");
     });
 
     it("should create a project with GitHub sync config", () => {
@@ -111,6 +132,26 @@ describe("SqliteProjectRepository", () => {
 
     it("should return null for non-existent hash", () => {
       const found = repos.projectRepository.findByGitRootHash("non-existent-hash");
+      expect(found).toBeNull();
+    });
+  });
+
+  describe("findBySlug", () => {
+    it("should find a project by slug", () => {
+      const created = repos.projectRepository.create({
+        gitRootHash: "abc123def456",
+        name: "test-project",
+      });
+
+      const found = repos.projectRepository.findBySlug("test-project-abc123");
+
+      expect(found).toBeDefined();
+      expect(found?.id).toBe(created.id);
+      expect(found?.slug).toBe("test-project-abc123");
+    });
+
+    it("should return null for non-existent slug", () => {
+      const found = repos.projectRepository.findBySlug("non-existent-slug");
       expect(found).toBeNull();
     });
   });
