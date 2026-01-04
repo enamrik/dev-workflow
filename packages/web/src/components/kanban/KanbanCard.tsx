@@ -5,9 +5,40 @@ import Link from "next/link";
 import { clsx } from "clsx";
 import { Badge, Modal, Markdown, Tooltip, GitHubLink } from "../ui";
 import { TaskTiming, TaskMetadataPanel, TaskActions } from "../tasks";
-import type { Task } from "@/lib/types";
+import type { Task, ComputedIssueStatus } from "@/lib/types";
 
 type IssueType = "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
+
+// Issue status dot colors - matches the status badge colors from Badge.tsx
+const issueStatusDotColors: Record<ComputedIssueStatus, string> = {
+  PLANNED: "bg-gray-500",       // Falls back to default (gray)
+  OPEN: "bg-green-600",         // bg-green-100 text-green-800
+  IN_PROGRESS: "bg-orange-500", // bg-orange-100 text-orange-700
+  TASKS_DONE: "bg-green-600",   // bg-green-100 text-green-800
+  CLOSED: "bg-gray-400",        // bg-gray-200 text-gray-700
+};
+
+// Human-readable status labels for tooltip
+const issueStatusLabels: Record<ComputedIssueStatus, string> = {
+  PLANNED: "Planned",
+  OPEN: "Open",
+  IN_PROGRESS: "In Progress",
+  TASKS_DONE: "Tasks Done",
+  CLOSED: "Closed",
+};
+
+function StatusDot({ status }: { status: ComputedIssueStatus }) {
+  return (
+    <Tooltip content={`Issue: ${issueStatusLabels[status]}`} side="top">
+      <span
+        className={clsx(
+          "inline-block w-2 h-2 rounded-full cursor-help",
+          issueStatusDotColors[status]
+        )}
+      />
+    </Tooltip>
+  );
+}
 
 // Issue type styles - tag background, text, and border colors
 const issueTypeConfig: Record<IssueType, { label: string; tag: string; border: string }> = {
@@ -23,6 +54,7 @@ interface KanbanCardProps {
   issueTitle: string;
   issueType: IssueType;
   issueGithubUrl?: string;
+  issueComputedStatus: ComputedIssueStatus;
   projectId?: string;
   projectName?: string;
 }
@@ -43,6 +75,7 @@ interface TaskModalContentProps {
   issueType: string;
   issueUrl: string;
   issueGithubUrl?: string;
+  issueComputedStatus: ComputedIssueStatus;
   projectId?: string;
 }
 
@@ -53,6 +86,7 @@ function TaskModalContent({
   issueType,
   issueUrl,
   issueGithubUrl,
+  issueComputedStatus,
   projectId,
 }: TaskModalContentProps) {
   const tooltipContent = `${issueType.toLowerCase()}(#${issueNumber}): ${issueTitle}`;
@@ -251,6 +285,7 @@ function CardContent({
   issueTitle,
   issueType,
   issueUrl,
+  issueComputedStatus,
   projectId,
   projectName,
 }: {
@@ -259,6 +294,7 @@ function CardContent({
   issueTitle: string;
   issueType: IssueType;
   issueUrl: string;
+  issueComputedStatus: ComputedIssueStatus;
   projectId?: string;
   projectName?: string;
 }) {
@@ -308,7 +344,9 @@ function CardContent({
         )}
         <div className="flex items-center gap-2">
           {task.estimatedMinutes && (
-            <span className="text-gray-500">{task.estimatedMinutes}m</span>
+            <Tooltip content={`Estimated: ${task.estimatedMinutes} minutes`} side="top">
+              <span className="text-gray-500 cursor-help">{task.estimatedMinutes}m</span>
+            </Tooltip>
           )}
           {/* Show PR indicator on card */}
           {task.prUrl && (
@@ -330,6 +368,8 @@ function CardContent({
               ))}
             </div>
           )}
+          {/* Issue status indicator */}
+          <StatusDot status={issueComputedStatus} />
         </div>
       </div>
     </div>
@@ -342,6 +382,7 @@ export function KanbanCard({
   issueTitle,
   issueType,
   issueGithubUrl,
+  issueComputedStatus,
   projectId,
   projectName,
 }: KanbanCardProps) {
@@ -358,6 +399,7 @@ export function KanbanCard({
           issueTitle={issueTitle}
           issueType={issueType}
           issueUrl={issueUrl}
+          issueComputedStatus={issueComputedStatus}
           projectId={projectId}
           projectName={projectName}
         />
@@ -371,6 +413,7 @@ export function KanbanCard({
         issueType={issueType}
         issueUrl={issueUrl}
         issueGithubUrl={issueGithubUrl}
+        issueComputedStatus={issueComputedStatus}
         projectId={projectId}
       />
     </Modal>
