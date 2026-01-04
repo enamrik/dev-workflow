@@ -10,6 +10,7 @@ import { UpdateService } from "./application/update.service.js";
 import { UninstallService } from "./application/uninstall.service.js";
 import { ArchiveService, ArchiveError } from "./application/archive.service.js";
 import { UIService } from "./application/ui.service.js";
+import { BackupConfigService } from "./application/backup.service.js";
 import { NodeFileSystem } from "./infrastructure/file-system.js";
 import { createTrackDirectoryResolver } from "@dev-workflow/core";
 
@@ -793,6 +794,223 @@ program
     } catch (error) {
       console.error("Error uninstalling UI service:", error);
       process.exit(1);
+    }
+  });
+
+// Backup command with subcommands
+const backupCmd = program.command("backup").description("Backup and restore workflow database");
+
+// Main backup command - creates a backup
+backupCmd
+  .command("create", { isDefault: true })
+  .description("Create a backup of the workflow database")
+  .action(async () => {
+    const service = new BackupConfigService();
+    try {
+      const isConfigured = await service.isConfigured();
+      if (!isConfigured) {
+        console.error("❌ Backup is not configured.");
+        console.error("\nRun: dev-workflow backup configure");
+        process.exit(1);
+      }
+
+      console.log("📦 Creating backup...");
+      const result = await service.backup();
+
+      console.log("\n✓ Backup created successfully!");
+      console.log(`  Key: ${result.key}`);
+      console.log(`  Timestamp: ${result.timestamp.toISOString()}`);
+      console.log(`  Checksum: ${result.checksum.slice(0, 16)}...`);
+
+      if (result.deletedCount > 0) {
+        console.log(`  Deleted ${result.deletedCount} old backup(s) (retention policy)`);
+      }
+    } catch (error) {
+      console.error(`❌ Backup failed: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    } finally {
+      service.close();
+    }
+  });
+
+// Configure backup
+backupCmd
+  .command("configure")
+  .description("Configure S3-compatible backup destination")
+  .requiredOption("--bucket <bucket>", "S3 bucket name")
+  .requiredOption("--region <region>", "AWS region (e.g., us-east-1)")
+  .option("--profile <name>", "AWS profile name from ~/.aws/credentials")
+  .option("--access-key <key>", "AWS access key ID (for non-AWS S3 services)")
+  .option("--secret-key <key>", "AWS secret access key (for non-AWS S3 services)")
+  .option("--endpoint <url>", "Custom S3 endpoint (for R2, MinIO, etc.)")
+  .option("--retention <count>", "Number of backups to keep", "20")
+  .action(async (options) => {
+    const service = new BackupConfigService();
+    try {
+      const retentionCount = parseInt(options.retention, 10);
+      if (isNaN(retentionCount) || retentionCount < 1) {
+        console.error("❌ Retention count must be a positive integer");
+        process.exit(1);
+      }
+
+      // Validate credential options
+      const hasExplicitCreds = options.accessKey && options.secretKey;
+      const hasPartialCreds =
+        (options.accessKey && !options.secretKey) || (!options.accessKey && options.secretKey);
+
+      if (hasPartialCreds) {
+        console.error("❌ Both --access-key and --secret-key must be provided together");
+        process.exit(1);
+      }
+
+      const result = await service.configureS3(
+        {
+          bucket: options.bucket,
+          region: options.region,
+          profile: options.profile,
+          accessKeyId: options.accessKey,
+          secretAccessKey: options.secretKey,
+          endpoint: options.endpoint,
+        },
+        retentionCount
+      );
+
+      if (result.success) {
+        console.log("✓ Backup configured successfully!");
+        console.log(`  Provider: S3-compatible`);
+        console.log(`  Bucket: ${options.bucket}`);
+        console.log(`  Region: ${options.region}`);
+        console.log(`  Retention: ${retentionCount} backups`);
+        if (options.profile) {
+          console.log(`  AWS Profile: ${options.profile}`);
+        } else if (hasExplicitCreds) {
+          console.log(`  Auth: Explicit credentials`);
+        } else {
+          console.log(`  Auth: Default AWS credential chain`);
+        }
+        if (options.endpoint) {
+          console.log(`  Endpoint: ${options.endpoint}`);
+        }
+        console.log("\nRun 'dev-workflow backup' to create your first backup.");
+      } else {
+        console.error(`❌ ${result.message}`);
+        process.exit(1);
+      }
+    } catch (error) {
+      console.error(
+        `❌ Configuration failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+      process.exit(1);
+    } finally {
+      service.close();
+    }
+  });
+
+// Show backup configuration
+backupCmd
+  .command("status")
+  .description("Show current backup configuration")
+  .action(async () => {
+    const service = new BackupConfigService();
+    try {
+      const config = await service.getConfig();
+
+      if (!config) {
+        console.log("Backup is not configured.");
+        console.log("\nRun: dev-workflow backup configure --help");
+        return;
+      }
+
+      console.log("Backup Configuration:");
+      console.log(`  Provider: ${config.provider}`);
+      console.log(`  Bucket: ${config.s3.bucket}`);
+      console.log(`  Region: ${config.s3.region}`);
+      console.log(`  Retention: ${config.retentionCount} backups`);
+
+      // Show auth method
+      if (config.s3.accessKeyId) {
+        console.log(`  Auth: Explicit credentials (${config.s3.accessKeyId.slice(0, 4)}...)`);
+      } else if (config.s3.profile) {
+        console.log(`  AWS Profile: ${config.s3.profile}`);
+      } else {
+        console.log(`  Auth: Default AWS credential chain`);
+      }
+
+      if (config.s3.endpoint) {
+        console.log(`  Endpoint: ${config.s3.endpoint}`);
+      }
+    } catch (error) {
+      console.error(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    } finally {
+      service.close();
+    }
+  });
+
+// List available backups
+backupCmd
+  .command("list")
+  .description("List available backups")
+  .action(async () => {
+    const service = new BackupConfigService();
+    try {
+      const isConfigured = await service.isConfigured();
+      if (!isConfigured) {
+        console.error("❌ Backup is not configured.");
+        console.error("\nRun: dev-workflow backup configure");
+        process.exit(1);
+      }
+
+      console.log("Fetching backups...\n");
+      const backups = await service.listBackups();
+
+      if (backups.length === 0) {
+        console.log("No backups found.");
+        console.log("\nRun 'dev-workflow backup' to create your first backup.");
+        return;
+      }
+
+      console.log(`Found ${backups.length} backup(s):\n`);
+
+      for (const backup of backups) {
+        const sizeKB = (backup.sizeBytes / 1024).toFixed(1);
+        console.log(`  ${backup.timestamp.toISOString()}`);
+        console.log(`    Key: ${backup.key}`);
+        console.log(`    Size: ${sizeKB} KB`);
+        if (backup.checksum) {
+          console.log(`    Checksum: ${backup.checksum.slice(0, 16)}...`);
+        }
+        console.log();
+      }
+    } catch (error) {
+      console.error(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    } finally {
+      service.close();
+    }
+  });
+
+// Remove backup configuration
+backupCmd
+  .command("unconfigure")
+  .description("Remove backup configuration")
+  .action(async () => {
+    const service = new BackupConfigService();
+    try {
+      const result = await service.removeConfig();
+
+      if (result.success) {
+        console.log("✓ Backup configuration removed.");
+        console.log("\nNote: Existing backups in S3 are not deleted.");
+      } else {
+        console.error(`❌ ${result.message}`);
+        process.exit(1);
+      }
+    } catch (error) {
+      console.error(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    } finally {
+      service.close();
     }
   });
 
