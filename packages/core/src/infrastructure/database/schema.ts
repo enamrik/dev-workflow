@@ -406,6 +406,49 @@ export const projects = sqliteTable("projects", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/**
+ * S3 backup configuration stored as JSON
+ *
+ * Uses AWS credential chain (profiles, env vars, IAM roles) by default.
+ * Explicit credentials are optional for custom S3-compatible services.
+ */
+export interface S3BackupConfig {
+  bucket: string;
+  region: string;
+  profile?: string; // AWS profile name from ~/.aws/credentials (optional, uses default chain)
+  endpoint?: string; // Optional custom endpoint for S3-compatible services (R2, MinIO)
+  // Explicit credentials (optional, for non-AWS S3-compatible services)
+  accessKeyId?: string;
+  secretAccessKey?: string;
+}
+
+/**
+ * Backup configuration stored as JSON
+ */
+export interface BackupConfig {
+  provider: "s3";
+  s3: S3BackupConfig;
+  retentionCount: number; // Number of backups to keep (default: 20)
+}
+
+/**
+ * Global settings table schema
+ *
+ * Stores application-wide settings that are not project-specific.
+ * Uses a key-value structure with JSON values for flexibility.
+ */
+export const globalSettings = sqliteTable("global_settings", {
+  // Setting key (unique identifier)
+  key: text("key").primaryKey(),
+
+  // Setting value (JSON for flexibility)
+  value: text("value", { mode: "json" }).notNull(),
+
+  // Timestamps
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 // Type inference for SELECT operations
 export type IssueRow = typeof issues.$inferSelect;
 export type SnapshotRow = typeof snapshots.$inferSelect;
@@ -415,6 +458,7 @@ export type TaskStatusHistoryRow = typeof taskStatusHistory.$inferSelect;
 export type TaskExecutionLogRow = typeof taskExecutionLogs.$inferSelect;
 export type MilestoneRow = typeof milestones.$inferSelect;
 export type ProjectRow = typeof projects.$inferSelect;
+export type GlobalSettingsRow = typeof globalSettings.$inferSelect;
 
 // Type inference for INSERT operations
 export type NewIssue = typeof issues.$inferInsert;
@@ -425,3 +469,4 @@ export type NewTaskStatusHistory = typeof taskStatusHistory.$inferInsert;
 export type NewTaskExecutionLog = typeof taskExecutionLogs.$inferInsert;
 export type NewMilestone = typeof milestones.$inferInsert;
 export type NewProject = typeof projects.$inferInsert;
+export type NewGlobalSettings = typeof globalSettings.$inferInsert;
