@@ -655,10 +655,8 @@ export function handleGetTask(
   let task;
 
   if (taskId) {
-    // Direct lookup by UUID
     task = ctx.taskRepository.findById(taskId);
   } else if (taskNumber !== undefined && issueNumber !== undefined) {
-    // Lookup by task number + issue number
     const issue = ctx.issueRepository.findByNumber(issueNumber);
     if (!issue) {
       return errorResponse(`Issue not found: #${issueNumber}`);
@@ -695,7 +693,7 @@ export function handleGetTask(
     source: task.source,
     acceptanceCriteria: task.acceptanceCriteria,
     estimatedMinutes: task.estimatedMinutes,
-    labels: task.labels, // Just the label names, not loaded content
+    labels: task.labels,
     dependsOn: task.dependsOn,
     startedAt: task.startedAt,
     completedAt: task.completedAt,

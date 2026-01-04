@@ -407,4 +407,53 @@ describe("SqliteTaskRepository", () => {
       expect(logs).toEqual([]);
     });
   });
+
+  describe("getNextTaskNumber", () => {
+    it("should return 1 for empty plan", () => {
+      const nextNumber = repos.taskRepository.getNextTaskNumber(planId);
+
+      expect(nextNumber).toBe(1);
+    });
+
+    it("should return max+1 for plan with tasks", () => {
+      createTestTask(repos.taskRepository, planId, { title: "Task 1" });
+      createTestTask(repos.taskRepository, planId, { title: "Task 2" });
+
+      const nextNumber = repos.taskRepository.getNextTaskNumber(planId);
+
+      expect(nextNumber).toBe(3);
+    });
+
+    it("should exclude soft-deleted tasks when calculating next number", () => {
+      // Create 3 tasks (numbers 1, 2, 3)
+      const task1 = createTestTask(repos.taskRepository, planId, { title: "Task 1" });
+      const task2 = createTestTask(repos.taskRepository, planId, { title: "Task 2" });
+      const task3 = createTestTask(repos.taskRepository, planId, { title: "Task 3" });
+
+      // Soft delete all tasks (simulates plan regeneration)
+      repos.taskRepository.softDelete(task1.id);
+      repos.taskRepository.softDelete(task2.id);
+      repos.taskRepository.softDelete(task3.id);
+
+      // Next number should be 1 (not 4) since all tasks are soft-deleted
+      const nextNumber = repos.taskRepository.getNextTaskNumber(planId);
+
+      expect(nextNumber).toBe(1);
+    });
+
+    it("should return max of non-deleted + 1 when some tasks are deleted", () => {
+      // Create 3 tasks (numbers 1, 2, 3)
+      createTestTask(repos.taskRepository, planId, { title: "Task 1" });
+      const task2 = createTestTask(repos.taskRepository, planId, { title: "Task 2" });
+      createTestTask(repos.taskRepository, planId, { title: "Task 3" });
+
+      // Soft delete task 2 only
+      repos.taskRepository.softDelete(task2.id);
+
+      // Next number should be 4 (max of non-deleted is 3)
+      const nextNumber = repos.taskRepository.getNextTaskNumber(planId);
+
+      expect(nextNumber).toBe(4);
+    });
+  });
 });
