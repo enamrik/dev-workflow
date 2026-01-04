@@ -9,37 +9,6 @@ import type { Task, ComputedIssueStatus } from "@/lib/types";
 
 type IssueType = "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
 
-// Issue status dot colors - matches the status badge colors from Badge.tsx
-const issueStatusDotColors: Record<ComputedIssueStatus, string> = {
-  PLANNED: "bg-gray-500", // Falls back to default (gray)
-  OPEN: "bg-green-600", // bg-green-100 text-green-800
-  IN_PROGRESS: "bg-orange-500", // bg-orange-100 text-orange-700
-  TASKS_DONE: "bg-green-600", // bg-green-100 text-green-800
-  CLOSED: "bg-gray-400", // bg-gray-200 text-gray-700
-};
-
-// Human-readable status labels for tooltip
-const issueStatusLabels: Record<ComputedIssueStatus, string> = {
-  PLANNED: "Planned",
-  OPEN: "Open",
-  IN_PROGRESS: "In Progress",
-  TASKS_DONE: "Tasks Done",
-  CLOSED: "Closed",
-};
-
-function StatusDot({ status }: { status: ComputedIssueStatus }) {
-  return (
-    <Tooltip content={`Issue not closed (${issueStatusLabels[status]})`} side="top">
-      <span
-        className={clsx(
-          "inline-block w-2 h-2 rounded-full cursor-help",
-          issueStatusDotColors[status]
-        )}
-      />
-    </Tooltip>
-  );
-}
-
 // Issue type styles - tag background, text, and border colors
 const issueTypeConfig: Record<IssueType, { label: string; tag: string; border: string }> = {
   FEATURE: { label: "feat", tag: "bg-emerald-50 text-emerald-600", border: "border-emerald-200" },
@@ -352,7 +321,9 @@ function CardContent({
           )}
           {/* Issue status indicator - only show for completed tasks whose issue isn't closed yet */}
           {task.status === "COMPLETED" && issueComputedStatus !== "CLOSED" && (
-            <StatusDot status={issueComputedStatus} />
+            <Tooltip content="Issue not closed" side="top">
+              <span className="inline-block w-2 h-2 rounded-full cursor-help bg-orange-500" />
+            </Tooltip>
           )}
         </div>
       </div>
