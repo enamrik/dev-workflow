@@ -43,10 +43,13 @@ async function runInit(): Promise<void> {
   if (!hasGitCommit(workingDirectory)) {
     // Check if it's a git repo at all
     try {
-      execSync("git rev-parse --git-dir", { cwd: workingDirectory, stdio: ["pipe", "pipe", "pipe"] });
+      execSync("git rev-parse --git-dir", {
+        cwd: workingDirectory,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
       // It's a git repo but no commits
       console.error("❌ No commits found. dev-workflow requires at least one commit.");
-      console.error("   Run: git commit --allow-empty -m \"Initial commit\"");
+      console.error('   Run: git commit --allow-empty -m "Initial commit"');
       process.exit(1);
     } catch {
       // Not a git repo
@@ -70,7 +73,12 @@ async function runInit(): Promise<void> {
     console.log(`   Project: ${existingProject.name} (${existingProject.id.slice(0, 8)}...)\n`);
 
     try {
-      const archiveService = new ArchiveService(fileSystem, workingDirectory, resolver, packageRoot);
+      const archiveService = new ArchiveService(
+        fileSystem,
+        workingDirectory,
+        resolver,
+        packageRoot
+      );
       await archiveService.unarchive(existingProject);
 
       console.log("✓ Marked project as unarchived");
@@ -217,7 +225,7 @@ async function runUpdate(): Promise<void> {
   let resolver;
   try {
     resolver = createTrackDirectoryResolver(workingDirectory);
-  } catch (error) {
+  } catch (_error) {
     console.error("❌ Not a git repository. dev-workflow requires git.");
     process.exit(1);
   }
@@ -262,7 +270,9 @@ async function runUpdate(): Promise<void> {
     // Migrate existing issues from old path-based projectId to new UUID
     const migrationResult = await updater.migrateIssues();
     if (migrationResult.migrated > 0) {
-      console.log(`✓ Migrated ${migrationResult.migrated} issues from ${migrationResult.oldProjectId} to ${project.id.slice(0, 8)}...`);
+      console.log(
+        `✓ Migrated ${migrationResult.migrated} issues from ${migrationResult.oldProjectId} to ${project.id.slice(0, 8)}...`
+      );
     }
 
     await updater.updateMCPServer();
@@ -296,15 +306,15 @@ async function runUninit(): Promise<void> {
   let resolver;
   try {
     resolver = createTrackDirectoryResolver(workingDirectory);
-  } catch (error) {
+  } catch (_error) {
     console.error("❌ Not a git repository. dev-workflow requires git.");
     process.exit(1);
   }
 
   // Check if initialized (skills exist or MCP is registered)
   const skillsDir = path.join(workingDirectory, ".claude/skills");
-  const hasDwfSkills = fs.existsSync(skillsDir) &&
-    fs.readdirSync(skillsDir).some(name => name.startsWith("dwf-"));
+  const hasDwfSkills =
+    fs.existsSync(skillsDir) && fs.readdirSync(skillsDir).some((name) => name.startsWith("dwf-"));
 
   if (!hasDwfSkills) {
     console.error("❌ dev-workflow is not initialized for this repository.");
@@ -343,7 +353,7 @@ async function runArchive(): Promise<void> {
   let resolver;
   try {
     resolver = createTrackDirectoryResolver(workingDirectory);
-  } catch (error) {
+  } catch (_error) {
     console.error("❌ Not a git repository. dev-workflow requires git.");
     process.exit(1);
   }
@@ -399,7 +409,7 @@ async function runUnarchive(): Promise<void> {
   let resolver;
   try {
     resolver = createTrackDirectoryResolver(workingDirectory);
-  } catch (error) {
+  } catch (_error) {
     console.error("❌ Not a git repository. dev-workflow requires git.");
     process.exit(1);
   }
@@ -455,7 +465,7 @@ async function runNuke(): Promise<void> {
   let resolver;
   try {
     resolver = createTrackDirectoryResolver(workingDirectory);
-  } catch (error) {
+  } catch (_error) {
     console.error("❌ Not a git repository. dev-workflow requires git.");
     process.exit(1);
   }
@@ -664,10 +674,7 @@ function runMcp(): void {
 
 const program = new Command();
 
-program
-  .name("dev-workflow")
-  .description("AI-driven development workflow system")
-  .version("0.1.0");
+program.name("dev-workflow").description("AI-driven development workflow system").version("0.1.0");
 
 program
   .command("init")

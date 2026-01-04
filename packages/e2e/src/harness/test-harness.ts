@@ -11,14 +11,7 @@
  */
 
 import { execSync, spawnSync } from "node:child_process";
-import {
-  mkdtempSync,
-  rmSync,
-  existsSync,
-  writeFileSync,
-  readFileSync,
-  mkdirSync,
-} from "node:fs";
+import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -166,9 +159,7 @@ export class E2ETestHarness {
 
     // 5. Run dev-workflow init with isolated TRACK_DIR
     console.log("🚀 Running dev-workflow init...");
-    const devWorkflowCmd = this.useLocalBuild
-      ? `node ${this.getCliPath()}`
-      : "dev-workflow";
+    const devWorkflowCmd = this.useLocalBuild ? `node ${this.getCliPath()}` : "dev-workflow";
 
     try {
       execSync(`${devWorkflowCmd} init`, {
@@ -190,7 +181,9 @@ export class E2ETestHarness {
     // Use git_root_hash (first commit SHA) as stable identifier
     const gitRootHash = resolver.getGitRootHash();
     const db = new Database(this.dbPath);
-    const project = db.prepare("SELECT id FROM projects WHERE git_root_hash = ?").get(gitRootHash) as { id: string } | undefined;
+    const project = db
+      .prepare("SELECT id FROM projects WHERE git_root_hash = ?")
+      .get(gitRootHash) as { id: string } | undefined;
     db.close();
 
     if (!project) {
@@ -286,9 +279,7 @@ console.log("Capitalized:", capitalize("hello"));
    * Get the dev-workflow command to use
    */
   getDevWorkflowCommand(): string {
-    return this.useLocalBuild
-      ? `node ${this.getCliPath()}`
-      : "dev-workflow";
+    return this.useLocalBuild ? `node ${this.getCliPath()}` : "dev-workflow";
   }
 
   /**
@@ -343,9 +334,7 @@ console.log("Capitalized:", capitalize("hello"));
       console.log("\n🧹 Cleaning up test environment...");
       try {
         // Run uninit to properly unregister MCP server and remove skills/subagents
-        const devWorkflowCmd = this.useLocalBuild
-          ? `node ${this.getCliPath()}`
-          : "dev-workflow";
+        const devWorkflowCmd = this.useLocalBuild ? `node ${this.getCliPath()}` : "dev-workflow";
         execSync(`${devWorkflowCmd} uninit`, {
           cwd: this.testDir,
           stdio: "pipe",

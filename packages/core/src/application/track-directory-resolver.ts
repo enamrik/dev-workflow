@@ -86,11 +86,15 @@ export class TrackDirectoryResolver {
    */
   getGitRootHash(): string {
     try {
-      return execSync("git rev-list --max-parents=0 HEAD", {
-        cwd: this.gitRoot,
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-      }).trim().split("\n")[0] ?? "";
+      return (
+        execSync("git rev-list --max-parents=0 HEAD", {
+          cwd: this.gitRoot,
+          encoding: "utf-8",
+          stdio: ["pipe", "pipe", "pipe"],
+        })
+          .trim()
+          .split("\n")[0] ?? ""
+      );
     } catch {
       // Fallback to path-based hash if git command fails
       return crypto.createHash("sha256").update(this.gitRoot).digest("hex");
@@ -173,7 +177,6 @@ export class TrackDirectoryResolver {
   getUserTemplatesPath(): string {
     return path.join(this.getTrackDirectory(), "issues", "templates");
   }
-
 }
 
 /**

@@ -6,10 +6,7 @@ import { DependencyService } from "./dependency-service.js";
 import { DependencyNotSatisfiedError } from "../domain/errors.js";
 import type { GitWorktreeService } from "../infrastructure/git/git-worktree-service.js";
 import { generateWorktreeNames } from "../infrastructure/git/git-worktree-service.js";
-import type {
-  ConflictDetectionService,
-  ConflictWarning,
-} from "./conflict-detection-service.js";
+import type { ConflictDetectionService, ConflictWarning } from "./conflict-detection-service.js";
 
 /**
  * Execution mode for task sessions
@@ -119,9 +116,7 @@ export class TaskSessionService {
    *    - 'main': No branch, work directly on main
    * 3. Update task status to IN_PROGRESS with session info
    */
-  async startTaskSession(
-    request: StartTaskSessionRequest
-  ): Promise<TaskSession> {
+  async startTaskSession(request: StartTaskSessionRequest): Promise<TaskSession> {
     const { taskId, sessionId, mode = "isolated" } = request;
 
     // Get task and validate
@@ -139,9 +134,7 @@ export class TaskSessionService {
 
     // Check if dependencies are satisfied
     if (!this.dependencyService.areDependenciesSatisfied(task)) {
-      const blockingTasks = this.dependencyService.getBlockingDependencies(
-        task
-      );
+      const blockingTasks = this.dependencyService.getBlockingDependencies(task);
       throw new DependencyNotSatisfiedError(
         taskId,
         task.title,
@@ -155,9 +148,7 @@ export class TaskSessionService {
 
     // Check if task is available (not locked by another session)
     if (!this.isTaskAvailableSync(task)) {
-      throw new Error(
-        `Task is already in progress by session: ${task.sessionId}`
-      );
+      throw new Error(`Task is already in progress by session: ${task.sessionId}`);
     }
 
     const now = new Date().toISOString();
@@ -186,7 +177,7 @@ export class TaskSessionService {
       if (!this.gitWorktreeService) {
         throw new Error(
           "GitWorktreeService is required for 'isolated' mode. " +
-          "Use 'branch' or 'main' mode if git worktrees are not available."
+            "Use 'branch' or 'main' mode if git worktrees are not available."
         );
       }
 
@@ -197,10 +188,7 @@ export class TaskSessionService {
         this.trackDirectory
       );
       branchName = names.branchName;
-      worktreePath = await this.gitWorktreeService.createWorktree(
-        names.worktreePath,
-        branchName
-      );
+      worktreePath = await this.gitWorktreeService.createWorktree(names.worktreePath, branchName);
 
       // Update task with worktree info
       this.taskRepository.updateWorktreeInfo(taskId, worktreePath, branchName);
@@ -209,7 +197,7 @@ export class TaskSessionService {
       if (!this.gitWorktreeService) {
         throw new Error(
           "GitWorktreeService is required for 'branch' mode. " +
-          "Use 'main' mode if git operations are not available."
+            "Use 'main' mode if git operations are not available."
         );
       }
 
@@ -244,12 +232,7 @@ export class TaskSessionService {
     }
 
     // Update task status to IN_PROGRESS and set session info
-    this.taskRepository.updateStatus(
-      taskId,
-      "IN_PROGRESS",
-      sessionId,
-      "Started session"
-    );
+    this.taskRepository.updateStatus(taskId, "IN_PROGRESS", sessionId, "Started session");
 
     // Update session tracking
     this.taskRepository.updateSessionInfo(
@@ -291,9 +274,7 @@ export class TaskSessionService {
    * 3. Cleanup worktree if present
    * 4. Clear session association
    */
-  async completeTaskSession(
-    request: CompleteTaskSessionRequest
-  ): Promise<Task> {
+  async completeTaskSession(request: CompleteTaskSessionRequest): Promise<Task> {
     const { taskId, sessionId, notes } = request;
 
     // Get task and validate
@@ -311,9 +292,7 @@ export class TaskSessionService {
 
     // Only IN_PROGRESS tasks can be completed
     if (task.status !== "IN_PROGRESS") {
-      throw new Error(
-        `Task must be IN_PROGRESS to complete. Current status: ${task.status}`
-      );
+      throw new Error(`Task must be IN_PROGRESS to complete. Current status: ${task.status}`);
     }
 
     // Cleanup worktree if present
@@ -330,12 +309,7 @@ export class TaskSessionService {
     }
 
     // Update task status to COMPLETED
-    this.taskRepository.updateStatus(
-      taskId,
-      "COMPLETED",
-      sessionId,
-      notes ?? "Completed session"
-    );
+    this.taskRepository.updateStatus(taskId, "COMPLETED", sessionId, notes ?? "Completed session");
 
     // Clear session association
     this.taskRepository.clearSession(taskId);
@@ -366,11 +340,7 @@ export class TaskSessionService {
    * 3. Cleanup worktree if present (and delete the branch)
    * 4. Clear session association
    */
-  async abandonTaskSession(
-    taskId: string,
-    sessionId: string,
-    reason?: string
-  ): Promise<Task> {
+  async abandonTaskSession(taskId: string, sessionId: string, reason?: string): Promise<Task> {
     // Get task and validate
     const task = this.taskRepository.findById(taskId);
     if (!task) {
@@ -398,12 +368,7 @@ export class TaskSessionService {
     }
 
     // Update task status to ABANDONED
-    this.taskRepository.updateStatus(
-      taskId,
-      "ABANDONED",
-      sessionId,
-      reason ?? "Abandoned session"
-    );
+    this.taskRepository.updateStatus(taskId, "ABANDONED", sessionId, reason ?? "Abandoned session");
 
     // Clear session association
     this.taskRepository.clearSession(taskId);
@@ -430,10 +395,7 @@ export class TaskSessionService {
    *
    * Used to prevent session timeouts for active sessions.
    */
-  async updateSessionActivity(
-    taskId: string,
-    sessionId: string
-  ): Promise<void> {
+  async updateSessionActivity(taskId: string, sessionId: string): Promise<void> {
     const task = this.taskRepository.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
@@ -513,8 +475,7 @@ export class TaskSessionService {
     if (task.status === "IN_PROGRESS" && task.lastSessionActivityAt) {
       const lastActivity = new Date(task.lastSessionActivityAt);
       const now = new Date();
-      const hoursSinceActivity =
-        (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60);
+      const hoursSinceActivity = (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60);
 
       // Consider session dead after 1 hour of inactivity
       if (hoursSinceActivity > 1) {

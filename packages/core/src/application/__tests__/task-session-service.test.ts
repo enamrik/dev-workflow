@@ -5,7 +5,12 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createRepositories, createTestIssue, createTestPlan, createTestTask } from "../../__tests__/helpers.js";
+import {
+  createRepositories,
+  createTestIssue,
+  createTestPlan,
+  createTestTask,
+} from "../../__tests__/helpers.js";
 import { createTestDatabase } from "../../__tests__/setup.js";
 import { TaskSessionService } from "../task-session-service.js";
 
@@ -25,7 +30,7 @@ describe("TaskSessionService", () => {
       repos.issueRepository,
       undefined, // No git worktree service
       undefined, // No conflict detection service
-      undefined  // No track directory
+      undefined // No track directory
     );
   });
 

@@ -9,30 +9,37 @@ allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-trac
 ## When to Invoke
 
 **Starting work:**
+
 - User mentions: "start task", "work on task", "begin task", "pick up task"
 - User wants to work: "let's work on the first task", "start working on #1"
 - User is ready: "I'm ready to implement", "let's begin"
 
 **Submitting for review:**
+
 - User mentions: "submit for review", "create PR", "open PR", "ready for review"
 - User finished implementation: "I've finished, create a PR"
 
 **Completing work:**
+
 - User mentions: "complete task", "finish task", "done with task", "mark complete"
 - User after PR merged: "PR is merged", "merge the PR"
 
 **Abandoning work:**
+
 - User mentions: "abandon task", "stop task", "cancel task"
 - User blocked: "I can't continue", "this approach won't work"
 
 **Listing available work:**
+
 - User asks: "what tasks are available?", "what can I work on?"
 - User browses: "show me the tasks", "list pending tasks"
 
 **Checking PR status:**
+
 - User mentions: "PR status", "check PR", "what's the PR status?"
 
 **Pausing an issue:**
+
 - User mentions: "pause issue", "pause work", "put issue on hold"
 - User needs to switch focus: "I need to work on something else first"
 
@@ -87,32 +94,35 @@ BACKLOG tasks back to READY.
 ### Execution Modes
 
 **1. Isolated Mode (default)**
+
 - Creates a git worktree + branch for parallel work
 - Full PR workflow: submit for review → merge → complete
 - Best for: feature work, parallel tasks, changes that need review
 
 **2. Branch Mode**
+
 - Creates a branch only, checks out in main repo
 - Full PR workflow: submit for review → merge → complete
 - Best for: sequential work, when worktrees aren't needed
 
 **3. Main Mode**
+
 - Works directly on main branch, no branch created
 - Skips PR workflow, completes directly
 - Best for: trivial fixes, documentation, config changes
 
 ### Status Transitions
 
-| From | To | Trigger |
-|------|-----|---------|
-| PLANNED | BACKLOG | `move_issue_to_backlog` (user satisfied with plan, creates GitHub issues) |
-| BACKLOG | IN_PROGRESS | `load_task_session` (also moves other BACKLOG → READY) |
-| READY | IN_PROGRESS | `load_task_session` |
-| READY | BACKLOG | `pause_issue` (moves all READY tasks) |
-| IN_PROGRESS | PR_REVIEW | `submit_for_review` (isolated/branch modes) |
-| IN_PROGRESS | COMPLETED | `complete_task` (main mode only) |
-| PR_REVIEW | COMPLETED | `complete_task` (after PR merged) |
-| Any | ABANDONED | `abandon_task_session` |
+| From        | To          | Trigger                                                                   |
+| ----------- | ----------- | ------------------------------------------------------------------------- |
+| PLANNED     | BACKLOG     | `move_issue_to_backlog` (user satisfied with plan, creates GitHub issues) |
+| BACKLOG     | IN_PROGRESS | `load_task_session` (also moves other BACKLOG → READY)                    |
+| READY       | IN_PROGRESS | `load_task_session`                                                       |
+| READY       | BACKLOG     | `pause_issue` (moves all READY tasks)                                     |
+| IN_PROGRESS | PR_REVIEW   | `submit_for_review` (isolated/branch modes)                               |
+| IN_PROGRESS | COMPLETED   | `complete_task` (main mode only)                                          |
+| PR_REVIEW   | COMPLETED   | `complete_task` (after PR merged)                                         |
+| Any         | ABANDONED   | `abandon_task_session`                                                    |
 
 ## Process
 
@@ -256,6 +266,7 @@ by pause. Only READY tasks are moved.
 ### Isolated Mode (Default)
 
 When starting with `mode: "isolated"`:
+
 - A new git branch is created: `issue-{N}/task-{N}-{slug}`
 - A worktree directory is created in the global track directory
 - Work happens in the isolated worktree, not the main repo
@@ -264,6 +275,7 @@ When starting with `mode: "isolated"`:
 - On abandonment: worktree AND branch deleted
 
 **Best for:**
+
 - Feature development that needs review
 - Working on multiple tasks in parallel
 - Changes that might conflict with other work
@@ -280,6 +292,7 @@ When a task is started in isolated mode, `load_task_session` returns a `worktree
 **NEVER** fall back to the main repo path. The main repo may be on a different branch or have different content. All changes for the PR must be made in the worktree.
 
 Common mistake to avoid:
+
 ```
 ❌ Read("/Users/user/code/project/Makefile")           # Main repo - WRONG
 ✅ Read("/Users/user/.track/project/worktrees/issue-1-task-1/Makefile")  # Worktree - CORRECT
@@ -290,6 +303,7 @@ Common mistake to avoid:
 **Only use when the user explicitly requests it** (e.g., "branch mode", "no worktree").
 
 When starting with `mode: "branch"`:
+
 - A new git branch is created: `issue-{N}/task-{N}-{slug}`
 - Branch is checked out in the main repository
 - No worktree created
@@ -298,6 +312,7 @@ When starting with `mode: "branch"`:
 - On abandonment: branch deleted, checkout main
 
 **Only use when user explicitly requests it for:**
+
 - Sequential work (one task at a time)
 - When user says they don't want a worktree
 
@@ -306,12 +321,14 @@ When starting with `mode: "branch"`:
 **WARNING: Only use when the user explicitly requests it.** Never autonomously choose this mode.
 
 When starting with `mode: "main"`:
+
 - No branch created, work directly on main
 - No PR workflow
 - On completion: changes committed directly to main
 - On abandonment: uncommitted changes may be lost
 
 **Only use when user explicitly requests it for:**
+
 - Emergency hotfixes where user explicitly skips review
 - Cases where user says "on main", "main mode", "skip PR", "no branch"
 
@@ -322,6 +339,7 @@ When starting with `mode: "main"`:
 **User:** "Start working on the first task"
 
 **Response:**
+
 ```
 Starting task session in isolated mode...
 
@@ -353,6 +371,7 @@ Ready to begin implementation. Where would you like to start?
 **User:** "Start task 2 in branch mode"
 
 **Response:**
+
 ```
 Starting task session in branch mode...
 
@@ -376,6 +395,7 @@ Ready to begin implementation. Where would you like to start?
 **User:** "Start the config update task on main"
 
 **Response:**
+
 ```
 Starting task session in main mode...
 
@@ -398,6 +418,7 @@ Ready to make the changes?
 **User:** "I've finished the implementation, submit for review"
 
 **Response:**
+
 ```
 Here's a summary of what was completed:
 
@@ -441,6 +462,7 @@ You can still push additional changes to the branch if needed.
 **User:** "The PR is merged, complete the task"
 
 **Response:**
+
 ```
 Checking PR status...
   PR #42: MERGED
@@ -461,6 +483,7 @@ Would you like to start working on it?
 **User:** "I've finished, mark it complete"
 
 **Response:**
+
 ```
 Here's a summary of what was completed:
 
@@ -484,6 +507,7 @@ Should I mark this task as complete?
 **User:** "yes"
 
 **Response:**
+
 ```
 Creating git commit...
   [main def5678] Update logging configuration (#8)
@@ -501,6 +525,7 @@ Would you like to start working on it?
 **User:** "What's the PR status?"
 
 **Response:**
+
 ```
 PR status for task "Add OAuth2 authentication":
 
@@ -518,6 +543,7 @@ to finish up and clean the worktree.
 **User:** "I need to abandon this task, the approach won't work"
 
 **Response:**
+
 ```
 Are you sure you want to abandon this task?
 Reason provided: "the approach won't work"
@@ -539,6 +565,7 @@ Would you like to re-plan issue #5 with a different approach?
 **User:** "I need to pause issue #5, something urgent came up"
 
 **Response:**
+
 ```
 Pausing issue #5...
 
@@ -554,32 +581,39 @@ any task and the remaining BACKLOG tasks will transition back to READY.
 ## Error Handling
 
 **Task not found:**
+
 - Explain the error
 - Call `list_available_tasks` to show what's available
 
 **Task already in progress (by another session):**
+
 - Explain another session owns the task
 - Suggest waiting or checking if session timed out
 
 **No tasks available:**
+
 - Explain all tasks are completed or in progress
 - Suggest checking the plan or creating new tasks
 
 **Submit for review failed - no branch:**
+
 - Task was started in main mode
 - Explain that main mode doesn't support PR workflow
 - Complete the task directly instead
 
 **Submit for review failed - GitHub not configured:**
+
 - GitHub integration not enabled
 - Guide user to run `update_settings` with `enable_github` action
 
 **Complete failed - PR not merged:**
+
 - For isolated/branch modes, PR must be merged first
 - Show current PR status
 - Ask user to merge the PR on GitHub first
 
 **Complete failed - PR not found:**
+
 - Task is in PR_REVIEW but PR was deleted
 - Suggest abandoning and re-starting the task
 
@@ -595,6 +629,7 @@ any task and the remaining BACKLOG tasks will transition back to READY.
 ### Task Tuning
 
 Before execution, tasks can be tuned using `update_task`:
+
 - **contextInstructions**: Add custom instructions (e.g., "use existing auth pattern in src/auth")
 - **acceptanceCriteria**: Refine what needs to be verified
 - **description**: Clarify implementation details
@@ -633,6 +668,7 @@ Call `log_task_progress` at these key moments:
 **User:** "Start the bug task"
 
 **Response:**
+
 ```
 Starting task session in isolated mode...
 
@@ -655,6 +691,7 @@ Let me start investigating...
 ```
 
 **During investigation:**
+
 ```
 [Logging progress: "Examining session handling in src/auth/session.ts.
 The sessionExpired check returns early without setting an error message.
@@ -675,6 +712,7 @@ redirect. Files: src/middleware/session.ts, tests/session.test.ts"]
 ```
 
 **On completion:**
+
 ```
 Bug investigation complete. Here's the summary:
 
@@ -701,8 +739,8 @@ log_task_progress({
   taskId: "...",
   sessionId: "...",
   message: "ROOT CAUSE: Description of what was found",
-  filesModified: ["src/file1.ts", "src/file2.ts"]  // optional
-})
+  filesModified: ["src/file1.ts", "src/file2.ts"], // optional
+});
 ```
 
 The `filesModified` parameter is optional but recommended when logging the fix.

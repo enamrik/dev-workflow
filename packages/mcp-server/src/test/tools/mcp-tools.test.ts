@@ -219,10 +219,7 @@ function viewSnapshotTool(
   params: { issueNumber: number; version: number }
 ): ToolResult {
   try {
-    const snapshotData = versioningService.viewSnapshot(
-      params.issueNumber,
-      params.version
-    );
+    const snapshotData = versioningService.viewSnapshot(params.issueNumber, params.version);
     return { success: true, ...snapshotData };
   } catch (error) {
     return {
@@ -434,7 +431,9 @@ describe("MCP Tool: generate_plan", () => {
       issueNumber: 99999,
       summary: "Test",
       approach: "Test",
-      tasks: [{ id: crypto.randomUUID(), title: "Task", description: "Desc", acceptanceCriteria: [] }],
+      tasks: [
+        { id: crypto.randomUUID(), title: "Task", description: "Desc", acceptanceCriteria: [] },
+      ],
       estimatedComplexity: "LOW",
     });
 
@@ -474,7 +473,9 @@ describe("MCP Tool: update_task_status", () => {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
-      tasks: [{ id: crypto.randomUUID(), title: "Task 1", description: "Desc 1", acceptanceCriteria: [] }],
+      tasks: [
+        { id: crypto.randomUUID(), title: "Task 1", description: "Desc 1", acceptanceCriteria: [] },
+      ],
       estimatedComplexity: "LOW",
     });
 
@@ -510,7 +511,9 @@ describe("MCP Tool: update_task_status", () => {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
-      tasks: [{ id: crypto.randomUUID(), title: "Task 1", description: "Desc 1", acceptanceCriteria: [] }],
+      tasks: [
+        { id: crypto.randomUUID(), title: "Task 1", description: "Desc 1", acceptanceCriteria: [] },
+      ],
       estimatedComplexity: "LOW",
     });
 
@@ -569,7 +572,14 @@ describe("MCP Tool: add_manual_task", () => {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
-      tasks: [{ id: crypto.randomUUID(), title: "Generated Task", description: "Generated desc", acceptanceCriteria: [] }],
+      tasks: [
+        {
+          id: crypto.randomUUID(),
+          title: "Generated Task",
+          description: "Generated desc",
+          acceptanceCriteria: [],
+        },
+      ],
       estimatedComplexity: "LOW",
     });
 
@@ -631,7 +641,14 @@ describe("MCP Tool: delete_task", () => {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
-      tasks: [{ id: crypto.randomUUID(), title: "Task to Delete", description: "Will be deleted", acceptanceCriteria: [] }],
+      tasks: [
+        {
+          id: crypto.randomUUID(),
+          title: "Task to Delete",
+          description: "Will be deleted",
+          acceptanceCriteria: [],
+        },
+      ],
       estimatedComplexity: "LOW",
     });
 
@@ -668,7 +685,14 @@ describe("MCP Tool: delete_task", () => {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
-      tasks: [{ id: crypto.randomUUID(), title: "In Progress Task", description: "Working on it", acceptanceCriteria: [] }],
+      tasks: [
+        {
+          id: crypto.randomUUID(),
+          title: "In Progress Task",
+          description: "Working on it",
+          acceptanceCriteria: [],
+        },
+      ],
       estimatedComplexity: "LOW",
     });
 
@@ -717,22 +741,14 @@ describe("MCP Tool: view_snapshot", () => {
 
     // Create a snapshot (version 1) with original state
     const snapshotType: SnapshotType = "PLAN_REGENERATION";
-    versioningService.createSnapshot(
-      issue!.number,
-      snapshotType,
-      "test"
-    );
+    versioningService.createSnapshot(issue!.number, snapshotType, "test");
 
     // Update the issue
     issueRepository.update(issue!.id, { title: "Updated Title" });
 
     // Create another snapshot (version 2)
     const updateSnapshotType: SnapshotType = "ISSUE_UPDATE";
-    versioningService.createSnapshot(
-      issue!.number,
-      updateSnapshotType,
-      "test"
-    );
+    versioningService.createSnapshot(issue!.number, updateSnapshotType, "test");
 
     // View version 1
     const result = viewSnapshotTool(versioningService, {
@@ -893,11 +909,7 @@ describe("MCP Tool: list_available_tasks", () => {
     taskRepository = repos.taskRepository;
     const services = createServices(repos);
     planningService = services.planningService;
-    taskSessionService = new TaskSessionService(
-      taskRepository,
-      planRepository,
-      issueRepository
-    );
+    taskSessionService = new TaskSessionService(taskRepository, planRepository, issueRepository);
   });
 
   afterEach(() => {
@@ -914,7 +926,9 @@ describe("MCP Tool: list_available_tasks", () => {
       issueNumber: 1,
       summary: "Test plan",
       approach: "Test approach",
-      tasks: [{ id: crypto.randomUUID(), title: "Task 1", description: "Desc", acceptanceCriteria: [] }],
+      tasks: [
+        { id: crypto.randomUUID(), title: "Task 1", description: "Desc", acceptanceCriteria: [] },
+      ],
       estimatedComplexity: "LOW",
     });
 
@@ -942,7 +956,9 @@ describe("MCP Tool: list_available_tasks", () => {
       issueNumber: 1,
       summary: "Test plan",
       approach: "Test approach",
-      tasks: [{ id: crypto.randomUUID(), title: "Task 1", description: "Desc", acceptanceCriteria: [] }],
+      tasks: [
+        { id: crypto.randomUUID(), title: "Task 1", description: "Desc", acceptanceCriteria: [] },
+      ],
       estimatedComplexity: "LOW",
     });
 
@@ -973,7 +989,9 @@ describe("MCP Tool: list_available_tasks", () => {
       issueNumber: 1,
       summary: "Test plan",
       approach: "Test approach",
-      tasks: [{ id: crypto.randomUUID(), title: "Task 1", description: "Desc", acceptanceCriteria: [] }],
+      tasks: [
+        { id: crypto.randomUUID(), title: "Task 1", description: "Desc", acceptanceCriteria: [] },
+      ],
       estimatedComplexity: "LOW",
     });
 

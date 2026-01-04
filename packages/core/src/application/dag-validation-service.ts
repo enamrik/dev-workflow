@@ -5,10 +5,7 @@
  * This ensures that all tasks in a plan can eventually be executed.
  */
 
-import {
-  DAGCycleError,
-  InvalidDependencyError,
-} from "../domain/errors.js";
+import { DAGCycleError, InvalidDependencyError } from "../domain/errors.js";
 
 /**
  * Task node for DAG validation
@@ -54,11 +51,7 @@ export class DAGValidationService {
       if (task.dependsOn) {
         for (const depId of task.dependsOn) {
           if (!taskMap.has(depId)) {
-            throw new InvalidDependencyError(
-              task.id,
-              task.title ?? task.id,
-              depId
-            );
+            throw new InvalidDependencyError(task.id, task.title ?? task.id, depId);
           }
         }
       }

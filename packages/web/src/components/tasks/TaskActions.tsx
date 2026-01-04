@@ -115,11 +115,7 @@ function ActionButton({ label, text, tooltip }: ActionButtonProps) {
         )}
       >
         <span>{label}</span>
-        {copied ? (
-          <CheckIcon className="w-3 h-3" />
-        ) : (
-          <CopyIcon className="w-3 h-3" />
-        )}
+        {copied ? <CheckIcon className="w-3 h-3" /> : <CopyIcon className="w-3 h-3" />}
       </button>
     </Tooltip>
   );
@@ -127,12 +123,7 @@ function ActionButton({ label, text, tooltip }: ActionButtonProps) {
 
 function ExternalLinkIcon({ className }: { className?: string }) {
   return (
-    <svg
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
         strokeLinecap="round"
         strokeLinejoin="round"

@@ -84,6 +84,7 @@ User Request
 Tasks can execute in two modes:
 
 **Inline Mode** (full visibility):
+
 ```
 Main Session
      │
@@ -94,6 +95,7 @@ Main Session
 ```
 
 **Subagent Mode** (parallel/isolated):
+
 ```
 Main Session                         Subagent
      │                                   │
@@ -147,13 +149,13 @@ Tasks support lifecycle hooks for quality gates and automation.
 
 ### Hook Stages
 
-| Stage | When | Must Pass? |
-|-------|------|------------|
-| preStart | Before task → IN_PROGRESS | Yes |
-| postStart | After task → IN_PROGRESS | No |
-| preComplete | Before task → COMPLETED | Yes |
-| postComplete | After task → COMPLETED | No |
-| onAbandon | When task abandoned | No |
+| Stage        | When                      | Must Pass? |
+| ------------ | ------------------------- | ---------- |
+| preStart     | Before task → IN_PROGRESS | Yes        |
+| postStart    | After task → IN_PROGRESS  | No         |
+| preComplete  | Before task → COMPLETED   | Yes        |
+| postComplete | After task → COMPLETED    | No         |
+| onAbandon    | When task abandoned       | No         |
 
 ### Hook Configuration
 
@@ -166,16 +168,19 @@ See [ADR-002: Hook Composition](adr/002-hook-composition.md) for design rational
 ### MCP Tools (packages/mcp-server)
 
 Issue management:
+
 - `create_issue` - Create new issue with optional template
 - `get_issue` - Get issue by ID or number
 - `list_issues` - List issues with filters
 - `update_issue` - Update issue fields
 
 Planning:
+
 - `generate_plan` - Create/regenerate implementation plan
 - `get_plan` - Get plan with tasks for an issue
 
 Task execution:
+
 - `start_task_session` - Begin work on a task
 - `complete_task_session` - Mark task complete (runs pre-complete hooks)
 - `abandon_task_session` - Abandon task with reason
@@ -185,6 +190,7 @@ Task execution:
 - `get_task_execution_log` - Retrieve execution history
 
 Versioning:
+
 - `get_snapshot_history` - View all versions
 - `revert_to_snapshot` - Restore previous version
 

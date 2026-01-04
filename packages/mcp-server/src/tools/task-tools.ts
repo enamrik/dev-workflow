@@ -18,12 +18,7 @@ import {
   type ConflictWarning,
   type TaskGitHubSyncService,
 } from "@dev-workflow/core";
-import {
-  type ToolDefinition,
-  type ToolResponse,
-  successResponse,
-  errorResponse,
-} from "./types.js";
+import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
 /**
  * Tool definitions for task operations
@@ -147,8 +142,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "update_task_labels",
-    description:
-      "Update labels for a task. Labels map to files in .track/labels/{label}.md.",
+    description: "Update labels for a task. Labels map to files in .track/labels/{label}.md.",
     inputSchema: {
       type: "object",
       properties: {
@@ -159,8 +153,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
         labels: {
           type: "array",
           items: { type: "string" },
-          description:
-            'Array of labels (e.g., ["db", "api", "security"])',
+          description: 'Array of labels (e.g., ["db", "api", "security"])',
         },
       },
       required: ["taskId", "labels"],
@@ -168,7 +161,8 @@ export const taskToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "list_available_task_labels",
-    description: "List all available task labels. Labels are defined in .track/labels/{name}.md files.",
+    description:
+      "List all available task labels. Labels are defined in .track/labels/{name}.md files.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -292,8 +286,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "update_task",
-    description:
-      "Update a task's properties. Use for tuning task details before execution.",
+    description: "Update a task's properties. Use for tuning task details before execution.",
     inputSchema: {
       type: "object",
       properties: {
@@ -364,8 +357,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
         },
         message: {
           type: "string",
-          description:
-            "What was done (e.g., 'Created user model in src/models/user.ts')",
+          description: "What was done (e.g., 'Created user model in src/models/user.ts')",
         },
         filesModified: {
           type: "array",
@@ -501,7 +493,11 @@ export async function handleLoadTaskSession(
     if (ctx.taskGitHubSyncService && result.task.planId) {
       const siblingTasks = ctx.taskRepository.findByPlanId(result.task.planId);
       for (const sibling of siblingTasks) {
-        if (sibling.id !== taskId && sibling.status === "READY" && sibling.githubSync?.githubIssueNumber) {
+        if (
+          sibling.id !== taskId &&
+          sibling.status === "READY" &&
+          sibling.githubSync?.githubIssueNumber
+        ) {
           try {
             await ctx.taskGitHubSyncService.syncTaskStatus(sibling.id, "READY");
           } catch (error) {
@@ -513,7 +509,12 @@ export async function handleLoadTaskSession(
   }
 
   // Load full context (same as get_task_for_session)
-  const task = response.task as { planId: string; dependsOn?: string[]; labels?: string[]; contextInstructions?: string };
+  const task = response.task as {
+    planId: string;
+    dependsOn?: string[];
+    labels?: string[];
+    contextInstructions?: string;
+  };
 
   // Get plan and issue
   const plan = ctx.planRepository.findById(task.planId);
@@ -621,11 +622,7 @@ export async function handleAbandonTaskSession(
 ): Promise<ToolResponse> {
   const { taskId, sessionId, reason } = args;
 
-  const task = await ctx.taskSessionService.abandonTaskSession(
-    taskId,
-    sessionId,
-    reason
-  );
+  const task = await ctx.taskSessionService.abandonTaskSession(taskId, sessionId, reason);
 
   // Sync to GitHub if task has GitHub sync enabled
   if (ctx.taskGitHubSyncService && task.githubSync?.githubIssueNumber) {
@@ -675,9 +672,7 @@ export function handleGetTask(
     const tasks = ctx.taskRepository.findByPlanId(plan.id);
     task = tasks.find((t) => t.number === taskNumber);
   } else {
-    return errorResponse(
-      "Either taskId or both taskNumber and issueNumber are required"
-    );
+    return errorResponse("Either taskId or both taskNumber and issueNumber are required");
   }
 
   if (!task) {
@@ -799,8 +794,7 @@ export async function handleUpdateTaskLabels(
 
     if (invalidLabels.length > 0) {
       return errorResponse(
-        `Invalid labels: [${invalidLabels.join(", ")}]. ` +
-          `Available: [${available.join(", ")}]`
+        `Invalid labels: [${invalidLabels.join(", ")}]. ` + `Available: [${available.join(", ")}]`
       );
     }
   }
@@ -816,9 +810,7 @@ export async function handleUpdateTaskLabels(
 /**
  * Handle list_available_task_labels tool call
  */
-export async function handleListAvailableTaskLabels(
-  ctx: TaskToolContext
-): Promise<ToolResponse> {
+export async function handleListAvailableTaskLabels(ctx: TaskToolContext): Promise<ToolResponse> {
   const labels = await ctx.labelService.listAvailableLabels();
 
   return successResponse({
@@ -942,10 +934,7 @@ export function handleAddManualTask(
 /**
  * Handle delete_task tool call
  */
-export function handleDeleteTask(
-  ctx: TaskToolContext,
-  args: { taskId: string }
-): ToolResponse {
+export function handleDeleteTask(ctx: TaskToolContext, args: { taskId: string }): ToolResponse {
   const { taskId } = args;
 
   const task = ctx.taskManagementService.deleteTask(taskId, "claude-agent");
@@ -994,8 +983,7 @@ export async function handleUpdateTask(
 
     if (invalidLabels.length > 0) {
       return errorResponse(
-        `Invalid labels: [${invalidLabels.join(", ")}]. ` +
-          `Available: [${available.join(", ")}]`
+        `Invalid labels: [${invalidLabels.join(", ")}]. ` + `Available: [${available.join(", ")}]`
       );
     }
   }
@@ -1004,10 +992,8 @@ export async function handleUpdateTask(
   const updates: Record<string, unknown> = {};
   if (title !== undefined) updates.title = title;
   if (description !== undefined) updates.description = description;
-  if (acceptanceCriteria !== undefined)
-    updates.acceptanceCriteria = acceptanceCriteria;
-  if (contextInstructions !== undefined)
-    updates.contextInstructions = contextInstructions;
+  if (acceptanceCriteria !== undefined) updates.acceptanceCriteria = acceptanceCriteria;
+  if (contextInstructions !== undefined) updates.contextInstructions = contextInstructions;
   if (estimatedMinutes !== undefined) updates.estimatedMinutes = estimatedMinutes;
   if (labels !== undefined) updates.labels = labels;
 
@@ -1048,12 +1034,8 @@ export function handleGetTaskExecutionPrompt(
   const sessionId = crypto.randomUUID();
 
   // Build the execution prompt
-  const issueAcceptanceCriteria = issue.acceptanceCriteria
-    .map((c) => `- [ ] ${c}`)
-    .join("\n");
-  const taskAcceptanceCriteria = task.acceptanceCriteria
-    .map((c) => `- [ ] ${c}`)
-    .join("\n");
+  const issueAcceptanceCriteria = issue.acceptanceCriteria.map((c) => `- [ ] ${c}`).join("\n");
+  const taskAcceptanceCriteria = task.acceptanceCriteria.map((c) => `- [ ] ${c}`).join("\n");
 
   const prompt = `# Task Execution
 

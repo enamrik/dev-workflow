@@ -7,12 +7,7 @@ import {
   type GitWorktreeService,
   type WorktreeInfo,
 } from "@dev-workflow/core";
-import {
-  type ToolDefinition,
-  type ToolResponse,
-  successResponse,
-  errorResponse,
-} from "./types.js";
+import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
 /**
  * Tool definitions for worktree operations
@@ -63,9 +58,7 @@ export async function handleListWorktrees(
   context: WorktreeToolContext
 ): Promise<ToolResponse> {
   try {
-    const gitWorktreeService: GitWorktreeService = new NodeGitWorktreeService(
-      context.projectRoot
-    );
+    const gitWorktreeService: GitWorktreeService = new NodeGitWorktreeService(context.projectRoot);
 
     // Check if git is available
     const gitAvailable = await gitWorktreeService.checkGitAvailable();
@@ -80,10 +73,7 @@ export async function handleListWorktrees(
     const taskWorktrees = worktrees.filter((w) => !w.isMain);
 
     // Calculate total disk usage
-    const totalDiskUsage = taskWorktrees.reduce(
-      (sum, w) => sum + (w.diskUsageBytes ?? 0),
-      0
-    );
+    const totalDiskUsage = taskWorktrees.reduce((sum, w) => sum + (w.diskUsageBytes ?? 0), 0);
 
     const result: {
       mainWorktree: WorktreeInfo | undefined;
@@ -118,9 +108,7 @@ export async function handlePruneStaleWorktrees(
   context: WorktreeToolContext
 ): Promise<ToolResponse> {
   try {
-    const gitWorktreeService: GitWorktreeService = new NodeGitWorktreeService(
-      context.projectRoot
-    );
+    const gitWorktreeService: GitWorktreeService = new NodeGitWorktreeService(context.projectRoot);
 
     // Check if git is available
     const gitAvailable = await gitWorktreeService.checkGitAvailable();
@@ -145,9 +133,7 @@ export async function handlePruneStaleWorktrees(
       success: true,
       prunedCount,
       message:
-        prunedCount > 0
-          ? `Pruned ${prunedCount} stale worktree(s)`
-          : "No stale worktrees found",
+        prunedCount > 0 ? `Pruned ${prunedCount} stale worktree(s)` : "No stale worktrees found",
       remainingWorktrees: afterCount,
     });
   } catch (error) {

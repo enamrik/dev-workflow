@@ -189,13 +189,17 @@ export class MockFileSystem implements FileSystem {
     const file = this.files.get(normalized);
 
     if (!file) {
-      const error = new Error(`ENOENT: no such file or directory, open '${path}'`) as NodeJS.ErrnoException;
+      const error = new Error(
+        `ENOENT: no such file or directory, open '${path}'`
+      ) as NodeJS.ErrnoException;
       error.code = "ENOENT";
       throw error;
     }
 
     if (file.isDirectory) {
-      const error = new Error(`EISDIR: illegal operation on a directory, read`) as NodeJS.ErrnoException;
+      const error = new Error(
+        `EISDIR: illegal operation on a directory, read`
+      ) as NodeJS.ErrnoException;
       error.code = "EISDIR";
       throw error;
     }
@@ -211,7 +215,9 @@ export class MockFileSystem implements FileSystem {
     // Check parent directory exists
     const parentPath = normalized.substring(0, normalized.lastIndexOf("/"));
     if (parentPath && !this.files.has(parentPath)) {
-      const error = new Error(`ENOENT: no such file or directory, open '${path}'`) as NodeJS.ErrnoException;
+      const error = new Error(
+        `ENOENT: no such file or directory, open '${path}'`
+      ) as NodeJS.ErrnoException;
       error.code = "ENOENT";
       throw error;
     }
@@ -226,13 +232,17 @@ export class MockFileSystem implements FileSystem {
     const file = this.files.get(normalized);
 
     if (!file) {
-      const error = new Error(`ENOENT: no such file or directory, unlink '${path}'`) as NodeJS.ErrnoException;
+      const error = new Error(
+        `ENOENT: no such file or directory, unlink '${path}'`
+      ) as NodeJS.ErrnoException;
       error.code = "ENOENT";
       throw error;
     }
 
     if (file.isDirectory) {
-      const error = new Error(`EISDIR: illegal operation on a directory, unlink '${path}'`) as NodeJS.ErrnoException;
+      const error = new Error(
+        `EISDIR: illegal operation on a directory, unlink '${path}'`
+      ) as NodeJS.ErrnoException;
       error.code = "EISDIR";
       throw error;
     }
@@ -252,13 +262,17 @@ export class MockFileSystem implements FileSystem {
       // Check parent exists
       const parentPath = normalized.substring(0, normalized.lastIndexOf("/"));
       if (parentPath && !this.files.has(parentPath)) {
-        const error = new Error(`ENOENT: no such file or directory, mkdir '${path}'`) as NodeJS.ErrnoException;
+        const error = new Error(
+          `ENOENT: no such file or directory, mkdir '${path}'`
+        ) as NodeJS.ErrnoException;
         error.code = "ENOENT";
         throw error;
       }
 
       if (this.files.has(normalized)) {
-        const error = new Error(`EEXIST: file already exists, mkdir '${path}'`) as NodeJS.ErrnoException;
+        const error = new Error(
+          `EEXIST: file already exists, mkdir '${path}'`
+        ) as NodeJS.ErrnoException;
         error.code = "EEXIST";
         throw error;
       }
@@ -274,13 +288,17 @@ export class MockFileSystem implements FileSystem {
     const dir = this.files.get(normalized);
 
     if (!dir) {
-      const error = new Error(`ENOENT: no such file or directory, scandir '${path}'`) as NodeJS.ErrnoException;
+      const error = new Error(
+        `ENOENT: no such file or directory, scandir '${path}'`
+      ) as NodeJS.ErrnoException;
       error.code = "ENOENT";
       throw error;
     }
 
     if (!dir.isDirectory) {
-      const error = new Error(`ENOTDIR: not a directory, scandir '${path}'`) as NodeJS.ErrnoException;
+      const error = new Error(
+        `ENOTDIR: not a directory, scandir '${path}'`
+      ) as NodeJS.ErrnoException;
       error.code = "ENOTDIR";
       throw error;
     }

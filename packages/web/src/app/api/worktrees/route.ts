@@ -14,10 +14,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ worktrees });
   } catch (error) {
     console.error("Error fetching worktrees:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch worktrees" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch worktrees" }, { status: 500 });
   }
 }
 
@@ -27,17 +24,11 @@ export async function POST(request: NextRequest) {
     const { action, projectId } = body;
 
     if (action !== "prune") {
-      return NextResponse.json(
-        { error: "Invalid action. Supported: prune" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid action. Supported: prune" }, { status: 400 });
     }
 
     if (!projectId) {
-      return NextResponse.json(
-        { error: "projectId is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "projectId is required" }, { status: 400 });
     }
 
     const service = getMultiProjectService();

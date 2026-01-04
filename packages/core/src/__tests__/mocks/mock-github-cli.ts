@@ -5,15 +5,8 @@
  * Allows tests to control responses and verify calls without making real API requests.
  */
 
-import type {
-  GitHubCLI,
-  GitHubCLIResult,
-} from "../../infrastructure/github/github-cli.js";
-import type {
-  GitHubIssueData,
-  GitHubPRData,
-  GitHubMergeStrategy,
-} from "../../domain/github.js";
+import type { GitHubCLI, GitHubCLIResult } from "../../infrastructure/github/github-cli.js";
+import type { GitHubIssueData, GitHubPRData, GitHubMergeStrategy } from "../../domain/github.js";
 
 /**
  * Recorded call to the mock GitHub CLI
@@ -161,11 +154,7 @@ export class MockGitHubCLI implements GitHubCLI {
     return this.config.isInRepository;
   }
 
-  async createIssue(
-    title: string,
-    body: string,
-    labels: string[]
-  ): Promise<GitHubIssueData> {
+  async createIssue(title: string, body: string, labels: string[]): Promise<GitHubIssueData> {
     this.recordCall("createIssue", [title, body, labels]);
     this.checkError("createIssue");
 
@@ -242,11 +231,7 @@ export class MockGitHubCLI implements GitHubCLI {
     return [...this.config.existingLabels];
   }
 
-  async createLabel(
-    name: string,
-    color?: string,
-    description?: string
-  ): Promise<void> {
+  async createLabel(name: string, color?: string, description?: string): Promise<void> {
     this.recordCall("createLabel", [name, color, description]);
     this.checkError("createLabel");
 

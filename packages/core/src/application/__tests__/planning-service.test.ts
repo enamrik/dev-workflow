@@ -178,9 +178,7 @@ describe("PlanningService", () => {
 
     it("should throw error if issue not found", () => {
       // Act & Assert
-      expect(() => planningService.pauseIssue(9999)).toThrow(
-        "Issue not found: #9999"
-      );
+      expect(() => planningService.pauseIssue(9999)).toThrow("Issue not found: #9999");
     });
 
     it("should throw error if no plan exists for issue", () => {

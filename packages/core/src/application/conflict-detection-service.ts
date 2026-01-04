@@ -89,7 +89,7 @@ export class ConflictDetectionService {
       .from(taskExecutionLogs)
       .where(
         and(
-          inArray(taskExecutionLogs.taskId, completedTaskIds),
+          inArray(taskExecutionLogs.taskId, completedTaskIds)
           // Only get logs that have filesModified
         )
       )
@@ -132,9 +132,7 @@ export class ConflictDetectionService {
       for (const [modifiedFile, modifications] of priorTaskFiles) {
         if (this.filesOverlap(potentialFile, modifiedFile)) {
           // Check if we already have a warning for this file
-          const existingWarning = warnings.find(
-            (w) => w.filePath === modifiedFile
-          );
+          const existingWarning = warnings.find((w) => w.filePath === modifiedFile);
           if (!existingWarning) {
             warnings.push({
               filePath: modifiedFile,
@@ -165,9 +163,7 @@ export class ConflictDetectionService {
    */
   getModifiedFilesForPlan(planId: string): Map<string, FileModification[]> {
     const planTasks = this.taskRepository.findByPlanId(planId);
-    const completedTaskIds = planTasks
-      .filter((t) => t.status === "COMPLETED")
-      .map((t) => t.id);
+    const completedTaskIds = planTasks.filter((t) => t.status === "COMPLETED").map((t) => t.id);
 
     if (completedTaskIds.length === 0) {
       return new Map();
@@ -287,10 +283,7 @@ export class ConflictDetectionService {
 
     // If both have at least 2 parts and first 2 match, might be related
     if (potentialParts.length >= 2 && modifiedParts.length >= 2) {
-      if (
-        potentialParts[0] === modifiedParts[0] &&
-        potentialParts[1] === modifiedParts[1]
-      ) {
+      if (potentialParts[0] === modifiedParts[0] && potentialParts[1] === modifiedParts[1]) {
         return true;
       }
     }

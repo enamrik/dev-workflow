@@ -22,11 +22,7 @@ export default defineConfig({
     // Coverage configuration
     coverage: {
       provider: "v8",
-      include: [
-        "src/infrastructure/**/*.ts",
-        "src/application/**/*.ts",
-        "src/domain/**/*.ts",
-      ],
+      include: ["src/infrastructure/**/*.ts", "src/application/**/*.ts", "src/domain/**/*.ts"],
       exclude: ["src/**/__tests__/**", "src/index.ts"],
     },
   },

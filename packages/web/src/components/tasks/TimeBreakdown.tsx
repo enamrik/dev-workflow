@@ -20,11 +20,7 @@ interface StatusDuration {
  * Shows time spent in each status and total elapsed time.
  * Also compares estimated vs actual time when available.
  */
-export function TimeBreakdown({
-  task,
-  history,
-  className,
-}: TimeBreakdownProps) {
+export function TimeBreakdown({ task, history, className }: TimeBreakdownProps) {
   const { totalElapsed, statusDurations } = calculateTimeBreakdown(task, history);
 
   if (!totalElapsed) {
@@ -50,12 +46,10 @@ export function TimeBreakdown({
             {formatDuration(estimatedMs)}
             {overUnder !== null && (
               <span
-                className={clsx(
-                  "ml-2 text-xs",
-                  overUnder > 0 ? "text-red-600" : "text-green-600"
-                )}
+                className={clsx("ml-2 text-xs", overUnder > 0 ? "text-red-600" : "text-green-600")}
               >
-                ({overUnder > 0 ? "+" : ""}{formatDuration(Math.abs(overUnder))})
+                ({overUnder > 0 ? "+" : ""}
+                {formatDuration(Math.abs(overUnder))})
               </span>
             )}
           </span>
@@ -126,9 +120,7 @@ function calculateTimeBreakdown(
     const nextEntry = sortedHistory[i + 1];
 
     const statusStartTime = new Date(entry.changedAt).getTime();
-    const statusEndTime = nextEntry
-      ? new Date(nextEntry.changedAt).getTime()
-      : endTime;
+    const statusEndTime = nextEntry ? new Date(nextEntry.changedAt).getTime() : endTime;
 
     const duration = statusEndTime - statusStartTime;
     const currentDuration = durations.get(entry.toStatus) || 0;

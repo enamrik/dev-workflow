@@ -14,7 +14,13 @@ const SHOW_BACKLOG_STORAGE_KEY = "dev-workflow-show-backlog";
 
 export default function BoardPage() {
   return (
-    <Suspense fallback={<Card><LoadingState message="Loading..." /></Card>}>
+    <Suspense
+      fallback={
+        <Card>
+          <LoadingState message="Loading..." />
+        </Card>
+      }
+    >
       <BoardPageContent />
     </Suspense>
   );
@@ -110,10 +116,7 @@ function BoardPageContent() {
   // Count active tasks (excluding BACKLOG, COMPLETED, and ABANDONED)
   const activeTasks = issuesWithTasks.reduce((sum, item) => {
     const activeCount = item.tasks.filter(
-      (t) =>
-        t.status === "READY" ||
-        t.status === "IN_PROGRESS" ||
-        t.status === "PR_REVIEW"
+      (t) => t.status === "READY" || t.status === "IN_PROGRESS" || t.status === "PR_REVIEW"
     ).length;
     return sum + activeCount;
   }, 0);

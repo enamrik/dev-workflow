@@ -1,13 +1,13 @@
-import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
-import { readFileSync, writeFileSync } from 'fs';
-import { DatabaseAdapter, PreparedStatement, RunResult } from './database-adapter.js';
+import initSqlJs, { Database as SqlJsDatabase } from "sql.js";
+import { readFileSync, writeFileSync } from "fs";
+import { DatabaseAdapter, PreparedStatement, RunResult } from "./database-adapter.js";
 
 /**
  * WebAssembly SQLite adapter using sql.js
  * Fallback option, no native build required, ~2-3x slower
  */
 export class WasmAdapter implements DatabaseAdapter {
-  readonly type = 'wasm' as const;
+  readonly type = "wasm" as const;
 
   constructor(
     private db: SqlJsDatabase,
@@ -39,9 +39,7 @@ export class WasmAdapter implements DatabaseAdapter {
       all: (...params: any[]): T[] => {
         const result = this.db.exec(sql, params);
         if (result.length === 0) return [];
-        return result[0].values.map(row =>
-          this.rowToObject<T>(result[0].columns, row)
-        );
+        return result[0].values.map((row) => this.rowToObject<T>(result[0].columns, row));
       },
       raw: () => ({
         get: (...params: any[]): any[] | undefined => {

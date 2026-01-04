@@ -39,10 +39,7 @@ const components: Components = {
 
     // Inline code - use simple styling
     return (
-      <code
-        className="text-sm bg-gray-100 px-1 py-0.5 rounded text-gray-800"
-        {...props}
-      >
+      <code className="text-sm bg-gray-100 px-1 py-0.5 rounded text-gray-800" {...props}>
         {children}
       </code>
     );

@@ -36,9 +36,7 @@ function calculateDateRange(milestones: MilestoneWithIssues[]): {
   if (today < minDate) minDate = new Date(today);
   if (today > maxDate) maxDate = new Date(today);
 
-  const totalDays = Math.ceil(
-    (maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)
-  );
+  const totalDays = Math.ceil((maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
 
   return { minDate, maxDate, totalDays };
 }
@@ -58,10 +56,7 @@ function getMonthLabels(
     const effectiveStart = monthStart < minDate ? minDate : monthStart;
 
     const daysInMonth =
-      Math.ceil(
-        (effectiveEnd.getTime() - effectiveStart.getTime()) /
-          (1000 * 60 * 60 * 24)
-      ) + 1;
+      Math.ceil((effectiveEnd.getTime() - effectiveStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
     const width = (daysInMonth / totalDays) * 100;
 
@@ -106,9 +101,7 @@ export function Timeline({ milestones }: TimelineProps) {
     0,
     Math.min(
       100,
-      ((today.getTime() - minDate.getTime()) /
-        (maxDate.getTime() - minDate.getTime())) *
-        100
+      ((today.getTime() - minDate.getTime()) / (maxDate.getTime() - minDate.getTime())) * 100
     )
   );
 
@@ -188,12 +181,8 @@ function MilestoneBar({ data, minDate, totalDays }: MilestoneBarProps) {
   const start = new Date(milestone.startDate);
   const end = new Date(milestone.endDate);
 
-  const startOffset = Math.max(
-    0,
-    (start.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)
-  );
-  const duration =
-    Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const startOffset = Math.max(0, (start.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
+  const duration = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
   const leftPercent = (startOffset / totalDays) * 100;
   const widthPercent = (duration / totalDays) * 100;
@@ -212,9 +201,7 @@ function MilestoneBar({ data, minDate, totalDays }: MilestoneBarProps) {
       {/* Label */}
       <div className="w-32 flex-shrink-0">
         <span className="text-xs font-bold text-gray-500">M{milestone.number}</span>
-        <span className="ml-2 text-sm text-gray-700 truncate">
-          {truncate(milestone.title, 15)}
-        </span>
+        <span className="ml-2 text-sm text-gray-700 truncate">{truncate(milestone.title, 15)}</span>
       </div>
 
       {/* Bar container */}

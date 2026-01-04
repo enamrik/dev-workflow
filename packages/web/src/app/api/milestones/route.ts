@@ -13,9 +13,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(milestones);
   } catch (error) {
     console.error("Error fetching milestones:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch milestones" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch milestones" }, { status: 500 });
   }
 }

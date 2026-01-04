@@ -11,7 +11,10 @@ import {
 } from "@dev-workflow/core";
 
 export class InstallError extends Error {
-  constructor(message: string, public readonly cause?: unknown) {
+  constructor(
+    message: string,
+    public readonly cause?: unknown
+  ) {
     super(message);
     this.name = "InstallError";
   }
@@ -337,10 +340,7 @@ Example: \`.track/labels/testing.md\` creates a "testing" label that can be
 assigned to tasks via the \`labels\` field.
 `;
 
-      await this.fileSystem.writeFile(
-        path.join(labelsDir, "README.md"),
-        readme
-      );
+      await this.fileSystem.writeFile(path.join(labelsDir, "README.md"), readme);
     } catch (error) {
       throw new InstallError("Failed to create task labels", error);
     }

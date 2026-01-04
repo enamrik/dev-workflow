@@ -2,10 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import {
-  NodeGitWorktreeService,
-  generateWorktreeNames,
-} from "../git-worktree-service.js";
+import { NodeGitWorktreeService, generateWorktreeNames } from "../git-worktree-service.js";
 
 describe("generateWorktreeNames", () => {
   it("should generate correct branch and worktree names", () => {
@@ -224,10 +221,7 @@ describe("NodeGitWorktreeService", () => {
   describe("pruneWorktrees", () => {
     it("should prune stale worktrees", async () => {
       // Create and then manually delete a worktree directory
-      const worktreePath = await service.createWorktree(
-        ".worktrees/stale",
-        "stale-branch"
-      );
+      const worktreePath = await service.createWorktree(".worktrees/stale", "stale-branch");
 
       // Manually remove the directory (simulating disk deletion)
       await fs.rm(worktreePath, { recursive: true, force: true });

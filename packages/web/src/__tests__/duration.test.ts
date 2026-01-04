@@ -1,9 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import {
-  formatDuration,
-  getTaskDuration,
-  getTaskTimingMessage,
-} from "../lib/duration";
+import { formatDuration, getTaskDuration, getTaskTimingMessage } from "../lib/duration";
 
 describe("formatDuration", () => {
   it("returns '<1m' for durations less than a minute", () => {
@@ -155,7 +151,9 @@ describe("getTaskTimingMessage", () => {
 
   it("returns null for completed tasks without required timestamps", () => {
     expect(getTaskTimingMessage({ status: "COMPLETED" })).toBeNull();
-    expect(getTaskTimingMessage({ status: "COMPLETED", startedAt: "2024-01-15T10:00:00Z" })).toBeNull();
+    expect(
+      getTaskTimingMessage({ status: "COMPLETED", startedAt: "2024-01-15T10:00:00Z" })
+    ).toBeNull();
   });
 
   it("returns duration for PR_REVIEW tasks based on submittedForReviewAt", () => {

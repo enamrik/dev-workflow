@@ -11,11 +11,11 @@ type IssueType = "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
 
 // Issue status dot colors - matches the status badge colors from Badge.tsx
 const issueStatusDotColors: Record<ComputedIssueStatus, string> = {
-  PLANNED: "bg-gray-500",       // Falls back to default (gray)
-  OPEN: "bg-green-600",         // bg-green-100 text-green-800
+  PLANNED: "bg-gray-500", // Falls back to default (gray)
+  OPEN: "bg-green-600", // bg-green-100 text-green-800
   IN_PROGRESS: "bg-orange-500", // bg-orange-100 text-orange-700
-  TASKS_DONE: "bg-green-600",   // bg-green-100 text-green-800
-  CLOSED: "bg-gray-400",        // bg-gray-200 text-gray-700
+  TASKS_DONE: "bg-green-600", // bg-green-100 text-green-800
+  CLOSED: "bg-gray-400", // bg-gray-200 text-gray-700
 };
 
 // Human-readable status labels for tooltip
@@ -153,12 +153,8 @@ function TaskModalContent({
         {/* Subheader: Actions panel + PR status */}
         {(task.branchName || task.prUrl || projectId || task.prStatus) && (
           <div className="flex items-center justify-between gap-2 mb-4">
-            {(task.branchName || task.prUrl || projectId) ? (
-              <TaskActions
-                task={task}
-                issueNumber={issueNumber}
-                showCopyCommand={!!projectId}
-              />
+            {task.branchName || task.prUrl || projectId ? (
+              <TaskActions task={task} issueNumber={issueNumber} showCopyCommand={!!projectId} />
             ) : (
               <div />
             )}
@@ -184,9 +180,7 @@ function TaskModalContent({
           <div className="flex items-center gap-3">
             <TaskTiming task={task} variant="detailed" />
             {task.estimatedMinutes && (
-              <span className="text-gray-500">
-                Est: {task.estimatedMinutes}m
-              </span>
+              <span className="text-gray-500">Est: {task.estimatedMinutes}m</span>
             )}
           </div>
           {task.labels.length > 0 && (
@@ -202,11 +196,7 @@ function TaskModalContent({
   );
 }
 
-function TaskTab({
-  task,
-}: {
-  task: Task;
-}) {
+function TaskTab({ task }: { task: Task }) {
   return (
     <div className="space-y-4">
       {/* Description */}
@@ -258,11 +248,7 @@ function DetailsTab({
   issueNumber: number;
 }) {
   if (!projectId) {
-    return (
-      <div className="text-sm text-gray-500">
-        Project context required to load details.
-      </div>
-    );
+    return <div className="text-sm text-gray-500">Project context required to load details.</div>;
   }
 
   return (
@@ -331,9 +317,7 @@ function CardContent({
       </div>
 
       {/* Task description */}
-      <div className="text-xs text-gray-600 mb-2">
-        {truncate(task.description, 100)}
-      </div>
+      <div className="text-xs text-gray-600 mb-2">{truncate(task.description, 100)}</div>
 
       {/* Footer: project and metadata */}
       <div className="flex items-center justify-between text-xs">
@@ -421,12 +405,7 @@ export function KanbanCard({
 
 function PRIcon() {
   return (
-    <svg
-      className="w-3.5 h-3.5"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -439,12 +418,7 @@ function PRIcon() {
 
 function BranchIcon() {
   return (
-    <svg
-      className="w-3.5 h-3.5"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
         strokeLinecap="round"
         strokeLinejoin="round"

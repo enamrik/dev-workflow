@@ -63,11 +63,7 @@ export interface GitWorktreeService {
    * @param baseBranch - Branch to base the new branch on (default: current HEAD)
    * @returns Path to created worktree
    */
-  createWorktree(
-    worktreePath: string,
-    branchName: string,
-    baseBranch?: string
-  ): Promise<string>;
+  createWorktree(worktreePath: string, branchName: string, baseBranch?: string): Promise<string>;
 
   /**
    * Remove a worktree and optionally its branch
@@ -175,10 +171,7 @@ export class NodeGitWorktreeService implements GitWorktreeService {
     return fullPath;
   }
 
-  async removeWorktree(
-    worktreePath: string,
-    deleteBranch = false
-  ): Promise<void> {
+  async removeWorktree(worktreePath: string, deleteBranch = false): Promise<void> {
     const fullPath = path.resolve(this.projectRoot, worktreePath);
 
     // Get branch name before removing worktree (if we need to delete it)

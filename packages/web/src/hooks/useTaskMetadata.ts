@@ -1,11 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import {
-  getTaskStatusHistory,
-  getTaskExecutionLogs,
-  getTaskDependencies,
-} from "@/lib/api";
+import { getTaskStatusHistory, getTaskExecutionLogs, getTaskDependencies } from "@/lib/api";
 import type { Task, TaskStatusHistory, TaskExecutionLog } from "@/lib/types";
 
 export interface TaskMetadata {
@@ -48,8 +44,7 @@ export function useTaskMetadata(
     enabled: isEnabled,
   });
 
-  const isLoading =
-    historyQuery.isLoading || logsQuery.isLoading || dependenciesQuery.isLoading;
+  const isLoading = historyQuery.isLoading || logsQuery.isLoading || dependenciesQuery.isLoading;
   const error = historyQuery.error || logsQuery.error || dependenciesQuery.error;
 
   const data: TaskMetadata | undefined =

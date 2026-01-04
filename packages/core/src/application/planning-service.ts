@@ -1,10 +1,7 @@
 import type { Issue, IssueRepository } from "../domain/issue.js";
 import type { Plan, PlanRepository, PlanComplexity } from "../domain/plan.js";
 import type { Task, TaskRepository } from "../domain/task.js";
-import {
-  TaskMatchingService,
-  type TaskDefinition,
-} from "./task-matching-service.js";
+import { TaskMatchingService, type TaskDefinition } from "./task-matching-service.js";
 import type { LabelService } from "./label-service.js";
 import type { VersioningService } from "./versioning-service.js";
 import { EventBus } from "../infrastructure/events/event-bus.js";
@@ -305,12 +302,7 @@ export class PlanningService {
 
     // Create snapshot if requested
     if (createSnapshot) {
-      this.versioningService.createSnapshot(
-        issue.number,
-        "ISSUE_UPDATE",
-        "user",
-        "Issue updated"
-      );
+      this.versioningService.createSnapshot(issue.number, "ISSUE_UPDATE", "user", "Issue updated");
     }
 
     // Emit issue:updated event for real-time UI updates
@@ -345,10 +337,7 @@ export class PlanningService {
     availableLabels: string[]
   ): Task[] {
     // Match new tasks to existing generated tasks
-    const matchResults = this.taskMatchingService.matchTasks(
-      newTaskDefs,
-      existingGeneratedTasks
-    );
+    const matchResults = this.taskMatchingService.matchTasks(newTaskDefs, existingGeneratedTasks);
 
     const tasks: Task[] = [];
     const matchedTaskIds = new Set<string>();
@@ -407,7 +396,10 @@ export class PlanningService {
     // Soft delete generated tasks that weren't matched
     // Can soft-delete PLANNED, BACKLOG, or READY tasks
     for (const task of existingGeneratedTasks) {
-      if (!matchedTaskIds.has(task.id) && (task.status === "PLANNED" || task.status === "BACKLOG" || task.status === "READY")) {
+      if (
+        !matchedTaskIds.has(task.id) &&
+        (task.status === "PLANNED" || task.status === "BACKLOG" || task.status === "READY")
+      ) {
         this.taskRepository.softDelete(task.id, generatedBy);
       }
     }

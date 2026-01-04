@@ -8,9 +8,7 @@ import type { GitHubIssueData } from "../../domain/github.js";
 /**
  * Create a mock GitHubCLI for testing
  */
-function createMockGitHubCLI(
-  overrides: Partial<GitHubCLI> = {}
-): GitHubCLI {
+function createMockGitHubCLI(overrides: Partial<GitHubCLI> = {}): GitHubCLI {
   return {
     checkAuth: vi.fn().mockResolvedValue(true),
     checkCurrentRepository: vi.fn().mockResolvedValue(true),
@@ -133,10 +131,7 @@ describe("GitHubSyncService", () => {
       expect(result.data.url).toBe("https://github.com/owner/repo/issues/1");
       expect(result.syncState.projectItemId).toBe("PVTI_project_item_123");
       expect(result.syncState.syncStatus).toBe("SYNCED");
-      expect(mockGitHubCLI.addToProject).toHaveBeenCalledWith(
-        "PVT_test_project_456",
-        "I_abc123"
-      );
+      expect(mockGitHubCLI.addToProject).toHaveBeenCalledWith("PVT_test_project_456", "I_abc123");
     });
 
     it("should fail when GitHub issue creation fails", async () => {
@@ -151,12 +146,7 @@ describe("GitHubSyncService", () => {
       );
 
       await expect(
-        service.createGitHubIssue(
-          "Test Issue",
-          "Test description",
-          [],
-          "FEATURE"
-        )
+        service.createGitHubIssue("Test Issue", "Test description", [], "FEATURE")
       ).rejects.toThrow("GitHub API error");
     });
 
@@ -172,21 +162,11 @@ describe("GitHubSyncService", () => {
       );
 
       await expect(
-        service.createGitHubIssue(
-          "Test Issue",
-          "Test description",
-          [],
-          "FEATURE"
-        )
+        service.createGitHubIssue("Test Issue", "Test description", [], "FEATURE")
       ).rejects.toThrow(GitHubSyncError);
 
       await expect(
-        service.createGitHubIssue(
-          "Test Issue",
-          "Test description",
-          [],
-          "FEATURE"
-        )
+        service.createGitHubIssue("Test Issue", "Test description", [], "FEATURE")
       ).rejects.toThrow("Failed to add issue to GitHub Project PVT_test_project_456");
     });
 
@@ -202,21 +182,11 @@ describe("GitHubSyncService", () => {
       );
 
       await expect(
-        service.createGitHubIssue(
-          "Test Issue",
-          "Test description",
-          [],
-          "FEATURE"
-        )
+        service.createGitHubIssue("Test Issue", "Test description", [], "FEATURE")
       ).rejects.toThrow(GitHubSyncError);
 
       await expect(
-        service.createGitHubIssue(
-          "Test Issue",
-          "Test description",
-          [],
-          "FEATURE"
-        )
+        service.createGitHubIssue("Test Issue", "Test description", [], "FEATURE")
       ).rejects.toThrow("Project association returned empty item ID");
     });
 
@@ -232,12 +202,7 @@ describe("GitHubSyncService", () => {
       );
 
       await expect(
-        service.createGitHubIssue(
-          "Test Issue",
-          "Test description",
-          [],
-          "FEATURE"
-        )
+        service.createGitHubIssue("Test Issue", "Test description", [], "FEATURE")
       ).rejects.toThrow("Project association returned empty item ID");
     });
 
@@ -271,21 +236,11 @@ describe("GitHubSyncService", () => {
       });
 
       await expect(
-        service.createGitHubIssue(
-          "Test Issue",
-          "Test description",
-          [],
-          "FEATURE"
-        )
+        service.createGitHubIssue("Test Issue", "Test description", [], "FEATURE")
       ).rejects.toThrow(GitHubSyncError);
 
       await expect(
-        service.createGitHubIssue(
-          "Test Issue",
-          "Test description",
-          [],
-          "FEATURE"
-        )
+        service.createGitHubIssue("Test Issue", "Test description", [], "FEATURE")
       ).rejects.toThrow("GitHub sync is not enabled");
     });
 
@@ -302,12 +257,7 @@ describe("GitHubSyncService", () => {
       );
 
       try {
-        await service.createGitHubIssue(
-          "Test Issue",
-          "Test description",
-          [],
-          "FEATURE"
-        );
+        await service.createGitHubIssue("Test Issue", "Test description", [], "FEATURE");
         expect.fail("Should have thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(GitHubSyncError);

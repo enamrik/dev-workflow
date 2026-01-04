@@ -11,10 +11,12 @@ allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:g
 **This skill is typically invoked by `dwf-work-request`** when the user describes work to be done. It can also be invoked directly for:
 
 **Explicit create operations:**
+
 - User mentions: "create issue", "new feature", "report bug", "add enhancement", "add task"
 - User requests tracking: "track this", "make an issue for this"
 
 **Update operations:**
+
 - User mentions: "update issue #N", "change issue", "modify requirements"
 - User wants to edit: "add acceptance criteria to #5", "change the description"
 - User references existing issue: "issue #3 needs more detail"
@@ -23,26 +25,29 @@ allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:g
 
 When users describe what they want, they often mix different levels of detail. You MUST separate these:
 
-| Level | Belongs In | What It Answers | Examples |
-|-------|-----------|-----------------|----------|
-| **Requirements** | Issue | WHAT does the user want? | "Add user authentication", "Users should be able to sign in" |
-| **Approach** | Plan | HOW will we build it? | "Use passport.js", "Store sessions in Redis", "OAuth with Google" |
-| **Specifics** | Tasks | WHERE exactly in the code? | "Callback at /auth/callback", "Add column to users table" |
+| Level            | Belongs In | What It Answers            | Examples                                                          |
+| ---------------- | ---------- | -------------------------- | ----------------------------------------------------------------- |
+| **Requirements** | Issue      | WHAT does the user want?   | "Add user authentication", "Users should be able to sign in"      |
+| **Approach**     | Plan       | HOW will we build it?      | "Use passport.js", "Store sessions in Redis", "OAuth with Google" |
+| **Specifics**    | Tasks      | WHERE exactly in the code? | "Callback at /auth/callback", "Add column to users table"         |
 
 ### How to Separate
 
 **Put in the ISSUE:**
+
 - User-facing requirements (what the user wants to achieve)
 - Acceptance criteria (how we know it's done)
 - Business constraints (must work on mobile, must be fast)
 - Non-functional requirements (security, performance)
 
 **Pass to PLANNING (not in issue):**
+
 - Technology choices (which library, which database)
 - Architecture decisions (where to put the code, what pattern to use)
 - Implementation approach (sync vs async, REST vs GraphQL)
 
 **Let TASKS capture:**
+
 - Specific file paths and function names
 - Exact API endpoints and routes
 - Database column names and types
@@ -53,6 +58,7 @@ When users describe what they want, they often mix different levels of detail. Y
 **User says:** "I want to add user authentication with OAuth. We should use passport.js and store sessions in Redis. The callback should be at /auth/callback."
 
 **Issue should contain:**
+
 - Title: "Add user authentication with OAuth"
 - Description: "Users should be able to sign in using OAuth providers"
 - Acceptance criteria: "User can sign in", "Session persists", "Logout works"
@@ -62,6 +68,7 @@ When users describe what they want, they often mix different levels of detail. Y
 **Let tasks capture:** "Callback at /auth/callback"
 
 When creating the issue, mention that implementation details will be captured in the plan:
+
 > "I've noted the implementation preferences (passport.js, Redis). These will be incorporated into the implementation plan."
 
 ## Process
@@ -164,11 +171,13 @@ When an issue has a plan with PLANNED tasks and the user wants to start work:
 **Do NOT call `move_issue_to_backlog` automatically.** This must always be user-initiated.
 
 **Detection:** If you see an issue in PLANNED status with PLANNED tasks, prompt the user:
+
 > "Issue #N has a plan ready. Are you satisfied with it? Would you like to start working on it?"
 
 ## Priority Extraction
 
 If user mentions specific priority/urgency:
+
 - "high priority bug", "critical issue" → priority: HIGH or CRITICAL
 - "urgent feature", "asap" → priority: CRITICAL
 - "low priority", "nice to have" → priority: LOW
@@ -176,6 +185,7 @@ If user mentions specific priority/urgency:
 ## Milestone Detection
 
 If user mentions a milestone when creating or updating an issue:
+
 1. **Look for milestone references:**
    - "for M1", "part of M2", "in milestone 3"
    - "for the Q1 release", "in the MVP milestone"
@@ -191,6 +201,7 @@ If user mentions a milestone when creating or updating an issue:
 
 **Example:**
 User: "Create an issue to add user authentication for M2"
+
 1. Create the issue normally
 2. Call `assign_issue_to_milestone` with `issueNumber` and `milestoneNumber: 2`
 3. Report: "Created issue #5 and assigned to milestone M2"
@@ -198,6 +209,7 @@ User: "Create an issue to add user authentication for M2"
 ## Label Extraction
 
 **IMPORTANT: Labels must exist before assignment.** Before assigning labels:
+
 1. Call `list_available_task_labels` to see what labels exist
 2. Only use labels that have a corresponding file in `.track/labels/`
 3. If no matching label file exists, do NOT assign that label
@@ -211,6 +223,7 @@ Only use labels from the available labels list. Do not invent labels.
 **Required action:** Call the Skill tool with `skill: "dwf-plan-issue"` and pass the issue number.
 
 Example flow:
+
 1. Create issue → get issue #N
 2. Immediately invoke: `Skill(skill: "dwf-plan-issue", args: "#N")`
 3. The plan skill will generate tasks automatically
@@ -220,6 +233,7 @@ This ensures every issue gets a plan with deployable task units. Never skip this
 ## Error Handling
 
 If MCP tool call fails:
+
 - Explain the error clearly
 - Suggest troubleshooting steps:
   - Is dev-workflow initialized? (run `dev-workflow init`)
@@ -234,6 +248,7 @@ If MCP tool call fails:
 **User:** "I want to add user authentication with OAuth. We should use passport.js and store sessions in Redis. The callback should be at /auth/callback and we need rate limiting on the login endpoint."
 
 **Response:**
+
 ```
 I'll create an issue capturing the requirements. I've noted your implementation
 preferences (passport.js, Redis, /auth/callback endpoint, rate limiting) -
@@ -266,6 +281,7 @@ goes to the plan, and WHERE (/auth/callback) goes to tasks.
 **User:** "We need to add a new column to the users table for storing OAuth tokens and create a background job to refresh them"
 
 **Response:**
+
 ```
 I see implementation details, but I need to understand the requirement first.
 
@@ -282,6 +298,7 @@ What should users be able to do when this is done?
 **User:** "Update issue #1 to also include GitHub OAuth"
 
 **Response:**
+
 ```
 Updated issue #1:
   Added to acceptance criteria:

@@ -8,11 +8,7 @@
  */
 
 import { spawn } from "node:child_process";
-import type {
-  GitHubIssueData,
-  GitHubPRData,
-  GitHubMergeStrategy,
-} from "../../domain/github.js";
+import type { GitHubIssueData, GitHubPRData, GitHubMergeStrategy } from "../../domain/github.js";
 
 /**
  * Result from a GitHub CLI command
@@ -61,11 +57,7 @@ export interface GitHubCLI {
   /**
    * Create a new GitHub issue
    */
-  createIssue(
-    title: string,
-    body: string,
-    labels: string[]
-  ): Promise<GitHubIssueData>;
+  createIssue(title: string, body: string, labels: string[]): Promise<GitHubIssueData>;
 
   /**
    * Update an existing GitHub issue
@@ -100,11 +92,7 @@ export interface GitHubCLI {
   /**
    * Create a label on the repository
    */
-  createLabel(
-    name: string,
-    color?: string,
-    description?: string
-  ): Promise<void>;
+  createLabel(name: string, color?: string, description?: string): Promise<void>;
 
   /**
    * Add issue to a GitHub Project (GraphQL mutation via gh api)
@@ -196,11 +184,7 @@ export class NodeGitHubCLI implements GitHubCLI {
     return result.success;
   }
 
-  async createIssue(
-    title: string,
-    body: string,
-    labels: string[]
-  ): Promise<GitHubIssueData> {
+  async createIssue(title: string, body: string, labels: string[]): Promise<GitHubIssueData> {
     const args = ["issue", "create", "--title", title, "--body", body];
 
     for (const label of labels) {
@@ -221,11 +205,7 @@ export class NodeGitHubCLI implements GitHubCLI {
     const url = result.stdout.trim();
     const match = url.match(/\/issues\/(\d+)$/);
     if (!match) {
-      throw new GitHubCLIError(
-        `Failed to parse issue number from URL: ${url}`,
-        0,
-        ""
-      );
+      throw new GitHubCLIError(`Failed to parse issue number from URL: ${url}`, 0, "");
     }
 
     const issueNumber = parseInt(match[1], 10);
@@ -233,11 +213,7 @@ export class NodeGitHubCLI implements GitHubCLI {
     // Fetch full issue data
     const issue = await this.getIssue(issueNumber);
     if (!issue) {
-      throw new GitHubCLIError(
-        `Failed to fetch created issue: ${issueNumber}`,
-        0,
-        ""
-      );
+      throw new GitHubCLIError(`Failed to fetch created issue: ${issueNumber}`, 0, "");
     }
 
     return issue;
@@ -250,15 +226,7 @@ export class NodeGitHubCLI implements GitHubCLI {
     labels: string[]
   ): Promise<GitHubIssueData> {
     // Update title and body
-    const editArgs = [
-      "issue",
-      "edit",
-      String(issueNumber),
-      "--title",
-      title,
-      "--body",
-      body,
-    ];
+    const editArgs = ["issue", "edit", String(issueNumber), "--title", title, "--body", body];
 
     const editResult = await this.run(editArgs);
     if (!editResult.success) {
@@ -278,26 +246,14 @@ export class NodeGitHubCLI implements GitHubCLI {
       // Remove labels that are not in the new list
       for (const label of currentLabels) {
         if (!labels.includes(label)) {
-          await this.run([
-            "issue",
-            "edit",
-            String(issueNumber),
-            "--remove-label",
-            label,
-          ]);
+          await this.run(["issue", "edit", String(issueNumber), "--remove-label", label]);
         }
       }
 
       // Add labels that are not in current
       for (const label of labels) {
         if (!currentLabels.includes(label)) {
-          await this.run([
-            "issue",
-            "edit",
-            String(issueNumber),
-            "--add-label",
-            label,
-          ]);
+          await this.run(["issue", "edit", String(issueNumber), "--add-label", label]);
         }
       }
     }
@@ -371,11 +327,7 @@ export class NodeGitHubCLI implements GitHubCLI {
     return labels.map((l) => l.name);
   }
 
-  async createLabel(
-    name: string,
-    color?: string,
-    description?: string
-  ): Promise<void> {
+  async createLabel(name: string, color?: string, description?: string): Promise<void> {
     const args = ["label", "create", name];
 
     if (color) {
@@ -436,13 +388,14 @@ export class NodeGitHubCLI implements GitHubCLI {
     return data.data.addProjectV2ItemById.item.id;
   }
 
-
   async checkProject(projectId: string): Promise<boolean> {
     const details = await this.getProjectDetails(projectId);
     return details !== null;
   }
 
-  async getProjectDetails(projectId: string): Promise<{ id: string; title: string; url: string } | null> {
+  async getProjectDetails(
+    projectId: string
+  ): Promise<{ id: string; title: string; url: string } | null> {
     const query = `
       query($projectId: ID!) {
         node(id: $projectId) {
@@ -525,9 +478,7 @@ export class NodeGitHubCLI implements GitHubCLI {
     // Format: https://github.com/owner/repo/pull/123
     const urlMatch = result.stdout.trim().match(/\/pull\/(\d+)/);
     if (!urlMatch) {
-      throw new GitHubCLIError(
-        `Failed to parse PR URL from output: ${result.stdout}`
-      );
+      throw new GitHubCLIError(`Failed to parse PR URL from output: ${result.stdout}`);
     }
 
     const prNumber = parseInt(urlMatch[1], 10);
@@ -578,10 +529,7 @@ export class NodeGitHubCLI implements GitHubCLI {
     ]);
 
     if (!result.success) {
-      if (
-        result.stderr.includes("not found") ||
-        result.stderr.includes("Could not resolve")
-      ) {
+      if (result.stderr.includes("not found") || result.stderr.includes("Could not resolve")) {
         return null;
       }
       throw new GitHubCLIError(

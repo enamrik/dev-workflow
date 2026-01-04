@@ -74,7 +74,7 @@ describe("E2E: Simple File Rename", () => {
     // ═══════════════════════════════════════════════════════════════════════
     console.log("\n📋 Step 1: Creating issue...");
 
-    let createResult = await runClaude(
+    const createResult = await runClaude(
       `Create an issue titled "Rename utils.ts to helpers.ts" with description "Rename the utility file src/utils.ts to src/helpers.ts and update all imports". Use the create_issue tool.`,
       {
         cwd: harness.testDir,
@@ -276,12 +276,16 @@ describe("E2E: Simple File Rename", () => {
 
     // Nuke requires typing project name to confirm - pipe it to stdin
     const { spawnSync } = await import("node:child_process");
-    const nukeResult = spawnSync(devWorkflowCmd.split(" ")[0]!, [...devWorkflowCmd.split(" ").slice(1), "nuke"], {
-      cwd: harness.testDir,
-      input: projectName + "\n",
-      encoding: "utf-8",
-      env: harness.getEnv() as Record<string, string>,
-    });
+    const nukeResult = spawnSync(
+      devWorkflowCmd.split(" ")[0]!,
+      [...devWorkflowCmd.split(" ").slice(1), "nuke"],
+      {
+        cwd: harness.testDir,
+        input: projectName + "\n",
+        encoding: "utf-8",
+        env: harness.getEnv() as Record<string, string>,
+      }
+    );
 
     expect(nukeResult.status).toBe(0);
     console.log("✓ Nuke command completed");

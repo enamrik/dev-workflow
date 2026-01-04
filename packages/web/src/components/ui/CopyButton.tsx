@@ -41,9 +41,7 @@ export function CopyButton({
     }
   }, [text]);
 
-  const sizeClasses = size === "sm"
-    ? "p-1 text-xs"
-    : "px-2 py-1 text-xs";
+  const sizeClasses = size === "sm" ? "p-1 text-xs" : "px-2 py-1 text-xs";
 
   return (
     <button

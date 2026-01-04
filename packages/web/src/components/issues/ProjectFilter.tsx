@@ -29,11 +29,7 @@ export function ProjectFilter({ projects, value, onChange }: ProjectFilterProps)
   return (
     <div className="flex items-center gap-2">
       <label className="text-sm text-gray-600">Project:</label>
-      <Select
-        options={options}
-        value={value}
-        onChange={onChange}
-      />
+      <Select options={options} value={value} onChange={onChange} />
       {githubProjectUrl && (
         <GitHubLink
           url={githubProjectUrl}

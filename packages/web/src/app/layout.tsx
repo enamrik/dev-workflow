@@ -18,9 +18,7 @@ export default function RootLayout({
       <body className="bg-gray-50 min-h-screen">
         <Providers>
           <Nav />
-          <main className="max-w-7xl mx-auto px-4 py-6">
-            {children}
-          </main>
+          <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
         </Providers>
       </body>
     </html>

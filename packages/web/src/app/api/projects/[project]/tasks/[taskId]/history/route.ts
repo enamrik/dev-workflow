@@ -22,10 +22,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     // First verify the task exists
     const task = await service.getTask(taskId);
     if (!task) {
-      return NextResponse.json(
-        { error: "Task not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
     const history = await service.getTaskStatusHistory(taskId);
@@ -33,9 +30,6 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     return NextResponse.json(history);
   } catch (error) {
     console.error("Error fetching task status history:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch task status history" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch task status history" }, { status: 500 });
   }
 }
