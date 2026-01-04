@@ -184,7 +184,7 @@ function TaskModalContent({
       <div className="sticky bottom-0 z-10 p-3 border-t border-gray-200 bg-gray-50 rounded-b-xl">
         <div className="flex items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-3">
-            <TaskTiming task={task} />
+            <TaskTiming task={task} variant="detailed" />
             {task.estimatedMinutes && (
               <span className="text-gray-500">
                 Est: {task.estimatedMinutes}m
@@ -343,22 +343,22 @@ function CardContent({
           <span className="font-medium text-gray-600">{projectName ?? projectId}</span>
         )}
         <div className="flex items-center gap-2">
-          {task.estimatedMinutes && (
-            <Tooltip content={`Estimated: ${task.estimatedMinutes} minutes`} side="top">
-              <span className="text-gray-500 cursor-help">{task.estimatedMinutes}m</span>
-            </Tooltip>
-          )}
+          <TaskTiming task={task} className="text-gray-500" />
           {/* Show PR indicator on card */}
           {task.prUrl && (
-            <span className="text-blue-500" title={`PR #${task.prNumber}`}>
-              <PRIcon />
-            </span>
+            <Tooltip content={`PR #${task.prNumber}`} side="top">
+              <span className="text-blue-500 cursor-help">
+                <PRIcon />
+              </span>
+            </Tooltip>
           )}
           {/* Show worktree indicator on card */}
           {task.worktreePath && (
-            <span className="text-gray-500" title="Has worktree">
-              <BranchIcon />
-            </span>
+            <Tooltip content="Has worktree" side="top">
+              <span className="text-gray-500 cursor-help">
+                <BranchIcon />
+              </span>
+            </Tooltip>
           )}
           {isAbandoned && <Badge variant="status" value="ABANDONED" />}
           {task.labels.length > 0 && (
