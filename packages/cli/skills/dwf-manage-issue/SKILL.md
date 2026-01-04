@@ -99,6 +99,7 @@ When creating the issue, mention that implementation details will be captured in
 
 5. **Report and chain to planning WITH context:**
    - Show issue number (#N)
+   - **Display the issue URL** from the `create_issue` response (the `url` field)
    - Summarize what was created
    - Mention that implementation details will be in the plan
    - Pass the approach/specifics context to planning phase
@@ -241,6 +242,7 @@ these will be incorporated into the implementation plan.
 Issue created: #1 - Add user authentication with OAuth
   Type: FEATURE
   Priority: MEDIUM
+  URL: http://127.0.0.1:3456/projects/{projectId}/issues/1
 
   Description:
   Users should be able to sign in using OAuth providers.

@@ -91,9 +91,11 @@ If no context was passed, make reasonable decisions based on the codebase patter
    - Call `generate_plan` with summary, approach, and tasks
    - Use appropriate complexity estimate (LOW, MEDIUM, HIGH, VERY_HIGH)
    - **Tasks are created in PLANNED status** (no GitHub sync yet)
+   - **Display the issue URL** from the `generate_plan` response (the `url` field)
 
 7. **Ask if User is Satisfied with the Plan (REQUIRED):**
    - **NEVER automatically start work.** Always ask the user if they're satisfied with the plan first.
+   - Show the issue URL so the user can view the full details in the web UI
    - Present the plan summary and ask: "Are you satisfied with this plan? Ready to start working on it?"
    - Wait for explicit user approval before calling `move_issue_to_backlog`
 
@@ -257,6 +259,8 @@ Implement session persistence using Redis, user profile storage, and the
 ---
 Plan generated with 2 tasks in PLANNED status.
 
+**Issue URL:** http://127.0.0.1:3456/projects/{projectId}/issues/1
+
 **Are you satisfied with this plan? Ready to start working on it?**
 (I'll create GitHub issues for each task when you confirm)
 ```
@@ -298,6 +302,8 @@ Implement caching middleware for GET endpoints with:
 
 ---
 Plan generated with 1 task in PLANNED status.
+
+**Issue URL:** http://127.0.0.1:3456/projects/{projectId}/issues/5
 
 **Are you satisfied with this plan? Ready to start working on it?**
 (I'll create a GitHub issue for the task when you confirm)
@@ -343,6 +349,8 @@ Reproduction:
 
 ---
 Plan generated with 1 task in PLANNED status.
+
+**Issue URL:** http://127.0.0.1:3456/projects/{projectId}/issues/7
 
 **Are you satisfied with this plan? Ready to start working on it?**
 (I'll create a GitHub issue for the task when you confirm)
