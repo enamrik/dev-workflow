@@ -31,10 +31,16 @@ const TEST_PROJECT_ID = "test-project-plan";
  */
 function createPlanToolContext(testDb: TestDatabase): PlanToolContext {
   const db = testDb.db as DbType;
-  const repos = createRepositories(testDb.db, TEST_PROJECT_ID);
 
-  // Create project repository (project is auto-created, sync disabled by default)
+  // Create project first to get the generated ID
   const projectRepository = new SqliteProjectRepository(db);
+  const project = projectRepository.create({
+    gitRootHash: TEST_PROJECT_ID,
+    name: "Test Project",
+  });
+
+  // Use project's actual ID for repositories
+  const repos = createRepositories(testDb.db, project.id);
 
   // Mock label service
   const mockLabelService = {
@@ -69,10 +75,11 @@ function createPlanToolContext(testDb: TestDatabase): PlanToolContext {
     repos.planRepository,
     mockGitHubCLI,
     projectRepository,
-    TEST_PROJECT_ID
+    project.id
   );
 
   return {
+    project,
     issueRepository: repos.issueRepository,
     planRepository: repos.planRepository,
     taskRepository: repos.taskRepository,

@@ -478,6 +478,7 @@ async function main() {
 
   // Create tool contexts
   issueToolContext = {
+    project,
     issueRepository,
     planRepository,
     taskRepository,
@@ -490,6 +491,7 @@ async function main() {
   };
 
   planToolContext = {
+    project,
     issueRepository,
     planRepository,
     taskRepository,
