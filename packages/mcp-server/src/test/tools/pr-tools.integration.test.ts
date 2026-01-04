@@ -62,13 +62,13 @@ describe("submit_for_review", () => {
   });
 
   describe("PR title format", () => {
-    it("should include task number in PR title format [#N.T]", async () => {
+    it("should use plain title with no prefix when task has no GitHub issue", async () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
       const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
 
-      // Create issue #1
+      // Create issue #1 (no GitHub sync)
       const issue = createTestIssue(ctx.issueRepository, {
         title: "Test Issue",
       });
@@ -84,7 +84,7 @@ describe("submit_for_review", () => {
         status: "IN_PROGRESS",
       });
 
-      // Set up task with branch and worktree
+      // Set up task with branch and worktree but NO GitHub sync
       ctx.taskRepository.update(task.id, {
         branchName: "issue-1/task-2-update-feature",
         worktreePath: "/tmp/worktree/issue-1-task-2",
@@ -96,15 +96,16 @@ describe("submit_for_review", () => {
       // Assert
       expect(result.isError).toBeFalsy();
 
-      // Verify the PR was created with correct title format
+      // Verify the PR was created with plain title (no prefix)
       const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
       expect(createPRCalls).toHaveLength(1);
 
       const [, , prTitle] = createPRCalls[0]!.args as [string, string, string, string, boolean];
-      expect(prTitle).toBe(`[#${issue.number}.${task.number}] Update feature`);
+      // No prefix when task has no linked GitHub issue
+      expect(prTitle).toBe("Update feature");
     });
 
-    it("should use GitHub issue number when task has linked GitHub issue", async () => {
+    it("should use GitHub issue number prefix when task has linked GitHub issue", async () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
@@ -141,16 +142,16 @@ describe("submit_for_review", () => {
       // Assert
       expect(result.isError).toBeFalsy();
 
-      // Verify the PR was created with GitHub issue number in title
+      // Verify the PR was created with GitHub issue number in title (no task number)
       const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
       expect(createPRCalls).toHaveLength(1);
 
       const [, , prTitle] = createPRCalls[0]!.args as [string, string, string, string, boolean];
-      // Should use GitHub issue number (42) instead of dev-workflow issue number (1)
-      expect(prTitle).toBe(`[#42.${task.number}] Implement feature`);
+      // Should use GitHub issue number (42) with no task number suffix
+      expect(prTitle).toBe("[#42] Implement feature");
     });
 
-    it("should use dev-workflow issue number when task has no GitHub issue", async () => {
+    it("should include dev-workflow task reference in PR body footer", async () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
@@ -163,6 +164,7 @@ describe("submit_for_review", () => {
       const plan = createTestPlan(ctx.planRepository, issue.id);
       const task = createTestTask(ctx.taskRepository, plan.id, {
         title: "Local task",
+        description: "Task description",
         status: "IN_PROGRESS",
       });
 
@@ -178,16 +180,16 @@ describe("submit_for_review", () => {
       // Assert
       expect(result.isError).toBeFalsy();
 
-      // Verify the PR was created with dev-workflow issue number
+      // Verify the PR body contains dev-workflow task reference
       const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
       expect(createPRCalls).toHaveLength(1);
 
-      const [, , prTitle] = createPRCalls[0]!.args as [string, string, string, string, boolean];
-      // Should use dev-workflow issue number (1) since no GitHub issue linked
-      expect(prTitle).toBe(`[#${issue.number}.${task.number}] Local task`);
+      const [, , , prBody] = createPRCalls[0]!.args as [string, string, string, string, boolean];
+      // PR body should contain the dev-workflow task reference as footer
+      expect(prBody).toContain(`Task ${issue.number}.${task.number}: Local task`);
     });
 
-    it("should keep PR body task note in dev-workflow format", async () => {
+    it("should include GitHub issue links in PR body when synced", async () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
@@ -224,14 +226,16 @@ describe("submit_for_review", () => {
       // Assert
       expect(result.isError).toBeFalsy();
 
-      // Verify the PR body still uses dev-workflow issue.task format in the footer note
+      // Verify the PR body contains GitHub issue link and dev-workflow reference
       const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
       expect(createPRCalls).toHaveLength(1);
 
       const [, , , prBody] = createPRCalls[0]!.args as [string, string, string, string, boolean];
 
-      // PR body should contain the task note with dev-workflow issue number (not GitHub)
-      expect(prBody).toContain(`_Task ${issue.number}.${task.number}: Test task_`);
+      // PR body should contain Closes link to task's GitHub issue
+      expect(prBody).toContain("Closes #99");
+      // PR body should contain dev-workflow task reference (not italic)
+      expect(prBody).toContain(`Task ${issue.number}.${task.number}: Test task`);
     });
   });
 });
