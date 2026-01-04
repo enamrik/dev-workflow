@@ -143,6 +143,39 @@ describe("Task Tools Integration", () => {
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
     });
+
+    it("should return stored task number", () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task1 = createTestTask(ctx.taskRepository, plan.id, { title: "Task 1" });
+      const task2 = createTestTask(ctx.taskRepository, plan.id, { title: "Task 2" });
+
+      const result1 = handleGetTask(ctx, { taskId: task1.id });
+      const result2 = handleGetTask(ctx, { taskId: task2.id });
+
+      const content1 = JSON.parse(result1.content[0].text);
+      const content2 = JSON.parse(result2.content[0].text);
+
+      expect(content1.number).toBe(1);
+      expect(content2.number).toBe(2);
+    });
+
+    it("should find task by stored number", () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      createTestTask(ctx.taskRepository, plan.id, { title: "Task 1" });
+      createTestTask(ctx.taskRepository, plan.id, { title: "Task 2" });
+
+      const result = handleGetTask(ctx, {
+        issueNumber: issue.number,
+        taskNumber: 2,
+      });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.title).toBe("Task 2");
+      expect(content.number).toBe(2);
+    });
   });
 
   describe("handleListAvailableTasks", () => {
@@ -177,6 +210,23 @@ describe("Task Tools Integration", () => {
       const content = JSON.parse(result.content[0].text);
       expect(content.tasks.length).toBe(1);
       expect(content.tasks[0].title).toBe("Task A");
+    });
+
+    it("should return stored task numbers", async () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      createTestTask(ctx.taskRepository, plan.id, { title: "Task 1", status: "BACKLOG" });
+      createTestTask(ctx.taskRepository, plan.id, { title: "Task 2", status: "BACKLOG" });
+
+      const result = await handleListAvailableTasks(ctx, { issueNumber: issue.number });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.tasks.length).toBe(2);
+      expect(content.tasks[0].number).toBe(1);
+      expect(content.tasks[0].title).toBe("Task 1");
+      expect(content.tasks[1].number).toBe(2);
+      expect(content.tasks[1].title).toBe("Task 2");
     });
   });
 
