@@ -1,10 +1,9 @@
 "use client";
 
 import { Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { useMilestones, useProjects } from "@/hooks";
+import { useMilestones } from "@/hooks";
+import { useProjectContext } from "@/contexts";
 import { Timeline } from "@/components/milestones";
-import { ProjectFilter } from "@/components/issues";
 import { Card, CardHeader, CardTitle, LoadingState, ErrorState } from "@/components/ui";
 
 export default function MilestonesPage() {
@@ -16,27 +15,16 @@ export default function MilestonesPage() {
 }
 
 function MilestonesPageContent() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const projectFilter = searchParams.get("project") ?? "";
+  const { projectId, isLoading: projectsLoading } = useProjectContext();
 
-  const { data: projects = [], isLoading: projectsLoading } = useProjects();
   const {
     data: milestones = [],
     isLoading: milestonesLoading,
     error,
     refetch,
-  } = useMilestones({ project: projectFilter || undefined });
+  } = useMilestones({ project: projectId || undefined });
 
   const isLoading = projectsLoading || milestonesLoading;
-
-  function handleProjectChange(projectId: string) {
-    if (projectId) {
-      router.push(`/milestones?project=${encodeURIComponent(projectId)}`);
-    } else {
-      router.push("/milestones");
-    }
-  }
 
   if (isLoading) {
     return (
@@ -68,14 +56,6 @@ function MilestonesPageContent() {
           {milestoneCount} {milestonesWord}
         </span>
       </CardHeader>
-
-      <div className="mb-4">
-        <ProjectFilter
-          projects={projects}
-          value={projectFilter}
-          onChange={handleProjectChange}
-        />
-      </div>
 
       <Timeline milestones={milestones} />
     </Card>

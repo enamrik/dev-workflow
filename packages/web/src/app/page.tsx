@@ -3,9 +3,9 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useTasks, useProjects } from "@/hooks";
+import { useTasks } from "@/hooks";
+import { useProjectContext } from "@/contexts";
 import { KanbanBoard } from "@/components/kanban";
-import { ProjectFilter } from "@/components/issues";
 import { Card, CardHeader, CardTitle, LoadingState, ErrorState, Checkbox } from "@/components/ui";
 
 export default function BoardPage() {
@@ -19,19 +19,18 @@ export default function BoardPage() {
 function BoardPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const projectFilter = searchParams.get("project") ?? "";
+  const { projectId, isLoading: projectsLoading } = useProjectContext();
   const issueFilter = searchParams.get("issue");
   const issueNumber = issueFilter ? parseInt(issueFilter, 10) : undefined;
   const showBacklog = searchParams.get("showBacklog") === "true";
 
-  const { data: projects = [], isLoading: projectsLoading } = useProjects();
   const {
     data: tasksResponse,
     isLoading: tasksLoading,
     error,
     refetch,
   } = useTasks({
-    project: projectFilter || undefined,
+    project: projectId || undefined,
     issue: issueNumber,
   });
 
@@ -39,16 +38,6 @@ function BoardPageContent() {
   const completedTasks = tasksResponse?.completedTasks ?? [];
 
   const isLoading = projectsLoading || tasksLoading;
-
-  function handleProjectChange(projectId: string) {
-    const newParams = new URLSearchParams(searchParams.toString());
-    if (projectId) {
-      newParams.set("project", projectId);
-    } else {
-      newParams.delete("project");
-    }
-    router.push(`/?${newParams.toString()}`);
-  }
 
   function clearIssueFilter() {
     const newParams = new URLSearchParams(searchParams.toString());
@@ -101,8 +90,8 @@ function BoardPageContent() {
     : "Task Board";
 
   const issueDetailUrl = issueNumber
-    ? projectFilter
-      ? `/projects/${encodeURIComponent(projectFilter)}/issues/${issueNumber}`
+    ? projectId
+      ? `/projects/${encodeURIComponent(projectId)}/issues/${issueNumber}`
       : `/issues/${issueNumber}`
     : null;
 
@@ -127,18 +116,11 @@ function BoardPageContent() {
         </CardHeader>
 
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-4">
-            <ProjectFilter
-              projects={projects}
-              value={projectFilter}
-              onChange={handleProjectChange}
-            />
-            <Checkbox
-              label="Show backlog"
-              checked={showBacklog}
-              onChange={handleShowBacklogChange}
-            />
-          </div>
+          <Checkbox
+            label="Show backlog"
+            checked={showBacklog}
+            onChange={handleShowBacklogChange}
+          />
           {issueDetailUrl && (
             <Link
               href={issueDetailUrl}
