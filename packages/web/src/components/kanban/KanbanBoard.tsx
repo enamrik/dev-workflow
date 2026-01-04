@@ -110,7 +110,7 @@ export function KanbanBoard({
             title="Backlog"
             status="BACKLOG"
             tasks={backlogTasks}
-            tooltip="Inactive tasks waiting to be started"
+            tooltip="Queued tasks waiting to be started"
             stacked
           />
           <KanbanColumn
