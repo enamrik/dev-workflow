@@ -20,6 +20,7 @@ export interface Project {
   readonly id: string; // UUID
   readonly gitRootHash: string; // SHA of initial commit (stable identifier)
   readonly name: string; // Human-readable name (typically folder name)
+  readonly slug: string; // URL-safe unique slug: {name}-{gitRootHash.slice(0,6)}
   readonly githubSync: GitHubIssueSyncConfig | null; // GitHub sync configuration
   readonly isArchived: boolean; // Whether project is archived (hidden from UI)
   readonly archivedAt: string | null; // ISO datetime when archived
@@ -76,6 +77,16 @@ export interface ProjectRepository {
    * @returns The project if found, null otherwise
    */
   findByGitRootHash(gitRootHash: string): Project | null;
+
+  /**
+   * Find a project by its URL slug
+   *
+   * Used for URL lookups like /projects/dev-workflow-b9bccf/issues/40
+   *
+   * @param slug - The project's URL slug ({name}-{hash})
+   * @returns The project if found, null otherwise
+   */
+  findBySlug(slug: string): Project | null;
 
   /**
    * Find all projects

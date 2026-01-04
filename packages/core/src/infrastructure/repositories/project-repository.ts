@@ -10,6 +10,21 @@ import type {
 import * as schema from "../database/schema.js";
 
 /**
+ * Generate a URL-safe slug from project name and git root hash
+ *
+ * Format: {slugified-name}-{first 6 chars of hash}
+ * Example: "dev-workflow-b9bccf"
+ */
+function generateSlug(name: string, gitRootHash: string): string {
+  const slugifiedName = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const shortHash = gitRootHash.slice(0, 6);
+  return `${slugifiedName}-${shortHash}`;
+}
+
+/**
  * SQLite implementation of ProjectRepository
  *
  * Uses Drizzle ORM for type-safe queries.
@@ -24,11 +39,13 @@ export class SqliteProjectRepository implements ProjectRepository {
   create(data: CreateProjectData): Project {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
+    const slug = generateSlug(data.name, data.gitRootHash);
 
     const project: Project = {
       id,
       gitRootHash: data.gitRootHash,
       name: data.name,
+      slug,
       githubSync: data.githubSync ?? null,
       isArchived: false,
       archivedAt: null,
@@ -43,6 +60,7 @@ export class SqliteProjectRepository implements ProjectRepository {
         id: project.id,
         gitRootHash: project.gitRootHash,
         name: project.name,
+        slug: project.slug,
         githubSync: project.githubSync,
         isArchived: project.isArchived,
         archivedAt: project.archivedAt,
@@ -66,6 +84,12 @@ export class SqliteProjectRepository implements ProjectRepository {
       .from(projects)
       .where(eq(projects.gitRootHash, gitRootHash))
       .get();
+
+    return result ? this.mapRowToProject(result) : null;
+  }
+
+  findBySlug(slug: string): Project | null {
+    const result = this.db.select().from(projects).where(eq(projects.slug, slug)).get();
 
     return result ? this.mapRowToProject(result) : null;
   }
@@ -173,6 +197,7 @@ export class SqliteProjectRepository implements ProjectRepository {
       id: row.id,
       gitRootHash: row.gitRootHash,
       name: row.name,
+      slug: row.slug,
       githubSync: row.githubSync ?? null,
       isArchived: row.isArchived,
       archivedAt: row.archivedAt ?? null,
