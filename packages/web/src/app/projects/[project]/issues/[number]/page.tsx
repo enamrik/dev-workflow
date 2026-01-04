@@ -298,10 +298,9 @@ function formatDate(isoString: string): string {
  *
  * Status rules:
  * - CLOSED: Issue is explicitly closed
- * - COMPLETED: All tasks are COMPLETED or ABANDONED
- * - IN_PROGRESS: Some tasks not completed AND no tasks in BACKLOG (work has started)
- * - READY: Any task is in BACKLOG status (plan exists, work not started)
- * - OPEN: No plan/tasks yet
+ * - TASKS_DONE: All tasks are COMPLETED or ABANDONED (issue ready to be closed)
+ * - IN_PROGRESS: Some tasks not completed AND no tasks in BACKLOG/READY (work has started)
+ * - OPEN: Plan exists but work not started (tasks in BACKLOG/READY), or no plan/tasks yet
  */
 function computeIssueStatus(
   issue: Issue,
@@ -320,18 +319,19 @@ function computeIssueStatus(
 
   const completed = tasks.filter((t) => t.status === "COMPLETED").length;
   const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
-  const backlog = tasks.filter((t) => t.status === "BACKLOG").length;
+  const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
+  const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
 
-  // All tasks done (completed or abandoned) = COMPLETED
+  // All tasks done (completed or abandoned) = TASKS_DONE
   if (completed + abandoned === tasks.length) {
-    return "COMPLETED";
+    return "TASKS_DONE";
   }
 
-  // Any task in BACKLOG = READY (plan exists, work not started)
-  if (backlog > 0) {
-    return "READY";
+  // No tasks have progressed past READY (all are BACKLOG, READY, or terminal) = OPEN
+  if (inProgress === 0 && prReview === 0) {
+    return "OPEN";
   }
 
-  // Some tasks not completed AND no tasks in BACKLOG = IN_PROGRESS
+  // At least one task is IN_PROGRESS or PR_REVIEW = IN_PROGRESS
   return "IN_PROGRESS";
 }

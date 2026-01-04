@@ -11,7 +11,7 @@ interface BadgeProps {
 const typeStyles: Record<string, string> = {
   FEATURE: "bg-green-100 text-green-800",
   BUG: "bg-red-100 text-red-800",
-  ENHANCEMENT: "bg-orange-100 text-orange-700",
+  ENHANCEMENT: "bg-green-100 text-green-800",
   TASK: "bg-purple-100 text-purple-800",
 };
 
@@ -25,6 +25,7 @@ const priorityStyles: Record<string, string> = {
 const statusStyles: Record<string, string> = {
   OPEN: "bg-green-100 text-green-800",
   IN_PROGRESS: "bg-orange-100 text-orange-700",
+  TASKS_DONE: "bg-green-100 text-green-800",
   CLOSED: "bg-gray-200 text-gray-700",
   // Task statuses
   BACKLOG: "bg-slate-200 text-slate-700",
