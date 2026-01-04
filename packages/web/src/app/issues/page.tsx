@@ -2,8 +2,9 @@
 
 import { Suspense, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useIssues, useProjects } from "@/hooks";
-import { IssueTable, ProjectFilter } from "@/components/issues";
+import { useIssues } from "@/hooks";
+import { useProjectContext } from "@/contexts";
+import { IssueTable } from "@/components/issues";
 import {
   Card,
   CardHeader,
@@ -28,19 +29,18 @@ export default function IssuesPage() {
 function IssuesPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const projectFilter = searchParams.get("project") ?? "";
+  const { projectId, isLoading: projectsLoading } = useProjectContext();
   const showClosed = searchParams.get("showClosed") === "true";
   const searchQuery = searchParams.get("q") ?? "";
   const currentPage = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
   const pageSize = parseInt(searchParams.get("pageSize") ?? String(DEFAULT_PAGE_SIZE), 10);
 
-  const { data: projects = [], isLoading: projectsLoading } = useProjects();
   const {
     data: issues = [],
     isLoading: issuesLoading,
     error,
     refetch,
-  } = useIssues({ project: projectFilter || undefined });
+  } = useIssues({ project: projectId || undefined });
 
   const isLoading = projectsLoading || issuesLoading;
 
@@ -83,10 +83,6 @@ function IssuesPageContent() {
       }
     }
     router.push(`/issues?${newParams.toString()}`);
-  }
-
-  function handleProjectChange(projectId: string) {
-    updateParams({ project: projectId || null, page: null });
   }
 
   function handleShowClosedChange(checked: boolean) {
@@ -146,18 +142,11 @@ function IssuesPageContent() {
           placeholder="Search issues..."
           className="max-w-md"
         />
-        <div className="flex items-center gap-4">
-          <ProjectFilter
-            projects={projects}
-            value={projectFilter}
-            onChange={handleProjectChange}
-          />
-          <Checkbox
-            label="Show closed"
-            checked={showClosed}
-            onChange={handleShowClosedChange}
-          />
-        </div>
+        <Checkbox
+          label="Show closed"
+          checked={showClosed}
+          onChange={handleShowClosedChange}
+        />
       </div>
 
       <IssueTable issues={paginatedIssues} />
