@@ -270,14 +270,15 @@ export class SqliteIssueRepository implements IssueRepository {
   /**
    * Search issues by keyword in title or description
    *
-   * Returns slim issue objects (number, title, status, type, priority).
+   * Returns slim issue objects (id, number, title, status, type, priority).
    * Case-insensitive search, limited to 10 results.
    */
-  search(query: string): Pick<Issue, "number" | "title" | "status" | "type" | "priority">[] {
+  search(query: string): Pick<Issue, "id" | "number" | "title" | "status" | "type" | "priority">[] {
     const searchPattern = `%${query}%`;
 
     const results = this.db
       .select({
+        id: issues.id,
         number: issues.number,
         title: issues.title,
         status: issues.status,
@@ -299,6 +300,7 @@ export class SqliteIssueRepository implements IssueRepository {
       .all();
 
     return results.map((row) => ({
+      id: row.id,
       number: row.number,
       title: row.title,
       status: row.status as Issue["status"],

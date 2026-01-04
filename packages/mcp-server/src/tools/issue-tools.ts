@@ -14,6 +14,7 @@ import {
   type GitHubSyncState,
   type IssueType,
   type IssuePriority,
+  type IssueStatus,
   type GitHubCLI,
 } from "@dev-workflow/core";
 import {
@@ -22,6 +23,56 @@ import {
   successResponse,
   errorResponse,
 } from "./types.js";
+
+/**
+ * Computed issue status based on task progress.
+ * - PLANNED: Issue is in planning phase (not yet activated)
+ * - OPEN: No plan/tasks yet, or all tasks in BACKLOG/READY states
+ * - IN_PROGRESS: At least one task is IN_PROGRESS or PR_REVIEW
+ * - TASKS_DONE: All tasks are COMPLETED or ABANDONED (issue ready to be closed)
+ * - CLOSED: Issue explicitly closed
+ */
+type ComputedIssueStatus = "PLANNED" | "OPEN" | "IN_PROGRESS" | "TASKS_DONE" | "CLOSED";
+
+/**
+ * Compute the status for an issue based on its raw status and task progress.
+ */
+function computeIssueStatus(
+  issueId: string,
+  rawStatus: IssueStatus,
+  planRepository: SqlitePlanRepository,
+  taskRepository: SqliteTaskRepository
+): ComputedIssueStatus {
+  if (rawStatus === "PLANNED") {
+    return "PLANNED";
+  }
+  if (rawStatus === "CLOSED") {
+    return "CLOSED";
+  }
+
+  const plan = planRepository.findByIssueId(issueId);
+  if (!plan) {
+    return "OPEN";
+  }
+
+  const tasks = taskRepository.findByPlanId(plan.id);
+  if (tasks.length === 0) {
+    return "OPEN";
+  }
+
+  const completed = tasks.filter((t) => t.status === "COMPLETED").length;
+  const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
+  const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
+  const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
+
+  if (completed + abandoned === tasks.length) {
+    return "TASKS_DONE";
+  }
+  if (inProgress === 0 && prReview === 0) {
+    return "OPEN";
+  }
+  return "IN_PROGRESS";
+}
 
 /**
  * Tool definitions for issue operations
@@ -382,6 +433,7 @@ export async function handleCreateIssue(
     issueNumber: issue.number,
   });
 
+  // New issues are always PLANNED, so computedStatus is also PLANNED
   return successResponse({
     success: true,
     issue: {
@@ -391,6 +443,7 @@ export async function handleCreateIssue(
       type: issue.type,
       priority: issue.priority,
       status: issue.status,
+      computedStatus: "PLANNED" as ComputedIssueStatus,
       templateUsed: issue.templateUsed,
       url: `http://127.0.0.1:3456/projects/${issue.projectId}/issues/${issue.number}`,
     },
@@ -414,6 +467,14 @@ export function handleGetIssue(
     return errorResponse("Issue not found");
   }
 
+  // Compute the status based on task progress
+  const computedStatus = computeIssueStatus(
+    issue.id,
+    issue.status,
+    ctx.planRepository,
+    ctx.taskRepository
+  );
+
   // If includePlan is true, fetch and include the plan with slim task list
   if (includePlan) {
     const plan = ctx.planRepository.findByIssueId(issue.id);
@@ -421,6 +482,7 @@ export function handleGetIssue(
       const tasks = ctx.taskRepository.findByPlanId(plan.id);
       return successResponse({
         ...issue,
+        computedStatus,
         plan: {
           id: plan.id,
           summary: plan.summary,
@@ -437,7 +499,10 @@ export function handleGetIssue(
     }
   }
 
-  return successResponse(issue);
+  return successResponse({
+    ...issue,
+    computedStatus,
+  });
 }
 
 /**
@@ -887,8 +952,19 @@ export function handleSearchIssues(
 
   const results = ctx.issueRepository.search(query);
 
+  // Add computedStatus to each result
+  const resultsWithComputedStatus = results.map((result) => ({
+    ...result,
+    computedStatus: computeIssueStatus(
+      result.id,
+      result.status,
+      ctx.planRepository,
+      ctx.taskRepository
+    ),
+  }));
+
   return successResponse({
-    results,
+    results: resultsWithComputedStatus,
   });
 }
 
@@ -1061,6 +1137,12 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
       number: issue.number,
       title: issue.title,
       status: issue.status,
+      computedStatus: computeIssueStatus(
+        issue.id,
+        issue.status,
+        ctx.planRepository,
+        ctx.taskRepository
+      ),
       priority: issue.priority,
       milestone: issue.milestoneId ? milestoneNames.get(issue.milestoneId) : undefined,
       availableTaskCount,
