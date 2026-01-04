@@ -10,7 +10,7 @@ interface RouteParams {
 
 export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
-    const { project: projectId, number } = await params;
+    const { project: projectSlug, number } = await params;
     const issueNumber = parseInt(number, 10);
 
     if (isNaN(issueNumber)) {
@@ -18,7 +18,14 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     }
 
     const service = getMultiProjectService();
-    const result = await service.getIssue(projectId, issueNumber);
+
+    // Find project by slug
+    const project = await service.findProject(projectSlug);
+    if (!project) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    const result = await service.getIssue(project.id, issueNumber);
 
     if (!result) {
       return NextResponse.json({ error: "Issue not found" }, { status: 404 });

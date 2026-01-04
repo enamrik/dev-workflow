@@ -21,11 +21,12 @@ import {
 } from "@dev-workflow/core";
 
 /**
- * Represents a project with its ID, name, and track directory
+ * Represents a project with its ID, name, slug, and track directory
  */
 export interface Project {
   readonly id: string;
   readonly name: string;
+  readonly slug: string;
   readonly trackDirectory: string;
   readonly gitRoot: string;
   /** GitHub sync configuration (optional - only present if configured) */
@@ -52,6 +53,7 @@ export interface ProjectTask extends Task {
 export interface CompletedTask extends Task {
   projectId: string;
   projectName: string;
+  projectSlug: string;
   issueNumber: number;
   issueTitle: string;
   issueType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
@@ -88,6 +90,7 @@ export interface ProjectIssueWithPlanInfo {
    */
   computedStatus: ComputedIssueStatus;
   projectName?: string;
+  projectSlug?: string;
   milestoneNumber?: number;
   milestoneTitle?: string;
 }
@@ -102,6 +105,7 @@ export interface ProjectIssueWithTasks {
   milestoneNumber?: number;
   milestoneTitle?: string;
   projectName?: string;
+  projectSlug?: string;
 }
 
 /**
@@ -255,6 +259,7 @@ export class MultiProjectService {
       projectsWithConfig.push({
         id: p.id,
         name: p.name,
+        slug: p.slug,
         trackDirectory,
         gitRoot: gitRoot ?? "", // Empty string if not found
         githubSync: p.githubSync ?? null,
@@ -264,6 +269,43 @@ export class MultiProjectService {
     const projects = projectsWithConfig;
 
     return projects.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /**
+   * Find a project by slug.
+   * Returns the project if found, null otherwise.
+   */
+  async findProject(slug: string): Promise<Project | null> {
+    const { projectRepository } = await this.ensureConnection();
+
+    const coreProject = projectRepository.findBySlug(slug);
+    if (!coreProject) {
+      return null;
+    }
+
+    // Build the full Project with trackDirectory and gitRoot
+    const hash = coreProject.gitRootHash.slice(0, 6);
+    const trackDirName = `${coreProject.name}-${hash}`;
+    const trackDirectory = path.join(this.globalTrackDir, trackDirName);
+
+    let gitRoot: string | null = null;
+    try {
+      const configPath = path.join(trackDirectory, "config.json");
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+      gitRoot = config.gitRoot ?? null;
+    } catch {
+      // Config file may not exist yet
+    }
+
+    return {
+      id: coreProject.id,
+      name: coreProject.name,
+      slug: coreProject.slug,
+      trackDirectory,
+      gitRoot: gitRoot ?? "",
+      githubSync: coreProject.githubSync ?? null,
+    };
   }
 
   /**
@@ -344,6 +386,7 @@ export class MultiProjectService {
           taskCounts,
           computedStatus,
           projectName: project.name,
+          projectSlug: project.slug,
           milestoneNumber,
           milestoneTitle,
         });
@@ -429,6 +472,7 @@ export class MultiProjectService {
             milestoneNumber,
             milestoneTitle,
             projectName: project.name,
+            projectSlug: project.slug,
           });
         }
       }
@@ -480,6 +524,7 @@ export class MultiProjectService {
             ...task,
             projectId: issue.projectId,
             projectName: project.name,
+            projectSlug: project.slug,
             issueNumber: issue.number,
             issueTitle: issue.title,
             issueType: issue.type,

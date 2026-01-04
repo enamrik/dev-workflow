@@ -26,6 +26,7 @@ interface KanbanCardProps {
   issueComputedStatus: ComputedIssueStatus;
   projectId?: string;
   projectName?: string;
+  projectSlug?: string;
 }
 
 function truncate(text: string, maxLength: number): string {
@@ -349,9 +350,10 @@ export function KanbanCard({
   issueComputedStatus,
   projectId,
   projectName,
+  projectSlug,
 }: KanbanCardProps) {
-  const issueUrl = projectId
-    ? `/projects/${encodeURIComponent(projectId)}/issues/${issueNumber}`
+  const issueUrl = projectSlug
+    ? `/projects/${encodeURIComponent(projectSlug)}/issues/${issueNumber}`
     : `/issues/${issueNumber}`;
 
   return (

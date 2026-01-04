@@ -29,12 +29,12 @@ interface PageProps {
 }
 
 export default function IssueDetailPage({ params }: PageProps) {
-  const { project: projectId, number } = use(params);
+  const { project: projectSlug, number } = use(params);
   const [activeTab, setActiveTab] = useState<TabId>("details");
 
   const issueNumber = number ? parseInt(number, 10) : undefined;
 
-  const { data, isLoading, error, refetch } = useIssue(projectId, issueNumber);
+  const { data, isLoading, error, refetch } = useIssue(projectSlug, issueNumber);
 
   function handleTabChange(tabId: string) {
     setActiveTab(tabId as TabId);
@@ -122,7 +122,7 @@ export default function IssueDetailPage({ params }: PageProps) {
         <TasksTab
           tasks={tasks}
           taskCounts={taskCounts}
-          projectId={projectId}
+          projectId={projectSlug}
           issueNumber={issue.number}
         />
       )}

@@ -11,13 +11,14 @@ interface IssueRowProps {
 
 export function IssueRow({ item }: IssueRowProps) {
   const router = useRouter();
-  const { issue, hasPlan, taskCounts, computedStatus, projectName, milestoneTitle } = item;
+  const { issue, hasPlan, taskCounts, computedStatus, projectName, projectSlug, milestoneTitle } =
+    item;
 
-  const issueUrl = issue.projectId
-    ? `/projects/${encodeURIComponent(issue.projectId)}/issues/${issue.number}`
+  const issueUrl = projectSlug
+    ? `/projects/${encodeURIComponent(projectSlug)}/issues/${issue.number}`
     : `/issues/${issue.number}`;
 
-  const boardUrl = issue.projectId ? `/?project=${encodeURIComponent(issue.projectId)}` : "/";
+  const boardUrl = "/";
 
   function handleRowClick() {
     router.push(issueUrl);
