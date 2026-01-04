@@ -49,7 +49,7 @@ export const prToolDefinitions: ToolDefinition[] = [
         title: {
           type: "string",
           description:
-            "PR title. Defaults to '[#N] taskTitle' if task has linked GitHub issue, otherwise just 'taskTitle' (no prefix).",
+            "PR title. Defaults to '[#N] taskTitle' if parent issue has linked GitHub issue (where N is the parent issue's GitHub number), otherwise just 'taskTitle' (no prefix).",
         },
         body: {
           type: "string",
@@ -310,15 +310,16 @@ export async function handleSubmitForReview(
   }
 
   // 4. Build PR title
-  // Only include GitHub issue number prefix if task has a linked GitHub issue
-  // If no GitHub issue linked, use plain title (no prefix)
-  // Never include task number in title - that's internal dev-workflow numbering
+  // Only include GitHub issue number prefix if the PARENT ISSUE has a linked GitHub issue
+  // Use the parent issue's GitHub number, not the task's GitHub number
+  // This is more useful for tracking at the issue level (teammates see PRs grouped by issue)
+  // Never include dev-workflow task number in title - that's internal numbering
   let prTitle: string;
   if (title) {
     prTitle = title;
-  } else if (task.githubSync?.githubIssueNumber) {
-    // Task has linked GitHub issue - use [#N] prefix
-    prTitle = `[#${task.githubSync.githubIssueNumber}] ${task.title}`;
+  } else if (issue.githubSync?.githubIssueNumber) {
+    // Parent issue has linked GitHub issue - use [#N] prefix with parent's number
+    prTitle = `[#${issue.githubSync.githubIssueNumber}] ${task.title}`;
   } else {
     // No GitHub issue - use plain title
     prTitle = task.title;
