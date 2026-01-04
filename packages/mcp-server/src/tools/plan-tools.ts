@@ -9,6 +9,7 @@ import type {
   PlanningService,
   PlanComplexity,
   TaskGitHubSyncService,
+  Project,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -137,6 +138,8 @@ export const planToolDefinitions: ToolDefinition[] = [
  * Service context for plan handlers
  */
 export interface PlanToolContext {
+  /** Current project (for URL construction) */
+  project: Project;
   issueRepository: SqliteIssueRepository;
   planRepository: SqlitePlanRepository;
   taskRepository: SqliteTaskRepository;
@@ -241,7 +244,7 @@ export async function handleGeneratePlan(
 
   return successResponse({
     ...result,
-    url: `http://127.0.0.1:3456/projects/${issue.projectId}/issues/${issue.number}`,
+    url: `http://127.0.0.1:3456/projects/${ctx.project.slug}/issues/${issue.number}`,
   });
 }
 
