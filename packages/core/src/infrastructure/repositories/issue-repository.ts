@@ -134,11 +134,16 @@ export class SqliteIssueRepository implements IssueRepository {
     const now = new Date().toISOString();
 
     // Build the update object, mapping githubSync to flat columns
-    const { githubSync, ...restData } = data;
+    const { githubSync, milestoneId, ...restData } = data;
     const updateData: Record<string, unknown> = {
       ...restData,
       updatedAt: now,
     };
+
+    // Handle milestoneId explicitly (null means unassign from milestone)
+    if ("milestoneId" in data) {
+      updateData["milestoneId"] = milestoneId ?? null;
+    }
 
     // Map githubSync fields if provided
     if (githubSync !== undefined) {
