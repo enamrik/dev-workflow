@@ -11,6 +11,7 @@ allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-trac
 **You MUST complete one task fully before starting another.** Never work on multiple tasks in the same session.
 
 A task is only "complete" when it reaches a terminal state:
+
 - **COMPLETED** - Work done, PR merged (or committed on main mode)
 - **ABANDONED** - Work stopped, reason documented
 
@@ -19,6 +20,7 @@ If a task is IN_PROGRESS or PR_REVIEW, you must finish that task's lifecycle bef
 > "You have an active task in progress: [task title]. Would you like to complete or abandon it first before starting a new task?"
 
 This ensures:
+
 - Clean git state (no mixed changes across tasks)
 - Proper worktree management (one worktree per active task)
 - Clear audit trail (each task has a complete lifecycle)

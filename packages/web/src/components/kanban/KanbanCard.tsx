@@ -65,7 +65,7 @@ function TaskModalContent({
       <div className="sticky top-0 z-10 p-4 border-b border-gray-200 bg-white rounded-t-xl">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <div className="font-semibold text-gray-900 text-sm">
+            <div className="font-semibold text-gray-900 text-sm break-words">
               <Tooltip content={tooltipContent} side="bottom">
                 <Link
                   href={issueUrl}
@@ -257,7 +257,7 @@ function CardContent({
   return (
     <div
       className={clsx(
-        "relative bg-white rounded-lg shadow-sm border border-gray-200 p-3 transition-shadow hover:shadow-md overflow-hidden",
+        "relative bg-white rounded-lg shadow-sm border border-gray-200 p-3 transition-shadow hover:shadow-md overflow-hidden min-w-0",
         isAbandoned && "opacity-75"
       )}
     >
@@ -272,7 +272,7 @@ function CardContent({
       </span>
 
       {/* Task number and title */}
-      <div className="font-medium text-gray-800 text-sm mb-1">
+      <div className="font-medium text-gray-800 text-sm mb-1 break-words">
         <Tooltip content={tooltipContent} side="bottom">
           <Link
             href={issueUrl}
@@ -286,7 +286,9 @@ function CardContent({
       </div>
 
       {/* Task description */}
-      <div className="text-xs text-gray-600 mb-2">{truncate(task.description, 100)}</div>
+      <div className="text-xs text-gray-600 mb-2 break-words">
+        {truncate(task.description, 100)}
+      </div>
 
       {/* Footer: project and metadata */}
       <div className="flex items-center justify-between text-xs">
