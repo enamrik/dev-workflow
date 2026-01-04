@@ -113,12 +113,11 @@ export interface Project {
  * Status rules:
  * - PLANNED: Issue is in planning phase (not yet activated)
  * - CLOSED: Issue is explicitly closed
- * - COMPLETED: All tasks are COMPLETED or ABANDONED
- * - IN_PROGRESS: Some tasks not completed AND no tasks in BACKLOG (work has started)
- * - READY: Any task is in BACKLOG status (plan exists, work not started)
- * - OPEN: No plan/tasks yet
+ * - TASKS_DONE: All tasks are COMPLETED or ABANDONED (issue ready to be closed)
+ * - IN_PROGRESS: Some tasks not completed AND no tasks in BACKLOG/READY (work has started)
+ * - OPEN: Plan exists but work not started (tasks in BACKLOG/READY), or no plan/tasks yet
  */
-export type ComputedIssueStatus = "PLANNED" | "OPEN" | "READY" | "IN_PROGRESS" | "COMPLETED" | "CLOSED";
+export type ComputedIssueStatus = "PLANNED" | "OPEN" | "IN_PROGRESS" | "TASKS_DONE" | "CLOSED";
 
 export interface ProjectIssueWithPlanInfo {
   issue: Issue;
