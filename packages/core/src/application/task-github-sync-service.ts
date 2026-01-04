@@ -209,10 +209,10 @@ export class TaskGitHubSyncService {
       throw new TaskGitHubSyncError("GitHub sync is not enabled");
     }
 
-    // Build title: "[#issueNum.taskNum] Task Title"
-    const title = `[#${issue.number}.${task.number}] ${task.title}`;
+    // Use plain task title (no prefix) to avoid confusing teammates not using dev-workflow
+    const title = task.title;
 
-    // Build body with task description and parent issue reference
+    // Build body with task description and dev-workflow reference as footer
     const body = this.buildTaskBody(issue, task);
 
     // Build labels (include issue type label)
@@ -351,14 +351,13 @@ export class TaskGitHubSyncService {
 
   /**
    * Build the GitHub issue body for a task
+   *
+   * Uses clean format without "Parent Issue" linking to avoid confusing
+   * teammates not using dev-workflow. Dev-workflow reference is added
+   * as an unobtrusive footer note.
    */
   private buildTaskBody(issue: Issue, task: Task): string {
-    const sections: string[] = [
-      task.description,
-      "",
-      "---",
-      `**Parent Issue:** #${issue.number} - ${issue.title}`,
-    ];
+    const sections: string[] = [task.description];
 
     if (task.acceptanceCriteria.length > 0) {
       sections.push("\n## Acceptance Criteria\n");
@@ -366,6 +365,11 @@ export class TaskGitHubSyncService {
         sections.push(`- [ ] ${criterion}`);
       }
     }
+
+    // Add dev-workflow reference as unobtrusive footer note
+    sections.push("");
+    sections.push("---");
+    sections.push(`Task ${issue.number}.${task.number}: ${task.title}`);
 
     return sections.join("\n");
   }
