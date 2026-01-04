@@ -6,6 +6,23 @@ allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-trac
 
 # Work Task Skill
 
+## Critical Constraint: One Task at a Time
+
+**You MUST complete one task fully before starting another.** Never work on multiple tasks in the same session.
+
+A task is only "complete" when it reaches a terminal state:
+- **COMPLETED** - Work done, PR merged (or committed on main mode)
+- **ABANDONED** - Work stopped, reason documented
+
+If a task is IN_PROGRESS or PR_REVIEW, you must finish that task's lifecycle before starting a new one. If the user asks to work on a different task while one is in progress, remind them:
+
+> "You have an active task in progress: [task title]. Would you like to complete or abandon it first before starting a new task?"
+
+This ensures:
+- Clean git state (no mixed changes across tasks)
+- Proper worktree management (one worktree per active task)
+- Clear audit trail (each task has a complete lifecycle)
+
 ## When to Invoke
 
 **Starting work:**
@@ -128,31 +145,36 @@ BACKLOG tasks back to READY.
 
 ### To Start a Task
 
-1. **Identify the task:**
+1. **Check for active tasks first:**
+   - Before starting ANY new task, verify no task is currently IN_PROGRESS or PR_REVIEW
+   - If a task is active → remind user to complete or abandon it first
+   - Only proceed if there are no active tasks in the session
+
+2. **Identify the task:**
    - If user specified a task → use that task ID
    - If not specified → call `list_available_tasks` and help user choose
    - If only one task available → confirm and start it
 
-2. **Check task status:**
+3. **Check task status:**
    - **If task is PLANNED:** The plan hasn't been approved yet.
      - Ask the user: "This task is still planned. Are you satisfied with the plan? Ready to start working on it?"
      - If user confirms → call `move_issue_to_backlog` to make tasks available
      - This transitions all PLANNED tasks to BACKLOG and creates GitHub issues
    - **If task is BACKLOG or READY:** Proceed with starting
 
-3. **Determine execution mode:**
+4. **Determine execution mode:**
    - **ALWAYS use `isolated` mode** unless the user explicitly requests otherwise
    - Only use `branch` if user explicitly says "branch mode", "no worktree", etc.
    - Only use `main` if user explicitly says "on main", "main mode", "skip PR", etc.
    - **NEVER autonomously choose a non-default mode** based on task complexity or size
 
-4. **Load the task session:**
+5. **Load the task session:**
    - Call `load_task_session` with task ID, session ID, and mode
    - This returns full context: task, issue, plan, labels, worktree info
    - If task is already IN_PROGRESS, it resumes the existing session
    - Review title, description, and acceptance criteria from the response
 
-5. **Present task to user:**
+6. **Present task to user:**
    - Show what needs to be implemented
    - Show acceptance criteria as a checklist
    - For isolated mode: show worktree path and branch name
@@ -619,7 +641,7 @@ any task and the remaining BACKLOG tasks will transition back to READY.
 
 ## Notes
 
-- Only ONE task should be in progress at a time per session
+- **ONE TASK AT A TIME**: Complete a task fully (to COMPLETED or ABANDONED) before starting another. If user requests a new task while one is active, prompt them to finish or abandon the current task first.
 - Session timeout is 1 hour of inactivity
 - Abandoned tasks can inform re-planning
 - Always show acceptance criteria when starting a task
