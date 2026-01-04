@@ -128,7 +128,7 @@ export const milestoneToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "assign_issue_to_milestone",
-    description: "Assign an issue to a milestone (or unassign by omitting milestoneNumber)",
+    description: "Assign an issue to a milestone",
     inputSchema: {
       type: "object",
       properties: {
@@ -138,7 +138,21 @@ export const milestoneToolDefinitions: ToolDefinition[] = [
         },
         milestoneNumber: {
           type: "number",
-          description: "Milestone number to assign to (omit to unassign)",
+          description: "Milestone number to assign to",
+        },
+      },
+      required: ["issueNumber", "milestoneNumber"],
+    },
+  },
+  {
+    name: "remove_issue_from_milestone",
+    description: "Remove an issue from its milestone (unassign)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issueNumber: {
+          type: "number",
+          description: "Issue number to remove from milestone",
         },
       },
       required: ["issueNumber"],
@@ -341,29 +355,45 @@ export function handleDeleteMilestone(
  */
 export function handleAssignIssueToMilestone(
   ctx: MilestoneToolContext,
-  args: { issueNumber: number; milestoneNumber?: number }
+  args: { issueNumber: number; milestoneNumber: number }
 ): ToolResponse {
   const issue = ctx.issueRepository.findByNumber(args.issueNumber);
   if (!issue) {
     return errorResponse(`Issue #${args.issueNumber} not found`);
   }
 
-  let milestoneId: string | undefined;
-  let message: string;
-
-  if (args.milestoneNumber !== undefined) {
-    const milestone = ctx.milestoneRepository.findByNumber(args.milestoneNumber);
-    if (!milestone) {
-      return errorResponse(`Milestone M${args.milestoneNumber} not found`);
-    }
-    milestoneId = milestone.id;
-    message = `Assigned issue #${args.issueNumber} to milestone M${args.milestoneNumber}`;
-  } else {
-    milestoneId = undefined;
-    message = `Unassigned issue #${args.issueNumber} from milestone`;
+  const milestone = ctx.milestoneRepository.findByNumber(args.milestoneNumber);
+  if (!milestone) {
+    return errorResponse(`Milestone M${args.milestoneNumber} not found`);
   }
 
-  ctx.issueRepository.update(issue.id, { milestoneId });
+  ctx.issueRepository.update(issue.id, { milestoneId: milestone.id });
 
-  return successResponse({ message });
+  return successResponse({
+    message: `Assigned issue #${args.issueNumber} to milestone M${args.milestoneNumber}`,
+  });
+}
+
+/**
+ * Handler for remove_issue_from_milestone
+ */
+export function handleRemoveIssueFromMilestone(
+  ctx: MilestoneToolContext,
+  args: { issueNumber: number }
+): ToolResponse {
+  const issue = ctx.issueRepository.findByNumber(args.issueNumber);
+  if (!issue) {
+    return errorResponse(`Issue #${args.issueNumber} not found`);
+  }
+
+  if (!issue.milestoneId) {
+    return errorResponse(`Issue #${args.issueNumber} is not assigned to any milestone`);
+  }
+
+  // Pass undefined to clear the milestone (repository converts to null in DB)
+  ctx.issueRepository.update(issue.id, { milestoneId: undefined });
+
+  return successResponse({
+    message: `Removed issue #${args.issueNumber} from milestone`,
+  });
 }

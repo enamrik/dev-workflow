@@ -103,6 +103,7 @@ import {
   handleUpdateMilestone,
   handleDeleteMilestone,
   handleAssignIssueToMilestone,
+  handleRemoveIssueFromMilestone,
   // Worktree handlers
   worktreeToolDefinitions,
   handleListWorktrees,
@@ -344,6 +345,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     }
     if (name === "assign_issue_to_milestone") {
       return handleAssignIssueToMilestone(milestoneToolContext, a);
+    }
+    if (name === "remove_issue_from_milestone") {
+      return handleRemoveIssueFromMilestone(milestoneToolContext, a);
     }
 
     // Worktree tools
