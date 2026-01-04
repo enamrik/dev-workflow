@@ -74,9 +74,6 @@ export default function IssueDetailPage({ params }: PageProps) {
   const computedStatus = computeIssueStatus(issue, plan, tasks);
 
   const backUrl = projectId ? `/?project=${encodeURIComponent(projectId)}` : "/";
-  const boardUrl = projectId
-    ? `/?project=${encodeURIComponent(projectId)}&issue=${issue.number}`
-    : `/?issue=${issue.number}`;
 
   const tabs = [
     { id: "details", label: "Details" },
@@ -130,7 +127,6 @@ export default function IssueDetailPage({ params }: PageProps) {
         <TasksTab
           tasks={tasks}
           taskCounts={taskCounts}
-          boardUrl={boardUrl}
           projectId={projectId}
           issueNumber={issue.number}
         />
@@ -243,12 +239,11 @@ function PlanTab({ plan }: PlanTabProps) {
 interface TasksTabProps {
   tasks: Task[];
   taskCounts: { total: number; completed: number; inProgress: number };
-  boardUrl: string;
   projectId: string;
   issueNumber: number;
 }
 
-function TasksTab({ tasks, taskCounts, boardUrl, projectId, issueNumber }: TasksTabProps) {
+function TasksTab({ tasks, taskCounts, projectId, issueNumber }: TasksTabProps) {
   if (tasks.length === 0) {
     return (
       <TabPanel>
@@ -263,8 +258,8 @@ function TasksTab({ tasks, taskCounts, boardUrl, projectId, issueNumber }: Tasks
   return (
     <TabPanel>
       {/* Progress header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex-1 max-w-xs">
+      <div className="mb-6">
+        <div className="max-w-xs">
           <div className="text-sm text-gray-600 mb-1">
             {taskCounts.completed}/{taskCounts.total} completed
           </div>
@@ -275,12 +270,6 @@ function TasksTab({ tasks, taskCounts, boardUrl, projectId, issueNumber }: Tasks
             showLabel={false}
           />
         </div>
-        <Link
-          href={boardUrl}
-          className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-        >
-          View on Board &rarr;
-        </Link>
       </div>
 
       {/* Task list */}
