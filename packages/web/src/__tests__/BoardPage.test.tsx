@@ -25,19 +25,6 @@ vi.mock("../contexts", () => ({
   }),
 }));
 
-// Mock useTasks hook
-vi.mock("../hooks", () => ({
-  useTasks: () => ({
-    data: {
-      issuesWithTasks: [],
-      completedTasks: [],
-    },
-    isLoading: false,
-    error: null,
-    refetch: vi.fn(),
-  }),
-}));
-
 // Mock localStorage
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
@@ -57,7 +44,74 @@ const localStorageMock = (() => {
 
 Object.defineProperty(window, "localStorage", { value: localStorageMock });
 
-const SHOW_BACKLOG_STORAGE_KEY = "dev-workflow-show-backlog";
+const URL_STATE_KEY = "dev-workflow-url-state";
+
+// Mock hooks - must be after localStorageMock declaration
+vi.mock("../hooks", () => ({
+  useTasks: () => ({
+    data: {
+      issuesWithTasks: [],
+      completedTasks: [],
+    },
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useUrlState: () => {
+    // Re-use the mock localStorage state for useUrlState
+    const stored = localStorageMock.getItem(URL_STATE_KEY);
+    const state = stored ? JSON.parse(stored) : {};
+    return {
+      state,
+      setState: (newState: Record<string, unknown>) => {
+        if (Object.keys(newState).length > 0) {
+          localStorageMock.setItem(URL_STATE_KEY, JSON.stringify(newState));
+        } else {
+          localStorageMock.removeItem(URL_STATE_KEY);
+        }
+        // Build _state param
+        const encoded =
+          Object.keys(newState).length > 0
+            ? btoa(JSON.stringify(newState))
+                .replace(/\+/g, "-")
+                .replace(/\//g, "_")
+                .replace(/=+$/, "")
+            : null;
+        const params = new URLSearchParams();
+        if (encoded) {
+          params.set("_state", encoded);
+        }
+        mockPush(`/?${params.toString()}`);
+      },
+      setProperty: (key: string, value: unknown) => {
+        const stored = localStorageMock.getItem(URL_STATE_KEY);
+        const currentState = stored ? JSON.parse(stored) : {};
+        const newState = { ...currentState, [key]: value };
+        if (value === undefined) {
+          delete newState[key];
+        }
+        if (Object.keys(newState).length > 0) {
+          localStorageMock.setItem(URL_STATE_KEY, JSON.stringify(newState));
+        } else {
+          localStorageMock.removeItem(URL_STATE_KEY);
+        }
+        // Build _state param
+        const encoded =
+          Object.keys(newState).length > 0
+            ? btoa(JSON.stringify(newState))
+                .replace(/\+/g, "-")
+                .replace(/\//g, "_")
+                .replace(/=+$/, "")
+            : null;
+        const params = new URLSearchParams();
+        if (encoded) {
+          params.set("_state", encoded);
+        }
+        mockPush(`/?${params.toString()}`);
+      },
+    };
+  },
+}));
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -84,8 +138,8 @@ describe("BoardPage showBacklog persistence", () => {
 
   it("initializes showBacklog from localStorage", async () => {
     localStorageMock.getItem.mockImplementation((key: string) => {
-      if (key === SHOW_BACKLOG_STORAGE_KEY) {
-        return "true";
+      if (key === URL_STATE_KEY) {
+        return JSON.stringify({ showBacklog: true });
       }
       return null;
     });
@@ -134,13 +188,16 @@ describe("BoardPage showBacklog persistence", () => {
       fireEvent.click(checkbox);
     });
 
-    expect(localStorageMock.setItem).toHaveBeenCalledWith(SHOW_BACKLOG_STORAGE_KEY, "true");
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      URL_STATE_KEY,
+      JSON.stringify({ showBacklog: true })
+    );
   });
 
   it("removes from localStorage when showBacklog is toggled off", async () => {
     localStorageMock.getItem.mockImplementation((key: string) => {
-      if (key === SHOW_BACKLOG_STORAGE_KEY) {
-        return "true";
+      if (key === URL_STATE_KEY) {
+        return JSON.stringify({ showBacklog: true });
       }
       return null;
     });
@@ -158,10 +215,10 @@ describe("BoardPage showBacklog persistence", () => {
       fireEvent.click(checkbox);
     });
 
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith(SHOW_BACKLOG_STORAGE_KEY);
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith(URL_STATE_KEY);
   });
 
-  it("updates URL when showBacklog changes", async () => {
+  it("updates URL with _state param when showBacklog changes", async () => {
     localStorageMock.getItem.mockReturnValue(null);
 
     const Wrapper = createWrapper();
@@ -176,14 +233,17 @@ describe("BoardPage showBacklog persistence", () => {
       fireEvent.click(checkbox);
     });
 
-    expect(mockPush).toHaveBeenCalledWith("/?showBacklog=true");
+    // Should be called with base64 encoded _state param
+    expect(mockPush).toHaveBeenCalled();
+    const calledWith = mockPush.mock.calls[0]?.[0] as string | undefined;
+    expect(calledWith).toBeDefined();
+    expect(calledWith).toContain("_state=");
   });
 
-  it("removes showBacklog param from URL when toggled off", async () => {
-    mockSearchParams = new URLSearchParams("?showBacklog=true");
+  it("removes _state param from URL when toggled off", async () => {
     localStorageMock.getItem.mockImplementation((key: string) => {
-      if (key === SHOW_BACKLOG_STORAGE_KEY) {
-        return "true";
+      if (key === URL_STATE_KEY) {
+        return JSON.stringify({ showBacklog: true });
       }
       return null;
     });
