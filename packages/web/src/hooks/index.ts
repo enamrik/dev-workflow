@@ -5,3 +5,4 @@ export { useMilestones } from "./useMilestones";
 export { useWorktrees, usePruneWorktrees } from "./useWorktrees";
 export { useWebSocket } from "./useWebSocket";
 export { useTaskMetadata } from "./useTaskMetadata";
+export { useUrlState, type UrlState } from "./useUrlState";
