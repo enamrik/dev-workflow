@@ -17,6 +17,7 @@ import {
   type IssueStatus,
   type GitHubCLI,
   type GitWorktreeService,
+  type Project,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -345,6 +346,8 @@ export const issueToolDefinitions: ToolDefinition[] = [
  * Service context for issue handlers
  */
 export interface IssueToolContext {
+  /** Current project (for URL construction) */
+  project: Project;
   issueRepository: SqliteIssueRepository;
   planRepository: SqlitePlanRepository;
   taskRepository: SqliteTaskRepository;
@@ -448,7 +451,7 @@ export async function handleCreateIssue(
       status: issue.status,
       computedStatus: "PLANNED" as ComputedIssueStatus,
       templateUsed: issue.templateUsed,
-      url: `http://127.0.0.1:3456/projects/${issue.projectId}/issues/${issue.number}`,
+      url: `http://127.0.0.1:3456/projects/${ctx.project.slug}/issues/${issue.number}`,
     },
   });
 }

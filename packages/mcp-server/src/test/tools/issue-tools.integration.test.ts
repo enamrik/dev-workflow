@@ -38,13 +38,17 @@ const TEST_PROJECT_ID = "test-project-integration";
  */
 function createIssueToolContext(testDb: TestDatabase): IssueToolContext {
   const db = testDb.db as DbType;
-  const repos = createRepositories(testDb.db, TEST_PROJECT_ID);
 
-  // Create milestone repository
-  const milestoneRepository = new SqliteMilestoneRepository(db, TEST_PROJECT_ID);
-
-  // Create project repository (project is auto-created, sync disabled by default)
+  // Create project first to get the generated ID
   const projectRepository = new SqliteProjectRepository(db);
+  const project = projectRepository.create({
+    gitRootHash: TEST_PROJECT_ID,
+    name: "Test Project",
+  });
+
+  // Use project's actual ID for repositories
+  const repos = createRepositories(testDb.db, project.id);
+  const milestoneRepository = new SqliteMilestoneRepository(db, project.id);
 
   // Mock template service (returns default template)
   const mockTemplateService = {
@@ -93,10 +97,11 @@ function createIssueToolContext(testDb: TestDatabase): IssueToolContext {
     repos.issueRepository,
     mockGitHubCLI,
     projectRepository,
-    TEST_PROJECT_ID
+    project.id
   );
 
   return {
+    project,
     issueRepository: repos.issueRepository,
     planRepository: repos.planRepository,
     taskRepository: repos.taskRepository,
