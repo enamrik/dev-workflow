@@ -1,4 +1,4 @@
-import { eq, max, and, asc, inArray, desc, sql } from "drizzle-orm";
+import { eq, max, and, asc, inArray, desc, sql, isNull } from "drizzle-orm";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import {
   tasks,
@@ -290,7 +290,7 @@ export class SqliteTaskRepository implements TaskRepository {
     const result = this.db
       .select({ maxOrder: max(tasks.order) })
       .from(tasks)
-      .where(eq(tasks.planId, planId))
+      .where(and(eq(tasks.planId, planId), isNull(tasks.deletedAt)))
       .get();
 
     return (result?.maxOrder ?? 0) + 1;
@@ -300,7 +300,7 @@ export class SqliteTaskRepository implements TaskRepository {
     const result = this.db
       .select({ maxNumber: max(tasks.number) })
       .from(tasks)
-      .where(eq(tasks.planId, planId))
+      .where(and(eq(tasks.planId, planId), isNull(tasks.deletedAt)))
       .get();
 
     return (result?.maxNumber ?? 0) + 1;
