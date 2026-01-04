@@ -14,10 +14,13 @@ export function ProjectFilter({ projects, value, onChange }: ProjectFilterProps)
     return null;
   }
 
-  const options = projects.map((p) => ({
-    value: p.id,
-    label: p.name,
-  }));
+  const options = [
+    { value: "", label: "All projects" },
+    ...projects.map((p) => ({
+      value: p.id,
+      label: p.name,
+    })),
+  ];
 
   // Find selected project to check for GitHub Project link
   const selectedProject = value ? projects.find((p) => p.id === value) : null;
@@ -30,7 +33,6 @@ export function ProjectFilter({ projects, value, onChange }: ProjectFilterProps)
         options={options}
         value={value}
         onChange={onChange}
-        placeholder="All projects"
       />
       {githubProjectUrl && (
         <GitHubLink

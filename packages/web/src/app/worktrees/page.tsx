@@ -1,15 +1,14 @@
 "use client";
 
 import { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
-import { useWorktrees, usePruneWorktrees, useProjects } from "@/hooks";
+import { useWorktrees, usePruneWorktrees } from "@/hooks";
+import { useProjectContext } from "@/contexts";
 import {
   Card,
   Badge,
   LoadingState,
   ErrorState,
   EmptyState,
-  Select,
 } from "@/components/ui";
 import type { Worktree } from "@/lib/types";
 
@@ -36,11 +35,9 @@ export default function WorktreesPage() {
 }
 
 function WorktreesPageContent() {
-  const searchParams = useSearchParams();
-  const projectFilter = searchParams.get("project") ?? undefined;
+  const { projectId } = useProjectContext();
 
-  const { data: projects } = useProjects();
-  const { data: worktrees, isLoading, error, refetch } = useWorktrees({ project: projectFilter });
+  const { data: worktrees, isLoading, error, refetch } = useWorktrees({ project: projectId || undefined });
   const pruneMutation = usePruneWorktrees();
 
   const handlePrune = async (projectId: string) => {
@@ -67,32 +64,14 @@ function WorktreesPageContent() {
     return acc;
   }, {}) ?? {};
 
-  const projectOptions = [
-    { value: "", label: "All Projects" },
-    ...(projects?.map((p) => ({ value: p.id, label: p.id })) ?? []),
-  ];
-
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Worktrees</h1>
-          <p className="text-gray-600 mt-1">
-            Git worktrees for isolated task execution
-          </p>
-        </div>
-
-        {/* Project filter */}
-        <Select
-          value={projectFilter ?? ""}
-          onChange={(value) => {
-            const url = value ? `?project=${encodeURIComponent(value)}` : "/worktrees";
-            window.history.pushState({}, "", url);
-            refetch();
-          }}
-          options={projectOptions}
-        />
+      <div>
+        <h1 className="text-2xl font-bold text-gray-800">Worktrees</h1>
+        <p className="text-gray-600 mt-1">
+          Git worktrees for isolated task execution
+        </p>
       </div>
 
       {/* Summary stats */}
