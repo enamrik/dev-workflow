@@ -54,7 +54,7 @@ export const prToolDefinitions: ToolDefinition[] = [
         },
         title: {
           type: "string",
-          description: "PR title. Defaults to '[#issueNumber] taskTitle'",
+          description: "PR title. Defaults to '[#issueNumber.taskNumber] taskTitle'. Uses GitHub issue number if task has one linked.",
         },
         body: {
           type: "string",
@@ -320,7 +320,10 @@ export async function handleSubmitForReview(
   }
 
   // 4. Build PR title
-  const prTitle = title ?? `[#${issue.number}] ${task.title}`;
+  // Use GitHub issue number if task has one, otherwise use dev-workflow issue number
+  // Format: [#N.T] where N is issue number and T is task number
+  const issueNum = task.githubSync?.githubIssueNumber ?? issue.number;
+  const prTitle = title ?? `[#${issueNum}.${task.number}] ${task.title}`;
 
   // 5. Build PR body with GitHub issue linking
   let prBody = body ?? task.description;
