@@ -206,7 +206,7 @@ After implementing the task, submit for PR review:
      - Attempt to resolve them automatically based on the task context
      - Use `git add <resolved-files>` and `git rebase --continue`
      - If a conflict is ambiguous or risky, ask the user for guidance
-   - After rebase completes, **re-run full validation** (`make prep` or equivalent)
+   - After rebase completes, **re-run full validation** (check CLAUDE.md, package.json scripts, or Makefile for the project's validation commands)
    - If validation fails after conflict resolution, fix the issues before proceeding
    - **Why:** Ensures your PR is up-to-date with main, reduces merge conflicts, and catches integration issues early
 
@@ -236,7 +236,7 @@ When the user needs to push more changes to an existing PR (e.g., addressing rev
      - Attempt to resolve them automatically based on context
      - Use `git add <resolved-files>` and `git rebase --continue`
      - If a conflict is ambiguous or risky, ask the user for guidance
-   - **Re-run full validation** (`make prep` or equivalent) after rebase
+   - **Re-run full validation** after rebase (check CLAUDE.md, package.json scripts, or Makefile for commands)
    - If validation fails, fix the issues before pushing
    - **Why:** Keeps the PR up-to-date, prevents merge conflicts, ensures CI passes
 3. **Commit and push:**
