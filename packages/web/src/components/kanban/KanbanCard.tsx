@@ -29,7 +29,7 @@ const issueStatusLabels: Record<ComputedIssueStatus, string> = {
 
 function StatusDot({ status }: { status: ComputedIssueStatus }) {
   return (
-    <Tooltip content={`Issue: ${issueStatusLabels[status]}`} side="top">
+    <Tooltip content={`Issue not closed (${issueStatusLabels[status]})`} side="top">
       <span
         className={clsx(
           "inline-block w-2 h-2 rounded-full cursor-help",
@@ -75,7 +75,6 @@ interface TaskModalContentProps {
   issueType: string;
   issueUrl: string;
   issueGithubUrl?: string;
-  issueComputedStatus: ComputedIssueStatus;
   projectId?: string;
 }
 
@@ -86,7 +85,6 @@ function TaskModalContent({
   issueType,
   issueUrl,
   issueGithubUrl,
-  issueComputedStatus,
   projectId,
 }: TaskModalContentProps) {
   const tooltipContent = `${issueType.toLowerCase()}(#${issueNumber}): ${issueTitle}`;
@@ -368,8 +366,10 @@ function CardContent({
               ))}
             </div>
           )}
-          {/* Issue status indicator */}
-          <StatusDot status={issueComputedStatus} />
+          {/* Issue status indicator - only show for completed tasks whose issue isn't closed yet */}
+          {task.status === "COMPLETED" && issueComputedStatus !== "CLOSED" && (
+            <StatusDot status={issueComputedStatus} />
+          )}
         </div>
       </div>
     </div>
@@ -413,7 +413,6 @@ export function KanbanCard({
         issueType={issueType}
         issueUrl={issueUrl}
         issueGithubUrl={issueGithubUrl}
-        issueComputedStatus={issueComputedStatus}
         projectId={projectId}
       />
     </Modal>

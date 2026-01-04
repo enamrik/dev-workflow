@@ -10,26 +10,33 @@ interface TaskTimingProps {
   className?: string;
   /** "compact" shows just duration, "detailed" includes context prefix */
   variant?: "compact" | "detailed";
+  /** Show tooltip on hover (default: true for compact, false for detailed) */
+  showTooltip?: boolean;
 }
 
 /**
  * Displays task timing information based on status.
  * For in-progress tasks, updates every minute to show live elapsed time.
  */
-export function TaskTiming({ task, className = "", variant = "compact" }: TaskTimingProps) {
+export function TaskTiming({ task, className = "", variant = "compact", showTooltip }: TaskTimingProps) {
   const [message, setMessage] = useState<string | null>(() =>
     getTaskTimingMessage(task, variant)
+  );
+  const [detailedMessage, setDetailedMessage] = useState<string | null>(() =>
+    getTaskTimingMessage(task, "detailed")
   );
 
   useEffect(() => {
     // Update message immediately when task changes
     setMessage(getTaskTimingMessage(task, variant));
+    setDetailedMessage(getTaskTimingMessage(task, "detailed"));
 
     // For active statuses (not completed/abandoned), update every minute
     const isActiveStatus = ["BACKLOG", "READY", "IN_PROGRESS", "PR_REVIEW"].includes(task.status);
     if (isActiveStatus) {
       const interval = setInterval(() => {
         setMessage(getTaskTimingMessage(task, variant));
+        setDetailedMessage(getTaskTimingMessage(task, "detailed"));
       }, 60000); // Update every minute
 
       return () => clearInterval(interval);
@@ -42,10 +49,19 @@ export function TaskTiming({ task, className = "", variant = "compact" }: TaskTi
     return null;
   }
 
-  const tooltip = getTooltip(task);
+  // Default: show tooltip for compact variant, hide for detailed
+  const shouldShowTooltip = showTooltip ?? (variant === "compact");
+
+  if (!shouldShowTooltip || !detailedMessage) {
+    return (
+      <span className={`text-gray-500 ${className}`}>
+        {message}
+      </span>
+    );
+  }
 
   return (
-    <Tooltip content={tooltip} side="top">
+    <Tooltip content={detailedMessage} side="top">
       <span className={`text-gray-500 cursor-help ${className}`}>
         {message}
       </span>
@@ -53,30 +69,3 @@ export function TaskTiming({ task, className = "", variant = "compact" }: TaskTi
   );
 }
 
-function getTooltip(
-  task: Pick<Task, "status" | "startedAt" | "submittedForReviewAt" | "completedAt" | "abandonedAt">
-): string {
-  const parts: string[] = [];
-
-  if (task.startedAt) {
-    parts.push(`Started: ${formatDateTime(task.startedAt)}`);
-  }
-
-  if (task.submittedForReviewAt) {
-    parts.push(`Submitted for review: ${formatDateTime(task.submittedForReviewAt)}`);
-  }
-
-  if (task.completedAt) {
-    parts.push(`Completed: ${formatDateTime(task.completedAt)}`);
-  }
-
-  if (task.abandonedAt) {
-    parts.push(`Abandoned: ${formatDateTime(task.abandonedAt)}`);
-  }
-
-  return parts.join("\n");
-}
-
-function formatDateTime(isoString: string): string {
-  return new Date(isoString).toLocaleString();
-}

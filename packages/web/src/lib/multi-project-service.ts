@@ -385,10 +385,7 @@ export class MultiProjectService {
   /**
    * List all tasks across all projects (for kanban board)
    */
-  async listTasks(
-    projectFilter?: string,
-    issueFilter?: number
-  ): Promise<ProjectIssueWithTasks[]> {
+  async listTasks(projectFilter?: string): Promise<ProjectIssueWithTasks[]> {
     const projects = await this.listProjects();
     const filteredProjects = projectFilter
       ? projects.filter((p) => p.id === projectFilter)
@@ -403,11 +400,6 @@ export class MultiProjectService {
       const issues = issueRepository.findMany({});
 
       for (const issue of issues) {
-        // Apply issue filter if specified
-        if (issueFilter !== undefined && issue.number !== issueFilter) {
-          continue;
-        }
-
         // Skip closed issues - they shouldn't appear in the kanban board
         if (issue.status === "CLOSED") {
           continue;
