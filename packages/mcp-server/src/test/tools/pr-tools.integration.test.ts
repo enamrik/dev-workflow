@@ -238,4 +238,103 @@ describe("submit_for_review", () => {
       expect(prBody).toContain(`Task ${issue.number}.${task.number}: Test task`);
     });
   });
+
+  describe("GitHub Project column sync", () => {
+    it("should move task to In Review column when project is configured", async () => {
+      // Arrange
+      const mockGitHubCLI = new MockGitHubCLI();
+      const mockGitWorktreeService = new MockGitWorktreeService();
+      const db = testDb.db as DbType;
+
+      // Create a project with GitHub sync enabled (including projectId)
+      const projectRepository = new SqliteProjectRepository(db);
+      const project = projectRepository.create({
+        name: "Test Project",
+        gitRootHash: "test-hash-123",
+        githubSync: {
+          enabled: true,
+          projectId: "PVT_test_project",
+          labels: {
+            typeLabels: {
+              FEATURE: "feature",
+              BUG: "bug",
+              ENHANCEMENT: "enhancement",
+              TASK: "task",
+            },
+          },
+        },
+      });
+
+      // Create repositories and services with the actual project ID
+      const repos = createRepositories(testDb.db, project.id);
+      const taskGitHubSyncService = new TaskGitHubSyncService(
+        repos.taskRepository,
+        repos.issueRepository,
+        repos.planRepository,
+        mockGitHubCLI,
+        projectRepository,
+        project.id
+      );
+
+      const ctx: PRToolContext = {
+        githubCLI: mockGitHubCLI,
+        issueRepository: repos.issueRepository,
+        planRepository: repos.planRepository,
+        taskRepository: repos.taskRepository,
+        gitWorktreeService: mockGitWorktreeService,
+        taskGitHubSyncService,
+      };
+
+      // Create issue, plan, and task
+      const issue = createTestIssue(ctx.issueRepository, {
+        title: "Test Issue",
+      });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "IN_PROGRESS",
+      });
+
+      // Set up task with branch, worktree, and GitHub sync (including projectItemId)
+      ctx.taskRepository.update(task.id, {
+        branchName: "issue-1/task-1-test-task",
+        worktreePath: "/tmp/worktree/issue-1-task-1",
+      });
+      ctx.taskRepository.updateGitHubSync(task.id, {
+        githubIssueNumber: 42,
+        githubUrl: "https://github.com/test/repo/issues/42",
+        githubNodeId: "I_test_42",
+        syncStatus: "SYNCED",
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: null,
+        projectItemId: "PVTI_test_item_123",
+      });
+
+      // Act
+      const result = await handleSubmitForReview(ctx, { taskId: task.id });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+
+      // Verify the column move was attempted
+      const runCalls = mockGitHubCLI.getCallsTo("run");
+
+      // Should have GraphQL calls for getting project fields and updating the field
+      const updateCall = runCalls.find((call) => {
+        const args = call.args[0] as string[];
+        return args.some((arg: string) => arg.includes("updateProjectV2ItemFieldValue"));
+      });
+
+      expect(updateCall).toBeDefined();
+
+      // Verify the call includes the correct item ID and "In Review" option
+      const updateArgs = updateCall!.args[0] as string[];
+      expect(updateArgs.some((arg: string) => arg.includes("PVTI_test_item_123"))).toBe(true);
+      expect(updateArgs.some((arg: string) => arg.includes("opt_in_review"))).toBe(true);
+
+      // Verify lastSyncedAt was updated
+      const updatedTask = ctx.taskRepository.findById(task.id);
+      expect(updatedTask?.githubSync?.lastSyncedAt).toBeDefined();
+    });
+  });
 });

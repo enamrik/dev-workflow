@@ -44,6 +44,12 @@ export interface MockGitHubCLIConfig {
 
   /** Custom error to throw on specific operations */
   errors?: Partial<Record<keyof GitHubCLI, Error>>;
+
+  /** Project Status field configuration for GraphQL queries */
+  projectStatusField?: {
+    fieldId: string;
+    options: Array<{ id: string; name: string }>;
+  };
 }
 
 /**
@@ -75,6 +81,16 @@ export class MockGitHubCLI implements GitHubCLI {
         url: "https://github.com/orgs/test/projects/1",
       },
       errors: config.errors ?? {},
+      projectStatusField: config.projectStatusField ?? {
+        fieldId: "PVTSSF_test_status",
+        options: [
+          { id: "opt_backlog", name: "Backlog" },
+          { id: "opt_ready", name: "Ready" },
+          { id: "opt_in_progress", name: "In Progress" },
+          { id: "opt_in_review", name: "In Review" },
+          { id: "opt_done", name: "Done" },
+        ],
+      },
     };
   }
 
@@ -346,6 +362,60 @@ export class MockGitHubCLI implements GitHubCLI {
     this.recordCall("run", [args]);
     this.checkError("run");
 
+    // Check if this is a GraphQL query and return appropriate mock response
+    const queryArg = args.find((arg) => arg.startsWith("query="));
+    if (queryArg) {
+      const query = queryArg.substring(6); // Remove "query=" prefix
+
+      // Check if this is a project fields query (for getProjectStatusField)
+      if (query.includes("ProjectV2") && query.includes("fields")) {
+        const { fieldId, options } = this.config.projectStatusField;
+        const response = {
+          data: {
+            node: {
+              fields: {
+                nodes: [
+                  {
+                    id: fieldId,
+                    name: "Status",
+                    options: options,
+                  },
+                ],
+              },
+            },
+          },
+        };
+        return {
+          success: true,
+          stdout: JSON.stringify(response),
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+
+      // Check if this is an updateProjectV2ItemFieldValue mutation
+      if (query.includes("updateProjectV2ItemFieldValue")) {
+        const itemIdArg = args.find((arg) => arg.startsWith("itemId="));
+        const itemId = itemIdArg ? itemIdArg.substring(7) : "PVTI_test_item";
+        const response = {
+          data: {
+            updateProjectV2ItemFieldValue: {
+              projectV2Item: {
+                id: itemId,
+              },
+            },
+          },
+        };
+        return {
+          success: true,
+          stdout: JSON.stringify(response),
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+    }
+
+    // Default response for other commands
     return {
       success: true,
       stdout: "",
