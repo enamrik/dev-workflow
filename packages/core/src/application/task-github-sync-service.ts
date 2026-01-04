@@ -285,21 +285,31 @@ export class TaskGitHubSyncService {
     }
 
     const githubNumber = task.githubSync.githubIssueNumber;
+    let syncError: string | null = null;
 
     // Handle terminal states - close the GitHub issue
     if (newStatus === "COMPLETED" || newStatus === "ABANDONED") {
-      await this.githubCLI.closeIssue(githubNumber);
+      try {
+        await this.githubCLI.closeIssue(githubNumber);
+      } catch (error) {
+        syncError = `Failed to close GitHub issue: ${error instanceof Error ? error.message : String(error)}`;
+        console.warn(syncError);
+      }
     }
 
     // Move in project kanban if configured
     if (config.projectId && task.githubSync.projectItemId) {
-      await this.moveToColumn(task.githubSync.projectItemId, config.projectId, newStatus);
+      const result = await this.moveToColumn(task.githubSync.projectItemId, config.projectId, newStatus);
+      if (!result.success && result.error) {
+        syncError = result.error;
+      }
     }
 
-    // Update sync state
+    // Update sync state - record any errors
     this.taskRepository.updateGitHubSync(taskId, {
       ...task.githubSync,
       lastSyncedAt: new Date().toISOString(),
+      lastSyncError: syncError,
     });
   }
 
@@ -422,7 +432,7 @@ export class TaskGitHubSyncService {
     projectItemId: string,
     projectId: string,
     status: TaskStatus
-  ): Promise<void> {
+  ): Promise<{ success: boolean; error?: string }> {
     // Map task status to GitHub Project column name
     // These are the standard columns in GitHub's Kanban template
     const columnMapping: Record<TaskStatus, string> = {
@@ -441,8 +451,9 @@ export class TaskGitHubSyncService {
       // First, get the project's Status field ID and option ID for the column
       const fieldInfo = await this.getProjectStatusField(projectId);
       if (!fieldInfo) {
-        console.warn(`Could not find Status field in project ${projectId}`);
-        return;
+        const error = `Could not find Status field in project ${projectId}`;
+        console.warn(error);
+        return { success: false, error };
       }
 
       const optionId = fieldInfo.options.find(
@@ -450,17 +461,19 @@ export class TaskGitHubSyncService {
       )?.id;
 
       if (!optionId) {
-        console.warn(
-          `Could not find "${columnName}" option in project Status field`
-        );
-        return;
+        const error = `Could not find "${columnName}" option in project Status field`;
+        console.warn(error);
+        return { success: false, error };
       }
 
       // Update the item's Status field
       await this.updateProjectItemField(projectId, projectItemId, fieldInfo.fieldId, optionId);
+      return { success: true };
     } catch (error) {
       // Log but don't fail - project column moves are not critical
-      console.warn(`Failed to move project item to ${columnName}:`, error);
+      const errorMsg = `Failed to move project item to ${columnName}: ${error instanceof Error ? error.message : String(error)}`;
+      console.warn(errorMsg);
+      return { success: false, error: errorMsg };
     }
   }
 
