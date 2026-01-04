@@ -77,7 +77,7 @@ export function MilestoneCard({ data }: MilestoneCardProps) {
                 <span className="text-gray-700 truncate flex-1">
                   {truncate(issue.title, 40)}
                 </span>
-                <Badge variant="status" value={issue.status} />
+                <Badge variant="status" value={issue.computedStatus} />
               </li>
             ))}
           </ul>
