@@ -50,7 +50,7 @@ export interface Task {
   number: number;
   title: string;
   description: string;
-  status: "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
+  status: "PLANNED" | "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
   estimatedMinutes: number | null;
   acceptanceCriteria: string[];
   labels: string[];
