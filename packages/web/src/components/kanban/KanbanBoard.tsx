@@ -137,7 +137,7 @@ export function KanbanBoard({
             title="Backlog"
             status="BACKLOG"
             tasks={backlogTasks}
-            tooltip="Inactive tasks waiting to be started"
+            tooltip="Tasks refined and awaiting prioritization"
             stacked
           />
           <KanbanColumn
