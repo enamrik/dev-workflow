@@ -70,18 +70,45 @@ export function KanbanBoard({
     }
   }
 
+  // Sort helper: newest first (descending by date string)
+  const sortNewestFirst = <T,>(
+    tasks: T[],
+    getDate: (task: T) => string | undefined
+  ): T[] =>
+    [...tasks].sort((a, b) => {
+      const dateA = getDate(a) ?? "";
+      const dateB = getDate(b) ?? "";
+      return dateB.localeCompare(dateA);
+    });
+
   // Group tasks by status (mapping ABANDONED to COMPLETED column)
   // Backlog and Planned columns show when showBacklog is enabled
+  // All columns sorted newest first
   const backlogTasks = showBacklog
-    ? allTasks.filter((t) => t.status === "BACKLOG")
+    ? sortNewestFirst(
+        allTasks.filter((t) => t.status === "BACKLOG"),
+        (t) => t.createdAt
+      )
     : [];
   const plannedTasks = showBacklog
-    ? allTasks.filter((t) => t.status === "PLANNED")
+    ? sortNewestFirst(
+        allTasks.filter((t) => t.status === "PLANNED"),
+        (t) => t.createdAt
+      )
     : [];
   // Ready column shows only READY tasks (BACKLOG tasks are paused/inactive)
-  const readyTasks = allTasks.filter((t) => t.status === "READY");
-  const inProgressTasks = allTasks.filter((t) => t.status === "IN_PROGRESS");
-  const prReviewTasks = allTasks.filter((t) => t.status === "PR_REVIEW");
+  const readyTasks = sortNewestFirst(
+    allTasks.filter((t) => t.status === "READY"),
+    (t) => t.createdAt
+  );
+  const inProgressTasks = sortNewestFirst(
+    allTasks.filter((t) => t.status === "IN_PROGRESS"),
+    (t) => t.startedAt
+  );
+  const prReviewTasks = sortNewestFirst(
+    allTasks.filter((t) => t.status === "PR_REVIEW"),
+    (t) => t.submittedForReviewAt
+  );
 
   // For Done column: merge completed tasks from open issues with completedTasks prop
   // The completedTasks prop includes tasks from closed issues (last 7 days, max 20)
@@ -146,7 +173,7 @@ export function KanbanBoard({
             title="Backlog"
             status="BACKLOG"
             tasks={backlogTasks}
-            tooltip="Inactive tasks waiting to be started"
+            tooltip="Tasks refined and awaiting prioritization"
             stacked
           />
           <KanbanColumn
