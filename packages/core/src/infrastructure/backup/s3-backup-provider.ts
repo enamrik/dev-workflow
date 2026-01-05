@@ -12,6 +12,8 @@ import {
   ListObjectsV2Command,
   DeleteObjectsCommand,
   HeadObjectCommand,
+  HeadBucketCommand,
+  CreateBucketCommand,
 } from "@aws-sdk/client-s3";
 import { fromIni } from "@aws-sdk/credential-providers";
 import * as fs from "node:fs";
@@ -22,6 +24,8 @@ import type {
   BackupMetadata,
   BackupResult,
   RestoreResult,
+  ValidationResult,
+  CreateBucketResult,
 } from "../../domain/backup.js";
 import { BackupError } from "../../domain/backup.js";
 import type { S3BackupConfig } from "../database/schema.js";
@@ -293,6 +297,115 @@ export class S3BackupProvider implements BackupProvider {
         `Failed to delete old backups: ${error instanceof Error ? error.message : String(error)}`,
         error
       );
+    }
+  }
+
+  async validateCredentials(): Promise<ValidationResult> {
+    try {
+      await this.client.send(
+        new HeadBucketCommand({
+          Bucket: this.bucket,
+        })
+      );
+
+      // If we get here, credentials are valid and bucket exists
+      return {
+        success: true,
+        bucketExists: true,
+      };
+    } catch (error) {
+      const errorName = (error as { name?: string })?.name;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // NotFound means credentials work but bucket doesn't exist
+      if (errorName === "NotFound" || errorName === "NoSuchBucket") {
+        return {
+          success: true,
+          bucketExists: false,
+        };
+      }
+
+      // 403 Forbidden - credentials valid but no access to bucket
+      if (errorName === "Forbidden" || errorMessage.includes("403")) {
+        return {
+          success: false,
+          error: `Access denied to bucket '${this.bucket}'. Check that your credentials have permission to access this bucket.`,
+        };
+      }
+
+      // Invalid credentials
+      if (
+        errorName === "InvalidAccessKeyId" ||
+        errorName === "SignatureDoesNotMatch" ||
+        errorName === "CredentialsProviderError" ||
+        errorMessage.includes("InvalidAccessKeyId") ||
+        errorMessage.includes("SignatureDoesNotMatch")
+      ) {
+        return {
+          success: false,
+          error: "Invalid AWS credentials. Check your access key and secret key.",
+        };
+      }
+
+      // Profile not found
+      if (errorMessage.includes("Profile") && errorMessage.includes("not found")) {
+        return {
+          success: false,
+          error: errorMessage,
+        };
+      }
+
+      // Network or other errors
+      return {
+        success: false,
+        error: `Failed to connect to S3: ${errorMessage}`,
+      };
+    }
+  }
+
+  async createBucket(): Promise<CreateBucketResult> {
+    try {
+      await this.client.send(
+        new CreateBucketCommand({
+          Bucket: this.bucket,
+        })
+      );
+
+      return {
+        success: true,
+      };
+    } catch (error) {
+      const errorName = (error as { name?: string })?.name;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // Bucket already exists (owned by you)
+      if (errorName === "BucketAlreadyOwnedByYou") {
+        return {
+          success: true,
+        };
+      }
+
+      // Bucket exists but owned by someone else
+      if (errorName === "BucketAlreadyExists") {
+        return {
+          success: false,
+          error: `Bucket '${this.bucket}' already exists and is owned by another account. Please choose a different bucket name.`,
+        };
+      }
+
+      // Access denied
+      if (errorName === "AccessDenied" || errorMessage.includes("AccessDenied")) {
+        return {
+          success: false,
+          error: `Permission denied to create bucket '${this.bucket}'. Your credentials may not have s3:CreateBucket permission.`,
+        };
+      }
+
+      // Other errors
+      return {
+        success: false,
+        error: `Failed to create bucket: ${errorMessage}`,
+      };
     }
   }
 }
