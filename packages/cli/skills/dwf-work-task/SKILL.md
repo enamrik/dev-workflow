@@ -137,17 +137,17 @@ BACKLOG tasks back to READY.
 
 ### Status Transitions
 
-| From        | To          | Trigger                                                                   |
-| ----------- | ----------- | ------------------------------------------------------------------------- |
-| PLANNED     | BACKLOG     | `move_issue_to_backlog` (user satisfied with plan, creates GitHub issues) |
-| BACKLOG     | IN_PROGRESS | `load_task_session` (also moves other BACKLOG → READY)                    |
-| READY       | IN_PROGRESS | `load_task_session`                                                       |
-| READY       | BACKLOG     | `pause_issue` (moves all READY tasks)                                     |
-| IN_PROGRESS | IN_PROGRESS | `create_pr` (creates PR, status unchanged - isolated/branch modes)        |
-| IN_PROGRESS | PR_REVIEW   | `submit_for_review` (after PR exists - isolated/branch modes)             |
-| IN_PROGRESS | COMPLETED   | `complete_task` (main mode only)                                          |
-| PR_REVIEW   | COMPLETED   | `complete_task` (after PR merged)                                         |
-| Any         | ABANDONED   | `abandon_task_session`                                                    |
+| From        | To          | Trigger                                                                                                 |
+| ----------- | ----------- | ------------------------------------------------------------------------------------------------------- |
+| PLANNED     | BACKLOG     | `move_issue_to_backlog` (user satisfied with plan, creates GitHub issues unless `skipGitHubSync: true`) |
+| BACKLOG     | IN_PROGRESS | `load_task_session` (also moves other BACKLOG → READY)                                                  |
+| READY       | IN_PROGRESS | `load_task_session`                                                                                     |
+| READY       | BACKLOG     | `pause_issue` (moves all READY tasks)                                                                   |
+| IN_PROGRESS | IN_PROGRESS | `create_pr` (creates PR, status unchanged - isolated/branch modes)                                      |
+| IN_PROGRESS | PR_REVIEW   | `submit_for_review` (after PR exists - isolated/branch modes)                                           |
+| IN_PROGRESS | COMPLETED   | `complete_task` (main mode only)                                                                        |
+| PR_REVIEW   | COMPLETED   | `complete_task` (after PR merged)                                                                       |
+| Any         | ABANDONED   | `abandon_task_session`                                                                                  |
 
 ## Process
 
@@ -167,7 +167,7 @@ BACKLOG tasks back to READY.
    - **If task is PLANNED:** The plan hasn't been approved yet.
      - Ask the user: "This task is still planned. Are you satisfied with the plan? Ready to start working on it?"
      - If user confirms → call `move_issue_to_backlog` to make tasks available
-     - This transitions all PLANNED tasks to BACKLOG and creates GitHub issues
+     - This transitions all PLANNED tasks to BACKLOG and creates GitHub issues (unless user requests `skipGitHubSync: true`)
    - **If task is BACKLOG or READY:** Proceed with starting
 
 4. **Determine execution mode:**

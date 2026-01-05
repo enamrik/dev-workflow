@@ -105,6 +105,7 @@ If no context was passed, make reasonable decisions based on the codebase patter
    - Only after user confirms, call `move_issue_to_backlog` with the issue number
    - This transitions: Issue PLANNED → OPEN, Tasks PLANNED → BACKLOG
    - If GitHub sync is enabled, creates GitHub issues for each task
+   - **To skip GitHub sync:** If user explicitly requests no GitHub issues (e.g., "don't create GitHub issues", "skip GitHub sync"), call `move_issue_to_backlog` with `skipGitHubSync: true`
 
 ## When a Single Task is Enough
 
