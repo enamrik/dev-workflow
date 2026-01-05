@@ -1014,4 +1014,116 @@ backupCmd
     }
   });
 
+// Restore command (top-level for convenience)
+program
+  .command("restore [backup]")
+  .description("Restore workflow database from a backup")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .option("--no-safety-backup", "Skip creating a safety backup of current database")
+  .action(
+    async (backup: string | undefined, options: { yes?: boolean; safetyBackup?: boolean }) => {
+      const service = new BackupConfigService();
+      try {
+        const isConfigured = await service.isConfigured();
+        if (!isConfigured) {
+          console.error("❌ Backup is not configured.");
+          console.error("\nRun: dev-workflow backup configure");
+          process.exit(1);
+        }
+
+        // Get list of backups to show context
+        const backups = await service.listBackups();
+        if (backups.length === 0) {
+          console.error("❌ No backups available to restore.");
+          console.error("\nRun 'dev-workflow backup' to create a backup first.");
+          process.exit(1);
+        }
+
+        // Determine which backup to restore
+        let backupIdentifier: string;
+        if (backup) {
+          backupIdentifier = backup;
+        } else {
+          // Default to most recent
+          backupIdentifier = "1";
+          console.log("No backup specified, will restore most recent backup.\n");
+        }
+
+        // Show backup details and confirm
+        const targetBackup = backupIdentifier === "1" || !backup ? backups[0] : undefined;
+
+        if (targetBackup) {
+          console.log("Backup to restore:");
+          console.log(`  Timestamp: ${targetBackup.timestamp.toISOString()}`);
+          console.log(`  Size: ${(targetBackup.sizeBytes / 1024).toFixed(1)} KB`);
+          if (targetBackup.checksum) {
+            console.log(`  Checksum: ${targetBackup.checksum.slice(0, 16)}...`);
+          }
+        } else {
+          console.log(`Backup identifier: ${backupIdentifier}`);
+        }
+
+        console.log(`\nTarget: ${service.getDatabasePath()}`);
+
+        // Confirmation prompt
+        if (!options.yes) {
+          console.log("\n⚠️  WARNING: This will REPLACE your current workflow database!");
+          console.log(
+            "   All current issues, plans, and tasks will be replaced with the backup.\n"
+          );
+
+          const readline = await import("node:readline");
+          const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+          });
+
+          const answer = await new Promise<string>((resolve) => {
+            rl.question("Type 'restore' to confirm: ", (answer) => {
+              rl.close();
+              resolve(answer);
+            });
+          });
+
+          if (answer.toLowerCase() !== "restore") {
+            console.log("\n❌ Restore cancelled.");
+            process.exit(1);
+          }
+        }
+
+        // Create safety backup if enabled
+        if (options.safetyBackup !== false) {
+          console.log("\n📋 Creating safety backup of current database...");
+          try {
+            const safetyPath = await service.createSafetyBackup();
+            console.log(`✓ Safety backup created: ${safetyPath}`);
+          } catch (error) {
+            console.error(
+              `⚠️  Could not create safety backup: ${error instanceof Error ? error.message : String(error)}`
+            );
+            console.error("   Proceeding with restore anyway...");
+          }
+        }
+
+        // Perform restore
+        console.log("\n📥 Downloading and restoring backup...");
+        const result = await service.restore(backupIdentifier);
+
+        console.log("\n✓ Database restored successfully!");
+        console.log(`  From: ${result.key}`);
+        console.log(`  Timestamp: ${result.timestamp.toISOString()}`);
+        console.log(`  Restored to: ${result.restoredTo}`);
+
+        console.log("\n⚠️  IMPORTANT: Restart Claude Code to reload the restored data.");
+      } catch (error) {
+        console.error(
+          `\n❌ Restore failed: ${error instanceof Error ? error.message : String(error)}`
+        );
+        process.exit(1);
+      } finally {
+        service.close();
+      }
+    }
+  );
+
 program.parse(process.argv);

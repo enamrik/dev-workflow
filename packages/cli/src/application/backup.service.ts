@@ -14,7 +14,10 @@ import {
   type S3BackupConfig,
   type BackupMetadata,
   type BackupResult,
+  type RestoreResult,
 } from "@dev-workflow/core";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 /**
  * Result of a backup configuration operation
@@ -139,6 +142,102 @@ export class BackupConfigService {
   async listBackups(): Promise<BackupMetadata[]> {
     await this.initialize();
     return this.backupService!.listBackups();
+  }
+
+  /**
+   * Restore a backup by key or index
+   *
+   * @param identifier - Backup key, timestamp string, or 1-based index (e.g., "1" for most recent)
+   * @returns Restore result
+   */
+  async restore(identifier: string): Promise<RestoreResult> {
+    await this.initialize();
+
+    const backups = await this.backupService!.listBackups();
+    if (backups.length === 0) {
+      throw new Error("No backups available to restore");
+    }
+
+    // Find the backup by identifier
+    const backup = this.findBackup(backups, identifier);
+    if (!backup) {
+      throw new Error(
+        `Backup not found: ${identifier}\n` +
+          `Use 'dev-workflow backup list' to see available backups.\n` +
+          `You can specify a backup by:\n` +
+          `  - Index (1 = most recent, 2 = second most recent, etc.)\n` +
+          `  - Timestamp (e.g., 2026-01-04T21:30:05.528Z)\n` +
+          `  - Full key (e.g., dev-workflow-backups/workflow-2026-01-04T21-30-05-528Z.db)`
+      );
+    }
+
+    const databasePath = getGlobalDatabasePath();
+    return this.backupService!.restore(backup.key, databasePath);
+  }
+
+  /**
+   * Restore the most recent backup
+   */
+  async restoreLatest(): Promise<RestoreResult> {
+    await this.initialize();
+    const databasePath = getGlobalDatabasePath();
+    return this.backupService!.restoreLatest(databasePath);
+  }
+
+  /**
+   * Create a local safety backup before restore
+   *
+   * @returns Path to the safety backup file
+   */
+  async createSafetyBackup(): Promise<string> {
+    const databasePath = getGlobalDatabasePath();
+
+    if (!fs.existsSync(databasePath)) {
+      throw new Error(`Database not found at ${databasePath}`);
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backupDir = path.dirname(databasePath);
+    const safetyBackupPath = path.join(backupDir, `workflow.db.pre-restore-${timestamp}.bak`);
+
+    fs.copyFileSync(databasePath, safetyBackupPath);
+    return safetyBackupPath;
+  }
+
+  /**
+   * Get the database path
+   */
+  getDatabasePath(): string {
+    return getGlobalDatabasePath();
+  }
+
+  /**
+   * Find a backup by identifier (index, timestamp, or key)
+   */
+  private findBackup(backups: BackupMetadata[], identifier: string): BackupMetadata | undefined {
+    // Try parsing as 1-based index
+    const index = parseInt(identifier, 10);
+    if (!isNaN(index) && index >= 1 && index <= backups.length) {
+      return backups[index - 1];
+    }
+
+    // Try matching by timestamp (ISO string)
+    const byTimestamp = backups.find((b) => b.timestamp.toISOString() === identifier);
+    if (byTimestamp) {
+      return byTimestamp;
+    }
+
+    // Try matching by key
+    const byKey = backups.find((b) => b.key === identifier);
+    if (byKey) {
+      return byKey;
+    }
+
+    // Try partial key match (just the filename part)
+    const byPartialKey = backups.find(
+      (b) => b.key.includes(identifier) || identifier.includes(b.key)
+    );
+    return byPartialKey;
   }
 
   /**
