@@ -243,4 +243,59 @@ describe("SqliteIssueRepository", () => {
       expect(() => repos.issueRepository.restore(created.id)).toThrow("Issue is not deleted");
     });
   });
+
+  describe("sourceGitHubIssueNumber", () => {
+    it("should create an issue with sourceGitHubIssueNumber", () => {
+      const issue = repos.issueRepository.create({
+        title: "Imported Issue",
+        description: "Imported from GitHub",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+        sourceGitHubIssueNumber: 42,
+      });
+
+      expect(issue.sourceGitHubIssueNumber).toBe(42);
+    });
+
+    it("should persist and retrieve sourceGitHubIssueNumber", () => {
+      const created = repos.issueRepository.create({
+        title: "Imported Issue",
+        description: "Imported from GitHub",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+        sourceGitHubIssueNumber: 123,
+      });
+
+      const found = repos.issueRepository.findById(created.id);
+      expect(found?.sourceGitHubIssueNumber).toBe(123);
+    });
+
+    it("should update sourceGitHubIssueNumber", () => {
+      const created = createTestIssue(repos.issueRepository);
+      expect(created.sourceGitHubIssueNumber).toBeUndefined();
+
+      const updated = repos.issueRepository.update(created.id, {
+        sourceGitHubIssueNumber: 456,
+      });
+
+      expect(updated.sourceGitHubIssueNumber).toBe(456);
+    });
+
+    it("should allow sourceGitHubIssueNumber to be undefined", () => {
+      const issue = repos.issueRepository.create({
+        title: "Regular Issue",
+        description: "Not imported",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+      });
+
+      expect(issue.sourceGitHubIssueNumber).toBeUndefined();
+    });
+  });
 });
