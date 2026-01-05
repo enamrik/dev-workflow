@@ -1,7 +1,7 @@
 ---
 name: dwf-manage-issue
 description: "⚠️ For NEW work requests, use 'dwf-work-request' first - it routes here automatically. This skill handles the mechanics: requirements separation, template selection, priority/milestone assignment. Only invoke directly for EDITING existing issues: 'update issue #N', 'add acceptance criteria to #5', 'change priority of #3'. (project)"
-allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:close_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_task_labels, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone, mcp:dev-workflow-tracker:move_issue_to_backlog
+allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:close_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_task_labels, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:import_github_issue
 ---
 
 # Manage Issue Skill
@@ -14,6 +14,12 @@ allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:g
 
 - User mentions: "create issue", "new feature", "report bug", "add enhancement", "add task"
 - User requests tracking: "track this", "make an issue for this"
+
+**Import operations:**
+
+- User mentions: "import #N", "import issue #N", "import GitHub issue"
+- User provides URL: "import https://github.com/owner/repo/issues/42"
+- User wants to work on external issue: "work on GitHub issue #42"
 
 **Update operations:**
 
@@ -127,6 +133,42 @@ When creating the issue, mention that implementation details will be captured in
 4. **Report and chain to planning:**
    - Show what was changed
    - If description or acceptance criteria changed, proceed to re-plan implementation tasks
+
+### For Importing GitHub Issues
+
+Import allows users to bring existing GitHub issues into dev-workflow for structured planning and task execution. The imported issue maintains a link to the source GitHub issue.
+
+1. **Detect import request:**
+   - User says "import #N" or "import issue #N" → import by number
+   - User provides GitHub URL → parse the issue number from URL
+   - User says "work on GitHub issue #N" → treat as import
+
+2. **Call import_github_issue:**
+
+   ```
+   import_github_issue(githubIssueNumber: 42)
+   // OR
+   import_github_issue(githubIssueUrl: "https://github.com/owner/repo/issues/42")
+   ```
+
+   - Fetches the GitHub issue via `gh api`
+   - Creates a dev-workflow issue with title/description from GitHub
+   - Stores `sourceGitHubIssueNumber` to mark it as imported
+   - Does NOT create tasks - planning handles that
+
+3. **Report and chain to planning:**
+   - Show the new issue number (#N)
+   - Display the issue URL
+   - Mention it was imported from GitHub issue #X
+   - Chain to `dwf-plan-issue` just like a new issue
+
+4. **Planning and backlog (handled by other skills):**
+   - Planning works normally - `generate_plan` creates tasks
+   - When `move_issue_to_backlog` is called for an imported issue:
+     - **1 task:** Links task directly to the imported GitHub issue (no new GitHub issue)
+     - **N tasks:** Creates GitHub sub-issues under the imported parent
+
+**Key insight:** The imported GitHub issue represents the "epic" or parent. If implementation requires multiple PRs (deployable units), each task becomes a sub-issue linked to the parent.
 
 ### For Closing Issues
 
@@ -305,4 +347,56 @@ Updated issue #1:
   - [ ] User can sign in with GitHub OAuth
 
 Since requirements changed, let me re-plan the implementation tasks for issue #1.
+```
+
+### Importing a GitHub Issue
+
+**User:** "Import issue #42"
+
+**Response:**
+
+```
+Importing GitHub issue #42...
+
+[Calling import_github_issue(githubIssueNumber: 42)]
+
+Issue imported: #5 - Add dark mode support
+  Type: FEATURE
+  Priority: MEDIUM
+  URL: http://127.0.0.1:3456/projects/{projectId}/issues/5
+  Source: GitHub issue #42
+
+  Description:
+  (Imported from GitHub)
+  Users have requested a dark mode option for the application.
+  This should persist across sessions and respect system preferences.
+
+  Acceptance Criteria:
+  - [ ] Dark mode toggle in settings
+  - [ ] Theme persists across sessions
+  - [ ] Respects system preference by default
+
+Now let me create an implementation plan for issue #5.
+```
+
+The imported issue is linked to GitHub issue #42. When moved to backlog:
+
+- If 1 task: the task links directly to GitHub issue #42
+- If multiple tasks: sub-issues are created under #42
+
+### Importing by URL
+
+**User:** "Import https://github.com/owner/repo/issues/42"
+
+**Response:**
+
+```
+Importing from GitHub URL...
+
+[Calling import_github_issue(githubIssueUrl: "https://github.com/owner/repo/issues/42")]
+
+Issue imported: #6 - Fix memory leak in dashboard
+  Type: BUG
+  Source: GitHub issue #42
+  ...
 ```
