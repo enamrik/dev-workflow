@@ -101,6 +101,7 @@ export {
   prToolDefinitions,
   type PRToolContext,
   handleGetTaskPRStatus,
+  handleCreatePR,
   handleSubmitForReview,
   handleCompleteTask,
 } from "./pr-tools.js";

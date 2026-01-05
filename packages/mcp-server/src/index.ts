@@ -110,6 +110,7 @@ import {
   // PR handlers
   prToolDefinitions,
   handleGetTaskPRStatus,
+  handleCreatePR,
   handleSubmitForReview,
   handleCompleteTask,
   // Types
@@ -357,6 +358,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     // PR tools
     if (name === "get_task_pr_status") {
       return await handleGetTaskPRStatus(prToolContext, a);
+    }
+    if (name === "create_pr") {
+      return await handleCreatePR(prToolContext, a);
     }
     if (name === "submit_for_review") {
       return await handleSubmitForReview(prToolContext, a);
