@@ -337,11 +337,14 @@ export function handlePauseIssue(
  * Moves all BACKLOG tasks to READY, allowing the user to mark an issue
  * as "next up" without starting any specific task.
  * Idempotent: does nothing if no BACKLOG tasks exist.
+ *
+ * If GitHub sync is enabled, syncs each task's status to the GitHub Project
+ * board (moves to "Ready" column).
  */
-export function handleMoveIssueToReady(
+export async function handleMoveIssueToReady(
   ctx: PlanToolContext,
   args: { issueNumber: number }
-): ToolResponse {
+): Promise<ToolResponse> {
   const { issueNumber } = args;
 
   if (!issueNumber) {
@@ -350,6 +353,13 @@ export function handleMoveIssueToReady(
 
   try {
     const result = ctx.planningService.readyIssue(issueNumber);
+
+    // Sync each task's READY status to GitHub (if sync enabled)
+    if (ctx.taskGitHubSyncService && result.tasks.length > 0) {
+      for (const task of result.tasks) {
+        await ctx.taskGitHubSyncService.syncTaskStatus(task.id, "READY");
+      }
+    }
 
     return successResponse({
       message:

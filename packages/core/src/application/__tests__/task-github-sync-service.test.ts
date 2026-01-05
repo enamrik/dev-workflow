@@ -101,6 +101,32 @@ describe("TaskGitHubSyncService", () => {
       });
     });
 
+    it("should move to Ready column when status changes to READY", async () => {
+      // Act
+      await service.syncTaskStatus(testTask.id, "READY");
+
+      // Assert - verify the run method was called to update the project item field
+      const runCalls = mockGitHubCLI.getCallsTo("run");
+
+      // Should have 2 calls: 1 to get project fields, 1 to update the field
+      expect(runCalls.length).toBeGreaterThanOrEqual(2);
+
+      // Find the update mutation call
+      const updateCall = runCalls.find((call) => {
+        const args = call.args[0] as string[];
+        return args.some((arg) => arg.includes("updateProjectV2ItemFieldValue"));
+      });
+
+      expect(updateCall).toBeDefined();
+
+      // Verify the call includes the correct item ID
+      const updateArgs = updateCall!.args[0] as string[];
+      expect(updateArgs.some((arg) => arg.includes("PVTI_test_item_123"))).toBe(true);
+
+      // Verify the call includes the "Ready" option ID
+      expect(updateArgs.some((arg) => arg.includes("opt_ready"))).toBe(true);
+    });
+
     it("should move to In Review column when status changes to PR_REVIEW", async () => {
       // Act
       await service.syncTaskStatus(testTask.id, "PR_REVIEW");
