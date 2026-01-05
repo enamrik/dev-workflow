@@ -22,6 +22,7 @@ import {
   handleDeleteIssue,
   handleUpdateIssue,
   handleCloseIssue,
+  handleImportGitHubIssue,
   type IssueToolContext,
 } from "../../tools/issue-tools.js";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
@@ -271,6 +272,232 @@ describe("Issue Tools Integration", () => {
       // Verify database state
       const issue = ctx.issueRepository.findByNumber(created.issue.number);
       expect(issue!.status).toBe("CLOSED");
+    });
+  });
+
+  describe("handleImportGitHubIssue", () => {
+    it("should import a GitHub issue by number", async () => {
+      // Configure mock to return a GitHub issue
+      const mockCLI = ctx.githubCLI as MockGitHubCLI;
+      mockCLI.setIssues([
+        {
+          number: 42,
+          url: "https://github.com/test/repo/issues/42",
+          nodeId: "I_test42",
+          title: "GitHub Issue Title",
+          body: "GitHub issue body content",
+          state: "OPEN",
+          labels: [],
+        },
+      ]);
+
+      const result = await handleImportGitHubIssue(ctx, {
+        githubIssueNumber: 42,
+      });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.issue.title).toBe("GitHub Issue Title");
+      expect(content.issue.sourceGitHubIssueNumber).toBe(42);
+      expect(content.issue.status).toBe("PLANNED");
+      expect(content.inferred.type).toBe("TASK"); // Default when no labels
+
+      // Verify database state
+      const issue = ctx.issueRepository.findByNumber(content.issue.number);
+      expect(issue).toBeDefined();
+      expect(issue!.sourceGitHubIssueNumber).toBe(42);
+    });
+
+    it("should import a GitHub issue by URL", async () => {
+      const mockCLI = ctx.githubCLI as MockGitHubCLI;
+      mockCLI.setIssues([
+        {
+          number: 123,
+          url: "https://github.com/owner/repo/issues/123",
+          nodeId: "I_test123",
+          title: "URL Import Test",
+          body: "Imported via URL",
+          state: "OPEN",
+          labels: [],
+        },
+      ]);
+
+      const result = await handleImportGitHubIssue(ctx, {
+        githubIssueUrl: "https://github.com/owner/repo/issues/123",
+      });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.issue.title).toBe("URL Import Test");
+      expect(content.issue.sourceGitHubIssueNumber).toBe(123);
+    });
+
+    it("should infer BUG type from labels", async () => {
+      const mockCLI = ctx.githubCLI as MockGitHubCLI;
+      mockCLI.setIssues([
+        {
+          number: 10,
+          url: "https://github.com/test/repo/issues/10",
+          nodeId: "I_bug10",
+          title: "A Bug Report",
+          body: "Bug description",
+          state: "OPEN",
+          labels: ["bug", "documentation"],
+        },
+      ]);
+
+      const result = await handleImportGitHubIssue(ctx, {
+        githubIssueNumber: 10,
+      });
+
+      const content = JSON.parse(result.content[0].text);
+      expect(content.inferred.type).toBe("BUG");
+    });
+
+    it("should infer FEATURE type from labels", async () => {
+      const mockCLI = ctx.githubCLI as MockGitHubCLI;
+      mockCLI.setIssues([
+        {
+          number: 11,
+          url: "https://github.com/test/repo/issues/11",
+          nodeId: "I_feature11",
+          title: "New Feature",
+          body: "Feature description",
+          state: "OPEN",
+          labels: ["type:feature", "frontend"],
+        },
+      ]);
+
+      const result = await handleImportGitHubIssue(ctx, {
+        githubIssueNumber: 11,
+      });
+
+      const content = JSON.parse(result.content[0].text);
+      expect(content.inferred.type).toBe("FEATURE");
+    });
+
+    it("should infer ENHANCEMENT type from labels", async () => {
+      const mockCLI = ctx.githubCLI as MockGitHubCLI;
+      mockCLI.setIssues([
+        {
+          number: 12,
+          url: "https://github.com/test/repo/issues/12",
+          nodeId: "I_enhancement12",
+          title: "Enhancement Request",
+          body: "Improve something",
+          state: "OPEN",
+          labels: ["enhancement"],
+        },
+      ]);
+
+      const result = await handleImportGitHubIssue(ctx, {
+        githubIssueNumber: 12,
+      });
+
+      const content = JSON.parse(result.content[0].text);
+      expect(content.inferred.type).toBe("ENHANCEMENT");
+    });
+
+    it("should infer HIGH priority from labels", async () => {
+      const mockCLI = ctx.githubCLI as MockGitHubCLI;
+      mockCLI.setIssues([
+        {
+          number: 13,
+          url: "https://github.com/test/repo/issues/13",
+          nodeId: "I_high13",
+          title: "High Priority Issue",
+          body: "Urgent",
+          state: "OPEN",
+          labels: ["priority:high"],
+        },
+      ]);
+
+      const result = await handleImportGitHubIssue(ctx, {
+        githubIssueNumber: 13,
+      });
+
+      const content = JSON.parse(result.content[0].text);
+      expect(content.inferred.priority).toBe("HIGH");
+    });
+
+    it("should infer CRITICAL priority from p0 label", async () => {
+      const mockCLI = ctx.githubCLI as MockGitHubCLI;
+      mockCLI.setIssues([
+        {
+          number: 14,
+          url: "https://github.com/test/repo/issues/14",
+          nodeId: "I_critical14",
+          title: "Critical Issue",
+          body: "Emergency",
+          state: "OPEN",
+          labels: ["p0"],
+        },
+      ]);
+
+      const result = await handleImportGitHubIssue(ctx, {
+        githubIssueNumber: 14,
+      });
+
+      const content = JSON.parse(result.content[0].text);
+      expect(content.inferred.priority).toBe("CRITICAL");
+    });
+
+    it("should reject already imported issues", async () => {
+      const mockCLI = ctx.githubCLI as MockGitHubCLI;
+      mockCLI.setIssues([
+        {
+          number: 50,
+          url: "https://github.com/test/repo/issues/50",
+          nodeId: "I_dup50",
+          title: "Duplicate Import Test",
+          body: "Content",
+          state: "OPEN",
+          labels: [],
+        },
+      ]);
+
+      // First import
+      await handleImportGitHubIssue(ctx, { githubIssueNumber: 50 });
+
+      // Try to import again
+      const result = await handleImportGitHubIssue(ctx, { githubIssueNumber: 50 });
+
+      expect(result.isError).toBe(true);
+      const content = JSON.parse(result.content[0].text);
+      expect(content.error).toContain("already imported");
+    });
+
+    it("should reject invalid URL format", async () => {
+      const result = await handleImportGitHubIssue(ctx, {
+        githubIssueUrl: "https://example.com/not-a-github-url",
+      });
+
+      expect(result.isError).toBe(true);
+      const content = JSON.parse(result.content[0].text);
+      expect(content.error).toContain("Invalid GitHub issue URL");
+    });
+
+    it("should handle non-existent GitHub issue", async () => {
+      const mockCLI = ctx.githubCLI as MockGitHubCLI;
+      mockCLI.setIssues([]); // No issues available
+
+      const result = await handleImportGitHubIssue(ctx, {
+        githubIssueNumber: 99999,
+      });
+
+      expect(result.isError).toBe(true);
+      const content = JSON.parse(result.content[0].text);
+      expect(content.error).toContain("not found");
+    });
+
+    it("should require either number or URL", async () => {
+      const result = await handleImportGitHubIssue(ctx, {});
+
+      expect(result.isError).toBe(true);
+      const content = JSON.parse(result.content[0].text);
+      expect(content.error).toContain("Either githubIssueNumber or githubIssueUrl is required");
     });
   });
 });

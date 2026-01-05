@@ -141,6 +141,16 @@ export class MockGitHubCLI implements GitHubCLI {
   }
 
   /**
+   * Set issues for testing (e.g., to simulate pre-existing GitHub issues)
+   */
+  setIssues(issues: GitHubIssueData[]): void {
+    this.issues.clear();
+    for (const issue of issues) {
+      this.issues.set(issue.number, issue);
+    }
+  }
+
+  /**
    * Get a created PR by number
    */
   getCreatedPR(number: number): GitHubPRData | undefined {

@@ -63,6 +63,7 @@ import {
   handleGetProjectStats,
   handleSearchIssues,
   handleGetWorkQueue,
+  handleImportGitHubIssue,
   // Plan handlers
   handleGeneratePlan,
   handleGetPlan,
@@ -236,6 +237,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     }
     if (name === "get_work_queue") {
       return handleGetWorkQueue(issueToolContext);
+    }
+    if (name === "import_github_issue") {
+      return await handleImportGitHubIssue(issueToolContext, a);
     }
 
     // Plan tools
