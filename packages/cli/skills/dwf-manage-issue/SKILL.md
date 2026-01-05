@@ -167,8 +167,9 @@ Import allows users to bring existing GitHub issues into dev-workflow for struct
    - When `move_issue_to_backlog` is called for an imported issue:
      - **1 task:** Links task directly to the imported GitHub issue (no new GitHub issue)
      - **N tasks:** Creates GitHub sub-issues under the imported parent
+     - **With `skipGitHubSync: true`:** No GitHub issues created, tasks only tracked locally
 
-**Key insight:** The imported GitHub issue represents the "epic" or parent. If implementation requires multiple PRs (deployable units), each task becomes a sub-issue linked to the parent.
+**Key insight:** The imported GitHub issue represents the "epic" or parent. If implementation requires multiple PRs (deployable units), each task becomes a sub-issue linked to the parent. Use `skipGitHubSync: true` if you want to track the work locally without creating GitHub sub-issues.
 
 ### For Closing Issues
 
@@ -204,11 +205,12 @@ When an issue has a plan with PLANNED tasks and the user wants to start work:
    - Call `move_issue_to_backlog` with the issue number
    - This transitions: Issue PLANNED → OPEN, Tasks PLANNED → BACKLOG
    - If GitHub sync is enabled, creates GitHub issues for each task
+   - **To skip GitHub sync:** If user explicitly requests no GitHub issues (e.g., "don't create GitHub issues", "skip GitHub sync", "internal only"), call `move_issue_to_backlog` with `skipGitHubSync: true`
 
 3. **Report that work can begin:**
    - Confirm the issue is now OPEN
    - Show how many tasks are now available to work on
-   - If GitHub sync is enabled, mention GitHub issues were created
+   - If GitHub sync is enabled (and not skipped), mention GitHub issues were created
 
 **Do NOT call `move_issue_to_backlog` automatically.** This must always be user-initiated.
 

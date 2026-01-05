@@ -208,6 +208,68 @@ describe("Plan Tools Integration", () => {
       const tasks = ctx.taskRepository.findByPlanId(plan!.id);
       expect(tasks.every((t) => t.status === "BACKLOG")).toBe(true);
     });
+
+    it("should skip GitHub sync when skipGitHubSync is true", async () => {
+      // Create issue and plan
+      const issue = createTestIssue(ctx.issueRepository, { status: "PLANNED" });
+      await handleGeneratePlan(ctx, {
+        issueNumber: issue.number,
+        summary: "Test plan",
+        approach: "Test approach",
+        tasks: [
+          { id: "t1", title: "Task 1", description: "Desc 1" },
+          { id: "t2", title: "Task 2", description: "Desc 2" },
+        ],
+        estimatedComplexity: "LOW",
+      });
+
+      const result = await handleMoveIssueToBacklog(ctx, {
+        issueNumber: issue.number,
+        skipGitHubSync: true,
+      });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.tasksActivated).toBe(2);
+      expect(content.issueStatus).toBe("OPEN");
+      expect(content.githubIssuesCreated).toBe(0);
+      expect(content.githubSyncSkipped).toBe(true);
+      expect(content.message).toContain("GitHub sync skipped");
+
+      // Verify database state - tasks should still transition to BACKLOG
+      const updatedIssue = ctx.issueRepository.findByNumber(issue.number);
+      expect(updatedIssue!.status).toBe("OPEN");
+
+      const plan = ctx.planRepository.findByIssueId(issue.id);
+      const tasks = ctx.taskRepository.findByPlanId(plan!.id);
+      expect(tasks.every((t) => t.status === "BACKLOG")).toBe(true);
+
+      // Tasks should NOT have GitHub sync state
+      expect(tasks.every((t) => !t.githubSync?.githubIssueNumber)).toBe(true);
+    });
+
+    it("should not skip GitHub sync when skipGitHubSync is false (default)", async () => {
+      // Create issue and plan
+      const issue = createTestIssue(ctx.issueRepository, { status: "PLANNED" });
+      await handleGeneratePlan(ctx, {
+        issueNumber: issue.number,
+        summary: "Test plan",
+        approach: "Test approach",
+        tasks: [{ id: "t1", title: "Task 1", description: "Desc 1" }],
+        estimatedComplexity: "LOW",
+      });
+
+      // Call without skipGitHubSync (defaults to false)
+      const result = await handleMoveIssueToBacklog(ctx, {
+        issueNumber: issue.number,
+      });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.tasksActivated).toBe(1);
+      // githubSyncSkipped should be undefined or false when not explicitly skipped
+      expect(content.githubSyncSkipped).toBeFalsy();
+    });
   });
 
   describe("handleMoveIssueToReady", () => {
