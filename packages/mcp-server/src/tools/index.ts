@@ -23,6 +23,7 @@ export {
   handleGetProjectStats,
   handleSearchIssues,
   handleGetWorkQueue,
+  handleImportGitHubIssue,
 } from "./issue-tools.js";
 
 // Plan tools
