@@ -67,33 +67,32 @@ export class InstallService {
 
   async createTrackDirectory(): Promise<void> {
     try {
-      const defaultTemplatesDir = this.resolver.getTemplatesPath();
-      const userTemplatesDir = this.resolver.getUserTemplatesPath();
+      // Create local ./track/ directory structure
+      const localIssueTemplatesDir = this.resolver.getLocalIssueTemplatesPath();
+      const localTaskTemplatesDir = this.resolver.getLocalTaskTemplatesPath();
+      const localLabelsDir = this.resolver.getLocalLabelsPath();
 
-      // Create directory structure
-      await this.fileSystem.mkdir(defaultTemplatesDir, { recursive: true });
-      await this.fileSystem.mkdir(userTemplatesDir, { recursive: true });
+      await this.fileSystem.mkdir(localIssueTemplatesDir, { recursive: true });
+      await this.fileSystem.mkdir(localTaskTemplatesDir, { recursive: true });
+      await this.fileSystem.mkdir(localLabelsDir, { recursive: true });
 
-      // Copy default templates to config directory
-      const templatesSource = path.join(this.packageRoot, "templates/issues");
-      const templates = ["feature.md", "bug.md", "enhancement.md", "task.md"];
+      // Create README for templates
+      const templatesReadme = `# Templates
 
-      for (const template of templates) {
-        await this.fileSystem.copyFile(
-          path.join(templatesSource, template),
-          path.join(defaultTemplatesDir, template)
-        );
-      }
+Custom templates for issues and tasks. These take precedence over global templates.
 
-      // Create README in user templates directory
-      const userTemplatesReadme = `# User Templates
+## Issue Templates (./templates/issues/)
+- Per-type templates: feature.md, bug.md, enhancement.md, task.md
+- Fallback: all.md (used when per-type not found)
 
-This directory is for your custom issue templates.
+## Task Templates (./templates/tasks/)
+- Only all.md is supported for tasks
 
-## How it works
-- Templates here override default templates in the config/issues/templates/ directory
-- If a template with the same filename exists here, it takes precedence
-- Templates must be markdown files with YAML frontmatter
+## Resolution Order
+1. Local per-type (e.g., ./track/templates/issues/feature.md)
+2. Local all.md (./track/templates/issues/all.md)
+3. Global per-type (~/.track/config/templates/issues/feature.md)
+4. Global all.md (~/.track/config/templates/issues/all.md)
 
 ## Frontmatter Format
 \`\`\`yaml
@@ -102,19 +101,29 @@ type: FEATURE | BUG | ENHANCEMENT | TASK
 priority: LOW | MEDIUM | HIGH | CRITICAL
 ---
 \`\`\`
-
-## Template Metadata
-When a template is selected, its frontmatter values will be used as defaults for creating issues:
-- \`type\`: Issue type (FEATURE, BUG, ENHANCEMENT, or TASK)
-- \`priority\`: Issue priority (LOW, MEDIUM, HIGH, or CRITICAL)
-
-These values can still be overridden when creating an issue explicitly.
 `;
 
       await this.fileSystem.writeFile(
-        path.join(userTemplatesDir, "README.md"),
-        userTemplatesReadme
+        path.join(this.resolver.getLocalTrackDirectory(), "templates", "README.md"),
+        templatesReadme
       );
+
+      // Create README for labels
+      const labelsReadme = `# Task Labels
+
+Labels are markdown files that provide contextual guidance for tasks.
+When a task has labels (e.g., \`["db", "api"]\`), the corresponding label
+files (\`db.md\`, \`api.md\`) are loaded and provided as context.
+
+## Creating Labels
+
+Create any \`.md\` file in this directory. The filename (without extension)
+becomes the label name.
+
+Example: \`./track/labels/testing.md\` creates a "testing" label.
+`;
+
+      await this.fileSystem.writeFile(path.join(localLabelsDir, "README.md"), labelsReadme);
     } catch (error) {
       throw new InstallError("Failed to create track directory", error);
     }
@@ -167,7 +176,6 @@ These values can still be overridden when creating an issue explicitly.
       const project = this.getProject();
 
       const dbPath = this.resolver.getDatabasePath();
-      const templatesPath = this.resolver.getTemplatesPath();
       const gitRoot = this.resolver.getGitRoot();
       const cliPath = path.join(this.packageRoot, "dist/index.js");
 
@@ -206,8 +214,6 @@ These values can still be overridden when creating an issue explicitly.
         `DATABASE_PATH=${dbPath}`,
         "--env",
         `PROJECT_ID=${project.id}`,
-        "--env",
-        `TEMPLATES_PATH=${templatesPath}`,
         "--env",
         `GIT_ROOT=${gitRoot}`,
         "--",
@@ -298,46 +304,6 @@ These values can still be overridden when creating an issue explicitly.
     } catch {
       // Don't fail if settings can't be written
       return { configured: false, permissions };
-    }
-  }
-
-  /**
-   * Create default task labels in ~/.track/<project-id>/labels/
-   *
-   * Labels are markdown files that provide contextual guidance for tasks.
-   * When a task has labels, the corresponding label files are loaded
-   * and provided to Claude as context when executing the task.
-   */
-  async createTaskLabels(): Promise<void> {
-    try {
-      const labelsDir = this.resolver.getLabelsPath();
-      await this.fileSystem.mkdir(labelsDir, { recursive: true });
-
-      // Create README
-      const readme = `# Task Labels
-
-Labels are markdown files that provide contextual guidance for tasks.
-When a task has labels (e.g., \`["db", "api"]\`), the corresponding label
-files (\`db.md\`, \`api.md\`) are loaded and provided as context.
-
-## How it works
-
-1. Create a label file: \`.track/labels/my-label.md\`
-2. When generating a plan, tasks are automatically labeled based on matching label names
-3. When starting a task, labels are loaded and provided as guidance
-
-## Creating custom labels
-
-Create any \`.md\` file in this directory. The filename (without extension)
-becomes the label name.
-
-Example: \`.track/labels/testing.md\` creates a "testing" label that can be
-assigned to tasks via the \`labels\` field.
-`;
-
-      await this.fileSystem.writeFile(path.join(labelsDir, "README.md"), readme);
-    } catch (error) {
-      throw new InstallError("Failed to create task labels", error);
     }
   }
 

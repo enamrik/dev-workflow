@@ -379,7 +379,6 @@ export class ArchiveService {
       const trackDirExists = await this.fileSystem.exists(trackDir);
       if (!trackDirExists) {
         await installer.createTrackDirectory();
-        await installer.createTaskLabels();
       }
 
       // Recreate local config with current gitRoot

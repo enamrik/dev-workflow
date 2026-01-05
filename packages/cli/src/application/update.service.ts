@@ -226,7 +226,6 @@ export class UpdateService {
       const project = this.getProject();
 
       const dbPath = this.resolver.getDatabasePath();
-      const templatesPath = this.resolver.getTemplatesPath();
       const gitRoot = this.resolver.getGitRoot();
       const cliPath = path.join(this.packageRoot, "dist/index.js");
 
@@ -265,8 +264,6 @@ export class UpdateService {
         `DATABASE_PATH=${dbPath}`,
         "--env",
         `PROJECT_ID=${project.id}`,
-        "--env",
-        `TEMPLATES_PATH=${templatesPath}`,
         "--env",
         `GIT_ROOT=${gitRoot}`,
         "--",
@@ -314,12 +311,12 @@ export class UpdateService {
   }
 
   /**
-   * Update task labels directory
+   * Update task labels directory (local ./track/labels/)
    * (Creates README if missing)
    */
   async updateTaskLabels(): Promise<void> {
     try {
-      const labelsDir = this.resolver.getLabelsPath();
+      const labelsDir = this.resolver.getLocalLabelsPath();
       const dirExists = await this.fileSystem.exists(labelsDir);
 
       if (!dirExists) {
@@ -336,19 +333,12 @@ Labels are markdown files that provide contextual guidance for tasks.
 When a task has labels (e.g., \`["db", "api"]\`), the corresponding label
 files (\`db.md\`, \`api.md\`) are loaded and provided as context.
 
-## How it works
-
-1. Create a label file: \`.track/labels/my-label.md\`
-2. When generating a plan, tasks are automatically labeled based on matching label names
-3. When starting a task, labels are loaded and provided as guidance
-
-## Creating custom labels
+## Creating Labels
 
 Create any \`.md\` file in this directory. The filename (without extension)
 becomes the label name.
 
-Example: \`.track/labels/testing.md\` creates a "testing" label that can be
-assigned to tasks via the \`labels\` field.
+Example: \`./track/labels/testing.md\` creates a "testing" label.
 `;
         await this.fileSystem.writeFile(readmePath, readme);
       }
@@ -358,74 +348,62 @@ assigned to tasks via the \`labels\` field.
   }
 
   /**
-   * Update templates
-   * (Updates default templates, preserves user templates, ensures user templates directory exists)
+   * Update local templates directory structure (./track/templates/)
+   * Creates issue and task template directories with README if missing.
+   * Templates are resolved at runtime via cascading fallback.
    */
   async updateTemplates(): Promise<void> {
     try {
-      const defaultTemplatesDir = this.resolver.getTemplatesPath();
-      const userTemplatesDir = this.resolver.getUserTemplatesPath();
-      const templatesSource = path.join(this.packageRoot, "templates/issues");
-      const templates = ["feature.md", "bug.md", "enhancement.md", "task.md"];
+      const localIssueTemplatesDir = this.resolver.getLocalIssueTemplatesPath();
+      const localTaskTemplatesDir = this.resolver.getLocalTaskTemplatesPath();
 
-      // Ensure user templates directory exists (for existing installations)
-      const userDirExists = await this.fileSystem.exists(userTemplatesDir);
-      if (!userDirExists) {
-        await this.fileSystem.mkdir(userTemplatesDir, { recursive: true });
+      // Ensure local issue templates directory exists
+      const issueDirExists = await this.fileSystem.exists(localIssueTemplatesDir);
+      if (!issueDirExists) {
+        await this.fileSystem.mkdir(localIssueTemplatesDir, { recursive: true });
+      }
 
-        // Create README in user templates directory
-        const userTemplatesReadme = `# User Templates
+      // Ensure local task templates directory exists
+      const taskDirExists = await this.fileSystem.exists(localTaskTemplatesDir);
+      if (!taskDirExists) {
+        await this.fileSystem.mkdir(localTaskTemplatesDir, { recursive: true });
+      }
 
-This directory is for your custom issue templates.
+      // Create README in templates directory if missing
+      const readmePath = path.join(
+        this.resolver.getLocalTrackDirectory(),
+        "templates",
+        "README.md"
+      );
+      const readmeExists = await this.fileSystem.exists(readmePath);
+      if (!readmeExists) {
+        const readme = `# Templates
 
-## How it works
-- Templates here override default templates in \`.track/config/issues/templates/\`
-- If a template with the same filename exists here, it takes precedence
-- Templates must be markdown files with YAML frontmatter
+Custom templates for issues and tasks. These take precedence over global templates.
 
-## Example
-Copy a default template and customize it:
-\`\`\`bash
-cp .track/config/issues/templates/feature.md .track/issues/templates/my-feature.md
-\`\`\`
+## Issue Templates (./templates/issues/)
+- Per-type templates: feature.md, bug.md, enhancement.md, task.md
+- Fallback: all.md (used when per-type not found)
 
-Then edit \`my-feature.md\` to match your needs.
+## Task Templates (./templates/tasks/)
+- Only all.md is supported for tasks
+
+## Resolution Order
+1. Local per-type (e.g., ./track/templates/issues/feature.md)
+2. Local all.md (./track/templates/issues/all.md)
+3. Global per-type (~/.track/config/templates/issues/feature.md)
+4. Global all.md (~/.track/config/templates/issues/all.md)
 
 ## Frontmatter Format
 \`\`\`yaml
 ---
 type: FEATURE | BUG | ENHANCEMENT | TASK
 priority: LOW | MEDIUM | HIGH | CRITICAL
-labels: [label1, label2]
 ---
 \`\`\`
-
-## Template Metadata
-When a template is selected, its frontmatter values will be used as defaults for creating issues:
-- \`type\`: Issue type (FEATURE, BUG, ENHANCEMENT, or TASK)
-- \`priority\`: Issue priority (LOW, MEDIUM, HIGH, or CRITICAL)
-- \`labels\`: Array of labels to apply to the issue
-
-These values can still be overridden when creating an issue explicitly.
 `;
-
-        await this.fileSystem.writeFile(
-          path.join(userTemplatesDir, "README.md"),
-          userTemplatesReadme
-        );
-
-        console.log("✓ Created user templates directory");
+        await this.fileSystem.writeFile(readmePath, readme);
       }
-
-      // Update default templates (always overwrite to get latest versions)
-      for (const template of templates) {
-        const sourcePath = path.join(templatesSource, template);
-        const destPath = path.join(defaultTemplatesDir, template);
-        await this.fileSystem.copyFile(sourcePath, destPath);
-      }
-
-      console.log("✓ Default templates updated");
-      console.log("  User templates in .track/issues/templates/ are preserved");
     } catch (error) {
       throw new UpdateError("Failed to update templates", error);
     }
