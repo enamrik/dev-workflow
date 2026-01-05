@@ -141,6 +141,13 @@ export const planToolDefinitions: ToolDefinition[] = [
           type: "number",
           description: "Issue number (e.g., 123 for #123)",
         },
+        skipGitHubSync: {
+          type: "boolean",
+          description:
+            "Skip GitHub issue creation even if GitHub sync is enabled. " +
+            "Tasks will still transition to BACKLOG but without creating GitHub issues. " +
+            "Useful for internal issues that don't need GitHub visibility. Default: false.",
+        },
       },
       required: ["issueNumber"],
     },
@@ -378,9 +385,9 @@ export async function handleMoveIssueToReady(
  */
 export async function handleMoveIssueToBacklog(
   ctx: PlanToolContext,
-  args: { issueNumber: number }
+  args: { issueNumber: number; skipGitHubSync?: boolean }
 ): Promise<ToolResponse> {
-  const { issueNumber } = args;
+  const { issueNumber, skipGitHubSync = false } = args;
 
   if (!issueNumber) {
     return errorResponse("issueNumber is required");
@@ -420,8 +427,8 @@ export async function handleMoveIssueToBacklog(
     });
   }
 
-  // Use TaskGitHubSyncService if available
-  if (ctx.taskGitHubSyncService) {
+  // Use TaskGitHubSyncService if available and not skipped
+  if (ctx.taskGitHubSyncService && !skipGitHubSync) {
     try {
       const result = await ctx.taskGitHubSyncService.activatePlannedTasks(issue.id);
 
@@ -456,7 +463,9 @@ export async function handleMoveIssueToBacklog(
       task.id,
       "BACKLOG",
       "system",
-      "Activated via move_issue_to_backlog"
+      skipGitHubSync
+        ? "Activated via move_issue_to_backlog (GitHub sync skipped)"
+        : "Activated via move_issue_to_backlog"
     );
     activatedTasks.push({
       taskId: task.id,
@@ -471,12 +480,13 @@ export async function handleMoveIssueToBacklog(
   }
 
   return successResponse({
-    message: `Issue #${issueNumber} activated. ${activatedTasks.length} task(s) moved to BACKLOG.`,
+    message: `Issue #${issueNumber} activated. ${activatedTasks.length} task(s) moved to BACKLOG.${skipGitHubSync ? " (GitHub sync skipped)" : ""}`,
     issueNumber: issue.number,
     issueStatus: issueTransitioned ? "OPEN" : issue.status,
     issueTransitioned,
     tasksActivated: activatedTasks.length,
-    githubIssuesCreated: 0, // No GitHub sync
+    githubIssuesCreated: 0,
+    githubSyncSkipped: skipGitHubSync,
     tasks: activatedTasks,
   });
 }

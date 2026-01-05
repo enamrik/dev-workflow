@@ -71,7 +71,7 @@ Import requests route to `dwf-manage-issue` with import context. The manage-issu
 | User describes new work to build      | Create new issue → plan → work    |
 | User references existing GitHub issue | Import GitHub issue → plan → work |
 
-**Key difference:** Import preserves the link to the source GitHub issue. When moved to backlog with multiple tasks, GitHub sub-issues are created under the imported parent.
+**Key difference:** Import preserves the link to the source GitHub issue. When moved to backlog with multiple tasks, GitHub sub-issues are created under the imported parent (unless `skipGitHubSync: true` is specified).
 
 ## Exceptions - When NOT to Track
 
