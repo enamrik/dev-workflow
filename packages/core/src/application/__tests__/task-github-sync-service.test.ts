@@ -266,4 +266,167 @@ describe("TaskGitHubSyncService", () => {
       );
     });
   });
+
+  describe("custom column mapping", () => {
+    let testTask: Task;
+
+    beforeEach(() => {
+      // Create issue and plan
+      const issue = repos.issueRepository.create({
+        title: "Test Issue for Mapping",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+        createdBy: "test",
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      testTask = repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Test Task for Mapping",
+        description: "Test description",
+        status: "IN_PROGRESS",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      repos.taskRepository.updateGitHubSync(testTask.id, {
+        githubIssueNumber: 99,
+        githubUrl: "https://github.com/test/repo/issues/99",
+        githubNodeId: "I_test_99",
+        syncStatus: "SYNCED",
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: null,
+        projectItemId: "PVTI_test_item_mapping",
+      });
+    });
+
+    it("should use custom column mapping when configured", async () => {
+      // Arrange - configure custom column mapping with a custom column name
+      // Configure mock to include the custom column in available options
+      mockGitHubCLI.setConfig({
+        projectStatusField: {
+          fieldId: "PVTSSF_test_status",
+          options: [
+            { id: "opt_backlog", name: "Backlog" },
+            { id: "opt_ready", name: "Ready" },
+            { id: "opt_in_progress", name: "In Progress" },
+            { id: "opt_code_review", name: "Code Review" }, // Custom name
+            { id: "opt_done", name: "Done" },
+          ],
+        },
+      });
+
+      repos.projectRepository.update(testProjectId, {
+        githubSync: {
+          enabled: true,
+          projectId: "PVT_test_project_456",
+          labels: {
+            typeLabels: {
+              FEATURE: "feature",
+              BUG: "bug",
+              ENHANCEMENT: "enhancement",
+              TASK: "task",
+            },
+          },
+          columnMapping: {
+            PR_REVIEW: "Code Review", // Custom column name instead of default "In Review"
+          },
+        },
+      });
+
+      // Act
+      await service.syncTaskStatus(testTask.id, "PR_REVIEW");
+
+      // Assert
+      const runCalls = mockGitHubCLI.getCallsTo("run");
+      const updateCall = runCalls.find((call) => {
+        const args = call.args[0] as string[];
+        return args.some((arg) => arg.includes("updateProjectV2ItemFieldValue"));
+      });
+
+      expect(updateCall).toBeDefined();
+      const updateArgs = updateCall!.args[0] as string[];
+      // Should use the custom "Code Review" option ID
+      expect(updateArgs.some((arg) => arg.includes("opt_code_review"))).toBe(true);
+    });
+
+    it("should use default mapping for unmapped statuses when custom mapping is partial", async () => {
+      // Arrange - configure partial custom column mapping
+      repos.projectRepository.update(testProjectId, {
+        githubSync: {
+          enabled: true,
+          projectId: "PVT_test_project_456",
+          labels: {
+            typeLabels: {
+              FEATURE: "feature",
+              BUG: "bug",
+              ENHANCEMENT: "enhancement",
+              TASK: "task",
+            },
+          },
+          columnMapping: {
+            PR_REVIEW: "Code Review", // Only PR_REVIEW is customized
+            // IN_PROGRESS, BACKLOG, READY, etc. use defaults
+          },
+        },
+      });
+
+      // Act - sync to IN_PROGRESS which uses default mapping
+      await service.syncTaskStatus(testTask.id, "READY");
+
+      // Assert
+      const runCalls = mockGitHubCLI.getCallsTo("run");
+      const updateCall = runCalls.find((call) => {
+        const args = call.args[0] as string[];
+        return args.some((arg) => arg.includes("updateProjectV2ItemFieldValue"));
+      });
+
+      expect(updateCall).toBeDefined();
+      const updateArgs = updateCall!.args[0] as string[];
+      // Should use the default "Ready" option ID (not customized)
+      expect(updateArgs.some((arg) => arg.includes("opt_ready"))).toBe(true);
+    });
+
+    it("should record error if custom column name does not exist in project", async () => {
+      // Arrange - configure custom column mapping with non-existent column
+      repos.projectRepository.update(testProjectId, {
+        githubSync: {
+          enabled: true,
+          projectId: "PVT_test_project_456",
+          labels: {
+            typeLabels: {
+              FEATURE: "feature",
+              BUG: "bug",
+              ENHANCEMENT: "enhancement",
+              TASK: "task",
+            },
+          },
+          columnMapping: {
+            PR_REVIEW: "NonExistent Column", // This doesn't exist in mock options
+          },
+        },
+      });
+
+      // Act
+      await service.syncTaskStatus(testTask.id, "PR_REVIEW");
+
+      // Assert - should record error about missing column
+      const updatedTask = repos.taskRepository.findById(testTask.id);
+      expect(updatedTask?.githubSync?.lastSyncError).toContain(
+        'Could not find "NonExistent Column" option'
+      );
+    });
+  });
 });
