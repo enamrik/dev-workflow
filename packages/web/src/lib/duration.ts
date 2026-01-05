@@ -71,6 +71,92 @@ export function getTaskDuration(task: {
 }
 
 /**
+ * Returns the duration (in ms) that a task has been in its current status.
+ * For terminal statuses (COMPLETED, ABANDONED), returns the duration spent in that final status.
+ * Returns null if the relevant timestamp is missing.
+ */
+export function getTimeInCurrentStatus(task: {
+  status: string;
+  createdAt?: string;
+  startedAt?: string;
+  submittedForReviewAt?: string;
+  completedAt?: string;
+  abandonedAt?: string;
+}): number | null {
+  const now = Date.now();
+
+  switch (task.status) {
+    case "BACKLOG":
+    case "READY":
+      // Time since task was created
+      if (!task.createdAt) return null;
+      return now - new Date(task.createdAt).getTime();
+
+    case "IN_PROGRESS":
+      // Time since work started
+      if (!task.startedAt) return null;
+      return now - new Date(task.startedAt).getTime();
+
+    case "PR_REVIEW":
+      // Time since submitted for review
+      if (!task.submittedForReviewAt) return null;
+      return now - new Date(task.submittedForReviewAt).getTime();
+
+    case "COMPLETED":
+    case "ABANDONED":
+      // Terminal statuses - no aging needed
+      return null;
+
+    default:
+      return null;
+  }
+}
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Returns a Tailwind text color class based on how long a task has been in its current status.
+ * Used for visual feedback on stale tasks.
+ *
+ * Thresholds:
+ * - 0-1 days: undefined (keep default styling)
+ * - 1-2 days: text-amber-600 (warning)
+ * - 2-3 days: text-orange-600
+ * - 3+ days: text-red-600
+ *
+ * Returns undefined for terminal statuses (COMPLETED, ABANDONED) or missing timestamps.
+ */
+export function getTaskAgeColorClass(task: {
+  status: string;
+  createdAt?: string;
+  startedAt?: string;
+  submittedForReviewAt?: string;
+  completedAt?: string;
+  abandonedAt?: string;
+}): string | undefined {
+  const timeInStatus = getTimeInCurrentStatus(task);
+
+  if (timeInStatus === null) {
+    return undefined;
+  }
+
+  const daysInStatus = timeInStatus / ONE_DAY_MS;
+
+  if (daysInStatus >= 3) {
+    return "text-red-600";
+  }
+  if (daysInStatus >= 2) {
+    return "text-orange-600";
+  }
+  if (daysInStatus >= 1) {
+    return "text-amber-600";
+  }
+
+  // Fresh task (less than 1 day) - use default styling
+  return undefined;
+}
+
+/**
  * Returns the duration a task has been in its current status.
  * For COMPLETED tasks, returns the cycle time (IN_PROGRESS to COMPLETED).
  *
