@@ -11,6 +11,8 @@ import type {
   BackupMetadata,
   BackupResult,
   RestoreResult,
+  ValidationResult,
+  CreateBucketResult,
 } from "../../domain/backup.js";
 import { BackupError } from "../../domain/backup.js";
 import type { GlobalSettingsRepository } from "../../infrastructure/repositories/global-settings-repository.js";
@@ -21,6 +23,8 @@ class MockBackupProvider implements BackupProvider {
   private backups: BackupMetadata[] = [];
   private shouldFailOnRestore = false;
   private shouldFailOnList = false;
+  private validationResult: ValidationResult = { success: true, bucketExists: true };
+  private createBucketResult: CreateBucketResult = { success: true };
 
   setBackups(backups: BackupMetadata[]): void {
     this.backups = backups;
@@ -32,6 +36,14 @@ class MockBackupProvider implements BackupProvider {
 
   setShouldFailOnList(fail: boolean): void {
     this.shouldFailOnList = fail;
+  }
+
+  setValidationResult(result: ValidationResult): void {
+    this.validationResult = result;
+  }
+
+  setCreateBucketResult(result: CreateBucketResult): void {
+    this.createBucketResult = result;
   }
 
   async backup(_sourcePath: string): Promise<BackupResult> {
@@ -73,6 +85,14 @@ class MockBackupProvider implements BackupProvider {
 
   async enforceRetention(_retentionCount: number): Promise<number> {
     return 0;
+  }
+
+  async validateCredentials(): Promise<ValidationResult> {
+    return this.validationResult;
+  }
+
+  async createBucket(): Promise<CreateBucketResult> {
+    return this.createBucketResult;
   }
 }
 
@@ -256,6 +276,108 @@ describe("BackupService", () => {
       await expect(service.restoreLatest("/tmp/test.db")).rejects.toThrow(
         "No backups available to restore"
       );
+    });
+  });
+
+  describe("validateCredentials (via provider)", () => {
+    it("should return success when credentials are valid and bucket exists", async () => {
+      mockProvider.setValidationResult({
+        success: true,
+        bucketExists: true,
+      });
+
+      const result = await mockProvider.validateCredentials();
+
+      expect(result.success).toBe(true);
+      expect(result.bucketExists).toBe(true);
+      expect(result.error).toBeUndefined();
+    });
+
+    it("should return success with bucketExists false when bucket does not exist", async () => {
+      mockProvider.setValidationResult({
+        success: true,
+        bucketExists: false,
+      });
+
+      const result = await mockProvider.validateCredentials();
+
+      expect(result.success).toBe(true);
+      expect(result.bucketExists).toBe(false);
+    });
+
+    it("should return failure when credentials are invalid", async () => {
+      mockProvider.setValidationResult({
+        success: false,
+        error: "Invalid AWS credentials. Check your access key and secret key.",
+      });
+
+      const result = await mockProvider.validateCredentials();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Invalid AWS credentials");
+    });
+
+    it("should return failure when access is denied", async () => {
+      mockProvider.setValidationResult({
+        success: false,
+        error:
+          "Access denied to bucket 'test-bucket'. Check that your credentials have permission to access this bucket.",
+      });
+
+      const result = await mockProvider.validateCredentials();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Access denied");
+    });
+
+    it("should return failure when profile is not found", async () => {
+      mockProvider.setValidationResult({
+        success: false,
+        error: "Profile 'nonexistent' not found in ~/.aws/credentials",
+      });
+
+      const result = await mockProvider.validateCredentials();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Profile");
+    });
+  });
+
+  describe("createBucket (via provider)", () => {
+    it("should return success when bucket is created", async () => {
+      mockProvider.setCreateBucketResult({
+        success: true,
+      });
+
+      const result = await mockProvider.createBucket();
+
+      expect(result.success).toBe(true);
+      expect(result.error).toBeUndefined();
+    });
+
+    it("should return failure when bucket already exists (owned by another)", async () => {
+      mockProvider.setCreateBucketResult({
+        success: false,
+        error: "Bucket 'test-bucket' already exists and is owned by another account.",
+      });
+
+      const result = await mockProvider.createBucket();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("already exists");
+    });
+
+    it("should return failure when permission is denied", async () => {
+      mockProvider.setCreateBucketResult({
+        success: false,
+        error:
+          "Permission denied to create bucket. Your credentials may not have s3:CreateBucket permission.",
+      });
+
+      const result = await mockProvider.createBucket();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Permission denied");
     });
   });
 });

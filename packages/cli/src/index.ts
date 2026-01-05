@@ -906,6 +906,182 @@ backupCmd
     }
   });
 
+// Interactive backup setup wizard
+backupCmd
+  .command("setup")
+  .description("Interactive setup wizard for backup configuration")
+  .action(async () => {
+    const service = new BackupConfigService();
+    const readline = await import("node:readline");
+
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    const question = (prompt: string): Promise<string> => {
+      return new Promise((resolve) => {
+        rl.question(prompt, (answer) => {
+          resolve(answer.trim());
+        });
+      });
+    };
+
+    try {
+      console.log("\n📦 Backup Setup Wizard\n");
+      console.log("This wizard will help you configure S3-compatible backup storage.");
+      console.log("Your credentials will be validated before saving.\n");
+
+      // Step 1: Auth method selection
+      console.log("Step 1: Authentication Method\n");
+      console.log("  1. AWS Profile (from ~/.aws/credentials)");
+      console.log("  2. Explicit credentials (access key + secret key)");
+      console.log("  3. Default AWS credential chain (env vars, IAM role, etc.)\n");
+
+      let authMethod: "profile" | "explicit" | "default" | null = null;
+      while (!authMethod) {
+        const choice = await question("Select auth method (1-3): ");
+        if (choice === "1") authMethod = "profile";
+        else if (choice === "2") authMethod = "explicit";
+        else if (choice === "3") authMethod = "default";
+        else console.log("Please enter 1, 2, or 3.");
+      }
+
+      // Gather auth-specific details
+      let profile: string | undefined;
+      let accessKeyId: string | undefined;
+      let secretAccessKey: string | undefined;
+
+      if (authMethod === "profile") {
+        profile = await question("\nAWS profile name: ");
+        if (!profile) {
+          console.error("\n❌ Profile name is required.");
+          process.exit(1);
+        }
+      } else if (authMethod === "explicit") {
+        accessKeyId = await question("\nAWS Access Key ID: ");
+        if (!accessKeyId) {
+          console.error("\n❌ Access Key ID is required.");
+          process.exit(1);
+        }
+        secretAccessKey = await question("AWS Secret Access Key: ");
+        if (!secretAccessKey) {
+          console.error("\n❌ Secret Access Key is required.");
+          process.exit(1);
+        }
+      }
+
+      // Step 2: Bucket and region
+      console.log("\nStep 2: S3 Bucket Configuration\n");
+
+      const bucket = await question("S3 bucket name: ");
+      if (!bucket) {
+        console.error("\n❌ Bucket name is required.");
+        process.exit(1);
+      }
+
+      const region = await question("AWS region (e.g., us-east-1): ");
+      if (!region) {
+        console.error("\n❌ Region is required.");
+        process.exit(1);
+      }
+
+      // Optional: custom endpoint for S3-compatible services
+      const endpointInput = await question("Custom endpoint (leave empty for AWS S3): ");
+      const endpoint = endpointInput || undefined;
+
+      // Optional: retention count
+      const retentionInput = await question("Number of backups to keep [20]: ");
+      const retentionCount = retentionInput ? parseInt(retentionInput, 10) : 20;
+      if (isNaN(retentionCount) || retentionCount < 1) {
+        console.error("\n❌ Retention count must be a positive integer.");
+        process.exit(1);
+      }
+
+      // Build the config
+      const s3Config = {
+        bucket,
+        region,
+        profile,
+        accessKeyId,
+        secretAccessKey,
+        endpoint,
+      };
+
+      // Step 3: Validate credentials
+      console.log("\nStep 3: Validating credentials...\n");
+
+      const validation = await service.validateS3Credentials(s3Config);
+
+      if (!validation.success) {
+        console.error(`❌ Validation failed: ${validation.error}`);
+        process.exit(1);
+      }
+
+      console.log("✓ Credentials are valid!\n");
+
+      // Step 4: Check bucket existence
+      if (!validation.bucketExists) {
+        console.log(`⚠️  Bucket '${bucket}' does not exist.\n`);
+
+        const createChoice = await question("Would you like to create it? (y/n): ");
+
+        if (createChoice.toLowerCase() === "y" || createChoice.toLowerCase() === "yes") {
+          console.log("\nCreating bucket...");
+
+          const createResult = await service.createS3Bucket(s3Config);
+
+          if (createResult.success) {
+            console.log(`✓ Bucket '${bucket}' created successfully!\n`);
+          } else {
+            console.error(`\n❌ Failed to create bucket: ${createResult.error}`);
+            console.log("\nYou can create the bucket manually and run this wizard again.");
+            process.exit(1);
+          }
+        } else {
+          console.log("\nPlease create the bucket manually and run this wizard again.");
+          process.exit(0);
+        }
+      } else {
+        console.log(`✓ Bucket '${bucket}' exists and is accessible.\n`);
+      }
+
+      // Step 5: Save configuration
+      console.log("Saving configuration...\n");
+
+      const result = await service.configureS3(s3Config, retentionCount);
+
+      if (result.success) {
+        console.log("✓ Backup configured successfully!\n");
+        console.log("Configuration:");
+        console.log(`  Provider: S3-compatible`);
+        console.log(`  Bucket: ${bucket}`);
+        console.log(`  Region: ${region}`);
+        console.log(`  Retention: ${retentionCount} backups`);
+        if (profile) {
+          console.log(`  AWS Profile: ${profile}`);
+        } else if (accessKeyId) {
+          console.log(`  Auth: Explicit credentials`);
+        } else {
+          console.log(`  Auth: Default AWS credential chain`);
+        }
+        if (endpoint) {
+          console.log(`  Endpoint: ${endpoint}`);
+        }
+        console.log("\nRun 'dev-workflow backup' to create your first backup.");
+      } else {
+        console.error(`❌ ${result.message}`);
+        process.exit(1);
+      }
+    } catch (error) {
+      console.error(`\n❌ Setup failed: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    } finally {
+      rl.close();
+      service.close();
+    }
+  });
+
 // Show backup configuration
 backupCmd
   .command("status")
