@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getTaskTimingMessage } from "@/lib/duration";
+import { getTaskTimingMessage, getTaskAgeColorClass } from "@/lib/duration";
 import { Tooltip } from "@/components/ui";
 import type { Task } from "@/lib/types";
 
@@ -31,11 +31,15 @@ export function TaskTiming({
   const [detailedMessage, setDetailedMessage] = useState<string | null>(() =>
     getTaskTimingMessage(task, "detailed")
   );
+  const [ageColorClass, setAgeColorClass] = useState<string | undefined>(() =>
+    getTaskAgeColorClass(task)
+  );
 
   useEffect(() => {
-    // Update message immediately when task changes
+    // Update message and color immediately when task changes
     setMessage(getTaskTimingMessage(task, variant));
     setDetailedMessage(getTaskTimingMessage(task, "detailed"));
+    setAgeColorClass(getTaskAgeColorClass(task));
 
     // For active statuses (not completed/abandoned), update every minute
     const isActiveStatus = ["BACKLOG", "READY", "IN_PROGRESS", "PR_REVIEW"].includes(task.status);
@@ -43,6 +47,7 @@ export function TaskTiming({
       const interval = setInterval(() => {
         setMessage(getTaskTimingMessage(task, variant));
         setDetailedMessage(getTaskTimingMessage(task, "detailed"));
+        setAgeColorClass(getTaskAgeColorClass(task));
       }, 60000); // Update every minute
 
       return () => clearInterval(interval);
@@ -67,13 +72,16 @@ export function TaskTiming({
   // Default: show tooltip for compact variant, hide for detailed
   const shouldShowTooltip = showTooltip ?? variant === "compact";
 
+  // Use age-based color if available, otherwise fall back to default gray
+  const colorClass = ageColorClass ?? "text-gray-500";
+
   if (!shouldShowTooltip || !detailedMessage) {
-    return <span className={`text-gray-500 ${className}`}>{message}</span>;
+    return <span className={`${colorClass} ${className}`}>{message}</span>;
   }
 
   return (
     <Tooltip content={detailedMessage} side="top">
-      <span className={`text-gray-500 cursor-help ${className}`}>{message}</span>
+      <span className={`${colorClass} cursor-help ${className}`}>{message}</span>
     </Tooltip>
   );
 }
