@@ -229,7 +229,7 @@ describe("Plan Tools Integration", () => {
       await handleMoveIssueToBacklog(ctx, { issueNumber: issue.number });
 
       // Now move to ready (BACKLOG -> READY)
-      const result = handleMoveIssueToReady(ctx, { issueNumber: issue.number });
+      const result = await handleMoveIssueToReady(ctx, { issueNumber: issue.number });
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -254,10 +254,10 @@ describe("Plan Tools Integration", () => {
       });
 
       await handleMoveIssueToBacklog(ctx, { issueNumber: issue.number });
-      handleMoveIssueToReady(ctx, { issueNumber: issue.number });
+      await handleMoveIssueToReady(ctx, { issueNumber: issue.number });
 
       // Call again - should be idempotent (no BACKLOG tasks to move)
-      const result = handleMoveIssueToReady(ctx, { issueNumber: issue.number });
+      const result = await handleMoveIssueToReady(ctx, { issueNumber: issue.number });
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -265,19 +265,19 @@ describe("Plan Tools Integration", () => {
       expect(content.message).toContain("has no BACKLOG tasks");
     });
 
-    it("should return error for non-existent issue", () => {
-      const result = handleMoveIssueToReady(ctx, { issueNumber: 99999 });
+    it("should return error for non-existent issue", async () => {
+      const result = await handleMoveIssueToReady(ctx, { issueNumber: 99999 });
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
       expect(content.error).toContain("Issue not found");
     });
 
-    it("should return error when no plan exists", () => {
+    it("should return error when no plan exists", async () => {
       // Create issue without a plan
       const issue = createTestIssue(ctx.issueRepository);
 
-      const result = handleMoveIssueToReady(ctx, { issueNumber: issue.number });
+      const result = await handleMoveIssueToReady(ctx, { issueNumber: issue.number });
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);

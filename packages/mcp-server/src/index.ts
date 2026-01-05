@@ -249,7 +249,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
       return handlePauseIssue(planToolContext, a);
     }
     if (name === "move_issue_to_ready") {
-      return handleMoveIssueToReady(planToolContext, a);
+      return await handleMoveIssueToReady(planToolContext, a);
     }
     if (name === "move_issue_to_backlog") {
       return await handleMoveIssueToBacklog(planToolContext, a);
