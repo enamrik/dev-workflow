@@ -9,6 +9,7 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
 export interface UrlState {
   project?: string;
   showBacklog?: boolean;
+  showWorkQueue?: boolean;
 }
 
 const STATE_PARAM = "_state";

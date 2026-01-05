@@ -125,6 +125,21 @@ function createWrapper() {
   };
 }
 
+// Helper to open the settings dropdown and click a toggle
+async function clickSettingsToggle(toggleName: RegExp) {
+  // Find and click the settings button (gear icon)
+  const settingsButtons = screen.getAllByRole("button");
+  const settingsButton = settingsButtons.find((btn) => btn.querySelector("svg"));
+  expect(settingsButton).toBeDefined();
+  fireEvent.click(settingsButton!);
+
+  // Find and click the toggle button
+  await waitFor(() => {
+    const toggleButton = screen.getByRole("button", { name: toggleName });
+    fireEvent.click(toggleButton);
+  });
+}
+
 describe("BoardPage showBacklog persistence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -136,28 +151,7 @@ describe("BoardPage showBacklog persistence", () => {
     vi.clearAllMocks();
   });
 
-  it("initializes showBacklog from localStorage", async () => {
-    localStorageMock.getItem.mockImplementation((key: string) => {
-      if (key === URL_STATE_KEY) {
-        return JSON.stringify({ showBacklog: true });
-      }
-      return null;
-    });
-
-    const Wrapper = createWrapper();
-    render(
-      <Wrapper>
-        <BoardPage />
-      </Wrapper>
-    );
-
-    await waitFor(() => {
-      const checkbox = screen.getByRole("checkbox", { name: /show backlog/i });
-      expect(checkbox).toBeChecked();
-    });
-  });
-
-  it("initializes showBacklog as false when localStorage is empty", async () => {
+  it("renders the board page with settings dropdown", async () => {
     localStorageMock.getItem.mockReturnValue(null);
 
     const Wrapper = createWrapper();
@@ -168,12 +162,12 @@ describe("BoardPage showBacklog persistence", () => {
     );
 
     await waitFor(() => {
-      const checkbox = screen.getByRole("checkbox", { name: /show backlog/i });
-      expect(checkbox).not.toBeChecked();
+      expect(screen.getByText("Task Board")).toBeInTheDocument();
+      expect(screen.getByText(/active task/)).toBeInTheDocument();
     });
   });
 
-  it("persists showBacklog to localStorage when toggled on", async () => {
+  it("persists showBacklog to localStorage when toggled on via dropdown", async () => {
     localStorageMock.getItem.mockReturnValue(null);
 
     const Wrapper = createWrapper();
@@ -184,9 +178,10 @@ describe("BoardPage showBacklog persistence", () => {
     );
 
     await waitFor(() => {
-      const checkbox = screen.getByRole("checkbox", { name: /show backlog/i });
-      fireEvent.click(checkbox);
+      expect(screen.getByText("Task Board")).toBeInTheDocument();
     });
+
+    await clickSettingsToggle(/show backlog/i);
 
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
       URL_STATE_KEY,
@@ -210,10 +205,10 @@ describe("BoardPage showBacklog persistence", () => {
     );
 
     await waitFor(() => {
-      const checkbox = screen.getByRole("checkbox", { name: /show backlog/i });
-      expect(checkbox).toBeChecked();
-      fireEvent.click(checkbox);
+      expect(screen.getByText("Task Board")).toBeInTheDocument();
     });
+
+    await clickSettingsToggle(/show backlog/i);
 
     expect(localStorageMock.removeItem).toHaveBeenCalledWith(URL_STATE_KEY);
   });
@@ -229,9 +224,10 @@ describe("BoardPage showBacklog persistence", () => {
     );
 
     await waitFor(() => {
-      const checkbox = screen.getByRole("checkbox", { name: /show backlog/i });
-      fireEvent.click(checkbox);
+      expect(screen.getByText("Task Board")).toBeInTheDocument();
     });
+
+    await clickSettingsToggle(/show backlog/i);
 
     // Should be called with base64 encoded _state param
     expect(mockPush).toHaveBeenCalled();
@@ -256,11 +252,33 @@ describe("BoardPage showBacklog persistence", () => {
     );
 
     await waitFor(() => {
-      const checkbox = screen.getByRole("checkbox", { name: /show backlog/i });
-      expect(checkbox).toBeChecked();
-      fireEvent.click(checkbox);
+      expect(screen.getByText("Task Board")).toBeInTheDocument();
     });
 
+    await clickSettingsToggle(/show backlog/i);
+
     expect(mockPush).toHaveBeenCalledWith("/?");
+  });
+
+  it("can toggle showWorkQueue via dropdown", async () => {
+    localStorageMock.getItem.mockReturnValue(null);
+
+    const Wrapper = createWrapper();
+    render(
+      <Wrapper>
+        <BoardPage />
+      </Wrapper>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Task Board")).toBeInTheDocument();
+    });
+
+    await clickSettingsToggle(/show work queue/i);
+
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      URL_STATE_KEY,
+      JSON.stringify({ showWorkQueue: true })
+    );
   });
 });
