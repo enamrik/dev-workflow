@@ -10,10 +10,12 @@ import {
   getGlobalDatabasePath,
   resolveGlobalTrackDir,
   NodeGitWorktreeService,
+  computeMilestoneStatus,
   type Issue,
   type Plan,
   type Task,
   type Milestone,
+  type MilestoneIssueStats,
   type WorktreeInfo,
   type TaskStatusHistory,
   type TaskExecutionLog,
@@ -566,6 +568,20 @@ export class MultiProjectService {
         const issues = issueRepository.findMany({ milestoneId: milestone.id });
         const closedIssues = issues.filter((i) => i.status === "CLOSED").length;
 
+        // Compute milestone status from issue states
+        const milestoneIssueStats: MilestoneIssueStats = {
+          totalIssues: issues.length,
+          closedIssues,
+          openOrInProgressIssues: issues.filter(
+            (i) => i.status === "OPEN" || i.status === "IN_PROGRESS"
+          ).length,
+        };
+        const computedMilestoneStatus = computeMilestoneStatus(
+          milestone.status,
+          milestoneIssueStats,
+          milestone.endDate
+        );
+
         // Compute status for each issue
         const issuesWithComputedStatus = issues.map((issue) => {
           let computedStatus: ComputedIssueStatus;
@@ -616,7 +632,7 @@ export class MultiProjectService {
             description: milestone.description,
             startDate: milestone.startDate,
             endDate: milestone.endDate,
-            status: milestone.status,
+            status: computedMilestoneStatus,
             projectId: milestone.projectId,
             projectName: project.name,
             projectSlug: project.slug,
