@@ -99,6 +99,46 @@ export interface BackupProvider {
    * @returns Number of backups deleted
    */
   enforceRetention(retentionCount: number): Promise<number>;
+
+  /**
+   * Validate that credentials can connect to the storage provider
+   * Also checks if the bucket exists
+   *
+   * @returns Validation result with bucket existence status
+   */
+  validateCredentials(): Promise<ValidationResult>;
+
+  /**
+   * Create the bucket if it doesn't exist
+   *
+   * @returns Result of the creation attempt
+   */
+  createBucket(): Promise<CreateBucketResult>;
+}
+
+/**
+ * Result of credential validation
+ */
+export interface ValidationResult {
+  /** Whether the validation was successful */
+  success: boolean;
+
+  /** Error message if validation failed */
+  error?: string;
+
+  /** Whether the bucket exists (only set if credentials are valid) */
+  bucketExists?: boolean;
+}
+
+/**
+ * Result of bucket creation
+ */
+export interface CreateBucketResult {
+  /** Whether the bucket was created successfully */
+  success: boolean;
+
+  /** Error message if creation failed */
+  error?: string;
 }
 
 /**
