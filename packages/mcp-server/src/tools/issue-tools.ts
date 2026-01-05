@@ -347,6 +347,27 @@ export const issueToolDefinitions: ToolDefinition[] = [
       properties: {},
     },
   },
+  {
+    name: "import_github_issue",
+    description:
+      "Import an existing GitHub issue into dev-workflow. Creates a dev-workflow issue from the GitHub issue's title and description. " +
+      "Does NOT create tasks - use generate_plan after import. Does NOT modify the original GitHub issue. " +
+      "The imported issue stores sourceGitHubIssueNumber to track the link.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        githubIssueNumber: {
+          type: "number",
+          description: "GitHub issue number to import (e.g., 42)",
+        },
+        githubIssueUrl: {
+          type: "string",
+          description:
+            "GitHub issue URL to import (e.g., https://github.com/owner/repo/issues/42). Alternative to githubIssueNumber.",
+        },
+      },
+    },
+  },
 ];
 
 /**
@@ -1272,5 +1293,212 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
     needsPlanning: issuesNeedingPlanning.length > 0 ? issuesNeedingPlanning : undefined,
     issues: topIssues.map(({ score: _score, ...rest }) => rest),
     tasks: topTasks,
+  });
+}
+
+/**
+ * Parse GitHub issue number from URL
+ *
+ * Supports formats:
+ * - https://github.com/owner/repo/issues/42
+ * - github.com/owner/repo/issues/42
+ *
+ * @returns The issue number or null if URL is invalid
+ */
+function parseGitHubIssueUrl(url: string): number | null {
+  // Match patterns like github.com/owner/repo/issues/42
+  const match = url.match(/github\.com\/[^/]+\/[^/]+\/issues\/(\d+)/);
+  if (!match?.[1]) {
+    return null;
+  }
+  return parseInt(match[1], 10);
+}
+
+/**
+ * Infer issue type from GitHub labels
+ *
+ * Matches common label patterns:
+ * - "bug", "type:bug", "kind:bug" → BUG
+ * - "feature", "type:feature", "kind:feature" → FEATURE
+ * - "enhancement", "type:enhancement", "kind:enhancement" → ENHANCEMENT
+ * - Default → TASK
+ */
+function inferTypeFromLabels(labels: string[]): IssueType {
+  const lowerLabels = labels.map((l) => l.toLowerCase());
+
+  for (const label of lowerLabels) {
+    if (label === "bug" || label.includes(":bug") || label.includes("bug:")) {
+      return "BUG";
+    }
+    if (label === "feature" || label.includes(":feature") || label.includes("feature:")) {
+      return "FEATURE";
+    }
+    if (
+      label === "enhancement" ||
+      label.includes(":enhancement") ||
+      label.includes("enhancement:")
+    ) {
+      return "ENHANCEMENT";
+    }
+  }
+
+  return "TASK";
+}
+
+/**
+ * Infer issue priority from GitHub labels
+ *
+ * Matches common label patterns:
+ * - "priority:critical", "p0", "critical" → CRITICAL
+ * - "priority:high", "p1", "high priority" → HIGH
+ * - "priority:low", "p3", "low priority" → LOW
+ * - Default → MEDIUM
+ */
+function inferPriorityFromLabels(labels: string[]): IssuePriority {
+  const lowerLabels = labels.map((l) => l.toLowerCase());
+
+  for (const label of lowerLabels) {
+    if (
+      label === "critical" ||
+      label === "p0" ||
+      label.includes(":critical") ||
+      label.includes("critical:")
+    ) {
+      return "CRITICAL";
+    }
+    if (
+      label === "high" ||
+      label === "p1" ||
+      label.includes(":high") ||
+      label.includes("high:") ||
+      label === "high priority"
+    ) {
+      return "HIGH";
+    }
+    if (
+      label === "low" ||
+      label === "p3" ||
+      label.includes(":low") ||
+      label.includes("low:") ||
+      label === "low priority"
+    ) {
+      return "LOW";
+    }
+  }
+
+  return "MEDIUM";
+}
+
+/**
+ * Import GitHub issue args
+ */
+interface ImportGitHubIssueArgs {
+  githubIssueNumber?: number;
+  githubIssueUrl?: string;
+}
+
+/**
+ * Handle import_github_issue tool call
+ *
+ * Imports an existing GitHub issue into dev-workflow:
+ * 1. Fetches GitHub issue details via gh CLI
+ * 2. Creates a dev-workflow issue with the same title/description
+ * 3. Infers type and priority from GitHub labels
+ * 4. Stores sourceGitHubIssueNumber to track the link
+ *
+ * Does NOT create tasks - use generate_plan after import.
+ * Does NOT modify the original GitHub issue.
+ */
+export async function handleImportGitHubIssue(
+  ctx: IssueToolContext,
+  args: ImportGitHubIssueArgs
+): Promise<ToolResponse> {
+  const { githubIssueNumber, githubIssueUrl } = args;
+
+  // Resolve issue number from URL or direct parameter
+  let issueNumber: number | null = null;
+
+  if (githubIssueNumber !== undefined) {
+    issueNumber = githubIssueNumber;
+  } else if (githubIssueUrl) {
+    issueNumber = parseGitHubIssueUrl(githubIssueUrl);
+    if (issueNumber === null) {
+      return errorResponse(
+        `Invalid GitHub issue URL: ${githubIssueUrl}. Expected format: https://github.com/owner/repo/issues/42`
+      );
+    }
+  } else {
+    return errorResponse("Either githubIssueNumber or githubIssueUrl is required");
+  }
+
+  // Check if this issue was already imported
+  const existingIssues = ctx.issueRepository.findMany({ includeDeleted: false });
+  const alreadyImported = existingIssues.find((i) => i.sourceGitHubIssueNumber === issueNumber);
+  if (alreadyImported) {
+    return errorResponse(
+      `GitHub issue #${issueNumber} was already imported as dev-workflow issue #${alreadyImported.number}`
+    );
+  }
+
+  // Fetch GitHub issue
+  let githubIssue;
+  try {
+    githubIssue = await ctx.githubCLI.getIssue(issueNumber);
+  } catch (error) {
+    return errorResponse(
+      `Failed to fetch GitHub issue #${issueNumber}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  if (!githubIssue) {
+    return errorResponse(`GitHub issue #${issueNumber} not found`);
+  }
+
+  // Infer type and priority from labels
+  const inferredType = inferTypeFromLabels(githubIssue.labels);
+  const inferredPriority = inferPriorityFromLabels(githubIssue.labels);
+
+  // Create dev-workflow issue
+  const issue = ctx.issueRepository.create({
+    title: githubIssue.title,
+    description: githubIssue.body || `Imported from GitHub issue #${issueNumber}`,
+    acceptanceCriteria: [],
+    type: inferredType,
+    priority: inferredPriority,
+    status: "PLANNED",
+    createdBy: "claude-code",
+    sourceGitHubIssueNumber: issueNumber,
+  });
+
+  // Emit issue:created event for real-time UI updates
+  const eventBus = EventBus.getInstance();
+  eventBus.emit("issue:created", {
+    issueId: issue.id,
+    issueNumber: issue.number,
+  });
+
+  return successResponse({
+    success: true,
+    message: `Imported GitHub issue #${issueNumber} as dev-workflow issue #${issue.number}`,
+    issue: {
+      id: issue.id,
+      number: issue.number,
+      title: issue.title,
+      type: issue.type,
+      priority: issue.priority,
+      status: issue.status,
+      sourceGitHubIssueNumber: issue.sourceGitHubIssueNumber,
+      url: `http://127.0.0.1:3456/projects/${ctx.project.slug}/issues/${issue.number}`,
+    },
+    githubIssue: {
+      number: githubIssue.number,
+      url: githubIssue.url,
+      state: githubIssue.state,
+      labels: githubIssue.labels,
+    },
+    inferred: {
+      type: inferredType,
+      priority: inferredPriority,
+    },
   });
 }
