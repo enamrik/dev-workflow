@@ -241,6 +241,17 @@ git fetch --prune
 
 This removes local references to remote branches that have been deleted on GitHub, keeping the local repository clean of stale `origin/*` references.
 
+### Git Workflow
+
+**IMPORTANT: Never create merge commits on any branch.**
+
+- Always use **squash and merge** (or **rebase and merge**) when merging PRs on GitHub
+- Never use the "Create a merge commit" option
+- Never run `git merge` locally without `--ff-only` flag
+- If you need to update a branch from main, use `git rebase main` instead of `git merge main`
+
+This keeps the commit history linear and clean. Each PR should result in a single commit on main.
+
 ### Pre-Push Validation
 
 **IMPORTANT: Always run `make prep` before pushing to remote (PR or main branch).**
