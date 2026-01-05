@@ -200,10 +200,7 @@ export function Timeline({ milestones, showCompleted = false }: TimelineProps) {
           />
         </div>
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <MilestoneTable
-            milestones={filteredMilestones}
-            onRowClick={setSelectedMilestone}
-          />
+          <MilestoneTable milestones={filteredMilestones} onRowClick={setSelectedMilestone} />
         </div>
       </div>
 
