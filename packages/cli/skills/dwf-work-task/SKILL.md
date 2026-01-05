@@ -212,7 +212,14 @@ After implementing the task, create a PR and optionally submit for review.
    - Common validations: `make test`, `pnpm test`, `pnpm typecheck`, `pnpm lint`
    - If validation fails → fix issues before proceeding
 
-3. **Rebase on latest main:**
+3. **Commit all local changes:**
+   - **IMPORTANT:** You must commit before rebasing - git rebase fails with uncommitted changes
+   - Run `git status` to check for uncommitted changes
+   - Stage all changes related to the task
+   - Create a commit with a clear message describing the work done
+   - Include task context in commit message (e.g., "Implement X for issue #N")
+
+4. **Rebase on latest main:**
    - Fetch and rebase on the latest main branch before pushing
    - Run: `git fetch origin main && git rebase origin/main`
    - If conflicts occur:
@@ -222,11 +229,6 @@ After implementing the task, create a PR and optionally submit for review.
    - After rebase completes, **re-run full validation** (check CLAUDE.md, package.json scripts, or Makefile for the project's validation commands)
    - If validation fails after conflict resolution, fix the issues before proceeding
    - **Why:** Ensures your PR is up-to-date with main, reduces merge conflicts, and catches integration issues early
-
-4. **Create git commit:**
-   - Stage all changes related to the task
-   - Create a commit with a clear message describing the work done
-   - Include task context in commit message (e.g., "Implement X for issue #N")
 
 5. **Create the PR:**
    - Call `create_pr` with task ID
@@ -523,13 +525,13 @@ Running validation...
   - pnpm typecheck: PASSED
   - pnpm test: PASSED
 
+Committing changes...
+  [issue-5/task-1-add-oauth abc1234] Add OAuth2 authentication with Google
+
 Rebasing on latest main...
   - git fetch origin main
   - git rebase origin/main
   - No conflicts, rebase successful
-
-Creating git commit...
-  [issue-5/task-1-add-oauth abc1234] Add OAuth2 authentication with Google
 
 Creating PR...
 
