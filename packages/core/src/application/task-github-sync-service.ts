@@ -17,9 +17,10 @@ import type { Issue, IssueRepository } from "../domain/issue.js";
 import type { PlanRepository } from "../domain/plan.js";
 import type { GitHubSyncState } from "../domain/github.js";
 import type { GitHubCLI } from "../infrastructure/github/github-cli.js";
-import type {
-  GitHubIssueSyncConfig,
-  GitHubLabelsConfig,
+import {
+  DEFAULT_COLUMN_MAPPING,
+  type GitHubIssueSyncConfig,
+  type GitHubLabelsConfig,
 } from "../infrastructure/database/schema.js";
 import type { ProjectRepository } from "../domain/project.js";
 
@@ -431,22 +432,19 @@ export class TaskGitHubSyncService {
    * Move a project item to the appropriate column based on task status
    *
    * Uses GitHub Projects v2 GraphQL API to update the Status field.
+   * Column names are configurable via project settings (githubSync.columnMapping).
    */
   private async moveToColumn(
     projectItemId: string,
     projectId: string,
     status: TaskStatus
   ): Promise<{ success: boolean; error?: string }> {
-    // Map task status to GitHub Project column name
-    // These are the standard columns in GitHub's Kanban template
+    // Get configured column mapping (with defaults for any missing statuses)
+    const config = this.getConfig();
+    const configuredMapping = config?.columnMapping ?? {};
     const columnMapping: Record<TaskStatus, string> = {
-      PLANNED: "Backlog", // Shouldn't happen, but default to Backlog
-      BACKLOG: "Backlog",
-      READY: "Ready",
-      IN_PROGRESS: "In Progress",
-      PR_REVIEW: "In Review",
-      COMPLETED: "Done",
-      ABANDONED: "Done",
+      ...DEFAULT_COLUMN_MAPPING,
+      ...configuredMapping,
     };
 
     const columnName = columnMapping[status];

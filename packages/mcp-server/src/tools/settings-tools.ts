@@ -6,10 +6,12 @@
  */
 
 import {
+  DEFAULT_COLUMN_MAPPING,
   type GitHubCLI,
   type GitHubIssueSyncConfig,
   type Project,
   type ProjectRepository,
+  type StatusColumnMapping,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -41,12 +43,19 @@ export const settingsToolDefinitions: ToolDefinition[] = [
       properties: {
         action: {
           type: "string",
-          enum: ["get_settings", "enable_github", "disable_github", "configure_github"],
+          enum: [
+            "get_settings",
+            "enable_github",
+            "disable_github",
+            "configure_github",
+            "configure_column_mapping",
+          ],
           description:
             "The settings action to perform: get_settings returns current config, " +
             "enable_github enables GitHub issue sync with validation, " +
             "disable_github disables issue sync, " +
-            "configure_github updates labels/projectId config",
+            "configure_github updates labels/projectId config, " +
+            "configure_column_mapping updates status-to-column mapping for GitHub Projects",
         },
         github: {
           type: "object",
@@ -76,8 +85,31 @@ export const settingsToolDefinitions: ToolDefinition[] = [
               },
               description: "Label configuration for GitHub issues",
             },
+            columnMapping: {
+              type: "object",
+              properties: {
+                PLANNED: { type: "string" },
+                BACKLOG: { type: "string" },
+                READY: { type: "string" },
+                IN_PROGRESS: { type: "string" },
+                PR_REVIEW: { type: "string" },
+                COMPLETED: { type: "string" },
+                ABANDONED: { type: "string" },
+              },
+              description:
+                "Maps task statuses to GitHub Project column names. " +
+                "Only specify the statuses you want to override. " +
+                "Default: BACKLOG→Backlog, READY→Ready, IN_PROGRESS→In Progress, " +
+                "PR_REVIEW→In Review, COMPLETED→Done, ABANDONED→Done",
+            },
           },
-          description: "GitHub configuration options (projectId and labels)",
+          description: "GitHub configuration options (projectId, labels, columnMapping)",
+        },
+        resetColumnMapping: {
+          type: "boolean",
+          description:
+            "For configure_column_mapping action: reset column mapping to defaults. " +
+            "If true, ignores columnMapping parameter and resets to default values.",
         },
       },
       required: ["action"],
@@ -102,11 +134,18 @@ export interface SettingsToolContext {
  * Arguments for update_settings tool
  */
 interface UpdateSettingsArgs {
-  action: "get_settings" | "enable_github" | "disable_github" | "configure_github";
+  action:
+    | "get_settings"
+    | "enable_github"
+    | "disable_github"
+    | "configure_github"
+    | "configure_column_mapping";
   github?: {
     projectId?: string;
     labels?: Partial<GitHubLabels>;
+    columnMapping?: Partial<StatusColumnMapping>;
   };
+  resetColumnMapping?: boolean;
 }
 
 /**
@@ -118,7 +157,7 @@ export async function handleUpdateSettings(
   ctx: SettingsToolContext,
   args: UpdateSettingsArgs
 ): Promise<ToolResponse> {
-  const { action, github } = args;
+  const { action, github, resetColumnMapping } = args;
 
   switch (action) {
     case "get_settings":
@@ -132,6 +171,9 @@ export async function handleUpdateSettings(
 
     case "configure_github":
       return handleConfigureGitHub(ctx, github);
+
+    case "configure_column_mapping":
+      return handleConfigureColumnMapping(ctx, github?.columnMapping, resetColumnMapping);
 
     default:
       return errorResponse(`Unknown action: ${action}`);
@@ -154,12 +196,29 @@ async function handleGetSettings(ctx: SettingsToolContext): Promise<ToolResponse
 
     const isGitHubAuthenticated = await ctx.githubCLI.checkAuth();
 
+    // Build effective column mapping (defaults + any custom overrides)
+    const effectiveColumnMapping = project.githubSync
+      ? {
+          ...DEFAULT_COLUMN_MAPPING,
+          ...(project.githubSync.columnMapping ?? {}),
+        }
+      : null;
+
     return successResponse({
       projectId: project.id,
       projectName: project.name,
       gitRoot: ctx.gitRoot,
       gitRootHash: project.gitRootHash,
-      github: project.githubSync ? { syncIssues: project.githubSync } : null,
+      github: project.githubSync
+        ? {
+            syncIssues: project.githubSync,
+            columnMapping: {
+              effective: effectiveColumnMapping,
+              custom: project.githubSync.columnMapping,
+              isDefault: !project.githubSync.columnMapping,
+            },
+          }
+        : null,
       githubCLI: {
         authenticated: isGitHubAuthenticated,
       },
@@ -349,6 +408,96 @@ async function handleConfigureGitHub(
       success: true,
       message: "GitHub issue sync configuration updated",
       config: { syncIssues: updatedConfig },
+    });
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Configure status-to-column mapping for GitHub Projects
+ *
+ * Allows teams to customize which GitHub Project columns correspond to each
+ * task status. For example, teams might use different column names than
+ * our defaults ("In Review" vs "PR Review", "Backlog" vs "To Do", etc.)
+ */
+async function handleConfigureColumnMapping(
+  ctx: SettingsToolContext,
+  columnMapping?: Partial<StatusColumnMapping>,
+  resetColumnMapping?: boolean
+): Promise<ToolResponse> {
+  try {
+    // Re-fetch project from database to get latest config
+    const project = ctx.projectRepository.findById(ctx.project.id);
+    if (!project) {
+      return errorResponse(`Project not found: ${ctx.project.id}`);
+    }
+
+    const currentSync = project.githubSync;
+
+    if (!currentSync) {
+      return errorResponse("GitHub issue sync is not enabled. Use enable_github action first.");
+    }
+
+    // Handle reset to defaults
+    if (resetColumnMapping) {
+      const updatedConfig: GitHubIssueSyncConfig = {
+        ...currentSync,
+        columnMapping: undefined, // Remove custom mapping, will use defaults
+      };
+
+      ctx.projectRepository.update(project.id, { githubSync: updatedConfig });
+
+      return successResponse({
+        success: true,
+        message: "Column mapping reset to defaults",
+        columnMapping: DEFAULT_COLUMN_MAPPING,
+        isDefault: true,
+      });
+    }
+
+    // Validate that at least some mapping is provided
+    if (!columnMapping || Object.keys(columnMapping).length === 0) {
+      // Return current mapping
+      const effectiveMapping = {
+        ...DEFAULT_COLUMN_MAPPING,
+        ...(currentSync.columnMapping ?? {}),
+      };
+
+      return successResponse({
+        success: true,
+        message: "Current column mapping",
+        columnMapping: effectiveMapping,
+        customMapping: currentSync.columnMapping,
+        isDefault: !currentSync.columnMapping,
+      });
+    }
+
+    // Merge with existing custom mapping (preserve any previously set values)
+    const mergedMapping: StatusColumnMapping = {
+      ...(currentSync.columnMapping ?? {}),
+      ...columnMapping,
+    };
+
+    const updatedConfig: GitHubIssueSyncConfig = {
+      ...currentSync,
+      columnMapping: mergedMapping,
+    };
+
+    ctx.projectRepository.update(project.id, { githubSync: updatedConfig });
+
+    // Show the effective mapping (defaults + custom)
+    const effectiveMapping = {
+      ...DEFAULT_COLUMN_MAPPING,
+      ...mergedMapping,
+    };
+
+    return successResponse({
+      success: true,
+      message: "Column mapping updated",
+      columnMapping: effectiveMapping,
+      customMapping: mergedMapping,
+      isDefault: false,
     });
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));
