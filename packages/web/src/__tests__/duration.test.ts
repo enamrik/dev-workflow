@@ -1,5 +1,11 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { formatDuration, getTaskDuration, getTaskTimingMessage } from "../lib/duration";
+import {
+  formatDuration,
+  getTaskDuration,
+  getTaskTimingMessage,
+  getTimeInCurrentStatus,
+  getTaskAgeColorClass,
+} from "../lib/duration";
 
 describe("formatDuration", () => {
   it("returns '<1m' for durations less than a minute", () => {
@@ -202,5 +208,151 @@ describe("getTaskTimingMessage", () => {
       };
       expect(getTaskTimingMessage(task, "detailed")).toBe("Abandoned: 45m");
     });
+  });
+});
+
+describe("getTimeInCurrentStatus", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2024-01-15T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns time since creation for BACKLOG tasks", () => {
+    const task = {
+      status: "BACKLOG",
+      createdAt: "2024-01-15T10:00:00Z",
+    };
+    expect(getTimeInCurrentStatus(task)).toBe(7200000); // 2 hours
+  });
+
+  it("returns time since creation for READY tasks", () => {
+    const task = {
+      status: "READY",
+      createdAt: "2024-01-14T12:00:00Z",
+    };
+    expect(getTimeInCurrentStatus(task)).toBe(86400000); // 1 day
+  });
+
+  it("returns time since started for IN_PROGRESS tasks", () => {
+    const task = {
+      status: "IN_PROGRESS",
+      startedAt: "2024-01-15T10:00:00Z",
+    };
+    expect(getTimeInCurrentStatus(task)).toBe(7200000); // 2 hours
+  });
+
+  it("returns time since submitted for PR_REVIEW tasks", () => {
+    const task = {
+      status: "PR_REVIEW",
+      submittedForReviewAt: "2024-01-15T11:00:00Z",
+    };
+    expect(getTimeInCurrentStatus(task)).toBe(3600000); // 1 hour
+  });
+
+  it("returns null for COMPLETED tasks", () => {
+    const task = {
+      status: "COMPLETED",
+      startedAt: "2024-01-15T10:00:00Z",
+      completedAt: "2024-01-15T11:00:00Z",
+    };
+    expect(getTimeInCurrentStatus(task)).toBeNull();
+  });
+
+  it("returns null for ABANDONED tasks", () => {
+    const task = {
+      status: "ABANDONED",
+      startedAt: "2024-01-15T10:00:00Z",
+      abandonedAt: "2024-01-15T11:00:00Z",
+    };
+    expect(getTimeInCurrentStatus(task)).toBeNull();
+  });
+
+  it("returns null when required timestamp is missing", () => {
+    expect(getTimeInCurrentStatus({ status: "BACKLOG" })).toBeNull();
+    expect(getTimeInCurrentStatus({ status: "IN_PROGRESS" })).toBeNull();
+    expect(getTimeInCurrentStatus({ status: "PR_REVIEW" })).toBeNull();
+  });
+});
+
+describe("getTaskAgeColorClass", () => {
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2024-01-15T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns undefined for fresh tasks (less than 1 day)", () => {
+    const task = {
+      status: "BACKLOG",
+      createdAt: "2024-01-15T10:00:00Z", // 2 hours ago
+    };
+    expect(getTaskAgeColorClass(task)).toBeUndefined();
+  });
+
+  it("returns amber for tasks 1-2 days old", () => {
+    const task = {
+      status: "BACKLOG",
+      createdAt: new Date(Date.now() - ONE_DAY_MS - 3600000).toISOString(), // 1 day + 1 hour ago
+    };
+    expect(getTaskAgeColorClass(task)).toBe("text-amber-600");
+  });
+
+  it("returns orange for tasks 2-3 days old", () => {
+    const task = {
+      status: "BACKLOG",
+      createdAt: new Date(Date.now() - 2 * ONE_DAY_MS - 3600000).toISOString(), // 2 days + 1 hour ago
+    };
+    expect(getTaskAgeColorClass(task)).toBe("text-orange-600");
+  });
+
+  it("returns red for tasks 3+ days old", () => {
+    const task = {
+      status: "BACKLOG",
+      createdAt: new Date(Date.now() - 3 * ONE_DAY_MS - 3600000).toISOString(), // 3 days + 1 hour ago
+    };
+    expect(getTaskAgeColorClass(task)).toBe("text-red-600");
+  });
+
+  it("returns undefined for COMPLETED tasks", () => {
+    const task = {
+      status: "COMPLETED",
+      startedAt: "2024-01-10T10:00:00Z",
+      completedAt: "2024-01-15T10:00:00Z",
+    };
+    expect(getTaskAgeColorClass(task)).toBeUndefined();
+  });
+
+  it("returns undefined for ABANDONED tasks", () => {
+    const task = {
+      status: "ABANDONED",
+      startedAt: "2024-01-10T10:00:00Z",
+      abandonedAt: "2024-01-15T10:00:00Z",
+    };
+    expect(getTaskAgeColorClass(task)).toBeUndefined();
+  });
+
+  it("uses startedAt for IN_PROGRESS tasks", () => {
+    const task = {
+      status: "IN_PROGRESS",
+      startedAt: new Date(Date.now() - 2 * ONE_DAY_MS - 3600000).toISOString(), // 2 days + 1 hour ago
+    };
+    expect(getTaskAgeColorClass(task)).toBe("text-orange-600");
+  });
+
+  it("uses submittedForReviewAt for PR_REVIEW tasks", () => {
+    const task = {
+      status: "PR_REVIEW",
+      submittedForReviewAt: new Date(Date.now() - 3 * ONE_DAY_MS - 3600000).toISOString(), // 3 days + 1 hour ago
+    };
+    expect(getTaskAgeColorClass(task)).toBe("text-red-600");
   });
 });
