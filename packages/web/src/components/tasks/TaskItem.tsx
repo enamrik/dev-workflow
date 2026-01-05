@@ -70,6 +70,7 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
+            <span className="text-gray-500 font-medium">Task {task.number}:</span>
             <span className="font-medium text-gray-800">{task.title}</span>
           </div>
 
