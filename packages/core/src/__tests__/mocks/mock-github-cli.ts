@@ -368,6 +368,12 @@ export class MockGitHubCLI implements GitHubCLI {
     return null;
   }
 
+  async linkSubIssue(parentIssueNumber: number, childIssueId: number): Promise<void> {
+    this.recordCall("linkSubIssue", [parentIssueNumber, childIssueId]);
+    this.checkError("linkSubIssue");
+    // No-op for mock - just record the call
+  }
+
   async run(args: string[]): Promise<GitHubCLIResult> {
     this.recordCall("run", [args]);
     this.checkError("run");
@@ -423,6 +429,20 @@ export class MockGitHubCLI implements GitHubCLI {
           exitCode: 0,
         };
       }
+    }
+
+    // Check if this is a REST API call to get issue ID
+    // Format: repos/{owner}/{repo}/issues/{number} with --jq .id
+    const issueApiMatch = args[0]?.match(/repos\/\{owner\}\/\{repo\}\/issues\/(\d+)/);
+    if (issueApiMatch && args.includes("--jq") && args.includes(".id")) {
+      const issueNumber = parseInt(issueApiMatch[1], 10);
+      // Return a mock numeric ID based on the issue number
+      return {
+        success: true,
+        stdout: String(1000000 + issueNumber), // Mock ID format: 1000000 + issue number
+        stderr: "",
+        exitCode: 0,
+      };
     }
 
     // Default response for other commands
