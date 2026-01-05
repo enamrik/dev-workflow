@@ -10,6 +10,7 @@ export interface UrlState {
   project?: string;
   showBacklog?: boolean;
   showWorkQueue?: boolean;
+  showCompleted?: boolean;
 }
 
 const STATE_PARAM = "_state";
