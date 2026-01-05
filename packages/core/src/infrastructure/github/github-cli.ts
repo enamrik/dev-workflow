@@ -161,6 +161,17 @@ export interface GitHubCLI {
   findPRByBranch(headBranch: string): Promise<GitHubPRData | null>;
 
   /**
+   * Link an existing issue as a sub-issue of a parent issue
+   *
+   * Uses GitHub's sub-issues REST API:
+   * POST /repos/{owner}/{repo}/issues/{parent}/sub_issues
+   *
+   * @param parentIssueNumber - The parent issue number
+   * @param childIssueId - The numeric ID (not issue number) of the child issue
+   */
+  linkSubIssue(parentIssueNumber: number, childIssueId: number): Promise<void>;
+
+  /**
    * Run arbitrary gh CLI command
    */
   run(args: string[]): Promise<GitHubCLIResult>;
@@ -571,6 +582,28 @@ export class NodeGitHubCLI implements GitHubCLI {
     }
 
     return this.mapPRData(prs[0]);
+  }
+
+  async linkSubIssue(parentIssueNumber: number, childIssueId: number): Promise<void> {
+    // Use gh api to call the sub-issues REST endpoint
+    // POST /repos/{owner}/{repo}/issues/{issue_number}/sub_issues
+    // Body: {"sub_issue_id": <numeric_id>}
+    const result = await this.run([
+      "api",
+      `repos/{owner}/{repo}/issues/${parentIssueNumber}/sub_issues`,
+      "-X",
+      "POST",
+      "-f",
+      `sub_issue_id=${childIssueId}`,
+    ]);
+
+    if (!result.success) {
+      throw new GitHubCLIError(
+        `Failed to link sub-issue: ${result.stderr}`,
+        result.exitCode,
+        result.stderr
+      );
+    }
   }
 
   async run(args: string[]): Promise<GitHubCLIResult> {

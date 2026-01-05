@@ -96,6 +96,10 @@ export class TaskGitHubSyncService {
    * 1. Creates a GitHub issue (if sync enabled)
    * 2. Transitions task from PLANNED → BACKLOG
    *
+   * For imported issues (has sourceGitHubIssueNumber):
+   * - 1 task: Link task directly to the parent GitHub issue (no new issue created)
+   * - N tasks: Create GitHub sub-issues under the parent, link each task
+   *
    * If the issue itself is PLANNED, it's transitioned to OPEN.
    *
    * Uses GitHub-first pattern: create on GitHub before updating local.
@@ -144,12 +148,22 @@ export class TaskGitHubSyncService {
     const config = this.getConfig();
     const results: TaskActivationResult[] = [];
 
+    // Check if this is an imported issue
+    const isImportedIssue = issue.sourceGitHubIssueNumber !== undefined;
+
     // Process each PLANNED task
     for (const task of plannedTasks) {
       try {
         if (config?.enabled) {
-          // GitHub-first: create issue on GitHub before local update
-          const syncState = await this.createGitHubIssueForTask(issue, task);
+          let syncState: GitHubSyncState;
+
+          if (isImportedIssue) {
+            // Imported issue - use special handling
+            syncState = await this.handleImportedIssueTask(issue, task, plannedTasks.length);
+          } else {
+            // Normal issue - create new GitHub issue
+            syncState = await this.createGitHubIssueForTask(issue, task);
+          }
 
           // Update task with GitHub sync state
           this.taskRepository.updateGitHubSync(task.id, syncState);
@@ -195,6 +209,140 @@ export class TaskGitHubSyncService {
       tasksActivated: results,
       issueTransitioned,
     };
+  }
+
+  /**
+   * Handle task activation for imported issues
+   *
+   * For imported issues (has sourceGitHubIssueNumber):
+   * - 1 task: Link task directly to the parent GitHub issue (no new issue created)
+   * - N tasks: Create a new GitHub issue as a sub-issue of the parent
+   *
+   * @param issue - The parent dev-workflow issue (imported)
+   * @param task - The task to activate
+   * @param totalTaskCount - Total number of tasks being activated
+   * @returns The GitHub sync state for the task
+   */
+  private async handleImportedIssueTask(
+    issue: Issue,
+    task: Task,
+    totalTaskCount: number
+  ): Promise<GitHubSyncState> {
+    const parentIssueNumber = issue.sourceGitHubIssueNumber!;
+
+    if (totalTaskCount === 1) {
+      // 1 task case: Link directly to the parent GitHub issue
+      return await this.linkTaskToParentIssue(parentIssueNumber, issue);
+    } else {
+      // N tasks case: Create a sub-issue under the parent
+      return await this.createSubIssueForTask(parentIssueNumber, issue, task);
+    }
+  }
+
+  /**
+   * Link a task directly to an existing GitHub issue (for 1-task imported issues)
+   *
+   * @param parentIssueNumber - The GitHub issue number to link to
+   * @param _issue - The dev-workflow issue for label context (reserved for future use)
+   * @returns The GitHub sync state pointing to the parent issue
+   */
+  private async linkTaskToParentIssue(
+    parentIssueNumber: number,
+    _issue: Issue
+  ): Promise<GitHubSyncState> {
+    // Fetch the parent GitHub issue to get its nodeId and URL
+    const parentIssue = await this.githubCLI.getIssue(parentIssueNumber);
+    if (!parentIssue) {
+      throw new TaskGitHubSyncError(`Parent GitHub issue #${parentIssueNumber} not found`);
+    }
+
+    const config = this.getConfig()!;
+
+    // Add to project if configured
+    let projectItemId: string | null = null;
+    if (config.projectId) {
+      try {
+        projectItemId = await this.githubCLI.addToProject(config.projectId, parentIssue.nodeId);
+
+        if (!projectItemId) {
+          throw new TaskGitHubSyncError(
+            `Project association returned empty item ID for project ${config.projectId}`
+          );
+        }
+
+        // Move to Backlog column
+        await this.moveToColumn(projectItemId, config.projectId, "BACKLOG");
+      } catch (error) {
+        if (error instanceof TaskGitHubSyncError) {
+          throw error;
+        }
+        throw new TaskGitHubSyncError(
+          `Failed to add parent issue to GitHub Project ${config.projectId}`,
+          error
+        );
+      }
+    }
+
+    return {
+      githubIssueNumber: parentIssue.number,
+      githubUrl: parentIssue.url,
+      githubNodeId: parentIssue.nodeId,
+      syncStatus: "SYNCED",
+      lastSyncedAt: new Date().toISOString(),
+      lastSyncError: null,
+      projectItemId,
+    };
+  }
+
+  /**
+   * Create a GitHub sub-issue for a task (for N-tasks imported issues)
+   *
+   * Creates a new GitHub issue and links it as a sub-issue of the parent.
+   *
+   * @param parentIssueNumber - The parent GitHub issue number
+   * @param issue - The dev-workflow issue for context
+   * @param task - The task to create a sub-issue for
+   * @returns The GitHub sync state for the new sub-issue
+   */
+  private async createSubIssueForTask(
+    parentIssueNumber: number,
+    issue: Issue,
+    task: Task
+  ): Promise<GitHubSyncState> {
+    // Create a new GitHub issue for this task
+    const syncState = await this.createGitHubIssueForTask(issue, task);
+
+    // Now link it as a sub-issue of the parent
+    // The sub-issues API requires the numeric issue ID, not issue number
+    // We need to get this from the getIssue response - the nodeId contains it
+    // But the REST API uses a different ID. Let's fetch it.
+    const childIssue = await this.githubCLI.getIssue(syncState.githubIssueNumber!);
+    if (!childIssue) {
+      throw new TaskGitHubSyncError(
+        `Failed to fetch created issue #${syncState.githubIssueNumber}`
+      );
+    }
+
+    // The gh api endpoint uses the issue ID from the API response
+    // The nodeId is the GraphQL ID (I_...), but we need the database ID
+    // We'll need to get it from the API response
+    const childIdResult = await this.githubCLI.run([
+      "api",
+      `repos/{owner}/{repo}/issues/${syncState.githubIssueNumber}`,
+      "--jq",
+      ".id",
+    ]);
+
+    if (!childIdResult.success) {
+      throw new TaskGitHubSyncError(`Failed to get issue ID: ${childIdResult.stderr}`);
+    }
+
+    const childIssueId = parseInt(childIdResult.stdout.trim(), 10);
+
+    // Link as sub-issue
+    await this.githubCLI.linkSubIssue(parentIssueNumber, childIssueId);
+
+    return syncState;
   }
 
   /**

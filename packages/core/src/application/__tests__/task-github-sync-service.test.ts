@@ -429,4 +429,204 @@ describe("TaskGitHubSyncService", () => {
       );
     });
   });
+
+  describe("activatePlannedTasks for imported issues", () => {
+    it("should link single task directly to parent GitHub issue for imported issues with 1 task", async () => {
+      // Arrange - create an imported issue with 1 task
+      const issue = repos.issueRepository.create({
+        title: "Imported Issue",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "PLANNED",
+        acceptanceCriteria: [],
+        createdBy: "test",
+        sourceGitHubIssueNumber: 42, // This marks it as imported
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Single Task",
+        description: "Only one task",
+        status: "PLANNED",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // Set up the parent GitHub issue in the mock
+      mockGitHubCLI.setIssues([
+        {
+          number: 42,
+          url: "https://github.com/test/repo/issues/42",
+          nodeId: "I_parent_42",
+          title: "Parent Issue",
+          body: "Parent body",
+          state: "OPEN",
+          labels: [],
+        },
+      ]);
+
+      // Act
+      const result = await service.activatePlannedTasks(issue.id);
+
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.tasksActivated).toHaveLength(1);
+      expect(result.tasksActivated[0].githubIssueNumber).toBe(42); // Linked to parent
+
+      // Verify NO new issue was created (only getIssue was called)
+      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
+      expect(createIssueCalls).toHaveLength(0);
+
+      // Verify getIssue was called to fetch parent
+      const getIssueCalls = mockGitHubCLI.getCallsTo("getIssue");
+      expect(getIssueCalls.some((c) => c.args[0] === 42)).toBe(true);
+    });
+
+    it("should create sub-issues for imported issues with multiple tasks", async () => {
+      // Arrange - create an imported issue with 2 tasks
+      const issue = repos.issueRepository.create({
+        title: "Imported Issue with Multiple Tasks",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "PLANNED",
+        acceptanceCriteria: [],
+        createdBy: "test",
+        sourceGitHubIssueNumber: 100, // This marks it as imported
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Task 1",
+        description: "First task",
+        status: "PLANNED",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Task 2",
+        description: "Second task",
+        status: "PLANNED",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // Set up the parent GitHub issue in the mock
+      mockGitHubCLI.setIssues([
+        {
+          number: 100,
+          url: "https://github.com/test/repo/issues/100",
+          nodeId: "I_parent_100",
+          title: "Parent Issue",
+          body: "Parent body",
+          state: "OPEN",
+          labels: [],
+        },
+      ]);
+
+      // Act
+      const result = await service.activatePlannedTasks(issue.id);
+
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.tasksActivated).toHaveLength(2);
+
+      // Verify new issues were created (2 sub-issues)
+      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
+      expect(createIssueCalls).toHaveLength(2);
+
+      // Verify linkSubIssue was called for each task
+      const linkSubIssueCalls = mockGitHubCLI.getCallsTo("linkSubIssue");
+      expect(linkSubIssueCalls).toHaveLength(2);
+
+      // Verify both calls link to parent issue 100
+      for (const call of linkSubIssueCalls) {
+        expect(call.args[0]).toBe(100); // Parent issue number
+      }
+    });
+
+    it("should create regular GitHub issues for non-imported issues", async () => {
+      // Arrange - create a normal (non-imported) issue
+      const issue = repos.issueRepository.create({
+        title: "Normal Issue",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "PLANNED",
+        acceptanceCriteria: [],
+        createdBy: "test",
+        // No sourceGitHubIssueNumber - this is a normal issue
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Task 1",
+        description: "First task",
+        status: "PLANNED",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Task 2",
+        description: "Second task",
+        status: "PLANNED",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // Act
+      const result = await service.activatePlannedTasks(issue.id);
+
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.tasksActivated).toHaveLength(2);
+
+      // Verify new issues were created (2 independent issues)
+      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
+      expect(createIssueCalls).toHaveLength(2);
+
+      // Verify linkSubIssue was NOT called (no parent-child relationship)
+      const linkSubIssueCalls = mockGitHubCLI.getCallsTo("linkSubIssue");
+      expect(linkSubIssueCalls).toHaveLength(0);
+    });
+  });
 });
