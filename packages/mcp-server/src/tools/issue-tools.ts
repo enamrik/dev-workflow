@@ -341,7 +341,7 @@ export const issueToolDefinitions: ToolDefinition[] = [
   {
     name: "get_work_queue",
     description:
-      "Get prioritized work queue: top 3 issues and top 3 tasks to work on next. Considers status, priority, milestone deadlines, and task readiness.",
+      "Get prioritized work queue: top 3 issues and top 3 tasks to work on next. Also includes issues that need planning (PLANNED status without a plan). Considers status, priority, milestone deadlines, and task readiness.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -1114,6 +1114,7 @@ function calculateIssueScore(
  * Handle get_work_queue tool call
  *
  * Returns prioritized list of issues and tasks to work on.
+ * Includes a separate section for issues that need planning.
  */
 export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
   // Get all milestones for date lookups
@@ -1125,6 +1126,28 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
   const activeIssues = ctx.issueRepository
     .findMany()
     .filter((i) => i.status === "IN_PROGRESS" || i.status === "OPEN" || i.status === "PLANNED");
+
+  // Identify issues that need planning (PLANNED status without a plan)
+  const issuesNeedingPlanning: Array<{
+    number: number;
+    title: string;
+    priority: string;
+    milestone?: string;
+  }> = [];
+
+  for (const issue of activeIssues) {
+    if (issue.status === "PLANNED") {
+      const plan = ctx.planRepository.findByIssueId(issue.id);
+      if (!plan) {
+        issuesNeedingPlanning.push({
+          number: issue.number,
+          title: issue.title,
+          priority: issue.priority,
+          milestone: issue.milestoneId ? milestoneNames.get(issue.milestoneId) : undefined,
+        });
+      }
+    }
+  }
 
   // Get available tasks and their parent info
   interface TaskWithContext {
@@ -1246,6 +1269,7 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
   }));
 
   return successResponse({
+    needsPlanning: issuesNeedingPlanning.length > 0 ? issuesNeedingPlanning : undefined,
     issues: topIssues.map(({ score: _score, ...rest }) => rest),
     tasks: topTasks,
   });

@@ -464,18 +464,17 @@ export class MultiProjectService {
           }
         }
 
-        // Only include issues that have tasks
-        if (tasks.length > 0) {
-          allIssuesWithTasks.push({
-            issue,
-            plan,
-            tasks,
-            milestoneNumber,
-            milestoneTitle,
-            projectName: project.name,
-            projectSlug: project.slug,
-          });
-        }
+        // Include all non-closed issues (even without plans/tasks)
+        // Issues without plans need to appear in the work queue so they get planned
+        allIssuesWithTasks.push({
+          issue,
+          plan,
+          tasks,
+          milestoneNumber,
+          milestoneTitle,
+          projectName: project.name,
+          projectSlug: project.slug,
+        });
       }
     }
 
