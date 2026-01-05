@@ -20,19 +20,22 @@ All work should be tracked as issues before implementation begins. This ensures:
 
 This skill should activate whenever the user describes work to be done:
 
-| User Says                       | This Is Work                 |
-| ------------------------------- | ---------------------------- |
-| "Add a logout button"           | Feature request              |
-| "Fix the login bug"             | Bug report                   |
-| "Can you implement dark mode?"  | Feature request              |
-| "We need better error handling" | Enhancement                  |
-| "Refactor the API layer"        | Technical task               |
-| "Make the search faster"        | Performance improvement      |
-| "Look into why X is slow"       | Investigation (likely a bug) |
-| "X isn't working as expected"   | Bug investigation            |
-| "We need to investigate Y"      | Bug investigation            |
-| "Build a dashboard for..."      | Feature request              |
-| "Update the form to include..." | Enhancement                  |
+| User Says                                | This Is Work                 |
+| ---------------------------------------- | ---------------------------- |
+| "Add a logout button"                    | Feature request              |
+| "Fix the login bug"                      | Bug report                   |
+| "Can you implement dark mode?"           | Feature request              |
+| "We need better error handling"          | Enhancement                  |
+| "Refactor the API layer"                 | Technical task               |
+| "Make the search faster"                 | Performance improvement      |
+| "Look into why X is slow"                | Investigation (likely a bug) |
+| "X isn't working as expected"            | Bug investigation            |
+| "We need to investigate Y"               | Bug investigation            |
+| "Build a dashboard for..."               | Feature request              |
+| "Update the form to include..."          | Enhancement                  |
+| "Import #42"                             | Import existing GitHub issue |
+| "Import issue #42"                       | Import existing GitHub issue |
+| "Import github.com/owner/repo/issues/42" | Import existing GitHub issue |
 
 ## What To Do
 
@@ -41,6 +44,34 @@ When you recognize a work request:
 1. **Acknowledge the request** - Show you understand what they want
 2. **Invoke `dwf-manage-issue`** - This skill handles issue creation with proper requirements separation
 3. **Do NOT start coding** - Implementation comes after the issue and plan exist
+
+## Import Requests
+
+**Import** is a special type of work request where the user wants to bring an existing GitHub issue into dev-workflow for structured planning and task execution.
+
+### Detection Patterns
+
+- "import #N" or "import issue #N" - Import by issue number
+- "import https://github.com/owner/repo/issues/N" - Import by URL
+- "pull in GitHub issue #N" - Alternative phrasing
+- "work on GitHub issue #N" - User wants to work on an external issue
+
+### Routing
+
+Import requests route to `dwf-manage-issue` with import context. The manage-issue skill has an "Import Operations" section that handles:
+
+1. Calling `import_github_issue` to create a linked dev-workflow issue
+2. Chaining to planning (just like create-new)
+3. The move-to-backlog phase handles sub-issue creation if needed
+
+### Import vs Create-New
+
+| Scenario                              | Action                            |
+| ------------------------------------- | --------------------------------- |
+| User describes new work to build      | Create new issue → plan → work    |
+| User references existing GitHub issue | Import GitHub issue → plan → work |
+
+**Key difference:** Import preserves the link to the source GitHub issue. When moved to backlog with multiple tasks, GitHub sub-issues are created under the imported parent.
 
 ## Exceptions - When NOT to Track
 
@@ -86,6 +117,8 @@ Pass along any context the user provided - requirements, preferences, constraint
 
 ## Example Flow
 
+### Creating New Work
+
 **User:** "Can you add a way for users to export their data as CSV?"
 
 **Your response:**
@@ -97,3 +130,17 @@ I'll track this as an issue so we can plan it properly.
 ```
 
 The manage-issue skill takes over from here, creating the issue and then the implementation plan.
+
+### Importing Existing GitHub Issue
+
+**User:** "Import issue #42"
+
+**Your response:**
+
+```
+I'll import GitHub issue #42 into dev-workflow so we can plan and track the implementation.
+
+[Invoke dwf-manage-issue skill with import context]
+```
+
+The manage-issue skill will call `import_github_issue` to fetch the GitHub issue details and create a linked dev-workflow issue, then chain to planning.
