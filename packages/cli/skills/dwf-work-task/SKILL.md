@@ -1,7 +1,7 @@
 ---
 name: dwf-work-task
-description: Manage task execution lifecycle - start, complete, or abandon tasks. Supports 3 execution modes (isolated, branch, main) and PR-based workflow. Auto-invoked when user wants to "start task", "work on task", "complete task", "finish task", "abandon task", "submit for review", "merge PR", "pause issue", etc. (project)
-allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:log_task_progress
+description: Manage task execution lifecycle - start, complete, or abandon tasks. Supports 3 execution modes (isolated, branch, main) and PR-based workflow. Auto-invoked when user wants to "start task", "work on task", "complete task", "finish task", "abandon task", "create PR", "submit for review", "merge PR", "pause issue", etc. (project)
+allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:create_pr, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:log_task_progress
 ---
 
 # Work Task Skill
@@ -33,10 +33,15 @@ This ensures:
 - User wants to work: "let's work on the first task", "start working on #1"
 - User is ready: "I'm ready to implement", "let's begin"
 
+**Creating a PR:**
+
+- User mentions: "create PR", "open PR", "push and create PR"
+- User finished implementation: "I've finished, create a PR"
+
 **Submitting for review:**
 
-- User mentions: "submit for review", "create PR", "open PR", "ready for review"
-- User finished implementation: "I've finished, create a PR"
+- User mentions: "submit for review", "ready for review", "mark ready for review"
+- User after PR created: "submit it for review now", "ready for review"
 
 **Completing work:**
 
@@ -138,7 +143,8 @@ BACKLOG tasks back to READY.
 | BACKLOG     | IN_PROGRESS | `load_task_session` (also moves other BACKLOG → READY)                    |
 | READY       | IN_PROGRESS | `load_task_session`                                                       |
 | READY       | BACKLOG     | `pause_issue` (moves all READY tasks)                                     |
-| IN_PROGRESS | PR_REVIEW   | `submit_for_review` (isolated/branch modes)                               |
+| IN_PROGRESS | IN_PROGRESS | `create_pr` (creates PR, status unchanged - isolated/branch modes)        |
+| IN_PROGRESS | PR_REVIEW   | `submit_for_review` (after PR exists - isolated/branch modes)             |
 | IN_PROGRESS | COMPLETED   | `complete_task` (main mode only)                                          |
 | PR_REVIEW   | COMPLETED   | `complete_task` (after PR merged)                                         |
 | Any         | ABANDONED   | `abandon_task_session`                                                    |
@@ -184,9 +190,16 @@ BACKLOG tasks back to READY.
    - For main mode: note that PR will be skipped
    - Offer to begin implementation
 
-### To Submit for Review (Isolated/Branch Modes)
+### To Create a PR and Submit for Review (Isolated/Branch Modes)
 
-After implementing the task, submit for PR review:
+After implementing the task, create a PR and optionally submit for review.
+
+**Important:** This is a two-step process to avoid race conditions with GitHub Projects:
+
+1. `create_pr` - Creates the PR, GitHub's automation sets "In progress" column
+2. `submit_for_review` - Transitions to PR_REVIEW, sets "In review" column
+
+#### Step 1: Create the PR
 
 1. **Summarize work done:**
    - List the key changes made (files modified, features added)
@@ -197,7 +210,7 @@ After implementing the task, submit for PR review:
    - Check context (CLAUDE.md, task labels, project docs) for required validation
    - Run any tests, linting, build, or other quality checks mentioned
    - Common validations: `make test`, `pnpm test`, `pnpm typecheck`, `pnpm lint`
-   - If validation fails → fix issues before submitting
+   - If validation fails → fix issues before proceeding
 
 3. **Rebase on latest main:**
    - Fetch and rebase on the latest main branch before pushing
@@ -215,12 +228,26 @@ After implementing the task, submit for PR review:
    - Create a commit with a clear message describing the work done
    - Include task context in commit message (e.g., "Implement X for issue #N")
 
-5. **Submit for review:**
-   - Call `submit_for_review` with task ID
-   - This atomically: pushes branch, creates PR, transitions to PR_REVIEW
+5. **Create the PR:**
+   - Call `create_pr` with task ID
+   - This pushes the branch and creates the PR with GitHub issue linking
+   - **Task status stays IN_PROGRESS** - this is intentional to let GitHub's automation set "In progress" first
    - Show the PR URL to user
 
-6. **Report status:**
+6. **Report PR created:**
+   - PR is open but task is still IN_PROGRESS
+   - Ask user: "PR created. Would you like to submit it for review now?"
+
+#### Step 2: Submit for Review
+
+When user confirms they want to submit for review:
+
+1. **Submit for review:**
+   - Call `submit_for_review` with task ID
+   - This transitions task status to PR_REVIEW and syncs to GitHub's "In review" column
+   - No race condition since GitHub's automation already ran when PR was created
+
+2. **Report status:**
    - Task is now in PR_REVIEW
    - PR is open and ready for review
    - User can still push changes to the PR branch (see below)
@@ -466,9 +493,9 @@ Task is now IN_PROGRESS.
 Ready to make the changes?
 ```
 
-### Submitting for Review
+### Creating a PR and Submitting for Review
 
-**User:** "I've finished the implementation, submit for review"
+**User:** "I've finished the implementation, create a PR"
 
 **Response:**
 
@@ -504,14 +531,35 @@ Rebasing on latest main...
 Creating git commit...
   [issue-5/task-1-add-oauth abc1234] Add OAuth2 authentication with Google
 
-Submitting for review...
+Creating PR...
+
+[Calling create_pr...]
 
 PR created successfully:
 - PR #42: https://github.com/owner/repo/pull/42
 - Title: [#5] Add OAuth2 authentication with Google provider
 - Status: OPEN
 
-Task is now in PR_REVIEW status. The PR is ready for review.
+Task status is still IN_PROGRESS. This is intentional to let GitHub's
+automation set the project column to "In progress" first.
+
+Would you like to submit it for review now? This will transition the
+task to PR_REVIEW and set the project column to "In review".
+```
+
+**User:** "yes, submit for review"
+
+**Response:**
+
+```
+Submitting for review...
+
+[Calling submit_for_review...]
+
+Task transitioned to PR_REVIEW. The GitHub project column is now set to
+"In review".
+
+PR #42 is ready for review: https://github.com/owner/repo/pull/42
 You can still push additional changes to the branch if needed.
 ```
 
@@ -654,16 +702,22 @@ any task and the remaining BACKLOG tasks will transition back to READY.
 - Explain all tasks are completed or in progress
 - Suggest checking the plan or creating new tasks
 
-**Submit for review failed - no branch:**
+**Create PR failed - no branch:**
 
 - Task was started in main mode
 - Explain that main mode doesn't support PR workflow
 - Complete the task directly instead
 
-**Submit for review failed - GitHub not configured:**
+**Create PR failed - wrong status:**
 
-- GitHub integration not enabled
-- Guide user to run `update_settings` with `enable_github` action
+- Task is not IN_PROGRESS (e.g., already in PR_REVIEW or COMPLETED)
+- If the task state has drifted → offer to use force mode
+
+**Submit for review failed - no PR:**
+
+- Task doesn't have a PR yet
+- Explain that `create_pr` must be called first
+- If a PR was created outside the tool → offer to use force mode
 
 **Submit for review failed - wrong status:**
 
@@ -706,9 +760,10 @@ Sometimes the tracked state diverges from reality. This can happen when:
 
 | Tool                   | What force bypasses                                      |
 | ---------------------- | -------------------------------------------------------- |
+| `create_pr`            | IN_PROGRESS status check                                 |
+| `submit_for_review`    | IN_PROGRESS status check and PR existence check          |
 | `complete_task`        | Status check (allows completing from wrong status)       |
 | `abandon_task_session` | Session ownership check (allows abandoning orphan tasks) |
-| `submit_for_review`    | IN_PROGRESS status check                                 |
 | `close_issue`          | Task completion check (allows closing with open tasks)   |
 
 ### When to Offer Force Mode

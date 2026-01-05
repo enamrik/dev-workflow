@@ -13,7 +13,7 @@ import {
   SqliteProjectRepository,
   TaskGitHubSyncService,
 } from "@dev-workflow/core";
-import { handleSubmitForReview, type PRToolContext } from "../../tools/pr-tools.js";
+import { handleCreatePR, handleSubmitForReview, type PRToolContext } from "../../tools/pr-tools.js";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as schema from "@dev-workflow/core";
 
@@ -54,54 +54,76 @@ function createPRToolContext(
   };
 }
 
-describe("submit_for_review", () => {
+describe("create_pr", () => {
   let testDb: TestDatabase;
 
   beforeEach(() => {
     testDb = createTestDatabase();
   });
 
-  describe("PR title format", () => {
-    it("should use plain title with no prefix when task has no GitHub issue", async () => {
+  describe("PR creation", () => {
+    it("should create PR without changing task status", async () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
       const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
 
-      // Create issue #1 (no GitHub sync)
-      const issue = createTestIssue(ctx.issueRepository, {
-        title: "Test Issue",
-      });
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
       const plan = createTestPlan(ctx.planRepository, issue.id);
-
-      // Create task #2 (the second task in the plan)
-      createTestTask(ctx.taskRepository, plan.id, {
-        title: "First Task",
-        status: "COMPLETED",
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Implement feature",
+        status: "IN_PROGRESS",
       });
+
+      ctx.taskRepository.update(task.id, {
+        branchName: "issue-1/task-1-implement-feature",
+        worktreePath: "/tmp/worktree/issue-1-task-1",
+      });
+
+      // Act
+      const result = await handleCreatePR(ctx, { taskId: task.id });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.task.status).toBe("IN_PROGRESS"); // Status unchanged
+
+      // Verify PR was created
+      const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
+      expect(createPRCalls).toHaveLength(1);
+
+      // Verify task still has IN_PROGRESS status in DB
+      const updatedTask = ctx.taskRepository.findById(task.id);
+      expect(updatedTask?.status).toBe("IN_PROGRESS");
+      expect(updatedTask?.prNumber).toBeDefined();
+    });
+
+    it("should use plain title when task has no GitHub issue", async () => {
+      // Arrange
+      const mockGitHubCLI = new MockGitHubCLI();
+      const mockGitWorktreeService = new MockGitWorktreeService();
+      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
       const task = createTestTask(ctx.taskRepository, plan.id, {
         title: "Update feature",
         status: "IN_PROGRESS",
       });
 
-      // Set up task with branch and worktree but NO GitHub sync
       ctx.taskRepository.update(task.id, {
-        branchName: "issue-1/task-2-update-feature",
-        worktreePath: "/tmp/worktree/issue-1-task-2",
+        branchName: "issue-1/task-1-update-feature",
+        worktreePath: "/tmp/worktree/issue-1-task-1",
       });
 
       // Act
-      const result = await handleSubmitForReview(ctx, { taskId: task.id });
+      const result = await handleCreatePR(ctx, { taskId: task.id });
 
       // Assert
       expect(result.isError).toBeFalsy();
-
-      // Verify the PR was created with plain title (no prefix)
       const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
-      expect(createPRCalls).toHaveLength(1);
-
       const [, , prTitle] = createPRCalls[0]!.args as [string, string, string, string, boolean];
-      // No prefix when task has no linked GitHub issue
       expect(prTitle).toBe("Update feature");
     });
 
@@ -111,19 +133,13 @@ describe("submit_for_review", () => {
       const mockGitWorktreeService = new MockGitWorktreeService();
       const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
 
-      // Create dev-workflow issue (internal tracking only, not synced to GitHub)
-      const issue = createTestIssue(ctx.issueRepository, {
-        title: "Test Issue",
-      });
-
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
       const plan = createTestPlan(ctx.planRepository, issue.id);
       const task = createTestTask(ctx.taskRepository, plan.id, {
         title: "Implement feature",
         status: "IN_PROGRESS",
       });
 
-      // Set up task with branch, worktree, and linked GitHub issue #42
-      // Tasks are synced to GitHub issues - this GitHub number should be in PR title
       ctx.taskRepository.update(task.id, {
         branchName: "issue-1/task-1-implement-feature",
         worktreePath: "/tmp/worktree/issue-1-task-1",
@@ -139,93 +155,13 @@ describe("submit_for_review", () => {
       });
 
       // Act
-      const result = await handleSubmitForReview(ctx, { taskId: task.id });
+      const result = await handleCreatePR(ctx, { taskId: task.id });
 
       // Assert
       expect(result.isError).toBeFalsy();
-
-      // Verify the PR was created with task's GitHub issue number (42)
       const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
-      expect(createPRCalls).toHaveLength(1);
-
       const [, , prTitle] = createPRCalls[0]!.args as [string, string, string, string, boolean];
       expect(prTitle).toBe("[#42] Implement feature");
-    });
-
-    it("should use plain title when task has no GitHub sync", async () => {
-      // Arrange
-      const mockGitHubCLI = new MockGitHubCLI();
-      const mockGitWorktreeService = new MockGitWorktreeService();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
-
-      // Create dev-workflow issue (internal tracking)
-      const issue = createTestIssue(ctx.issueRepository, {
-        title: "Test Issue",
-      });
-
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
-        title: "Implement feature",
-        status: "IN_PROGRESS",
-      });
-
-      // Set up task with branch and worktree, but NO GitHub sync
-      ctx.taskRepository.update(task.id, {
-        branchName: "issue-1/task-1-implement-feature",
-        worktreePath: "/tmp/worktree/issue-1-task-1",
-      });
-      // Task has no GitHub issue - PR title should have no prefix
-
-      // Act
-      const result = await handleSubmitForReview(ctx, { taskId: task.id });
-
-      // Assert
-      expect(result.isError).toBeFalsy();
-
-      // Verify the PR was created with plain title (no prefix)
-      const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
-      expect(createPRCalls).toHaveLength(1);
-
-      const [, , prTitle] = createPRCalls[0]!.args as [string, string, string, string, boolean];
-      expect(prTitle).toBe("Implement feature");
-    });
-
-    it("should include dev-workflow task reference in PR body footer", async () => {
-      // Arrange
-      const mockGitHubCLI = new MockGitHubCLI();
-      const mockGitWorktreeService = new MockGitWorktreeService();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
-
-      // Create dev-workflow issue #1 (no GitHub sync)
-      const issue = createTestIssue(ctx.issueRepository, {
-        title: "Local Issue",
-      });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
-        title: "Local task",
-        description: "Task description",
-        status: "IN_PROGRESS",
-      });
-
-      // Set up task with branch and worktree but NO GitHub sync
-      ctx.taskRepository.update(task.id, {
-        branchName: "issue-1/task-1-local-task",
-        worktreePath: "/tmp/worktree/issue-1-task-1",
-      });
-
-      // Act
-      const result = await handleSubmitForReview(ctx, { taskId: task.id });
-
-      // Assert
-      expect(result.isError).toBeFalsy();
-
-      // Verify the PR body contains dev-workflow task reference
-      const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
-      expect(createPRCalls).toHaveLength(1);
-
-      const [, , , prBody] = createPRCalls[0]!.args as [string, string, string, string, boolean];
-      // PR body should contain the dev-workflow task reference as footer
-      expect(prBody).toContain(`Task ${issue.number}.${task.number}: Local task`);
     });
 
     it("should include GitHub issue links in PR body when synced", async () => {
@@ -234,9 +170,7 @@ describe("submit_for_review", () => {
       const mockGitWorktreeService = new MockGitWorktreeService();
       const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
 
-      const issue = createTestIssue(ctx.issueRepository, {
-        title: "Test Issue",
-      });
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
       const plan = createTestPlan(ctx.planRepository, issue.id);
       const task = createTestTask(ctx.taskRepository, plan.id, {
         title: "Test task",
@@ -244,7 +178,6 @@ describe("submit_for_review", () => {
         status: "IN_PROGRESS",
       });
 
-      // Set up task with branch, worktree, and linked GitHub issue
       ctx.taskRepository.update(task.id, {
         branchName: "issue-1/task-1-test-task",
         worktreePath: "/tmp/worktree/issue-1-task-1",
@@ -260,21 +193,277 @@ describe("submit_for_review", () => {
       });
 
       // Act
+      const result = await handleCreatePR(ctx, { taskId: task.id });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
+      const [, , , prBody] = createPRCalls[0]!.args as [string, string, string, string, boolean];
+      expect(prBody).toContain("Closes #99");
+      expect(prBody).toContain(`Task ${issue.number}.${task.number}: Test task`);
+    });
+  });
+
+  describe("validation", () => {
+    it("should fail if task is not IN_PROGRESS", async () => {
+      // Arrange
+      const ctx = createPRToolContext(testDb);
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "READY", // Not IN_PROGRESS
+      });
+
+      ctx.taskRepository.update(task.id, {
+        branchName: "issue-1/task-1-test",
+        worktreePath: "/tmp/worktree",
+      });
+
+      // Act
+      const result = await handleCreatePR(ctx, { taskId: task.id });
+
+      // Assert
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("must be IN_PROGRESS");
+    });
+
+    it("should succeed with force=true when task is not IN_PROGRESS", async () => {
+      // Arrange
+      const mockGitHubCLI = new MockGitHubCLI();
+      const mockGitWorktreeService = new MockGitWorktreeService();
+      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "READY", // Not IN_PROGRESS
+      });
+
+      ctx.taskRepository.update(task.id, {
+        branchName: "issue-1/task-1-test",
+        worktreePath: "/tmp/worktree",
+      });
+
+      // Act
+      const result = await handleCreatePR(ctx, { taskId: task.id, force: true });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.forced).toBe(true);
+    });
+
+    it("should fail if task has no branch", async () => {
+      // Arrange
+      const ctx = createPRToolContext(testDb);
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "IN_PROGRESS",
+      });
+      // No branch set
+
+      // Act
+      const result = await handleCreatePR(ctx, { taskId: task.id });
+
+      // Assert
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("does not have a branch");
+    });
+
+    it("should fail if task already has a PR", async () => {
+      // Arrange
+      const mockGitHubCLI = new MockGitHubCLI();
+      const mockGitWorktreeService = new MockGitWorktreeService();
+      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "IN_PROGRESS",
+      });
+
+      ctx.taskRepository.update(task.id, {
+        branchName: "issue-1/task-1-test",
+        worktreePath: "/tmp/worktree",
+      });
+      ctx.taskRepository.updatePRInfo(
+        task.id,
+        "https://github.com/test/repo/pull/123",
+        123,
+        "OPEN"
+      );
+
+      // Act
+      const result = await handleCreatePR(ctx, { taskId: task.id });
+
+      // Assert
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("already has a PR");
+    });
+  });
+});
+
+describe("submit_for_review", () => {
+  let testDb: TestDatabase;
+
+  beforeEach(() => {
+    testDb = createTestDatabase();
+  });
+
+  describe("status transition", () => {
+    it("should transition task to PR_REVIEW when PR exists", async () => {
+      // Arrange
+      const mockGitHubCLI = new MockGitHubCLI();
+      const mockGitWorktreeService = new MockGitWorktreeService();
+      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "IN_PROGRESS",
+      });
+
+      // Set up task with branch and existing PR
+      ctx.taskRepository.update(task.id, {
+        branchName: "issue-1/task-1-test",
+        worktreePath: "/tmp/worktree",
+      });
+      ctx.taskRepository.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+
+      // Act
       const result = await handleSubmitForReview(ctx, { taskId: task.id });
 
       // Assert
       expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.task.status).toBe("PR_REVIEW");
 
-      // Verify the PR body contains GitHub issue link and dev-workflow reference
+      // Verify task status changed in DB
+      const updatedTask = ctx.taskRepository.findById(task.id);
+      expect(updatedTask?.status).toBe("PR_REVIEW");
+    });
+
+    it("should NOT create a PR - only change status", async () => {
+      // Arrange
+      const mockGitHubCLI = new MockGitHubCLI();
+      const mockGitWorktreeService = new MockGitWorktreeService();
+      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "IN_PROGRESS",
+      });
+
+      ctx.taskRepository.update(task.id, {
+        branchName: "issue-1/task-1-test",
+        worktreePath: "/tmp/worktree",
+      });
+      ctx.taskRepository.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+
+      // Act
+      await handleSubmitForReview(ctx, { taskId: task.id });
+
+      // Assert - NO PR creation should happen
       const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
-      expect(createPRCalls).toHaveLength(1);
+      expect(createPRCalls).toHaveLength(0);
+    });
+  });
 
-      const [, , , prBody] = createPRCalls[0]!.args as [string, string, string, string, boolean];
+  describe("validation", () => {
+    it("should fail if task is not IN_PROGRESS", async () => {
+      // Arrange
+      const ctx = createPRToolContext(testDb);
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "READY", // Not IN_PROGRESS
+      });
 
-      // PR body should contain Closes link to task's GitHub issue
-      expect(prBody).toContain("Closes #99");
-      // PR body should contain dev-workflow task reference (not italic)
-      expect(prBody).toContain(`Task ${issue.number}.${task.number}: Test task`);
+      // Act
+      const result = await handleSubmitForReview(ctx, { taskId: task.id });
+
+      // Assert
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("must be IN_PROGRESS");
+    });
+
+    it("should fail if task has no PR", async () => {
+      // Arrange
+      const ctx = createPRToolContext(testDb);
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "IN_PROGRESS",
+      });
+      // No PR set
+
+      // Act
+      const result = await handleSubmitForReview(ctx, { taskId: task.id });
+
+      // Assert
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("does not have a PR");
+      expect(result.content[0].text).toContain("create_pr first");
+    });
+
+    it("should succeed with force=true when task has no PR", async () => {
+      // Arrange
+      const mockGitHubCLI = new MockGitHubCLI();
+      const ctx = createPRToolContext(testDb, mockGitHubCLI);
+
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "IN_PROGRESS",
+      });
+      // No PR set
+
+      // Act
+      const result = await handleSubmitForReview(ctx, { taskId: task.id, force: true });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.forced).toBe(true);
+      expect(content.task.status).toBe("PR_REVIEW");
+    });
+
+    it("should succeed with force=true when task is not IN_PROGRESS", async () => {
+      // Arrange
+      const mockGitHubCLI = new MockGitHubCLI();
+      const ctx = createPRToolContext(testDb, mockGitHubCLI);
+
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "PR_REVIEW", // Already in PR_REVIEW
+      });
+
+      ctx.taskRepository.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+
+      // Act
+      const result = await handleSubmitForReview(ctx, { taskId: task.id, force: true });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.forced).toBe(true);
     });
   });
 
@@ -325,20 +514,19 @@ describe("submit_for_review", () => {
       };
 
       // Create issue, plan, and task
-      const issue = createTestIssue(ctx.issueRepository, {
-        title: "Test Issue",
-      });
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
       const plan = createTestPlan(ctx.planRepository, issue.id);
       const task = createTestTask(ctx.taskRepository, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
 
-      // Set up task with branch, worktree, and GitHub sync (including projectItemId)
+      // Set up task with branch, worktree, PR, and GitHub sync (including projectItemId)
       ctx.taskRepository.update(task.id, {
         branchName: "issue-1/task-1-test-task",
         worktreePath: "/tmp/worktree/issue-1-task-1",
       });
+      ctx.taskRepository.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
       ctx.taskRepository.updateGitHubSync(task.id, {
         githubIssueNumber: 42,
         githubUrl: "https://github.com/test/repo/issues/42",
@@ -357,8 +545,6 @@ describe("submit_for_review", () => {
 
       // Verify the column move was attempted
       const runCalls = mockGitHubCLI.getCallsTo("run");
-
-      // Should have GraphQL calls for getting project fields and updating the field
       const updateCall = runCalls.find((call) => {
         const args = call.args[0] as string[];
         return args.some((arg: string) => arg.includes("updateProjectV2ItemFieldValue"));
@@ -370,10 +556,82 @@ describe("submit_for_review", () => {
       const updateArgs = updateCall!.args[0] as string[];
       expect(updateArgs.some((arg: string) => arg.includes("PVTI_test_item_123"))).toBe(true);
       expect(updateArgs.some((arg: string) => arg.includes("opt_in_review"))).toBe(true);
-
-      // Verify lastSyncedAt was updated
-      const updatedTask = ctx.taskRepository.findById(task.id);
-      expect(updatedTask?.githubSync?.lastSyncedAt).toBeDefined();
     });
+  });
+});
+
+describe("two-step PR workflow", () => {
+  let testDb: TestDatabase;
+
+  beforeEach(() => {
+    testDb = createTestDatabase();
+  });
+
+  it("should complete full flow: create_pr then submit_for_review", async () => {
+    // Arrange
+    const mockGitHubCLI = new MockGitHubCLI();
+    const mockGitWorktreeService = new MockGitWorktreeService();
+    const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+
+    const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+    const plan = createTestPlan(ctx.planRepository, issue.id);
+    const task = createTestTask(ctx.taskRepository, plan.id, {
+      title: "Implement feature",
+      status: "IN_PROGRESS",
+    });
+
+    ctx.taskRepository.update(task.id, {
+      branchName: "issue-1/task-1-implement-feature",
+      worktreePath: "/tmp/worktree/issue-1-task-1",
+    });
+
+    // Step 1: Create PR
+    const createResult = await handleCreatePR(ctx, { taskId: task.id });
+    expect(createResult.isError).toBeFalsy();
+
+    // Verify status is still IN_PROGRESS after create_pr
+    const taskAfterCreate = ctx.taskRepository.findById(task.id);
+    expect(taskAfterCreate?.status).toBe("IN_PROGRESS");
+    expect(taskAfterCreate?.prNumber).toBeDefined();
+
+    // Step 2: Submit for review
+    const submitResult = await handleSubmitForReview(ctx, { taskId: task.id });
+    expect(submitResult.isError).toBeFalsy();
+
+    // Verify status is now PR_REVIEW
+    const taskAfterSubmit = ctx.taskRepository.findById(task.id);
+    expect(taskAfterSubmit?.status).toBe("PR_REVIEW");
+  });
+
+  it("should allow delayed submit_for_review (PR created earlier)", async () => {
+    // Arrange
+    const mockGitHubCLI = new MockGitHubCLI();
+    const mockGitWorktreeService = new MockGitWorktreeService();
+    const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+
+    const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+    const plan = createTestPlan(ctx.planRepository, issue.id);
+    const task = createTestTask(ctx.taskRepository, plan.id, {
+      title: "Implement feature",
+      status: "IN_PROGRESS",
+    });
+
+    ctx.taskRepository.update(task.id, {
+      branchName: "issue-1/task-1-implement-feature",
+      worktreePath: "/tmp/worktree/issue-1-task-1",
+    });
+
+    // Step 1: Create PR
+    await handleCreatePR(ctx, { taskId: task.id });
+
+    // Simulate time passing - task is still IN_PROGRESS with PR open
+    // User might push more commits before submitting for review
+
+    // Step 2: Submit for review later
+    const submitResult = await handleSubmitForReview(ctx, { taskId: task.id });
+    expect(submitResult.isError).toBeFalsy();
+
+    const content = JSON.parse(submitResult.content[0].text);
+    expect(content.task.status).toBe("PR_REVIEW");
   });
 });

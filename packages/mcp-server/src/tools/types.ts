@@ -55,6 +55,7 @@ export function successResponse(data: unknown): ToolResponse {
  */
 export function errorResponse(error: string): ToolResponse {
   return {
+    isError: true,
     content: [
       {
         type: "text",
