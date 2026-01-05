@@ -109,10 +109,11 @@ export interface ProjectIssueWithTasks {
 }
 
 /**
- * Milestone with project name for display
+ * Milestone with project name and slug for display and navigation
  */
 export interface MilestoneWithProject extends Milestone {
   projectName: string;
+  projectSlug: string;
 }
 
 /**
@@ -619,6 +620,7 @@ export class MultiProjectService {
             status: milestone.status,
             projectId: milestone.projectId,
             projectName: project.name,
+            projectSlug: project.slug,
             createdAt: milestone.createdAt,
             updatedAt: milestone.updatedAt,
           },
