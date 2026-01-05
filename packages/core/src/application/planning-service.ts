@@ -25,7 +25,6 @@ export interface GeneratePlanRequest {
   tasks: TaskDefinition[];
   estimatedComplexity: PlanComplexity;
   generatedBy: string;
-  preserveExistingTasks?: boolean; // Default: true
 }
 
 /**
@@ -43,18 +42,15 @@ export interface IssueUpdates {
 /**
  * PlanningService orchestrates plan and task generation with smart matching
  *
- * Key changes from previous version:
- * - No snapshotId references on plan or task creation
- * - Uses VersioningService for snapshot creation
- * - Separates manual vs generated tasks during regeneration
- * - Only soft deletes unmatched generated tasks (preserves manual tasks)
- *
  * Responsibilities:
  * - Generate plans with task definitions
- * - Smart task matching to preserve work
+ * - Smart task matching to preserve work on regeneration
  * - Preserve IN_PROGRESS and COMPLETED tasks when possible
- * - Preserve manual tasks during regeneration
+ * - Soft delete unmatched tasks that can be deleted (PLANNED/BACKLOG/READY)
  * - Coordinate with repositories and services
+ *
+ * Task matching is always performed - there is no option to disable it.
+ * This prevents duplicates when regenerating plans.
  *
  * Follows the Dependency Inversion Principle - depends on repository
  * interfaces, not concrete implementations.
@@ -150,13 +146,12 @@ export class PlanningService {
    * Generate a new plan for an issue
    *
    * Creates snapshot before regeneration.
-   * Separates manual vs generated tasks.
-   * Only matches against generated tasks.
-   * Soft deletes unmatched generated tasks.
-   * Preserves all manual tasks.
+   * Matches new tasks against ALL existing tasks to prevent duplicates.
+   * Soft deletes unmatched tasks that can be deleted (PLANNED/BACKLOG/READY).
+   * Preserves IN_PROGRESS and COMPLETED tasks.
    *
    * @param request - Plan generation request
-   * @returns Plan with tasks (including manual tasks)
+   * @returns Plan with tasks
    */
   async generatePlan(request: GeneratePlanRequest): Promise<PlanWithTasks> {
     const {
@@ -166,7 +161,6 @@ export class PlanningService {
       tasks: rawTaskDefs,
       estimatedComplexity,
       generatedBy,
-      preserveExistingTasks = true,
     } = request;
 
     // Normalize task IDs (convert simple IDs like "task-001" to UUIDs)
@@ -193,10 +187,6 @@ export class PlanningService {
     const existingTasks = existingPlan
       ? this.taskRepository.findByPlanId(existingPlan.id, false) // Exclude deleted
       : [];
-
-    // Separate manual and generated tasks
-    const manualTasks = existingTasks.filter((t) => t.source === "manual");
-    const generatedTasks = existingTasks.filter((t) => t.source === "generated");
 
     // Create snapshot before regeneration (captures current state)
     this.versioningService.createSnapshot(
@@ -228,19 +218,19 @@ export class PlanningService {
     // Get available labels for auto-assignment
     const availableLabels = await this.getAvailableLabels();
 
-    // Match new tasks to existing GENERATED tasks only (not manual)
-    let newTasks: Task[];
-    if (preserveExistingTasks && generatedTasks.length > 0) {
-      newTasks = this.createTasksWithMatching(
+    // Match new tasks against ALL existing tasks (no manual/generated distinction)
+    let tasks: Task[];
+    if (existingTasks.length > 0) {
+      tasks = this.createTasksWithMatching(
         plan,
         newTaskDefs,
-        generatedTasks,
+        existingTasks,
         generatedBy,
         availableLabels
       );
     } else {
-      // No matching - create all new tasks
-      newTasks = this.createNewTasks(plan, newTaskDefs, availableLabels);
+      // No existing tasks - create all new
+      tasks = this.createNewTasks(plan, newTaskDefs, availableLabels);
     }
 
     // Create snapshot after regeneration (captures new state)
@@ -259,7 +249,7 @@ export class PlanningService {
     });
 
     // Emit task:created for each new task
-    for (const task of newTasks) {
+    for (const task of tasks) {
       this.eventBus.emit("task:created", {
         taskId: task.id,
         planId: plan.id,
@@ -269,8 +259,7 @@ export class PlanningService {
 
     return {
       plan,
-      // Return all active tasks: new generated tasks + preserved manual tasks
-      tasks: [...newTasks, ...manualTasks],
+      tasks,
     };
   }
 
@@ -322,22 +311,22 @@ export class PlanningService {
   /**
    * Create tasks with smart matching to preserve existing work
    *
-   * Only matches against GENERATED tasks.
-   * Soft deletes unmatched generated tasks.
+   * Matches against ALL existing tasks to prevent duplicates.
+   * Soft deletes unmatched tasks that can be deleted (PLANNED/BACKLOG/READY).
+   * Preserves IN_PROGRESS and COMPLETED tasks even if unmatched.
    *
    * Note: Dependencies are cleared during matching because the ID mapping
-   * between old and new tasks is not preserved. For full dependency support,
-   * use preserveExistingTasks=false to create all new tasks.
+   * between old and new tasks is not preserved.
    */
   private createTasksWithMatching(
     plan: Plan,
     newTaskDefs: TaskDefinition[],
-    existingGeneratedTasks: Task[],
+    existingTasks: Task[],
     generatedBy: string,
     availableLabels: string[]
   ): Task[] {
-    // Match new tasks to existing generated tasks
-    const matchResults = this.taskMatchingService.matchTasks(newTaskDefs, existingGeneratedTasks);
+    // Match new tasks to existing tasks
+    const matchResults = this.taskMatchingService.matchTasks(newTaskDefs, existingTasks);
 
     const tasks: Task[] = [];
     const matchedTaskIds = new Set<string>();
@@ -393,9 +382,10 @@ export class PlanningService {
       }
     }
 
-    // Soft delete generated tasks that weren't matched
-    // Can soft-delete PLANNED, BACKLOG, or READY tasks
-    for (const task of existingGeneratedTasks) {
+    // Soft delete unmatched tasks that can be deleted
+    // Only PLANNED, BACKLOG, or READY tasks can be soft-deleted
+    // IN_PROGRESS, PR_REVIEW, COMPLETED, ABANDONED are preserved
+    for (const task of existingTasks) {
       if (
         !matchedTaskIds.has(task.id) &&
         (task.status === "PLANNED" || task.status === "BACKLOG" || task.status === "READY")

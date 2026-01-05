@@ -51,7 +51,6 @@ export {
   handleCreateTaskLabel,
   handleUpdateTaskLabel,
   handleRemoveTaskLabel,
-  handleAddManualTask,
   handleDeleteTask,
   handleUpdateTask,
   handleGetTaskExecutionPrompt,

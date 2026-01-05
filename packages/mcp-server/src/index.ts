@@ -81,7 +81,6 @@ import {
   handleCreateTaskLabel,
   handleUpdateTaskLabel,
   handleRemoveTaskLabel,
-  handleAddManualTask,
   handleDeleteTask,
   handleUpdateTask,
   handleGetTaskExecutionPrompt,
@@ -289,9 +288,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     }
     if (name === "remove_task_label") {
       return await handleRemoveTaskLabel(taskToolContext, a);
-    }
-    if (name === "add_manual_task") {
-      return handleAddManualTask(taskToolContext, a);
     }
     if (name === "delete_task") {
       return handleDeleteTask(taskToolContext, a);

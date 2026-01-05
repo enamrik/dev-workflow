@@ -126,6 +126,42 @@ Split when:
 - One part is blocked waiting for external dependencies
 - The scope is large enough that multiple commits make sense
 
+## Re-Planning (Regenerating Plans)
+
+When a user wants to update a plan ("regenerate plan", "update the plan", "add a task"), simply call `generate_plan` again with the updated task list. The system handles everything automatically:
+
+### Automatic Task Preservation
+
+- **IN_PROGRESS and COMPLETED tasks are always preserved** - they cannot be removed or modified by regeneration
+- **PLANNED, BACKLOG, and READY tasks** are matched against new tasks by title similarity
+- Matched tasks are updated in place; unmatched old tasks are soft-deleted
+
+### How Matching Works
+
+- Tasks are matched using fuzzy title matching (Levenshtein distance)
+- A match threshold of 80% similarity is used
+- This prevents duplicate tasks when regenerating with slightly different wording
+
+### What This Means for You
+
+1. **To add a task**: Include it in your new task list alongside existing tasks
+2. **To modify a task**: Include the updated version - it will match and update
+3. **To remove a task**: Simply omit it from the new task list (only works for PLANNED/BACKLOG/READY tasks)
+4. **No manual task management needed**: Just regenerate with the desired final state
+
+### Example: Adding a Task to Existing Plan
+
+If issue #5 has tasks ["Set up database", "Add API endpoints"] and user wants to add "Add admin dashboard":
+
+```
+Call generate_plan with tasks:
+1. "Set up database" (matches existing, preserved)
+2. "Add API endpoints" (matches existing, preserved)
+3. "Add admin dashboard" (new task, created)
+```
+
+The system matches tasks 1 and 2 to existing tasks and creates task 3 as new.
+
 ## Bug Issues: Single-Task Investigation Approach
 
 **Bugs are inherently exploratory.** You don't know the solution until you've investigated the root cause. Creating a multi-task plan for bugs is backwards - you'd be planning a solution before understanding the problem.

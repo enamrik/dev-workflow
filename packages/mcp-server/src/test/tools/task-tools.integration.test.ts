@@ -21,7 +21,6 @@ import {
   handleGetTask,
   handleListAvailableTasks,
   handleUpdateTask,
-  handleAddManualTask,
   handleLogTaskProgress,
   handleGetTaskExecutionLog,
   type TaskToolContext,
@@ -254,29 +253,6 @@ describe("Task Tools Integration", () => {
       expect(updated!.title).toBe("Updated Title");
       expect(updated!.description).toBe("New description");
       expect(updated!.estimatedMinutes).toBe(60);
-    });
-  });
-
-  describe("handleAddManualTask", () => {
-    it("should add a manual task to a plan", () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-
-      const result = handleAddManualTask(ctx, {
-        issueNumber: issue.number,
-        title: "Manual Task",
-        description: "Added manually",
-        estimatedMinutes: 30,
-      });
-
-      expect(result.isError).toBeUndefined();
-      const content = JSON.parse(result.content[0].text);
-      expect(content.task.title).toBe("Manual Task");
-      expect(content.task.source).toBe("manual");
-
-      // Verify database state
-      const tasks = ctx.taskRepository.findByPlanId(plan.id);
-      expect(tasks.some((t) => t.source === "manual")).toBe(true);
     });
   });
 
