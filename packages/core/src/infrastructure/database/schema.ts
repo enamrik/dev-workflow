@@ -366,6 +366,35 @@ export interface GitHubLabelsConfig {
 }
 
 /**
+ * Status to column mapping for GitHub Projects
+ *
+ * Maps our internal task statuses to GitHub Project column names.
+ * Allows customization for teams with different column naming conventions.
+ */
+export interface StatusColumnMapping {
+  PLANNED?: string;
+  BACKLOG?: string;
+  READY?: string;
+  IN_PROGRESS?: string;
+  PR_REVIEW?: string;
+  COMPLETED?: string;
+  ABANDONED?: string;
+}
+
+/**
+ * Default status-to-column mapping (GitHub's Kanban template)
+ */
+export const DEFAULT_COLUMN_MAPPING: Required<StatusColumnMapping> = {
+  PLANNED: "Backlog", // Shouldn't happen, but default to Backlog
+  BACKLOG: "Backlog",
+  READY: "Ready",
+  IN_PROGRESS: "In Progress",
+  PR_REVIEW: "In Review",
+  COMPLETED: "Done",
+  ABANDONED: "Done",
+};
+
+/**
  * GitHub issue sync configuration stored as JSON
  */
 export interface GitHubIssueSyncConfig {
@@ -373,6 +402,7 @@ export interface GitHubIssueSyncConfig {
   projectId?: string; // GitHub Project ID (e.g., PVT_kwDO...)
   projectUrl?: string; // GitHub Project URL for linking (e.g., https://github.com/orgs/org/projects/1)
   labels?: GitHubLabelsConfig;
+  columnMapping?: StatusColumnMapping; // Custom status-to-column mapping
 }
 
 /**
