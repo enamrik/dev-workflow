@@ -500,4 +500,100 @@ describe("Issue Tools Integration", () => {
       expect(content.error).toContain("Either githubIssueNumber or githubIssueUrl is required");
     });
   });
+
+  describe("handleCloseIssue", () => {
+    it("should close an issue with no tasks", async () => {
+      // Create an issue first
+      const createResult = await handleCreateIssue(ctx, {
+        title: "Issue to close",
+        description: "Will be closed",
+      });
+      const created = JSON.parse(createResult.content[0].text);
+
+      // Close it
+      const closeResult = await handleCloseIssue(ctx, {
+        issueNumber: created.issue.number,
+      });
+
+      expect(closeResult.isError).toBeUndefined();
+      const content = JSON.parse(closeResult.content[0].text);
+      expect(content.issue.status).toBe("CLOSED");
+      expect(content.message).toContain("closed successfully");
+
+      // Verify database state
+      const issue = ctx.issueRepository.findByNumber(created.issue.number);
+      expect(issue!.status).toBe("CLOSED");
+    });
+
+    it("should close parent GitHub issue for imported issues", async () => {
+      // Set up mock GitHub CLI with an issue to import
+      const mockCLI = ctx.githubCLI as MockGitHubCLI;
+      mockCLI.setIssues([
+        {
+          number: 42,
+          url: "https://github.com/test/repo/issues/42",
+          nodeId: "I_parent42",
+          title: "Parent GitHub Issue",
+          body: "This will be imported",
+          state: "OPEN",
+          labels: [],
+        },
+      ]);
+
+      // Enable GitHub sync on the project
+      const projectRepository = new SqliteProjectRepository(testDb.db as DbType);
+      projectRepository.update(ctx.project.id, {
+        githubSync: {
+          enabled: true,
+          projectId: "PVT_test123",
+        },
+      });
+
+      // Import the GitHub issue
+      const importResult = await handleImportGitHubIssue(ctx, {
+        githubIssueNumber: 42,
+      });
+      const imported = JSON.parse(importResult.content[0].text);
+      expect(imported.issue.sourceGitHubIssueNumber).toBe(42);
+
+      // Close the imported issue
+      const closeResult = await handleCloseIssue(ctx, {
+        issueNumber: imported.issue.number,
+      });
+
+      expect(closeResult.isError).toBeUndefined();
+      const content = JSON.parse(closeResult.content[0].text);
+      expect(content.parentGitHubIssueClosed).toBe(42);
+      expect(content.message).toContain("Parent GitHub issue #42 also closed");
+
+      // Verify closeIssue was called on the mock
+      const closeCalls = mockCLI.getCallsTo("closeIssue");
+      expect(closeCalls.length).toBe(1);
+      expect(closeCalls[0].args[0]).toBe(42);
+    });
+
+    it("should not close parent GitHub issue for non-imported issues", async () => {
+      const mockCLI = ctx.githubCLI as MockGitHubCLI;
+
+      // Create a regular (non-imported) issue
+      const createResult = await handleCreateIssue(ctx, {
+        title: "Regular Issue",
+        description: "Not imported",
+      });
+      const created = JSON.parse(createResult.content[0].text);
+
+      // Close it
+      const closeResult = await handleCloseIssue(ctx, {
+        issueNumber: created.issue.number,
+      });
+
+      expect(closeResult.isError).toBeUndefined();
+      const content = JSON.parse(closeResult.content[0].text);
+      expect(content.parentGitHubIssueClosed).toBeUndefined();
+
+      // Verify closeIssue was NOT called
+      const closeCalls = mockCLI.getCallsTo("closeIssue");
+      expect(closeCalls.length).toBe(0);
+    });
+  });
 });

@@ -940,6 +940,9 @@ export async function handleUpdateIssue(
  * Closes an issue after validating all tasks are in terminal state.
  * Syncs to GitHub if the issue has a linked GitHub issue.
  *
+ * For imported issues (has sourceGitHubIssueNumber):
+ * - Also closes the parent GitHub issue that was imported
+ *
  * When force=true:
  * - Bypasses task state validation
  * - Use when issue state has drifted (e.g., all work is done but tasks weren't marked complete)
@@ -992,18 +995,35 @@ export async function handleCloseIssue(
     }
   }
 
+  // For imported issues, also close the parent GitHub issue
+  let parentIssueClosed = false;
+  if (ctx.githubSyncService.isEnabled() && issue.sourceGitHubIssueNumber) {
+    try {
+      await ctx.githubCLI.closeIssue(issue.sourceGitHubIssueNumber);
+      parentIssueClosed = true;
+    } catch (error) {
+      return errorResponse(
+        `Failed to close parent GitHub issue #${issue.sourceGitHubIssueNumber}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
   // Update issue status to CLOSED
   const updatedIssue = ctx.issueRepository.update(issue.id, { status: "CLOSED" });
 
-  const message =
-    force && nonTerminalTasks.length > 0
-      ? `Issue #${issueNumber} force-closed (${nonTerminalTasks.length} task(s) were not in terminal state)`
-      : `Issue #${issueNumber} closed successfully`;
+  let message = `Issue #${issueNumber} closed successfully`;
+  if (force && nonTerminalTasks.length > 0) {
+    message = `Issue #${issueNumber} force-closed (${nonTerminalTasks.length} task(s) were not in terminal state)`;
+  }
+  if (parentIssueClosed) {
+    message += `. Parent GitHub issue #${issue.sourceGitHubIssueNumber} also closed.`;
+  }
 
   return successResponse({
     message,
     issue: updatedIssue,
     forced: force,
+    parentGitHubIssueClosed: parentIssueClosed ? issue.sourceGitHubIssueNumber : undefined,
     skippedTasks:
       force && nonTerminalTasks.length > 0
         ? nonTerminalTasks.map((t) => ({ number: t.number, title: t.title, status: t.status }))
