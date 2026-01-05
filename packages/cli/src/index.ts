@@ -844,6 +844,8 @@ backupCmd
   .option("--secret-key <key>", "AWS secret access key (for non-AWS S3 services)")
   .option("--endpoint <url>", "Custom S3 endpoint (for R2, MinIO, etc.)")
   .option("--retention <count>", "Number of backups to keep", "20")
+  .option("--create-bucket", "Create the bucket if it doesn't exist")
+  .option("--validate", "Validate credentials before saving configuration")
   .action(async (options) => {
     const service = new BackupConfigService();
     try {
@@ -863,17 +865,49 @@ backupCmd
         process.exit(1);
       }
 
-      const result = await service.configureS3(
-        {
-          bucket: options.bucket,
-          region: options.region,
-          profile: options.profile,
-          accessKeyId: options.accessKey,
-          secretAccessKey: options.secretKey,
-          endpoint: options.endpoint,
-        },
-        retentionCount
-      );
+      const s3Config = {
+        bucket: options.bucket,
+        region: options.region,
+        profile: options.profile,
+        accessKeyId: options.accessKey,
+        secretAccessKey: options.secretKey,
+        endpoint: options.endpoint,
+      };
+
+      // Validate credentials and check bucket if --validate or --create-bucket
+      if (options.validate || options.createBucket) {
+        console.log("Validating credentials...");
+        const validation = await service.validateS3Credentials(s3Config);
+
+        if (!validation.success) {
+          console.error(`❌ ${validation.error}`);
+          process.exit(1);
+        }
+        console.log("✓ Credentials are valid!");
+
+        if (!validation.bucketExists) {
+          if (options.createBucket) {
+            console.log(`\nBucket '${options.bucket}' does not exist. Creating...`);
+            const createResult = await service.createS3Bucket(s3Config);
+
+            if (createResult.success) {
+              console.log(`✓ Bucket '${options.bucket}' created successfully!`);
+            } else {
+              console.error(`❌ Failed to create bucket: ${createResult.error}`);
+              process.exit(1);
+            }
+          } else {
+            console.error(`\n❌ Bucket '${options.bucket}' does not exist.`);
+            console.error("   Use --create-bucket to create it automatically.");
+            process.exit(1);
+          }
+        } else {
+          console.log(`✓ Bucket '${options.bucket}' exists and is accessible.`);
+        }
+        console.log();
+      }
+
+      const result = await service.configureS3(s3Config, retentionCount);
 
       if (result.success) {
         console.log("✓ Backup configured successfully!");
