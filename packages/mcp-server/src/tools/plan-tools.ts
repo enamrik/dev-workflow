@@ -74,10 +74,6 @@ export const planToolDefinitions: ToolDefinition[] = [
           enum: ["LOW", "MEDIUM", "HIGH", "VERY_HIGH"],
           description: "Estimated complexity of the plan",
         },
-        preserveExistingTasks: {
-          type: "boolean",
-          description: "Try to preserve in-progress/completed tasks (default: true)",
-        },
       },
       required: ["summary", "approach", "tasks", "estimatedComplexity"],
     },
@@ -192,18 +188,9 @@ export async function handleGeneratePlan(
     approach: string;
     tasks: TaskDefinition[];
     estimatedComplexity: PlanComplexity;
-    preserveExistingTasks?: boolean;
   }
 ): Promise<ToolResponse> {
-  const {
-    issueId,
-    issueNumber,
-    summary,
-    approach,
-    tasks,
-    estimatedComplexity,
-    preserveExistingTasks = true,
-  } = args;
+  const { issueId, issueNumber, summary, approach, tasks, estimatedComplexity } = args;
 
   // Resolve issue from ID or number
   const issue = issueId
@@ -256,7 +243,6 @@ export async function handleGeneratePlan(
     tasks: normalizedTasks,
     estimatedComplexity,
     generatedBy: "claude-agent",
-    preserveExistingTasks,
   });
 
   return successResponse({

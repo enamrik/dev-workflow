@@ -219,42 +219,6 @@ export const taskToolDefinitions: ToolDefinition[] = [
     },
   },
   {
-    name: "add_manual_task",
-    description:
-      "Add a user-created task to a plan. Manual tasks are preserved during plan regeneration.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        issueNumber: {
-          type: "number",
-          description: "Issue number (e.g., 123 for #123)",
-        },
-        title: {
-          type: "string",
-          description: "Task title",
-        },
-        description: {
-          type: "string",
-          description: "Task description",
-        },
-        acceptanceCriteria: {
-          type: "array",
-          items: { type: "string" },
-          description: "Acceptance criteria for the task",
-        },
-        estimatedMinutes: {
-          type: "number",
-          description: "Estimated time in minutes",
-        },
-        insertAfterTaskId: {
-          type: "string",
-          description: "Optional: Task ID to insert after (for ordering)",
-        },
-      },
-      required: ["issueNumber", "title", "description"],
-    },
-  },
-  {
     name: "delete_task",
     description: "Delete a task (soft delete). Only BACKLOG or READY tasks can be deleted.",
     inputSchema: {
@@ -847,44 +811,6 @@ export async function handleRemoveTaskLabel(
   return successResponse({
     success: true,
     message: `Removed label "${name}"`,
-  });
-}
-
-/**
- * Handle add_manual_task tool call
- */
-export function handleAddManualTask(
-  ctx: TaskToolContext,
-  args: {
-    issueNumber: number;
-    title: string;
-    description: string;
-    acceptanceCriteria?: string[];
-    estimatedMinutes?: number;
-    insertAfterTaskId?: string;
-  }
-): ToolResponse {
-  const {
-    issueNumber,
-    title,
-    description,
-    acceptanceCriteria,
-    estimatedMinutes,
-    insertAfterTaskId,
-  } = args;
-
-  const task = ctx.taskManagementService.addManualTask({
-    issueNumber,
-    title,
-    description,
-    acceptanceCriteria,
-    estimatedMinutes,
-    insertAfterTaskId,
-  });
-
-  return successResponse({
-    success: true,
-    task,
   });
 }
 

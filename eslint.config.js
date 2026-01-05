@@ -13,6 +13,7 @@ export default tseslint.config(
       "**/drizzle/**",
       "**/*.d.ts",
       "**/coverage/**",
+      "**/.track/**",
     ],
   },
 

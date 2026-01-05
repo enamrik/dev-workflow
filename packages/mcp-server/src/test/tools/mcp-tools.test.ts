@@ -120,7 +120,6 @@ async function generatePlanTool(
       estimatedMinutes?: number;
     }>;
     estimatedComplexity: PlanComplexity;
-    preserveExistingTasks?: boolean;
   }
 ): Promise<ToolResult> {
   let resolvedIssueId = params.issueId;
@@ -139,7 +138,6 @@ async function generatePlanTool(
     tasks: params.tasks,
     estimatedComplexity: params.estimatedComplexity,
     generatedBy: "test",
-    preserveExistingTasks: params.preserveExistingTasks ?? true,
   });
 
   return { success: true, ...result };
@@ -160,31 +158,6 @@ function updateTaskStatusTool(
       params.notes
     );
     return { success: true, task: updatedTask };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-/**
- * Simulate add_manual_task tool
- */
-function addManualTaskTool(
-  taskManagementService: TaskManagementService,
-  params: {
-    issueNumber: number;
-    title: string;
-    description: string;
-    acceptanceCriteria?: string[];
-    estimatedMinutes?: number;
-    insertAfterTaskId?: string;
-  }
-): ToolResult {
-  try {
-    const task = taskManagementService.addManualTask(params);
-    return { success: true, task };
   } catch (error) {
     return {
       success: false,
@@ -536,75 +509,6 @@ describe("MCP Tool: update_task_status", () => {
     const updatedTask = taskRepository.findById(taskId);
     expect(updatedTask?.status).toBe("COMPLETED");
     expect(updatedTask?.completedAt).toBeDefined();
-  });
-});
-
-describe("MCP Tool: add_manual_task", () => {
-  let testDb: TestDatabase;
-  let issueRepository: SqliteIssueRepository;
-  let taskRepository: SqliteTaskRepository;
-  let planRepository: SqlitePlanRepository;
-  let planningService: PlanningService;
-  let taskManagementService: TaskManagementService;
-
-  beforeEach(() => {
-    testDb = createTestDatabase();
-    const repos = createRepositories(testDb.db);
-    issueRepository = repos.issueRepository;
-    taskRepository = repos.taskRepository;
-    planRepository = repos.planRepository;
-    const services = createServices(repos);
-    planningService = services.planningService;
-    taskManagementService = services.taskManagementService;
-  });
-
-  afterEach(() => {
-    testDb.cleanup();
-  });
-
-  it("should add manual task to existing plan", async () => {
-    // Setup: create issue with plan
-    createIssueTool(issueRepository, {
-      title: "Test Issue",
-      description: "Test description",
-    });
-    await generatePlanTool(planningService, issueRepository, {
-      issueNumber: 1,
-      summary: "Test",
-      approach: "Test",
-      tasks: [
-        {
-          id: crypto.randomUUID(),
-          title: "Generated Task",
-          description: "Generated desc",
-          acceptanceCriteria: [],
-        },
-      ],
-      estimatedComplexity: "LOW",
-    });
-
-    // Add manual task
-    const result = addManualTaskTool(taskManagementService, {
-      issueNumber: 1,
-      title: "Manual Task",
-      description: "Added manually by user",
-    });
-
-    expect(result.success).toBe(true);
-
-    // Verify task has source="manual"
-    const task = result.task as { id: string; source: string };
-    expect(task.source).toBe("manual");
-
-    // Verify in database
-    const issue = issueRepository.findByNumber(1);
-    const plan = planRepository.findByIssueId(issue!.id);
-    const tasks = taskRepository.findByPlanId(plan!.id);
-    expect(tasks).toHaveLength(2);
-
-    const manualTask = tasks.find((t) => t.source === "manual");
-    expect(manualTask).toBeDefined();
-    expect(manualTask?.title).toBe("Manual Task");
   });
 });
 
