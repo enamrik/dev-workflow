@@ -647,6 +647,7 @@ any task and the remaining BACKLOG tasks will transition back to READY.
 
 - Explain another session owns the task
 - Suggest waiting or checking if session timed out
+- If session appears stale → offer to use force mode (see Force Mode section)
 
 **No tasks available:**
 
@@ -664,16 +665,174 @@ any task and the remaining BACKLOG tasks will transition back to READY.
 - GitHub integration not enabled
 - Guide user to run `update_settings` with `enable_github` action
 
+**Submit for review failed - wrong status:**
+
+- Task is not IN_PROGRESS (e.g., already in PR_REVIEW or COMPLETED)
+- If the task state has drifted → offer to use force mode
+
 **Complete failed - PR not merged:**
 
 - For isolated/branch modes, PR must be merged first
 - Show current PR status
 - Ask user to merge the PR on GitHub first
 
+**Complete failed - wrong status:**
+
+- Task is not in expected status (e.g., IN_PROGRESS instead of PR_REVIEW)
+- If the PR is actually merged but task status is wrong → offer force mode
+
 **Complete failed - PR not found:**
 
 - Task is in PR_REVIEW but PR was deleted
 - Suggest abandoning and re-starting the task
+
+**Close issue failed - tasks not complete:**
+
+- Some tasks are not in terminal state (COMPLETED or ABANDONED)
+- If the work is actually done but not tracked → offer force mode
+
+## Force Mode: Recovering from State Drift
+
+Sometimes the tracked state diverges from reality. This can happen when:
+
+- MCP tools were unavailable during a workflow
+- A PR was merged outside the normal flow
+- A session timed out but the task is still marked as owned
+- Manual intervention changed state without updating the tracker
+
+**Force mode** allows bypassing state machine validation when the user confirms the action is valid.
+
+### Tools with Force Option
+
+| Tool                  | What force bypasses                                      |
+| --------------------- | -------------------------------------------------------- |
+| `complete_task`       | Status check (allows completing from wrong status)       |
+| `abandon_task_session`| Session ownership check (allows abandoning orphan tasks) |
+| `submit_for_review`   | IN_PROGRESS status check                                 |
+| `close_issue`         | Task completion check (allows closing with open tasks)   |
+
+### When to Offer Force Mode
+
+Offer force mode when you detect a state machine error that suggests drift:
+
+1. **Detect the error**: Tool returns an error about wrong status or ownership
+2. **Analyze the situation**: Check what the actual state is vs. expected
+3. **Explain to user**: Show the mismatch clearly
+4. **Ask for confirmation**: Get explicit approval before using force
+5. **Retry with force=true**: Only after user confirms
+
+### Force Mode Protocol
+
+**NEVER use force mode without explicit user confirmation.** Follow this protocol:
+
+```
+1. Tool call fails with state machine error
+2. Analyze the error message to understand the mismatch
+3. Present the situation to the user:
+   "The task is in [ACTUAL_STATUS] but the tool expects [EXPECTED_STATUS].
+    This can happen when [explanation of how drift occurs].
+    Would you like me to force through this operation?"
+4. Wait for explicit "yes" or confirmation
+5. Retry with force=true
+```
+
+### Force Mode Examples
+
+**Example 1: Completing a task when PR was merged externally**
+
+```
+User: "complete the task"
+
+[Calling complete_task...]
+
+Error: Task must be in PR_REVIEW status to complete. Current status: IN_PROGRESS.
+Use submit_for_review first to create a PR, or use force=true to bypass this check.
+
+[Checking... The PR is actually merged on GitHub]
+
+I see that the task is still marked as IN_PROGRESS, but the PR has been merged.
+This can happen if the PR was merged outside the normal workflow.
+
+Would you like me to force-complete the task? This will bypass the status check
+and mark the task as COMPLETED.
+```
+
+**User:** "yes, force it"
+
+**Response:**
+
+```
+[Calling complete_task with force=true...]
+
+Task force-completed. PR #42 status: merged. Worktree cleaned up.
+
+Task "Add OAuth2 authentication" is now COMPLETED.
+```
+
+**Example 2: Abandoning an orphaned task**
+
+```
+User: "abandon the stuck task"
+
+[Calling abandon_task_session...]
+
+Error: Task is not associated with session abc123. Current session: xyz789.
+Use force=true to bypass this check if the session has drifted.
+
+[Analyzing...]
+
+The task appears to be locked by a stale session (xyz789) that is no longer active.
+This can happen when a session times out or disconnects unexpectedly.
+
+Would you like me to force-abandon the task? This will bypass the session
+ownership check and mark the task as ABANDONED.
+```
+
+**User:** "yes"
+
+**Response:**
+
+```
+[Calling abandon_task_session with force=true...]
+
+Task force-abandoned. Worktree and branch cleaned up.
+
+Task "Implement auth flow" is now ABANDONED.
+```
+
+**Example 3: Closing an issue when tasks drifted**
+
+```
+User: "close issue #5"
+
+[Calling close_issue...]
+
+Error: Cannot close issue #5. The following tasks are not complete:
+  - Task 2: Add tests (IN_PROGRESS)
+Use force=true to close anyway if the work is actually done.
+
+[Checking task 2...]
+
+Task 2 shows as IN_PROGRESS, but checking the actual git state...
+The tests were added and the PR was merged. The task status was not
+updated due to a tool failure during completion.
+
+Would you like me to force-close the issue? This will bypass the
+task completion check. The incomplete task will remain in its current state.
+```
+
+**User:** "yes, force close it"
+
+**Response:**
+
+```
+[Calling close_issue with force=true...]
+
+Issue #5 force-closed.
+Note: Task 2 is still marked as IN_PROGRESS.
+
+Issue "User Authentication" is now CLOSED.
+```
 
 ## Notes
 
@@ -683,6 +842,7 @@ any task and the remaining BACKLOG tasks will transition back to READY.
 - Always show acceptance criteria when starting a task
 - **ALWAYS use isolated mode** - never autonomously choose branch or main mode
 - Only use branch/main mode when the user explicitly requests it
+- **NEVER use force mode without explicit user confirmation** - always explain the state mismatch first
 
 ### Task Tuning
 
@@ -699,7 +859,7 @@ When working on a **BUG** type issue, the task follows an investigation-first ap
 ### Why Log During Bug Investigation?
 
 - **Creates an audit trail**: Documents what was investigated and why
-- **Captures the journey**: Root cause discovery isn't always linear
+- **Captures the journey**: Root cause discovery is not always linear
 - **Helps future debugging**: Similar bugs can reference the investigation log
 - **Informs the PR**: Findings can be summarized in the PR description
 
@@ -708,7 +868,7 @@ When working on a **BUG** type issue, the task follows an investigation-first ap
 Call `log_task_progress` at these key moments:
 
 1. **Initial investigation findings**
-   - What areas of code you're examining
+   - What areas of code you are examining
    - Initial hypotheses about the cause
 
 2. **Root cause identified**
@@ -732,7 +892,7 @@ Starting task session in isolated mode...
 
 Task: Investigate and fix: Login fails silently when session expires
 
-This is a BUG investigation task. I'll document findings using progress logs
+This is a BUG investigation task. I will document findings using progress logs
 as I investigate.
 
 Symptoms (from issue):
@@ -759,10 +919,10 @@ Found it. The issue is in the session middleware - when a session expires,
 it redirects without passing an error code to the login page.
 
 [Logging progress: "ROOT CAUSE: SessionMiddleware.validateSession() at
-line 45 calls res.redirect('/login') without query param. Login page
-checks for ?error=session_expired to show message, but it's never set."]
+line 45 calls res.redirect(\"/login\") without query param. Login page
+checks for ?error=session_expired to show message, but it is never set."]
 
-I'll fix this by adding the error parameter to the redirect.
+I will fix this by adding the error parameter to the redirect.
 
 [Logging progress: "FIX: Modified SessionMiddleware.validateSession() to
 redirect to /login?error=session_expired. Added test for expired session
@@ -772,7 +932,7 @@ redirect. Files: src/middleware/session.ts, tests/session.test.ts"]
 **On completion:**
 
 ```
-Bug investigation complete. Here's the summary:
+Bug investigation complete. Here is the summary:
 
 **Root Cause:**
 SessionMiddleware.validateSession() was redirecting to /login without
