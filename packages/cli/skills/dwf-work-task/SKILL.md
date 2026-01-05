@@ -704,12 +704,12 @@ Sometimes the tracked state diverges from reality. This can happen when:
 
 ### Tools with Force Option
 
-| Tool                  | What force bypasses                                      |
-| --------------------- | -------------------------------------------------------- |
-| `complete_task`       | Status check (allows completing from wrong status)       |
-| `abandon_task_session`| Session ownership check (allows abandoning orphan tasks) |
-| `submit_for_review`   | IN_PROGRESS status check                                 |
-| `close_issue`         | Task completion check (allows closing with open tasks)   |
+| Tool                   | What force bypasses                                      |
+| ---------------------- | -------------------------------------------------------- |
+| `complete_task`        | Status check (allows completing from wrong status)       |
+| `abandon_task_session` | Session ownership check (allows abandoning orphan tasks) |
+| `submit_for_review`    | IN_PROGRESS status check                                 |
+| `close_issue`          | Task completion check (allows closing with open tasks)   |
 
 ### When to Offer Force Mode
 
