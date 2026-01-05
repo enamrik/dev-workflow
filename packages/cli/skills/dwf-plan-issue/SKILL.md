@@ -90,7 +90,7 @@ If no context was passed, make reasonable decisions based on the codebase patter
    - **Acceptance Criteria**: Specific, verifiable outcomes (include test expectations)
 
 6. **Generate Plan:**
-   - Call `generate_plan` with summary, approach, and tasks
+   - Call `generate_plan` with `issueNumber` (from step 1), summary, approach, and tasks
    - Use appropriate complexity estimate (LOW, MEDIUM, HIGH, VERY_HIGH)
    - **Tasks are created in PLANNED status** (no GitHub sync yet)
    - **Display the issue URL** from the `generate_plan` response (the `url` field)
