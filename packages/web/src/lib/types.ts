@@ -84,6 +84,7 @@ export interface Milestone {
   status: "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "DELAYED";
   projectId: string;
   projectName?: string;
+  projectSlug?: string;
   createdAt: string;
   updatedAt: string;
 }
