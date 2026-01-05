@@ -35,6 +35,14 @@ export interface Issue {
   /** Milestone this issue belongs to (optional) */
   milestoneId?: string;
 
+  /**
+   * Source GitHub issue number for imported issues.
+   * When an issue is imported from an existing GitHub issue, this stores
+   * the original GitHub issue number. This is different from githubSync
+   * which tracks the GitHub issue created BY dev-workflow for syncing.
+   */
+  sourceGitHubIssueNumber?: number;
+
   /** Soft delete fields */
   isDeleted?: boolean;
   deletedAt?: string;

@@ -73,6 +73,12 @@ export const issues = sqliteTable(
     // Milestone association (optional)
     milestoneId: text("milestone_id"),
 
+    // Source GitHub issue for imported issues
+    // When an issue is imported from an existing GitHub issue, this stores
+    // the original GitHub issue number. This is different from githubIssueNumber
+    // which is the GitHub issue created BY dev-workflow for syncing.
+    sourceGitHubIssueNumber: integer("source_github_issue_number"),
+
     // Soft delete support
     isDeleted: integer("is_deleted", { mode: "boolean" }).notNull().default(false),
     deletedAt: text("deleted_at"),
