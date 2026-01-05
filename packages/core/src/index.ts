@@ -107,6 +107,7 @@ export { TemplateParser, TemplateParseError } from "./infrastructure/templates/t
 export {
   TemplateService,
   TemplateServiceError,
+  type TemplateServiceConfig,
 } from "./infrastructure/templates/template-service.js";
 
 // Infrastructure - GitHub

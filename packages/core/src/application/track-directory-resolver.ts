@@ -22,7 +22,10 @@ export function resolveGlobalTrackDir(): string {
  * Storage architecture:
  * - Single global database: ~/.track/workflow.db (all projects share one DB)
  * - Per-project config: ~/.track/<project-id>/config.json
- * - Per-project labels: ~/.track/<project-id>/labels/
+ * - Per-project worktrees: ~/.track/<project-id>/worktrees/
+ * - Local templates: ./track/templates/issues/ and ./track/templates/tasks/
+ * - Local labels: ./track/labels/
+ * - Global fallback templates: ~/.track/config/templates/issues/ and ~/.track/config/templates/tasks/
  *
  * The base directory can be overridden by setting the TRACK_DIR environment
  * variable. This is useful for testing in worktrees without affecting
@@ -157,6 +160,7 @@ export class TrackDirectoryResolver {
   /**
    * Get the labels directory path.
    * Returns: ~/.track/<project-id>/labels/
+   * @deprecated Use getLocalLabelsPath() instead - labels are moving to local ./track/labels/
    */
   getLabelsPath(): string {
     return path.join(this.getTrackDirectory(), "labels");
@@ -165,6 +169,7 @@ export class TrackDirectoryResolver {
   /**
    * Get the templates directory path.
    * Returns: ~/.track/<project-id>/config/issues/templates/
+   * @deprecated Use getLocalIssueTemplatesPath() or getGlobalIssueTemplatesPath() instead
    */
   getTemplatesPath(): string {
     return path.join(this.getTrackDirectory(), "config", "issues", "templates");
@@ -173,9 +178,74 @@ export class TrackDirectoryResolver {
   /**
    * Get the user templates directory path (for user-created templates).
    * Returns: ~/.track/<project-id>/issues/templates/
+   * @deprecated Use getLocalIssueTemplatesPath() instead
    */
   getUserTemplatesPath(): string {
     return path.join(this.getTrackDirectory(), "issues", "templates");
+  }
+
+  // ============================================================
+  // New local ./track/ paths (primary, checked into repo)
+  // ============================================================
+
+  /**
+   * Get the local track directory path (in the git repo).
+   * Returns: <gitRoot>/track/
+   */
+  getLocalTrackDirectory(): string {
+    return path.join(this.gitRoot, "track");
+  }
+
+  /**
+   * Get the local issue templates directory path.
+   * Returns: <gitRoot>/track/templates/issues/
+   */
+  getLocalIssueTemplatesPath(): string {
+    return path.join(this.getLocalTrackDirectory(), "templates", "issues");
+  }
+
+  /**
+   * Get the local task templates directory path.
+   * Returns: <gitRoot>/track/templates/tasks/
+   */
+  getLocalTaskTemplatesPath(): string {
+    return path.join(this.getLocalTrackDirectory(), "templates", "tasks");
+  }
+
+  /**
+   * Get the local labels directory path.
+   * Returns: <gitRoot>/track/labels/
+   */
+  getLocalLabelsPath(): string {
+    return path.join(this.getLocalTrackDirectory(), "labels");
+  }
+
+  // ============================================================
+  // Global ~/.track/config/ paths (fallback)
+  // ============================================================
+
+  /**
+   * Get the global config directory path.
+   * Returns: ~/.track/config/
+   */
+  getGlobalConfigDirectory(): string {
+    return path.join(this.getGlobalTrackDirectory(), "config");
+  }
+
+  /**
+   * Get the global issue templates directory path (fallback).
+   * Returns: ~/.track/config/templates/issues/
+   */
+  getGlobalIssueTemplatesPath(): string {
+    return path.join(this.getGlobalConfigDirectory(), "templates", "issues");
+  }
+
+  /**
+   * Get the global task templates directory path (fallback).
+   * Returns: ~/.track/config/templates/tasks/
+   */
+  getGlobalTaskTemplatesPath(): string {
+    return path.join(this.getGlobalConfigDirectory(), "templates", "tasks");
   }
 }
 
