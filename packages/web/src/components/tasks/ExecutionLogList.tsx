@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { clsx } from "clsx";
 import type { TaskExecutionLog } from "@/lib/types";
+import { Markdown } from "@/components/ui";
 
 interface ExecutionLogListProps {
   logs: TaskExecutionLog[];
@@ -40,8 +41,8 @@ export function ExecutionLogList({
       {isExpanded && (
         <div className="border-t border-gray-200 divide-y divide-gray-100">
           {logs.map((log) => (
-            <div key={log.id} className="px-3 py-2">
-              <div className="text-sm text-gray-800">{log.message}</div>
+            <div key={log.id} className="px-3 py-2 overflow-x-auto">
+              <Markdown className="text-sm">{log.message}</Markdown>
               {log.filesModified && log.filesModified.length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1">
                   {log.filesModified.map((file, idx) => (
