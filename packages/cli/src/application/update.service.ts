@@ -447,7 +447,7 @@ These values can still be overridden when creating an issue explicitly.
   /**
    * Configure Claude Code permissions for worktree directories.
    *
-   * Creates per-project .claude/settings.json with Read and Edit permissions
+   * Creates per-project .claude/settings.local.json with Read and Edit permissions
    * for worktree paths so Claude can access files without prompting.
    */
   async configureClaudePermissions(): Promise<{ configured: boolean; permissions: string[] }> {
@@ -463,7 +463,7 @@ These values can still be overridden when creating an issue explicitly.
 
     try {
       const claudeDir = path.join(this.workingDirectory, ".claude");
-      const settingsPath = path.join(claudeDir, "settings.json");
+      const settingsPath = path.join(claudeDir, "settings.local.json");
 
       // Ensure .claude directory exists
       if (!fs.existsSync(claudeDir)) {
