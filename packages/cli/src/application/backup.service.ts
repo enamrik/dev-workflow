@@ -10,11 +10,14 @@ import {
   DatabaseService,
   SqliteGlobalSettingsRepository,
   BackupService,
+  S3BackupProvider,
   type BackupConfig,
   type S3BackupConfig,
   type BackupMetadata,
   type BackupResult,
   type RestoreResult,
+  type ValidationResult,
+  type CreateBucketResult,
 } from "@dev-workflow/core";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -105,6 +108,24 @@ export class BackupConfigService {
         message: `Failed to save backup configuration: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
+  }
+
+  /**
+   * Validate S3 credentials without saving configuration
+   * Creates a temporary provider to test connectivity
+   */
+  async validateS3Credentials(s3Config: S3BackupConfig): Promise<ValidationResult> {
+    const provider = new S3BackupProvider(s3Config);
+    return provider.validateCredentials();
+  }
+
+  /**
+   * Create an S3 bucket
+   * Creates a temporary provider to create the bucket
+   */
+  async createS3Bucket(s3Config: S3BackupConfig): Promise<CreateBucketResult> {
+    const provider = new S3BackupProvider(s3Config);
+    return provider.createBucket();
   }
 
   /**
