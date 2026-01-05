@@ -566,7 +566,6 @@ function formatConflictWarnings(warnings: ConflictWarning[]): string {
   return lines.join("\n");
 }
 
-
 /**
  * Handle abandon_task_session tool call
  *

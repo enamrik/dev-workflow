@@ -974,17 +974,19 @@ export async function handleCloseIssue(
   // Update issue status to CLOSED
   const updatedIssue = ctx.issueRepository.update(issue.id, { status: "CLOSED" });
 
-  const message = force && nonTerminalTasks.length > 0
-    ? `Issue #${issueNumber} force-closed (${nonTerminalTasks.length} task(s) were not in terminal state)`
-    : `Issue #${issueNumber} closed successfully`;
+  const message =
+    force && nonTerminalTasks.length > 0
+      ? `Issue #${issueNumber} force-closed (${nonTerminalTasks.length} task(s) were not in terminal state)`
+      : `Issue #${issueNumber} closed successfully`;
 
   return successResponse({
     message,
     issue: updatedIssue,
     forced: force,
-    skippedTasks: force && nonTerminalTasks.length > 0
-      ? nonTerminalTasks.map((t) => ({ number: t.number, title: t.title, status: t.status }))
-      : undefined,
+    skippedTasks:
+      force && nonTerminalTasks.length > 0
+        ? nonTerminalTasks.map((t) => ({ number: t.number, title: t.title, status: t.status }))
+        : undefined,
   });
 }
 
