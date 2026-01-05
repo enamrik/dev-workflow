@@ -77,8 +77,8 @@ export class TrackDirectoryResolver {
    */
   private computeProjectId(): string {
     const folderName = path.basename(this.gitRoot);
-    const firstCommitHash = this.getFirstCommitHash();
-    return `${folderName}-${firstCommitHash.slice(0, 6)}`;
+    const gitRootHash = this.getGitRootHash();
+    return `${folderName}-${gitRootHash.slice(0, 6)}`;
   }
 
   /**
@@ -102,13 +102,6 @@ export class TrackDirectoryResolver {
       // Fallback to path-based hash if git command fails
       return crypto.createHash("sha256").update(this.gitRoot).digest("hex");
     }
-  }
-
-  /**
-   * @deprecated Use getGitRootHash() instead
-   */
-  private getFirstCommitHash(): string {
-    return this.getGitRootHash();
   }
 
   /**
@@ -157,35 +150,8 @@ export class TrackDirectoryResolver {
     return path.join(this.getTrackDirectory(), "config.json");
   }
 
-  /**
-   * Get the labels directory path.
-   * Returns: ~/.track/<project-id>/labels/
-   * @deprecated Use getLocalLabelsPath() instead - labels are moving to local ./track/labels/
-   */
-  getLabelsPath(): string {
-    return path.join(this.getTrackDirectory(), "labels");
-  }
-
-  /**
-   * Get the templates directory path.
-   * Returns: ~/.track/<project-id>/config/issues/templates/
-   * @deprecated Use getLocalIssueTemplatesPath() or getGlobalIssueTemplatesPath() instead
-   */
-  getTemplatesPath(): string {
-    return path.join(this.getTrackDirectory(), "config", "issues", "templates");
-  }
-
-  /**
-   * Get the user templates directory path (for user-created templates).
-   * Returns: ~/.track/<project-id>/issues/templates/
-   * @deprecated Use getLocalIssueTemplatesPath() instead
-   */
-  getUserTemplatesPath(): string {
-    return path.join(this.getTrackDirectory(), "issues", "templates");
-  }
-
   // ============================================================
-  // New local ./track/ paths (primary, checked into repo)
+  // Local ./track/ paths (primary, checked into repo)
   // ============================================================
 
   /**
