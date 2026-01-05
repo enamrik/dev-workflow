@@ -171,7 +171,7 @@ These values can still be overridden when creating an issue explicitly.
       const gitRoot = this.resolver.getGitRoot();
       const cliPath = path.join(this.packageRoot, "dist/index.js");
 
-      // Remove existing registration if it exists (from both scopes)
+      // Remove existing registration if it exists (from both scopes for migration)
       try {
         execSync("claude mcp remove dev-workflow-tracker --scope project", {
           cwd: this.workingDirectory,
@@ -191,12 +191,14 @@ These values can still be overridden when creating an issue explicitly.
         // Ignore if doesn't exist
       }
 
-      // Build the command args (--scope goes after 'mcp add')
-      const buildArgs = (scope: string) => [
+      // Build the command args for local scope only
+      // Local scope stores config in ~/.claude.json, not in the project's .mcp.json
+      // This allows dev-workflow to work in projects where .mcp.json is committed
+      const args = [
         "mcp",
         "add",
         "--scope",
-        scope,
+        "local",
         "--transport",
         "stdio",
         "dev-workflow-tracker",
@@ -214,15 +216,8 @@ These values can still be overridden when creating an issue explicitly.
         "mcp",
       ];
 
-      // Register with project scope (writes to .claude/config/mcp-servers.json)
-      execSync(`claude ${buildArgs("project").join(" ")}`, {
-        cwd: this.workingDirectory,
-        stdio: "inherit",
-        timeout: 30000,
-      });
-
-      // Also register with local scope for claude --print to work
-      execSync(`claude ${buildArgs("local").join(" ")}`, {
+      // Register with local scope only (stored in ~/.claude.json)
+      execSync(`claude ${args.join(" ")}`, {
         cwd: this.workingDirectory,
         stdio: "inherit",
         timeout: 30000,
