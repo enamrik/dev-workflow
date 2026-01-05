@@ -9,6 +9,12 @@ export type MilestoneStatus = "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "DELAYED
  *
  * Represents a time-bounded collection of issues.
  * Milestones have start and end dates and are displayed on a timeline.
+ *
+ * Status is computed at read time based on issue states and dates:
+ * - COMPLETED: Stored value (requires manual sign-off via update_milestone)
+ * - DELAYED: endDate < today AND not all issues closed AND not COMPLETED
+ * - IN_PROGRESS: At least one issue is OPEN or IN_PROGRESS
+ * - PLANNED: All issues are PLANNED or no issues assigned
  */
 export interface Milestone {
   readonly id: string; // UUID
@@ -21,6 +27,63 @@ export interface Milestone {
   readonly status: MilestoneStatus;
   readonly createdAt: string; // ISO datetime string
   readonly updatedAt: string; // ISO datetime string
+}
+
+/**
+ * Issue status data needed for milestone status computation
+ */
+export interface MilestoneIssueStats {
+  /** Total number of issues in the milestone */
+  readonly totalIssues: number;
+  /** Number of issues with CLOSED status */
+  readonly closedIssues: number;
+  /** Number of issues with OPEN or IN_PROGRESS status (work started) */
+  readonly openOrInProgressIssues: number;
+}
+
+/**
+ * Compute milestone status from stored status, issue stats, and dates.
+ *
+ * Status priority (highest to lowest):
+ * 1. COMPLETED - stored value (manual sign-off), never overridden
+ * 2. DELAYED - past endDate AND not all issues closed
+ * 3. IN_PROGRESS - at least one issue has work started
+ * 4. PLANNED - all issues are in PLANNED state or no issues assigned
+ *
+ * @param storedStatus - The status stored in the database
+ * @param issueStats - Issue statistics for the milestone
+ * @param endDate - Milestone end date (YYYY-MM-DD format)
+ * @param today - Today's date (YYYY-MM-DD format, for testing)
+ * @returns Computed milestone status
+ */
+export function computeMilestoneStatus(
+  storedStatus: MilestoneStatus,
+  issueStats: MilestoneIssueStats,
+  endDate: string,
+  today: string = new Date().toISOString().split("T")[0] ?? ""
+): MilestoneStatus {
+  // COMPLETED is a manual action - never override
+  if (storedStatus === "COMPLETED") {
+    return "COMPLETED";
+  }
+
+  const { totalIssues, closedIssues, openOrInProgressIssues } = issueStats;
+
+  // Check for DELAYED: past endDate AND not all issues closed
+  const isPastEndDate = today > endDate;
+  const allIssuesClosed = totalIssues > 0 && closedIssues === totalIssues;
+
+  if (isPastEndDate && !allIssuesClosed) {
+    return "DELAYED";
+  }
+
+  // Check for IN_PROGRESS: at least one issue has work started
+  if (openOrInProgressIssues > 0) {
+    return "IN_PROGRESS";
+  }
+
+  // Default: PLANNED (all issues in PLANNED state or no issues)
+  return "PLANNED";
 }
 
 /**

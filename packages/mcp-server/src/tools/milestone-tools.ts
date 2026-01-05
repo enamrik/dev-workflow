@@ -6,8 +6,46 @@ import {
   type SqliteMilestoneRepository,
   type SqliteIssueRepository,
   type MilestoneStatus,
+  type Milestone,
+  type MilestoneIssueStats,
+  computeMilestoneStatus,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
+
+/**
+ * Compute issue stats for a milestone from the issue repository.
+ * Returns the stats needed for milestone status computation.
+ */
+function computeIssueStats(
+  issueRepository: SqliteIssueRepository,
+  milestoneId: string
+): MilestoneIssueStats {
+  const issues = issueRepository.findMany({ milestoneId });
+
+  return {
+    totalIssues: issues.length,
+    closedIssues: issues.filter((i) => i.status === "CLOSED").length,
+    openOrInProgressIssues: issues.filter((i) => i.status === "OPEN" || i.status === "IN_PROGRESS")
+      .length,
+  };
+}
+
+/**
+ * Get milestone with computed status.
+ * Status is computed from issue states and dates at read time.
+ */
+function getMilestoneWithComputedStatus(
+  milestone: Milestone,
+  issueRepository: SqliteIssueRepository
+): Milestone {
+  const stats = computeIssueStats(issueRepository, milestone.id);
+  const computedStatus = computeMilestoneStatus(milestone.status, stats, milestone.endDate);
+
+  return {
+    ...milestone,
+    status: computedStatus,
+  };
+}
 
 /**
  * Context for milestone tools
@@ -24,7 +62,8 @@ export interface MilestoneToolContext {
 export const milestoneToolDefinitions: ToolDefinition[] = [
   {
     name: "create_milestone",
-    description: "Create a new milestone for grouping issues with a time range",
+    description:
+      "Create a new milestone for grouping issues with a time range. Status is computed automatically from issue states (PLANNED until work starts, then IN_PROGRESS, DELAYED if past endDate).",
     inputSchema: {
       type: "object",
       properties: {
@@ -43,11 +82,6 @@ export const milestoneToolDefinitions: ToolDefinition[] = [
         endDate: {
           type: "string",
           description: "End date in YYYY-MM-DD format",
-        },
-        status: {
-          type: "string",
-          enum: ["PLANNED", "IN_PROGRESS", "COMPLETED", "DELAYED"],
-          description: "Milestone status (default: PLANNED)",
         },
       },
       required: ["title", "startDate", "endDate"],
@@ -72,21 +106,23 @@ export const milestoneToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "list_milestones",
-    description: "List milestones with optional filters",
+    description:
+      "List milestones with optional filters. Status is computed automatically from issue states.",
     inputSchema: {
       type: "object",
       properties: {
         status: {
           type: "string",
           enum: ["PLANNED", "IN_PROGRESS", "COMPLETED", "DELAYED"],
-          description: "Filter by status",
+          description: "Filter by computed status",
         },
       },
     },
   },
   {
     name: "update_milestone",
-    description: "Update a milestone's properties",
+    description:
+      "Update a milestone's properties. Status is automatically computed (PLANNED, IN_PROGRESS, DELAYED) except COMPLETED which requires manual sign-off.",
     inputSchema: {
       type: "object",
       properties: {
@@ -96,7 +132,8 @@ export const milestoneToolDefinitions: ToolDefinition[] = [
         },
         updates: {
           type: "object",
-          description: "Fields to update",
+          description:
+            "Fields to update. Status can only be set to COMPLETED (manual sign-off); other statuses are computed automatically.",
           properties: {
             title: { type: "string" },
             description: { type: "string" },
@@ -104,7 +141,9 @@ export const milestoneToolDefinitions: ToolDefinition[] = [
             endDate: { type: "string" },
             status: {
               type: "string",
-              enum: ["PLANNED", "IN_PROGRESS", "COMPLETED", "DELAYED"],
+              enum: ["COMPLETED"],
+              description:
+                "Only COMPLETED can be set manually. Other statuses are computed from issue states.",
             },
           },
         },
@@ -162,6 +201,10 @@ export const milestoneToolDefinitions: ToolDefinition[] = [
 
 /**
  * Handler for create_milestone
+ *
+ * Creates a new milestone with PLANNED as the initial stored status.
+ * The returned status will be computed based on issue states (which will be PLANNED
+ * since new milestones have no issues assigned).
  */
 export function handleCreateMilestone(
   ctx: MilestoneToolContext,
@@ -170,7 +213,6 @@ export function handleCreateMilestone(
     description?: string;
     startDate: string;
     endDate: string;
-    status?: MilestoneStatus;
   }
 ): ToolResponse {
   // Validate date format
@@ -187,18 +229,25 @@ export function handleCreateMilestone(
     return errorResponse("startDate must be before or equal to endDate");
   }
 
+  // Always store PLANNED as initial status (status is computed at read time)
   const milestone = ctx.milestoneRepository.create({
     title: args.title,
     description: args.description ?? "",
     startDate: args.startDate,
     endDate: args.endDate,
-    status: args.status ?? "PLANNED",
+    status: "PLANNED",
   });
 
+  // Return milestone with computed status
+  const milestoneWithComputedStatus = getMilestoneWithComputedStatus(
+    milestone,
+    ctx.issueRepository
+  );
+
   return successResponse({
-    message: `Created milestone M${milestone.number}: ${milestone.title}`,
+    message: `Created milestone M${milestoneWithComputedStatus.number}: ${milestoneWithComputedStatus.title}`,
     milestone: {
-      ...milestone,
+      ...milestoneWithComputedStatus,
       projectName: ctx.projectName,
     },
   });
@@ -206,6 +255,8 @@ export function handleCreateMilestone(
 
 /**
  * Handler for get_milestone
+ *
+ * Returns milestone with computed status based on issue states and dates.
  */
 export function handleGetMilestone(
   ctx: MilestoneToolContext,
@@ -225,12 +276,18 @@ export function handleGetMilestone(
     return errorResponse("Milestone not found");
   }
 
+  // Get milestone with computed status
+  const milestoneWithComputedStatus = getMilestoneWithComputedStatus(
+    milestone,
+    ctx.issueRepository
+  );
+
   // Get issues assigned to this milestone
   const issues = ctx.issueRepository.findMany({ milestoneId: milestone.id });
 
   return successResponse({
     milestone: {
-      ...milestone,
+      ...milestoneWithComputedStatus,
       projectName: ctx.projectName,
     },
     issues: issues.map((i) => ({
@@ -250,34 +307,47 @@ export function handleGetMilestone(
 
 /**
  * Handler for list_milestones
+ *
+ * Returns milestones with computed status based on issue states and dates.
+ * Status filter applies to the computed status, not the stored status.
  */
 export function handleListMilestones(
   ctx: MilestoneToolContext,
   args: { status?: MilestoneStatus }
 ): ToolResponse {
-  const milestones = ctx.milestoneRepository.findMany(
-    args.status ? { status: args.status } : undefined
-  );
+  // Fetch all milestones (no status filter at DB level since status is computed)
+  const allMilestones = ctx.milestoneRepository.findMany();
 
-  // Enrich each milestone with issue counts and project name
-  const enrichedMilestones = milestones.map((m) => {
+  // Enrich each milestone with computed status, issue counts, and project name
+  const enrichedMilestones = allMilestones.map((m) => {
     const issues = ctx.issueRepository.findMany({ milestoneId: m.id });
+    const milestoneWithComputedStatus = getMilestoneWithComputedStatus(m, ctx.issueRepository);
+
     return {
-      ...m,
+      ...milestoneWithComputedStatus,
       projectName: ctx.projectName,
       issueCount: issues.length,
       closedCount: issues.filter((i) => i.status === "CLOSED").length,
     };
   });
 
+  // Filter by computed status if requested
+  const filteredMilestones = args.status
+    ? enrichedMilestones.filter((m) => m.status === args.status)
+    : enrichedMilestones;
+
   return successResponse({
-    milestones: enrichedMilestones,
-    count: enrichedMilestones.length,
+    milestones: filteredMilestones,
+    count: filteredMilestones.length,
   });
 }
 
 /**
  * Handler for update_milestone
+ *
+ * Updates milestone properties. Status can only be set to COMPLETED (manual sign-off).
+ * Other status values (PLANNED, IN_PROGRESS, DELAYED) are computed automatically
+ * from issue states and dates.
  */
 export function handleUpdateMilestone(
   ctx: MilestoneToolContext,
@@ -295,6 +365,14 @@ export function handleUpdateMilestone(
   const milestone = ctx.milestoneRepository.findByNumber(args.milestoneNumber);
   if (!milestone) {
     return errorResponse(`Milestone M${args.milestoneNumber} not found`);
+  }
+
+  // Validate status update - only COMPLETED is allowed
+  if (args.updates.status && args.updates.status !== "COMPLETED") {
+    return errorResponse(
+      `Cannot set status to ${args.updates.status}. Only COMPLETED can be set manually. ` +
+        "PLANNED, IN_PROGRESS, and DELAYED are computed automatically from issue states."
+    );
   }
 
   // Validate date format if provided
@@ -315,10 +393,13 @@ export function handleUpdateMilestone(
 
   const updated = ctx.milestoneRepository.update(milestone.id, args.updates);
 
+  // Return milestone with computed status
+  const updatedWithComputedStatus = getMilestoneWithComputedStatus(updated, ctx.issueRepository);
+
   return successResponse({
-    message: `Updated milestone M${updated.number}`,
+    message: `Updated milestone M${updatedWithComputedStatus.number}`,
     milestone: {
-      ...updated,
+      ...updatedWithComputedStatus,
       projectName: ctx.projectName,
     },
   });
