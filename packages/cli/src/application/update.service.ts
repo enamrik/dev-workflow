@@ -230,7 +230,7 @@ export class UpdateService {
       const gitRoot = this.resolver.getGitRoot();
       const cliPath = path.join(this.packageRoot, "dist/index.js");
 
-      // Remove existing registration (from both scopes)
+      // Remove existing registration (from both scopes for migration from old versions)
       try {
         execSync("claude mcp remove dev-workflow-tracker --scope project", {
           cwd: this.workingDirectory,
@@ -250,12 +250,14 @@ export class UpdateService {
         // Ignore if doesn't exist
       }
 
-      // Build the command args (--scope goes after 'mcp add')
-      const buildArgs = (scope: string) => [
+      // Build the command args for local scope only
+      // Local scope stores config in ~/.claude.json, not in the project's .mcp.json
+      // This allows dev-workflow to work in projects where .mcp.json is committed
+      const args = [
         "mcp",
         "add",
         "--scope",
-        scope,
+        "local",
         "--transport",
         "stdio",
         "dev-workflow-tracker",
@@ -273,15 +275,8 @@ export class UpdateService {
         "mcp",
       ];
 
-      // Re-register with project scope
-      execSync(`claude ${buildArgs("project").join(" ")}`, {
-        cwd: this.workingDirectory,
-        stdio: "inherit",
-        timeout: 30000,
-      });
-
-      // Re-register with local scope
-      execSync(`claude ${buildArgs("local").join(" ")}`, {
+      // Re-register with local scope only (stored in ~/.claude.json)
+      execSync(`claude ${args.join(" ")}`, {
         cwd: this.workingDirectory,
         stdio: "inherit",
         timeout: 30000,

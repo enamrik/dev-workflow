@@ -54,7 +54,7 @@ export class UninstallService {
 
   async unregisterMCPServer(): Promise<void> {
     try {
-      // Remove from project scope
+      // Remove from project scope (for backwards compatibility with old versions)
       try {
         execSync("claude mcp remove dev-workflow-tracker --scope project", {
           cwd: this.workingDirectory,
@@ -65,7 +65,7 @@ export class UninstallService {
         // Ignore if doesn't exist
       }
 
-      // Remove from local scope
+      // Remove from local scope (current storage location in ~/.claude.json)
       try {
         execSync("claude mcp remove dev-workflow-tracker --scope local", {
           cwd: this.workingDirectory,
