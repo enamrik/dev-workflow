@@ -253,6 +253,36 @@ Example: \`./track/labels/testing.md\` creates a "testing" label.
   }
 
   /**
+   * Install default templates to global ~/.track/config/templates/.
+   *
+   * Copies bundled issue templates to the global fallback location so users
+   * always have default templates available. Local templates in ./track/templates/
+   * take precedence over these global defaults.
+   */
+  async installGlobalTemplates(): Promise<void> {
+    try {
+      const globalIssueTemplatesDir = this.resolver.getGlobalIssueTemplatesPath();
+      const globalTaskTemplatesDir = this.resolver.getGlobalTaskTemplatesPath();
+
+      // Create global template directories
+      await this.fileSystem.mkdir(globalIssueTemplatesDir, { recursive: true });
+      await this.fileSystem.mkdir(globalTaskTemplatesDir, { recursive: true });
+
+      // Copy bundled issue templates to global directory
+      const bundledTemplatesSource = path.join(this.packageRoot, "templates/issues");
+      const templates = ["feature.md", "bug.md", "enhancement.md", "task.md"];
+
+      for (const template of templates) {
+        const sourcePath = path.join(bundledTemplatesSource, template);
+        const destPath = path.join(globalIssueTemplatesDir, template);
+        await this.fileSystem.copyFile(sourcePath, destPath);
+      }
+    } catch (error) {
+      throw new InstallError("Failed to install global templates", error);
+    }
+  }
+
+  /**
    * Configure Claude Code permissions for worktree directories.
    *
    * Creates per-project .claude/settings.json with Read and Edit permissions
