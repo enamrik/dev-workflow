@@ -62,7 +62,7 @@ export function MilestoneCard({ data }: MilestoneCardProps) {
             {issues.map((issue) => (
               <li key={issue.number} className="flex items-center gap-2 text-sm">
                 <Link
-                  href={`/projects/${encodeURIComponent(milestone.projectId)}/issues/${issue.number}`}
+                  href={`/projects/${encodeURIComponent(milestone.projectSlug ?? milestone.projectId)}/issues/${issue.number}`}
                   className="text-blue-600 hover:underline font-medium"
                 >
                   #{issue.number}
