@@ -125,6 +125,10 @@ async function runInit(): Promise<void> {
         console.log(`✓ Recreated ${trackDir}`);
       }
 
+      // Ensure global templates are installed (always update to latest)
+      await installer.installGlobalTemplates();
+      console.log("✓ Updated global default templates");
+
       // Update local config with new gitRoot
       await installer.createLocalConfig();
       console.log("✓ Updated local config with new path");
@@ -175,6 +179,9 @@ async function runInit(): Promise<void> {
 
     await installer.createTrackDirectory();
     console.log(`✓ Created ${trackDir}`);
+
+    await installer.installGlobalTemplates();
+    console.log("✓ Installed global default templates");
 
     // Create local config with machine-specific settings (gitRoot)
     await installer.createLocalConfig();
@@ -250,7 +257,10 @@ async function runUpdate(): Promise<void> {
     console.log("✓ Updated skills");
 
     await updater.updateTemplates();
-    console.log("✓ Updated templates");
+    console.log("✓ Updated local templates");
+
+    await updater.updateGlobalTemplates();
+    console.log("✓ Updated global default templates");
 
     await updater.updateTaskLabels();
     console.log("✓ Updated task labels");

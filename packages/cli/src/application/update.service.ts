@@ -410,6 +410,35 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
   }
 
   /**
+   * Update global default templates (~/.track/config/templates/)
+   *
+   * Copies bundled issue templates to the global fallback location.
+   * Always overwrites to get latest versions.
+   */
+  async updateGlobalTemplates(): Promise<void> {
+    try {
+      const globalIssueTemplatesDir = this.resolver.getGlobalIssueTemplatesPath();
+      const globalTaskTemplatesDir = this.resolver.getGlobalTaskTemplatesPath();
+
+      // Create global template directories
+      await this.fileSystem.mkdir(globalIssueTemplatesDir, { recursive: true });
+      await this.fileSystem.mkdir(globalTaskTemplatesDir, { recursive: true });
+
+      // Copy bundled issue templates to global directory (always overwrite)
+      const bundledTemplatesSource = path.join(this.packageRoot, "templates/issues");
+      const templates = ["feature.md", "bug.md", "enhancement.md", "task.md"];
+
+      for (const template of templates) {
+        const sourcePath = path.join(bundledTemplatesSource, template);
+        const destPath = path.join(globalIssueTemplatesDir, template);
+        await this.fileSystem.copyFile(sourcePath, destPath);
+      }
+    } catch (error) {
+      throw new UpdateError("Failed to update global templates", error);
+    }
+  }
+
+  /**
    * Restart UI daemon if running
    * (So it picks up any schema/code changes)
    */
