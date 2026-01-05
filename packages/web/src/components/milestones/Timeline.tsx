@@ -1,10 +1,15 @@
+"use client";
+
+import { useState, useMemo } from "react";
 import { clsx } from "clsx";
-import { MilestoneCard } from "./MilestoneCard";
-import { EmptyState } from "../ui";
+import { MilestoneTable } from "./MilestoneTable";
+import { MilestoneDetailModal } from "./MilestoneDetailModal";
+import { EmptyState, SearchInput } from "../ui";
 import type { MilestoneWithIssues } from "@/lib/types";
 
 interface TimelineProps {
   milestones: MilestoneWithIssues[];
+  showCompleted?: boolean;
 }
 
 function calculateDateRange(milestones: MilestoneWithIssues[]): {
@@ -82,7 +87,31 @@ function truncate(text: string, maxLength: number): string {
   return text.slice(0, maxLength - 3) + "...";
 }
 
-export function Timeline({ milestones }: TimelineProps) {
+export function Timeline({ milestones, showCompleted = false }: TimelineProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedMilestone, setSelectedMilestone] = useState<MilestoneWithIssues | null>(null);
+
+  // Filter milestones based on status (hide COMPLETED by default)
+  const visibleMilestones = useMemo(() => {
+    if (showCompleted) {
+      return milestones;
+    }
+    return milestones.filter((item) => item.milestone.status !== "COMPLETED");
+  }, [milestones, showCompleted]);
+
+  // Further filter by search query
+  const filteredMilestones = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return visibleMilestones;
+    }
+    const query = searchQuery.toLowerCase();
+    return visibleMilestones.filter(
+      (item) =>
+        item.milestone.title.toLowerCase().includes(query) ||
+        (item.milestone.description?.toLowerCase().includes(query) ?? false)
+    );
+  }, [visibleMilestones, searchQuery]);
+
   if (milestones.length === 0) {
     return (
       <EmptyState
@@ -92,7 +121,8 @@ export function Timeline({ milestones }: TimelineProps) {
     );
   }
 
-  const { minDate, maxDate, totalDays } = calculateDateRange(milestones);
+  // Use visibleMilestones for timeline (respects showCompleted filter)
+  const { minDate, maxDate, totalDays } = calculateDateRange(visibleMilestones);
   const months = getMonthLabels(minDate, maxDate, totalDays);
 
   // Calculate today marker position
@@ -108,45 +138,47 @@ export function Timeline({ milestones }: TimelineProps) {
   return (
     <div className="space-y-8">
       {/* Timeline visualization */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 overflow-x-auto">
-        {/* Month header */}
-        <div className="flex border-b border-gray-200 mb-4 min-w-[600px]">
-          {months.map((month, idx) => (
-            <div
-              key={idx}
-              className="text-xs font-medium text-gray-600 py-2 text-center"
-              style={{ width: `${month.width}%` }}
-            >
-              {month.name}
-            </div>
-          ))}
-        </div>
-
-        {/* Timeline body with today marker */}
-        <div className="relative min-w-[600px]">
-          {/* Today marker */}
-          <div
-            className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10"
-            style={{ left: `${todayOffset}%` }}
-          >
-            <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-xs bg-red-500 text-white px-1 rounded">
-              Today
-            </div>
-          </div>
-
-          {/* Milestone bars */}
-          <div className="space-y-3">
-            {milestones.map((data) => (
-              <MilestoneBar
-                key={data.milestone.id}
-                data={data}
-                minDate={minDate}
-                totalDays={totalDays}
-              />
+      {visibleMilestones.length > 0 && (
+        <div className="bg-white rounded-lg border border-gray-200 p-4 overflow-x-auto">
+          {/* Month header */}
+          <div className="flex border-b border-gray-200 mb-4 min-w-[600px]">
+            {months.map((month, idx) => (
+              <div
+                key={idx}
+                className="text-xs font-medium text-gray-600 py-2 text-center"
+                style={{ width: `${month.width}%` }}
+              >
+                {month.name}
+              </div>
             ))}
           </div>
+
+          {/* Timeline body with today marker */}
+          <div className="relative min-w-[600px]">
+            {/* Today marker */}
+            <div
+              className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10"
+              style={{ left: `${todayOffset}%` }}
+            >
+              <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-xs bg-red-500 text-white px-1 rounded">
+                Today
+              </div>
+            </div>
+
+            {/* Milestone bars */}
+            <div className="space-y-3">
+              {visibleMilestones.map((data) => (
+                <MilestoneBar
+                  key={data.milestone.id}
+                  data={data}
+                  minDate={minDate}
+                  totalDays={totalDays}
+                />
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Legend */}
       <div className="flex gap-4 justify-center text-sm">
@@ -156,15 +188,31 @@ export function Timeline({ milestones }: TimelineProps) {
         <LegendItem status="DELAYED" label="Delayed" />
       </div>
 
-      {/* Milestone cards */}
+      {/* Milestone table with search */}
       <div>
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">Details</h3>
-        <div className="grid gap-4 md:grid-cols-2">
-          {milestones.map((data) => (
-            <MilestoneCard key={data.milestone.id} data={data} />
-          ))}
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-800">Details</h3>
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search milestones..."
+            className="w-64"
+          />
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <MilestoneTable
+            milestones={filteredMilestones}
+            onRowClick={setSelectedMilestone}
+          />
         </div>
       </div>
+
+      {/* Detail modal */}
+      <MilestoneDetailModal
+        isOpen={selectedMilestone !== null}
+        onClose={() => setSelectedMilestone(null)}
+        data={selectedMilestone}
+      />
     </div>
   );
 }
