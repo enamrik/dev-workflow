@@ -150,9 +150,16 @@ export class BackupConfigService {
 
   /**
    * Create a backup
+   *
+   * Checkpoints WAL before backup to ensure all pending writes
+   * are flushed to the main database file.
    */
   async backup(): Promise<BackupResult> {
     await this.initialize();
+
+    // Checkpoint WAL to ensure backup includes all pending writes
+    this.dbService!.checkpoint();
+
     const databasePath = getGlobalDatabasePath();
     return this.backupService!.backup(databasePath);
   }

@@ -66,6 +66,22 @@ export class DatabaseService {
   }
 
   /**
+   * Checkpoint WAL (Write-Ahead Log) to main database file
+   *
+   * SQLite in WAL mode writes to a separate -wal file first.
+   * This method flushes all pending writes to the main .db file,
+   * ensuring a consistent state for backups.
+   *
+   * Uses TRUNCATE mode which:
+   * - Checkpoints all frames from WAL to database
+   * - Truncates the WAL file to zero bytes
+   * - Resets the WAL header
+   */
+  checkpoint(): void {
+    this.adapter.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  }
+
+  /**
    * Close database connection
    *
    * Should be called on graceful shutdown to ensure
