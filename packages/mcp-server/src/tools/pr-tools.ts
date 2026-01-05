@@ -34,12 +34,14 @@ export const prToolDefinitions: ToolDefinition[] = [
     },
   },
   {
-    name: "submit_for_review",
+    name: "create_pr",
     description:
       "⚠️ Prefer 'dwf-work-task' skill for proper workflow. " +
-      "Submit a task for PR review. Atomically: pushes branch, creates PR, transitions status to PR_REVIEW. " +
+      "Create a PR for a task. Pushes branch and creates PR with GitHub issue linking. " +
+      "Does NOT change task status (stays IN_PROGRESS). Use submit_for_review afterward to transition to PR_REVIEW. " +
       "Task must be IN_PROGRESS with a worktree/branch. " +
-      "Use force=true to bypass status validation when task state has drifted (e.g., branch already pushed).",
+      "Use force=true to bypass status validation when task state has drifted. " +
+      "Claude MUST ask user permission before using force=true.",
     inputSchema: {
       type: "object",
       properties: {
@@ -68,7 +70,34 @@ export const prToolDefinitions: ToolDefinition[] = [
           type: "boolean",
           description:
             "Bypass status validation. Use when task state has drifted " +
-            "(e.g., branch already pushed but task not in IN_PROGRESS). Requires user confirmation before use.",
+            "(e.g., branch already pushed but task not in IN_PROGRESS). " +
+            "Claude MUST ask user permission before using force=true.",
+        },
+      },
+      required: ["taskId"],
+    },
+  },
+  {
+    name: "submit_for_review",
+    description:
+      "⚠️ Prefer 'dwf-work-task' skill for proper workflow. " +
+      "Submit a task for review. Transitions task status from IN_PROGRESS to PR_REVIEW and syncs to GitHub. " +
+      "Task must have a PR created via create_pr first. " +
+      "Use force=true to bypass validation when task state has drifted. " +
+      "Claude MUST ask user permission before using force=true.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: {
+          type: "string",
+          description: "Task UUID",
+        },
+        force: {
+          type: "boolean",
+          description:
+            "Bypass status/PR validation. Use when task state has drifted " +
+            "(e.g., task already in PR_REVIEW but needs re-sync). " +
+            "Claude MUST ask user permission before using force=true.",
         },
       },
       required: ["taskId"],
@@ -208,16 +237,20 @@ export async function handleGetTaskPRStatus(
 }
 
 /**
- * Handle submit_for_review tool call
+ * Handle create_pr tool call
  *
- * Atomically: pushes branch, creates PR, transitions status to PR_REVIEW.
- * Task must be IN_PROGRESS with a worktree/branch.
+ * Creates a PR for a task: pushes branch, creates PR with GitHub issue linking.
+ * Does NOT change task status (stays IN_PROGRESS).
+ *
+ * This separation allows GitHub's built-in "Pull request linked to issue" workflow
+ * to set the project column to "In progress" without racing with our status sync.
+ * Use submit_for_review afterward to transition to PR_REVIEW.
  *
  * When force=true:
  * - Bypasses status validation
  * - Use when task state has drifted (e.g., branch already pushed but task not in IN_PROGRESS)
  */
-export async function handleSubmitForReview(
+export async function handleCreatePR(
   ctx: PRToolContext,
   args: {
     taskId: string;
@@ -238,14 +271,14 @@ export async function handleSubmitForReview(
 
   if (task.status !== "IN_PROGRESS" && !force) {
     return errorResponse(
-      `Task must be IN_PROGRESS to submit for review. Current status: ${task.status}. ` +
+      `Task must be IN_PROGRESS to create a PR. Current status: ${task.status}. ` +
         "Use force=true to bypass this check if the task state has drifted."
     );
   }
 
   if (!task.branchName) {
     return errorResponse(
-      "Task does not have a branch. Task must have been started with a worktree."
+      "Task does not have a branch. Task must have been started with a worktree or branch mode."
     );
   }
 
@@ -260,20 +293,9 @@ export async function handleSubmitForReview(
   try {
     const existingPR = await ctx.githubCLI.findPRByBranch(task.branchName);
     if (existingPR) {
-      // Adopt the existing PR
+      // Adopt the existing PR (but don't change status)
       const prStatus = mapGitHubStateToPRStatus(existingPR.state, existingPR.isDraft);
       ctx.taskRepository.updatePRInfo(taskId, existingPR.url, existingPR.number, prStatus);
-      ctx.taskRepository.updateStatus(taskId, "PR_REVIEW", undefined, "Adopted existing PR");
-
-      // Sync to GitHub if task has GitHub sync enabled
-      if (ctx.taskGitHubSyncService && task.githubSync?.githubIssueNumber) {
-        try {
-          await ctx.taskGitHubSyncService.syncTaskStatus(taskId, "PR_REVIEW");
-        } catch (error) {
-          // Log but don't fail - GitHub sync is best effort after local update
-          console.warn(`Failed to sync task status to GitHub: ${error}`);
-        }
-      }
 
       return successResponse({
         success: true,
@@ -281,7 +303,7 @@ export async function handleSubmitForReview(
         forced: force,
         task: {
           id: taskId,
-          status: "PR_REVIEW",
+          status: task.status, // Status unchanged
         },
         pr: {
           number: existingPR.number,
@@ -292,7 +314,10 @@ export async function handleSubmitForReview(
           headBranch: existingPR.headBranch,
           baseBranch: existingPR.baseBranch,
         },
-        message: `Found existing PR #${existingPR.number} for branch "${task.branchName}". Adopted and transitioned task to PR_REVIEW: ${existingPR.url}`,
+        message:
+          `Found existing PR #${existingPR.number} for branch "${task.branchName}". ` +
+          `Adopted PR info. Task status unchanged (${task.status}). ` +
+          `Use submit_for_review to transition to PR_REVIEW when ready.`,
       });
     }
   } catch {
@@ -310,7 +335,7 @@ export async function handleSubmitForReview(
     return errorResponse(`Issue not found for plan: ${plan.id}`);
   }
 
-  // 3. Push the branch to remote (required before creating PR)
+  // 4. Push the branch to remote (required before creating PR)
   if (ctx.gitWorktreeService) {
     try {
       const pushResult = await ctx.gitWorktreeService.run(
@@ -325,12 +350,10 @@ export async function handleSubmitForReview(
       return errorResponse(`Failed to push branch: ${message}`);
     }
   } else {
-    return errorResponse(
-      "GitWorktreeService is required to push branch. Cannot submit for review."
-    );
+    return errorResponse("GitWorktreeService is required to push branch. Cannot create PR.");
   }
 
-  // 4. Build PR title
+  // 5. Build PR title
   // Use task's GitHub issue number for the prefix (tasks are synced to GitHub issues)
   // Never include dev-workflow issue/task numbers in title - those are internal
   let prTitle: string;
@@ -344,7 +367,7 @@ export async function handleSubmitForReview(
     prTitle = task.title;
   }
 
-  // 5. Build PR body with GitHub issue linking
+  // 6. Build PR body with GitHub issue linking
   let prBody = body ?? task.description;
 
   // Build footer with GitHub issue links
@@ -367,36 +390,28 @@ export async function handleSubmitForReview(
   // Add dev-workflow task reference as footer note (not in title to avoid confusing teammates)
   prBody += `\n\nTask ${issue.number}.${task.number}: ${task.title}`;
 
-  // 6. Determine base branch
+  // 7. Determine base branch
   const targetBranch = baseBranch ?? "main";
 
-  // 7. Create the PR (gh CLI auto-detects repo from git remotes)
+  // 8. Create the PR (gh CLI auto-detects repo from git remotes)
   try {
     const pr = await ctx.githubCLI.createPR(task.branchName, targetBranch, prTitle, prBody, draft);
 
-    // 8. Store PR info on task
+    // 9. Store PR info on task (but DON'T change status)
     const prStatus = mapGitHubStateToPRStatus(pr.state, pr.isDraft);
     ctx.taskRepository.updatePRInfo(taskId, pr.url, pr.number, prStatus);
 
-    // 9. Update task status to PR_REVIEW
-    ctx.taskRepository.updateStatus(taskId, "PR_REVIEW", undefined, "Submitted for review");
-
-    // 10. Sync to GitHub if task has GitHub sync enabled
-    if (ctx.taskGitHubSyncService && task.githubSync?.githubIssueNumber) {
-      try {
-        await ctx.taskGitHubSyncService.syncTaskStatus(taskId, "PR_REVIEW");
-      } catch (error) {
-        // Log but don't fail - GitHub sync is best effort after local update
-        console.warn(`Failed to sync task status to GitHub: ${error}`);
-      }
-    }
+    // NOTE: We intentionally do NOT change task status or sync to GitHub here.
+    // This allows GitHub's "Pull request linked to issue" workflow to naturally
+    // set the project column to "In progress" without a race condition.
+    // Call submit_for_review when ready to transition to PR_REVIEW.
 
     return successResponse({
       success: true,
       forced: force,
       task: {
         id: taskId,
-        status: "PR_REVIEW",
+        status: task.status, // Status unchanged - still IN_PROGRESS
       },
       pr: {
         number: pr.number,
@@ -407,7 +422,10 @@ export async function handleSubmitForReview(
         headBranch: pr.headBranch,
         baseBranch: pr.baseBranch,
       },
-      message: `Created PR #${pr.number} and transitioned task to PR_REVIEW: ${pr.url}`,
+      message:
+        `Created PR #${pr.number}: ${pr.url}. ` +
+        `Task status unchanged (${task.status}). ` +
+        `Use submit_for_review to transition to PR_REVIEW when ready.`,
       linkedToTaskGitHubIssue: task.githubSync?.githubIssueNumber
         ? `#${task.githubSync.githubIssueNumber}`
         : null,
@@ -419,6 +437,81 @@ export async function handleSubmitForReview(
     const message = error instanceof Error ? error.message : String(error);
     return errorResponse(`Failed to create PR: ${message}`);
   }
+}
+
+/**
+ * Handle submit_for_review tool call
+ *
+ * Transitions task status from IN_PROGRESS to PR_REVIEW and syncs to GitHub.
+ * Task must have a PR created via create_pr first.
+ *
+ * This is the second step of the PR workflow:
+ * 1. create_pr - Creates PR, GitHub's workflow sets "In progress"
+ * 2. submit_for_review - Transitions to PR_REVIEW, syncs to "In review" column
+ *
+ * When force=true:
+ * - Bypasses status/PR validation
+ * - Use when task state has drifted
+ */
+export async function handleSubmitForReview(
+  ctx: PRToolContext,
+  args: {
+    taskId: string;
+    force?: boolean;
+  }
+): Promise<ToolResponse> {
+  const { taskId, force = false } = args;
+
+  // 1. Get task and validate state
+  const task = ctx.taskRepository.findById(taskId);
+  if (!task) {
+    return errorResponse(`Task not found: ${taskId}`);
+  }
+
+  if (task.status !== "IN_PROGRESS" && !force) {
+    return errorResponse(
+      `Task must be IN_PROGRESS to submit for review. Current status: ${task.status}. ` +
+        "Use force=true to bypass this check if the task state has drifted."
+    );
+  }
+
+  if (!task.prNumber && !force) {
+    return errorResponse(
+      "Task does not have a PR. Use create_pr first to create a PR, " +
+        "or use force=true to bypass this check."
+    );
+  }
+
+  // 2. Update task status to PR_REVIEW
+  ctx.taskRepository.updateStatus(taskId, "PR_REVIEW", undefined, "Submitted for review");
+
+  // 3. Sync to GitHub if task has GitHub sync enabled
+  if (ctx.taskGitHubSyncService && task.githubSync?.githubIssueNumber) {
+    try {
+      await ctx.taskGitHubSyncService.syncTaskStatus(taskId, "PR_REVIEW");
+    } catch (error) {
+      // Log but don't fail - GitHub sync is best effort after local update
+      console.warn(`Failed to sync task status to GitHub: ${error}`);
+    }
+  }
+
+  return successResponse({
+    success: true,
+    forced: force,
+    task: {
+      id: taskId,
+      status: "PR_REVIEW",
+    },
+    pr: task.prNumber
+      ? {
+          number: task.prNumber,
+          url: task.prUrl,
+        }
+      : null,
+    message: task.prNumber
+      ? `Task transitioned to PR_REVIEW. PR #${task.prNumber}: ${task.prUrl}`
+      : "Task transitioned to PR_REVIEW (no PR linked).",
+  });
 }
 
 /**
