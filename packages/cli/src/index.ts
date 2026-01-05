@@ -119,13 +119,10 @@ async function runInit(): Promise<void> {
       // Ensure database is up to date
       await installer.initializeDatabase();
 
-      // Ensure track directory exists
+      // Ensure track directory exists (includes templates and labels)
       if (!trackDirExists) {
         await installer.createTrackDirectory();
         console.log(`✓ Recreated ${trackDir}`);
-
-        await installer.createTaskLabels();
-        console.log("✓ Recreated task labels");
       }
 
       // Update local config with new gitRoot
@@ -177,14 +174,11 @@ async function runInit(): Promise<void> {
     console.log(`✓ Registered project: ${project.name} (${project.id.slice(0, 8)}...)`);
 
     await installer.createTrackDirectory();
+    console.log(`✓ Created ${trackDir}`);
 
     // Create local config with machine-specific settings (gitRoot)
     await installer.createLocalConfig();
     console.log("✓ Created local config");
-    console.log(`✓ Created ${trackDir}`);
-
-    await installer.createTaskLabels();
-    console.log("✓ Created task labels");
 
     await installer.installSkills();
     console.log("✓ Installed skills");

@@ -3,6 +3,16 @@
  *
  * Handles template discovery, selection, and caching.
  * Follows Application Service pattern - orchestrates domain logic with infrastructure.
+ *
+ * Template Resolution Order (for issues):
+ * 1. Local per-type: ./track/templates/issues/<type>.md
+ * 2. Local all.md: ./track/templates/issues/all.md
+ * 3. Global per-type: ~/.track/config/templates/issues/<type>.md
+ * 4. Global all.md: ~/.track/config/templates/issues/all.md
+ *
+ * Template Resolution Order (for tasks):
+ * 1. Local all.md: ./track/templates/tasks/all.md
+ * 2. Global all.md: ~/.track/config/templates/tasks/all.md
  */
 
 import * as path from "node:path";
@@ -26,14 +36,28 @@ export class TemplateServiceError extends Error {
 }
 
 /**
+ * Configuration for template resolution paths
+ */
+export interface TemplateServiceConfig {
+  /** Local issue templates path: ./track/templates/issues/ */
+  localIssueTemplatesPath: string;
+  /** Local task templates path: ./track/templates/tasks/ */
+  localTaskTemplatesPath: string;
+  /** Global issue templates path (fallback): ~/.track/config/templates/issues/ */
+  globalIssueTemplatesPath: string;
+  /** Global task templates path (fallback): ~/.track/config/templates/tasks/ */
+  globalTaskTemplatesPath: string;
+}
+
+/**
  * Template Service
  *
  * Application service for template management.
  *
  * Responsibilities:
- * - Discover templates from filesystem (both user and default directories)
- * - Merge user and default templates (user overrides default by filename)
+ * - Discover templates from filesystem (local first, then global fallback)
  * - Select appropriate template based on description keywords
+ * - Support all.md fallback when per-type template not found
  * - Cache templates for performance
  *
  * Follows:
@@ -49,13 +73,11 @@ export class TemplateService {
    * Create a new TemplateService
    *
    * @param fileSystem - FileSystem abstraction for reading files
-   * @param userTemplatesPath - Path to user-defined templates directory
-   * @param defaultTemplatesPath - Path to default templates directory
+   * @param config - Template paths configuration
    */
   constructor(
     private readonly fileSystem: FileSystem,
-    private readonly userTemplatesPath: string,
-    private readonly defaultTemplatesPath: string
+    private readonly config: TemplateServiceConfig
   ) {
     this.parser = new TemplateParser();
   }
@@ -63,12 +85,12 @@ export class TemplateService {
   /**
    * Discover all available templates
    *
-   * Scans both user and default template directories and returns merged list
-   * where user templates override defaults by filename.
+   * Scans local and global template directories and returns merged list
+   * where local templates override global templates by filename.
    *
    * Results are cached for performance. Use clearCache() to invalidate.
    *
-   * @returns Template discovery result with user, default, and merged lists
+   * @returns Template discovery result with user (local), default (global), and merged lists
    * @throws TemplateServiceError if discovery fails
    */
   async discoverTemplates(): Promise<TemplateDiscovery> {
@@ -78,18 +100,18 @@ export class TemplateService {
     }
 
     try {
-      // Load templates from both directories in parallel
-      const [userTemplates, defaultTemplates] = await Promise.all([
-        this.loadTemplatesFromDirectory(this.userTemplatesPath, true),
-        this.loadTemplatesFromDirectory(this.defaultTemplatesPath, false),
+      // Load templates from local and global directories in parallel
+      const [localTemplates, globalTemplates] = await Promise.all([
+        this.loadTemplatesFromDirectory(this.config.localIssueTemplatesPath, true),
+        this.loadTemplatesFromDirectory(this.config.globalIssueTemplatesPath, false),
       ]);
 
-      // Merge: user templates override defaults by filename
-      const merged = this.mergeTemplates(userTemplates, defaultTemplates);
+      // Merge: local templates override global by filename
+      const merged = this.mergeTemplates(localTemplates, globalTemplates);
 
       const discovery: TemplateDiscovery = {
-        userTemplates,
-        defaultTemplates,
+        userTemplates: localTemplates, // "user" = local for backward compatibility
+        defaultTemplates: globalTemplates, // "default" = global for backward compatibility
         merged,
       };
 
@@ -113,27 +135,23 @@ export class TemplateService {
   }
 
   /**
-   * Select template based on description keywords
+   * Select template based on description keywords with cascading fallback
    *
-   * Uses keyword matching to determine the most appropriate template.
-   * Falls back to feature.md if no keywords match.
-   * Falls back to first available template if feature.md doesn't exist.
+   * Resolution order:
+   * 1. Local per-type (e.g., ./track/templates/issues/feature.md)
+   * 2. Local all.md (./track/templates/issues/all.md)
+   * 3. Global per-type (e.g., ~/.track/config/templates/issues/feature.md)
+   * 4. Global all.md (~/.track/config/templates/issues/all.md)
    *
    * @param description - Issue description text
    * @returns Selected Template
    * @throws TemplateServiceError if no templates are available
    */
   async selectTemplate(description: string): Promise<Template> {
-    const discovery = await this.discoverTemplates();
-
-    if (discovery.merged.length === 0) {
-      throw new TemplateServiceError("No templates available");
-    }
-
     const lower = description.toLowerCase();
 
-    // Keyword matching logic (preserving existing behavior)
-    let selectedFilename: string;
+    // Determine target type from keywords
+    let targetType: string;
 
     if (
       lower.includes("bug") ||
@@ -141,29 +159,142 @@ export class TemplateService {
       lower.includes("broken") ||
       lower.includes("failing")
     ) {
-      selectedFilename = "bug.md";
+      targetType = "bug";
     } else if (
       lower.includes("enhance") ||
       lower.includes("improve") ||
       lower.includes("optimize") ||
       lower.includes("better")
     ) {
-      selectedFilename = "enhancement.md";
+      targetType = "enhancement";
     } else if (lower.includes("task") || lower.includes("chore") || lower.includes("setup")) {
-      selectedFilename = "task.md";
+      targetType = "task";
     } else {
-      selectedFilename = "feature.md";
+      targetType = "feature";
     }
 
-    // Find template by filename
-    const template = discovery.merged.find((t) => t.filename === selectedFilename);
+    // Try cascading resolution
+    const template = await this.resolveTemplateWithFallback(targetType);
 
     if (template) {
       return template;
     }
 
-    // Fallback to first available template
-    return discovery.merged[0];
+    // Last resort: return any available template
+    const discovery = await this.discoverTemplates();
+    if (discovery.merged.length > 0) {
+      return discovery.merged[0];
+    }
+
+    throw new TemplateServiceError("No templates available");
+  }
+
+  /**
+   * Resolve a template with cascading fallback logic
+   *
+   * Resolution order:
+   * 1. Local per-type
+   * 2. Local all.md
+   * 3. Global per-type
+   * 4. Global all.md
+   *
+   * @param type - Template type (e.g., "feature", "bug")
+   * @returns Template if found, null otherwise
+   */
+  private async resolveTemplateWithFallback(type: string): Promise<Template | null> {
+    const filename = `${type}.md`;
+
+    // 1. Try local per-type
+    const localPerType = await this.loadSingleTemplate(
+      this.config.localIssueTemplatesPath,
+      filename,
+      true
+    );
+    if (localPerType) return localPerType;
+
+    // 2. Try local all.md
+    const localAll = await this.loadSingleTemplate(
+      this.config.localIssueTemplatesPath,
+      "all.md",
+      true
+    );
+    if (localAll) return localAll;
+
+    // 3. Try global per-type
+    const globalPerType = await this.loadSingleTemplate(
+      this.config.globalIssueTemplatesPath,
+      filename,
+      false
+    );
+    if (globalPerType) return globalPerType;
+
+    // 4. Try global all.md
+    const globalAll = await this.loadSingleTemplate(
+      this.config.globalIssueTemplatesPath,
+      "all.md",
+      false
+    );
+    if (globalAll) return globalAll;
+
+    return null;
+  }
+
+  /**
+   * Load a single template file
+   *
+   * @param dirPath - Directory containing the template
+   * @param filename - Template filename
+   * @param isUserDefined - Whether this is a user/local template
+   * @returns Template if found and valid, null otherwise
+   */
+  private async loadSingleTemplate(
+    dirPath: string,
+    filename: string,
+    isUserDefined: boolean
+  ): Promise<Template | null> {
+    const filePath = path.join(dirPath, filename);
+
+    try {
+      const exists = await this.fileSystem.exists(filePath);
+      if (!exists) return null;
+
+      const content = await this.fileSystem.readFile(filePath);
+      return this.parser.parse(filename, content, isUserDefined);
+    } catch (error) {
+      if (error instanceof TemplateParseError) {
+        console.warn(`Warning: Failed to parse template ${filename}: ${error.message}`);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Get a task template with fallback
+   *
+   * Resolution order:
+   * 1. Local all.md: ./track/templates/tasks/all.md
+   * 2. Global all.md: ~/.track/config/templates/tasks/all.md
+   *
+   * @returns Template if found, null otherwise
+   */
+  async getTaskTemplate(): Promise<Template | null> {
+    // 1. Try local all.md
+    const localAll = await this.loadSingleTemplate(
+      this.config.localTaskTemplatesPath,
+      "all.md",
+      true
+    );
+    if (localAll) return localAll;
+
+    // 2. Try global all.md
+    const globalAll = await this.loadSingleTemplate(
+      this.config.globalTaskTemplatesPath,
+      "all.md",
+      false
+    );
+    if (globalAll) return globalAll;
+
+    return null;
   }
 
   /**
@@ -198,13 +329,13 @@ export class TemplateService {
   ): Promise<{ template: Template; source: "user" | "default" } | null> {
     const discovery = await this.discoverTemplates();
 
-    // Check user templates first
+    // Check local (user) templates first
     const userTemplate = discovery.userTemplates.find((t) => t.filename === filename);
     if (userTemplate) {
       return { template: userTemplate, source: "user" };
     }
 
-    // Check default templates
+    // Check global (default) templates
     const defaultTemplate = discovery.defaultTemplates.find((t) => t.filename === filename);
     if (defaultTemplate) {
       return { template: defaultTemplate, source: "default" };
@@ -236,16 +367,16 @@ export class TemplateService {
 
     try {
       // Ensure user templates directory exists
-      const dirExists = await this.fileSystem.exists(this.userTemplatesPath);
+      const dirExists = await this.fileSystem.exists(this.config.localIssueTemplatesPath);
       if (!dirExists) {
-        await this.fileSystem.mkdir(this.userTemplatesPath, { recursive: true });
+        await this.fileSystem.mkdir(this.config.localIssueTemplatesPath, { recursive: true });
       }
 
       // Validate content by parsing it
       const template = this.parser.parse(filename, content, true);
 
       // Write the file
-      const filePath = path.join(this.userTemplatesPath, filename);
+      const filePath = path.join(this.config.localIssueTemplatesPath, filename);
       await this.fileSystem.writeFile(filePath, content);
 
       // Clear cache to reflect new template
@@ -289,7 +420,7 @@ export class TemplateService {
       const template = this.parser.parse(filename, content, true);
 
       // Write the file
-      const filePath = path.join(this.userTemplatesPath, filename);
+      const filePath = path.join(this.config.localIssueTemplatesPath, filename);
       await this.fileSystem.writeFile(filePath, content);
 
       // Clear cache to reflect changes
@@ -327,7 +458,7 @@ export class TemplateService {
     }
 
     try {
-      const filePath = path.join(this.userTemplatesPath, filename);
+      const filePath = path.join(this.config.localIssueTemplatesPath, filename);
       await this.fileSystem.unlink(filePath);
 
       // Clear cache to reflect deletion
@@ -400,8 +531,8 @@ export class TemplateService {
    * Results are sorted by filename for consistency.
    *
    * @private
-   * @param userTemplates - User-defined templates
-   * @param defaultTemplates - Default templates
+   * @param userTemplates - User-defined templates (local)
+   * @param defaultTemplates - Default templates (global)
    * @returns Merged and sorted template list
    */
   private mergeTemplates(userTemplates: Template[], defaultTemplates: Template[]): Template[] {

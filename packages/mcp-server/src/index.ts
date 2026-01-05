@@ -22,6 +22,7 @@ import {
   SqliteMilestoneRepository,
   SqliteProjectRepository,
   TemplateService,
+  type TemplateServiceConfig,
   NodeFileSystem,
   VersioningService,
   PlanningService,
@@ -39,6 +40,8 @@ import {
   ConflictDetectionService,
   // Project management
   type Project,
+  // Track directory resolution
+  resolveGlobalTrackDir,
 } from "@dev-workflow/core";
 
 // Import tools
@@ -410,11 +413,19 @@ async function main() {
   // Initialize file system and paths
   const fileSystem = new NodeFileSystem();
   const projectRoot = validatedGitRoot;
-  // For track directory, derive from TEMPLATES_PATH
+  // For track directory, derive from TEMPLATES_PATH (legacy) or use global track dir
   // This is separate from the database project ID (used for file storage)
   const trackDirectory = TEMPLATES_PATH.replace(/\/config\/issues\/templates\/?$/, "");
-  const userTemplatesPath = path.join(trackDirectory, "issues/templates");
-  const defaultTemplatesPath = path.resolve(TEMPLATES_PATH);
+  const globalTrackDir = resolveGlobalTrackDir();
+
+  // Template paths follow cascading resolution:
+  // Local (./track/templates/) takes precedence over global (~/.track/config/templates/)
+  const templateConfig: TemplateServiceConfig = {
+    localIssueTemplatesPath: path.join(projectRoot, "track", "templates", "issues"),
+    localTaskTemplatesPath: path.join(projectRoot, "track", "templates", "tasks"),
+    globalIssueTemplatesPath: path.join(globalTrackDir, "config", "templates", "issues"),
+    globalTaskTemplatesPath: path.join(globalTrackDir, "config", "templates", "tasks"),
+  };
 
   // Initialize label service
   const labelService = new LabelService(trackDirectory);
@@ -466,7 +477,7 @@ async function main() {
     issueRepository
   );
 
-  const templateService = new TemplateService(fileSystem, userTemplatesPath, defaultTemplatesPath);
+  const templateService = new TemplateService(fileSystem, templateConfig);
 
   // Initialize git worktree service for isolated task execution
   // projectRoot comes from GIT_ROOT environment variable (set at startup)
@@ -558,7 +569,9 @@ async function main() {
   await server.connect(transport);
   console.error("dev-workflow MCP server running on stdio");
   console.error(`Database: ${DATABASE_PATH}`);
-  console.error(`Templates: ${defaultTemplatesPath} (defaults), ${userTemplatesPath} (user)`);
+  console.error(
+    `Templates: local=${templateConfig.localIssueTemplatesPath}, global=${templateConfig.globalIssueTemplatesPath}`
+  );
 }
 
 main().catch((error) => {
