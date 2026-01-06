@@ -99,18 +99,10 @@ async function runInit(): Promise<void> {
 
   // Determine mode: fresh install or repair/re-init
   if (existingProject) {
-    const needsRepair = await installer.needsConfigRepair();
-
     // Repair mode: project exists - run repair to ensure everything is up to date
     // This makes `init` idempotent and safe to run multiple times
-    if (needsRepair || !trackDirExists) {
-      console.log("🔧 Repairing dev-workflow configuration...");
-      console.log(`   Project: ${existingProject.name} (${existingProject.id.slice(0, 8)}...)`);
-      console.log(`   Detected: Repository has moved or config is missing\n`);
-    } else {
-      console.log("🔧 Re-initializing dev-workflow...");
-      console.log(`   Project: ${existingProject.name} (${existingProject.id.slice(0, 8)}...)\n`);
-    }
+    console.log("🔧 Re-initializing dev-workflow...");
+    console.log(`   Project: ${existingProject.name} (${existingProject.id.slice(0, 8)}...)\n`);
 
     try {
       // Use existing project
@@ -128,10 +120,6 @@ async function runInit(): Promise<void> {
       // Ensure global templates are installed (always update to latest)
       await installer.installGlobalTemplates();
       console.log("✓ Updated global default templates");
-
-      // Update local config with new gitRoot
-      await installer.createLocalConfig();
-      console.log("✓ Updated local config with new path");
 
       // Repair git worktrees
       const worktreeResult = await installer.repairWorktrees();
@@ -182,10 +170,6 @@ async function runInit(): Promise<void> {
 
     await installer.installGlobalTemplates();
     console.log("✓ Installed global default templates");
-
-    // Create local config with machine-specific settings (gitRoot)
-    await installer.createLocalConfig();
-    console.log("✓ Created local config");
 
     await installer.installSkills();
     console.log("✓ Installed skills");
