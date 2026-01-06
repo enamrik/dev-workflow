@@ -338,16 +338,12 @@ When user needs to push more changes (e.g., review feedback):
 
 **For Isolated/Branch Modes (with PR):**
 
-> **⚠️ CRITICAL: Task MUST be in PR_REVIEW status before completing.**
-> If task is still IN_PROGRESS, you MUST call `submit_for_review` first.
-> `complete_task` will FAIL if the task is not in PR_REVIEW.
+> **⚠️ CRITICAL:** Task MUST be in PR_REVIEW before completing.
+> If still IN_PROGRESS → call `submit_for_review` first.
 
-1. **Verify task status and PR:**
-   - Task must be in PR_REVIEW (not IN_PROGRESS)
-   - If still IN_PROGRESS → call `submit_for_review` first
-   - Check PR status with `get_task_pr_status`
-   - If PR not merged → tell user to merge the PR first
-   - If PR merged → proceed
+1. **Verify PR is merged:**
+   - Call `get_task_pr_status`
+   - If not merged → tell user to merge the PR first
 
 2. **Complete the task:**
    - Call `complete_task` with task ID, session ID, and `finalLogEntry`
