@@ -255,14 +255,14 @@ function CardContent({
         isAbandoned && "opacity-75"
       )}
     >
-      {/* Issue type tag - flush top right */}
+      {/* Task type tag - flush top right */}
       <span
         className={clsx(
           "absolute top-0 right-0 text-[8px] font-medium uppercase px-1 py-px rounded-bl",
-          issueTypeConfig[issueType].tag
+          issueTypeConfig[task.type].tag
         )}
       >
-        {issueTypeConfig[issueType].label}
+        {issueTypeConfig[task.type].label}
       </span>
 
       {/* Task number and title */}
