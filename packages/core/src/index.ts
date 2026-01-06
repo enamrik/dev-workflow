@@ -134,6 +134,9 @@ export {
   type GitHubCLIResult,
 } from "./infrastructure/github/github-cli.js";
 
+// Infrastructure - Project Management Providers
+export { GitHubProjectManagementProvider } from "./infrastructure/providers/index.js";
+
 // Infrastructure - Git Worktrees
 export {
   NodeGitWorktreeService,
