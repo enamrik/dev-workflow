@@ -338,181 +338,43 @@ If MCP tool call fails:
 
 ## Example Interactions
 
-### Creating an Issue (with information level separation)
+### Creating an Issue (information level separation)
 
-**User:** "I want to add user authentication with OAuth. We should use passport.js and store sessions in Redis. The callback should be at /auth/callback and we need rate limiting on the login endpoint."
-
-**Response:**
+**User:** "Add OAuth auth with passport.js, Redis sessions, callback at /auth/callback"
 
 ```
-I'll create an issue capturing the requirements. I've noted your implementation
-preferences (passport.js, Redis, /auth/callback endpoint, rate limiting) -
-these will be incorporated into the implementation plan.
-
 Issue created: #1 - Add user authentication with OAuth
-  Type: FEATURE
-  Priority: MEDIUM
+  Type: FEATURE | Priority: MEDIUM
   URL: http://127.0.0.1:3456/projects/{projectId}/issues/1
-
-  Description:
-  Users should be able to sign in using OAuth providers.
 
   Acceptance Criteria:
   - [ ] User can sign in with OAuth
   - [ ] Session persists across browser refresh
-  - [ ] User can sign out
-  - [ ] Login attempts are rate limited
 
-Now let me create an implementation plan for issue #1. I'll incorporate your
-technical preferences: passport.js for OAuth handling, Redis for session
-storage, callback endpoint at /auth/callback.
+Implementation details (passport.js, Redis, /auth/callback) noted for plan.
 ```
 
-Notice: The issue contains WHAT (requirements), while HOW (passport.js, Redis)
-goes to the plan, and WHERE (/auth/callback) goes to tasks.
-
-### User Provides Only Implementation Details
-
-**User:** "We need to add a new column to the users table for storing OAuth tokens and create a background job to refresh them"
-
-**Response:**
-
-```
-I see implementation details, but I need to understand the requirement first.
-
-What's the user-facing goal here? For example:
-- "Users should be able to sign in with Google"
-- "Sessions should persist longer"
-- "Users shouldn't have to re-authenticate frequently"
-
-What should users be able to do when this is done?
-```
-
-### Updating an Issue
-
-**User:** "Update issue #1 to also include GitHub OAuth"
-
-**Response:**
-
-```
-Updated issue #1:
-  Added to acceptance criteria:
-  - [ ] User can sign in with GitHub OAuth
-
-Since requirements changed, let me re-plan the implementation tasks for issue #1.
-```
+**If user provides only implementation details**, ask: "What's the user-facing goal? What should users be able to do when this is done?"
 
 ### Importing a GitHub Issue
 
-**User:** "Import issue #42"
-
-**Response:**
+**User:** "Import issue #42" (or provide URL)
 
 ```
-Importing GitHub issue #42...
-
-[Calling import_github_issue(githubIssueNumber: 42)]
-
 Issue imported: #5 - Add dark mode support
-  Type: FEATURE
-  Priority: MEDIUM
+  Source: GitHub issue #42
   URL: http://127.0.0.1:3456/projects/{projectId}/issues/5
-  Source: GitHub issue #42
 
-  Description:
-  (Imported from GitHub)
-  Users have requested a dark mode option for the application.
-  This should persist across sessions and respect system preferences.
-
-  Acceptance Criteria:
-  - [ ] Dark mode toggle in settings
-  - [ ] Theme persists across sessions
-  - [ ] Respects system preference by default
-
-Now let me create an implementation plan for issue #5.
+Now creating implementation plan...
 ```
 
-The imported issue is linked to GitHub issue #42. When moved to backlog:
+When moved to backlog: 1 task links to GitHub #42 directly; N tasks create sub-issues.
 
-- If 1 task: the task links directly to GitHub issue #42
-- If multiple tasks: sub-issues are created under #42
+### Merging Issues
 
-### Importing by URL
+**User:** "Merge #3 and #5"
 
-**User:** "Import https://github.com/owner/repo/issues/42"
-
-**Response:**
-
-```
-Importing from GitHub URL...
-
-[Calling import_github_issue(githubIssueUrl: "https://github.com/owner/repo/issues/42")]
-
-Issue imported: #6 - Fix memory leak in dashboard
-  Type: BUG
-  Source: GitHub issue #42
-  ...
-```
-
-### Merging Issues (create_new mode)
-
-**User:** "Merge issues #3 and #5"
-
-**Response:**
-
-```
-I'll merge issues #3 and #5. Let me show you both:
-
-#3 - Add user settings page (OPEN, 2 tasks)
-#5 - Add preferences storage (PLANNED, 1 task)
-
-Would you like to:
-1. Create a new issue combining both (originals unchanged)
-2. Merge one into the other (source is soft-deleted)
-
-Which approach would you prefer?
-```
-
-**User:** "Create a new one"
-
-**Response:**
-
-```
-[Calling merge_issues(sourceIssueNumber: 3, targetIssueNumber: 5, mode: "create_new")]
-
-Merged successfully:
-  New issue: #7 - Add user settings page
-  Tasks merged: 3 (from both source issues)
-  Original issues #3 and #5 are unchanged.
-```
-
-### Merging Issues (merge_into mode)
-
-**User:** "Merge #12 into #8"
-
-**Response:**
-
-```
-I'll merge issue #12 into #8.
-
-#12 - Fix login button styling (OPEN, 1 task - IN_PROGRESS)
-#8 - Update login page UI (IN_PROGRESS, 2 tasks)
-
-This will fold #12 into #8 and soft-delete #12. Continue?
-```
-
-**User:** "Yes"
-
-**Response:**
-
-```
-[Calling merge_issues(sourceIssueNumber: 12, targetIssueNumber: 8, mode: "merge_into")]
-
-Merged successfully:
-  Result: #8 - Update login page UI
-  Tasks merged: 3 total (2 original + 1 from #12)
-  Issue #12 has been soft-deleted.
-
-⚠️ Note: Task "Fix button hover state" is currently IN_PROGRESS
-   and will be preserved in its current state.
-```
+1. Show both issues briefly
+2. Ask: "Create new issue from both, or merge one into the other?"
+3. `merge_issues(source, target, mode: "create_new" | "merge_into")`
+4. Report result + any warnings about in-progress tasks
