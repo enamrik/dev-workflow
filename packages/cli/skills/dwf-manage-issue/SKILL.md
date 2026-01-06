@@ -1,7 +1,7 @@
 ---
 name: dwf-manage-issue
 description: "⚠️ For NEW work requests, use 'dwf-work-request' first - it routes here automatically. This skill handles the mechanics: requirements separation, template selection, priority/milestone assignment. Only invoke directly for EDITING existing issues: 'update issue #N', 'add acceptance criteria to #5', 'change priority of #3'. (project)"
-allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:close_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_task_labels, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:import_github_issue
+allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:close_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_task_labels, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:import_github_issue, mcp:dev-workflow-tracker:merge_issues
 ---
 
 # Manage Issue Skill
@@ -36,6 +36,12 @@ This indicates the MCP server is connected to the wrong database. **Do NOT work 
 - User mentions: "update issue #N", "change issue", "modify requirements"
 - User wants to edit: "add acceptance criteria to #5", "change the description"
 - User references existing issue: "issue #3 needs more detail"
+
+**Merge operations:**
+
+- User mentions: "merge #X and #Y", "combine issues #X and #Y"
+- User wants to consolidate: "merge #5 into #3", "fold #2 into #1"
+- User identifies duplicates: "these issues are duplicates", "combine these"
 
 ## Information Levels
 
@@ -199,6 +205,51 @@ Import allows users to bring existing GitHub issues into dev-workflow for struct
 3. **Report closure:**
    - Confirm the issue is now CLOSED
    - Suggest next steps if applicable (other open issues, new work)
+
+### For Merging Issues
+
+Merge allows users to combine two issues into one. This is useful when issues are discovered to be duplicates, highly related, or when work needs to be consolidated.
+
+**Two merge modes:**
+
+| Mode         | What Happens                                       | When to Use                                  |
+| ------------ | -------------------------------------------------- | -------------------------------------------- |
+| `create_new` | Creates a new issue from both, originals unchanged | Combining related work into fresh issue      |
+| `merge_into` | Folds source into target, source is soft-deleted   | True duplicates, consolidating into existing |
+
+1. **Detect merge request:**
+   - User says "merge #X and #Y" → ask which mode
+   - User says "merge #X into #Y" → use `merge_into` mode (X is source, Y is target)
+   - User says "combine issues" → ask which issues and which mode
+
+2. **Confirm with user:**
+   - Show both issues briefly (number, title, status)
+   - If mode not specified, ask: "Would you like to create a new issue from both, or merge one into the other?"
+   - If `merge_into`, clarify: "This will fold #X into #Y and soft-delete #X. Continue?"
+
+3. **Call merge_issues:**
+
+   ```
+   merge_issues(
+     sourceIssueNumber: X,
+     targetIssueNumber: Y,
+     mode: "create_new" | "merge_into"
+   )
+   ```
+
+   - For `create_new`: Both X and Y become source issues, result is a new issue
+   - For `merge_into`: X is folded into Y, X is soft-deleted
+
+4. **Handle warnings:**
+   - The tool returns warnings for in-progress or PR-review tasks
+   - Show these warnings to the user: "Note: Task 'X' is currently in progress and will be preserved in its current state."
+   - Warnings are informational - they don't block the merge
+
+5. **Report result:**
+   - Show the resulting issue number and title
+   - Show how many tasks were merged
+   - For `merge_into`: confirm source issue was soft-deleted
+   - For `create_new`: confirm original issues are unchanged
 
 ### Approving Plans (PLANNED → OPEN)
 
@@ -411,4 +462,67 @@ Issue imported: #6 - Fix memory leak in dashboard
   Type: BUG
   Source: GitHub issue #42
   ...
+```
+
+### Merging Issues (create_new mode)
+
+**User:** "Merge issues #3 and #5"
+
+**Response:**
+
+```
+I'll merge issues #3 and #5. Let me show you both:
+
+#3 - Add user settings page (OPEN, 2 tasks)
+#5 - Add preferences storage (PLANNED, 1 task)
+
+Would you like to:
+1. Create a new issue combining both (originals unchanged)
+2. Merge one into the other (source is soft-deleted)
+
+Which approach would you prefer?
+```
+
+**User:** "Create a new one"
+
+**Response:**
+
+```
+[Calling merge_issues(sourceIssueNumber: 3, targetIssueNumber: 5, mode: "create_new")]
+
+Merged successfully:
+  New issue: #7 - Add user settings page
+  Tasks merged: 3 (from both source issues)
+  Original issues #3 and #5 are unchanged.
+```
+
+### Merging Issues (merge_into mode)
+
+**User:** "Merge #12 into #8"
+
+**Response:**
+
+```
+I'll merge issue #12 into #8.
+
+#12 - Fix login button styling (OPEN, 1 task - IN_PROGRESS)
+#8 - Update login page UI (IN_PROGRESS, 2 tasks)
+
+This will fold #12 into #8 and soft-delete #12. Continue?
+```
+
+**User:** "Yes"
+
+**Response:**
+
+```
+[Calling merge_issues(sourceIssueNumber: 12, targetIssueNumber: 8, mode: "merge_into")]
+
+Merged successfully:
+  Result: #8 - Update login page UI
+  Tasks merged: 3 total (2 original + 1 from #12)
+  Issue #12 has been soft-deleted.
+
+⚠️ Note: Task "Fix button hover state" is currently IN_PROGRESS
+   and will be preserved in its current state.
 ```
