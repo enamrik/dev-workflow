@@ -13,6 +13,8 @@ export * from "./domain/snapshot.js";
 export * from "./domain/template.js";
 export * from "./domain/events.js";
 export * from "./domain/github.js";
+export * from "./domain/project-management-provider.js";
+export * from "./domain/project-management-config.js";
 export * from "./domain/milestone.js";
 export * from "./domain/project.js";
 export * from "./domain/errors.js";
