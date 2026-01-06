@@ -6,23 +6,27 @@ allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-trac
 
 # Work Task Skill
 
-## Critical Constraint: One Task at a Time
+## Critical Constraint: One Task at a Time Per Session
 
-**You MUST complete one task fully before starting another.** Never work on multiple tasks in the same session.
+**Within a single Claude session, complete one task fully before starting another.**
+
+This constraint is **per-session**, not system-wide. Multiple Claude sessions CAN work on different tasks in parallel - that's the whole point of isolated worktrees! The constraint only means:
+
+- **This session** should not juggle multiple tasks simultaneously
+- If **you** started a task earlier in this conversation, finish it before starting another
+- Tasks owned by **other sessions** are irrelevant to this check
 
 A task is only "complete" when it reaches a terminal state:
 
 - **COMPLETED** - Work done, PR merged (or committed on main mode)
 - **ABANDONED** - Work stopped, reason documented
 
-If a task is IN_PROGRESS or PR_REVIEW, you must finish that task's lifecycle before starting a new one. If the user asks to work on a different task while one is in progress, remind them:
-
-> "You have an active task in progress: [task title]. Would you like to complete or abandon it first before starting a new task?"
+**How to check:** If you started a task earlier in this conversation (you called `load_task_session`), check if that task is still IN_PROGRESS or PR_REVIEW before starting a new one. If you haven't started any task in this conversation, you're free to start one - even if other tasks show as IN_PROGRESS (they belong to other sessions).
 
 This ensures:
 
-- Clean git state (no mixed changes across tasks)
-- Proper worktree management (one worktree per active task)
+- Clean git state (no mixed changes across tasks in this session)
+- Proper worktree management (one worktree per active task per session)
 - Clear audit trail (each task has a complete lifecycle)
 
 ## When to Invoke
@@ -153,10 +157,12 @@ BACKLOG tasks back to READY.
 
 ### To Start a Task
 
-1. **Check for active tasks first:**
-   - Before starting ANY new task, verify no task is currently IN_PROGRESS or PR_REVIEW
-   - If a task is active → remind user to complete or abandon it first
-   - Only proceed if there are no active tasks in the session
+1. **Check if YOU have an active task in this conversation:**
+   - Did you call `load_task_session` earlier in this conversation?
+   - If yes, is that task still IN_PROGRESS or PR_REVIEW?
+   - If you have an active task → remind user to complete or abandon it first
+   - If you haven't started any task in this conversation → proceed freely
+   - **Important:** Tasks owned by other sessions are irrelevant - multiple sessions can work in parallel
 
 2. **Identify the task:**
    - If user specified a task → use that task ID
