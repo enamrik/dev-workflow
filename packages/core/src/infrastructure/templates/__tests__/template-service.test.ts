@@ -271,40 +271,134 @@ describe("TemplateService", () => {
     });
   });
 
-  describe("getTaskTemplate - task templates (all.md only)", () => {
+  describe("getTaskTemplate - per-type task template resolution", () => {
     it("should return null when no task templates exist", async () => {
       const result = await service.getTaskTemplate();
       expect(result).toBeNull();
     });
 
-    it("should return local task template when it exists", async () => {
-      addTemplate(config.localTaskTemplatesPath, "all.md", makeTemplate("TASK", "HIGH"));
-
-      const result = await service.getTaskTemplate();
-
-      expect(result).not.toBeNull();
-      expect(result?.metadata.priority).toBe("HIGH");
-      expect(result?.isUserDefined).toBe(true);
+    it("should return null when no task templates exist (with type)", async () => {
+      const result = await service.getTaskTemplate("FEATURE");
+      expect(result).toBeNull();
     });
 
-    it("should fall back to global task template when local not found", async () => {
-      addTemplate(config.globalTaskTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
+    describe("Resolution Order: local per-type -> local all.md -> global per-type -> global all.md", () => {
+      it("should prefer local per-type template (priority 1)", async () => {
+        addTemplate(config.localTaskTemplatesPath, "feature.md", makeTemplate("FEATURE", "HIGH"));
+        addTemplate(config.localTaskTemplatesPath, "all.md", makeTemplate("TASK", "MEDIUM"));
+        addTemplate(config.globalTaskTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
+        addTemplate(config.globalTaskTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
 
-      const result = await service.getTaskTemplate();
+        const result = await service.getTaskTemplate("FEATURE");
 
-      expect(result).not.toBeNull();
-      expect(result?.metadata.priority).toBe("LOW");
-      expect(result?.isUserDefined).toBe(false);
+        expect(result?.metadata.priority).toBe("HIGH");
+        expect(result?.isUserDefined).toBe(true);
+        expect(result?.filename).toBe("feature.md");
+      });
+
+      it("should fall back to local all.md when local per-type not found (priority 2)", async () => {
+        addTemplate(config.localTaskTemplatesPath, "all.md", makeTemplate("TASK", "HIGH"));
+        addTemplate(config.globalTaskTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
+        addTemplate(config.globalTaskTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
+
+        const result = await service.getTaskTemplate("FEATURE");
+
+        expect(result?.metadata.priority).toBe("HIGH");
+        expect(result?.isUserDefined).toBe(true);
+        expect(result?.filename).toBe("all.md");
+      });
+
+      it("should fall back to global per-type when local templates not found (priority 3)", async () => {
+        addTemplate(
+          config.globalTaskTemplatesPath,
+          "feature.md",
+          makeTemplate("FEATURE", "MEDIUM")
+        );
+        addTemplate(config.globalTaskTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
+
+        const result = await service.getTaskTemplate("FEATURE");
+
+        expect(result?.metadata.priority).toBe("MEDIUM");
+        expect(result?.isUserDefined).toBe(false);
+        expect(result?.filename).toBe("feature.md");
+      });
+
+      it("should fall back to global all.md as last resort (priority 4)", async () => {
+        addTemplate(config.globalTaskTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
+
+        const result = await service.getTaskTemplate("FEATURE");
+
+        expect(result?.metadata.priority).toBe("LOW");
+        expect(result?.isUserDefined).toBe(false);
+        expect(result?.filename).toBe("all.md");
+      });
     });
 
-    it("should prefer local over global task template", async () => {
-      addTemplate(config.localTaskTemplatesPath, "all.md", makeTemplate("TASK", "HIGH"));
-      addTemplate(config.globalTaskTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
+    describe("Type-specific template selection", () => {
+      beforeEach(() => {
+        // Add all per-type templates in global
+        addTemplate(config.globalTaskTemplatesPath, "feature.md", makeTemplate("FEATURE"));
+        addTemplate(config.globalTaskTemplatesPath, "bug.md", makeTemplate("BUG"));
+        addTemplate(config.globalTaskTemplatesPath, "enhancement.md", makeTemplate("ENHANCEMENT"));
+        addTemplate(config.globalTaskTemplatesPath, "task.md", makeTemplate("TASK"));
+      });
 
-      const result = await service.getTaskTemplate();
+      it("should select FEATURE template for FEATURE type", async () => {
+        const result = await service.getTaskTemplate("FEATURE");
+        expect(result?.filename).toBe("feature.md");
+      });
 
-      expect(result?.metadata.priority).toBe("HIGH");
-      expect(result?.isUserDefined).toBe(true);
+      it("should select BUG template for BUG type", async () => {
+        const result = await service.getTaskTemplate("BUG");
+        expect(result?.filename).toBe("bug.md");
+      });
+
+      it("should select ENHANCEMENT template for ENHANCEMENT type", async () => {
+        const result = await service.getTaskTemplate("ENHANCEMENT");
+        expect(result?.filename).toBe("enhancement.md");
+      });
+
+      it("should select TASK template for TASK type", async () => {
+        const result = await service.getTaskTemplate("TASK");
+        expect(result?.filename).toBe("task.md");
+      });
+
+      it("should handle lowercase type names", async () => {
+        const result = await service.getTaskTemplate("feature");
+        expect(result?.filename).toBe("feature.md");
+      });
+    });
+
+    describe("Backward compatibility (no type)", () => {
+      it("should return local all.md when no type specified", async () => {
+        addTemplate(config.localTaskTemplatesPath, "all.md", makeTemplate("TASK", "HIGH"));
+        addTemplate(config.globalTaskTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
+
+        const result = await service.getTaskTemplate();
+
+        expect(result?.metadata.priority).toBe("HIGH");
+        expect(result?.isUserDefined).toBe(true);
+      });
+
+      it("should fall back to global all.md when no type specified and local not found", async () => {
+        addTemplate(config.globalTaskTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
+
+        const result = await service.getTaskTemplate();
+
+        expect(result?.metadata.priority).toBe("LOW");
+        expect(result?.isUserDefined).toBe(false);
+      });
+
+      it("should skip per-type when no type specified", async () => {
+        addTemplate(config.localTaskTemplatesPath, "feature.md", makeTemplate("FEATURE", "HIGH"));
+        addTemplate(config.globalTaskTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
+
+        const result = await service.getTaskTemplate();
+
+        // Should skip feature.md and use global all.md since no type was provided
+        expect(result?.metadata.priority).toBe("LOW");
+        expect(result?.filename).toBe("all.md");
+      });
     });
   });
 
