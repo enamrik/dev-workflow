@@ -311,7 +311,7 @@ export class UpdateService {
   }
 
   /**
-   * Update task labels directory (local ./track/labels/)
+   * Update task labels directory (local ./.track/labels/)
    * (Creates README if missing)
    */
   async updateTaskLabels(): Promise<void> {
@@ -338,7 +338,7 @@ files (\`db.md\`, \`api.md\`) are loaded and provided as context.
 Create any \`.md\` file in this directory. The filename (without extension)
 becomes the label name.
 
-Example: \`./track/labels/testing.md\` creates a "testing" label.
+Example: \`./.track/labels/testing.md\` creates a "testing" label.
 `;
         await this.fileSystem.writeFile(readmePath, readme);
       }
@@ -348,7 +348,7 @@ Example: \`./track/labels/testing.md\` creates a "testing" label.
   }
 
   /**
-   * Update local templates directory structure (./track/templates/)
+   * Update local templates directory structure (./.track/templates/)
    * Creates issue and task template directories with README if missing.
    * Templates are resolved at runtime via cascading fallback.
    */
@@ -389,8 +389,8 @@ Custom templates for issues and tasks. These take precedence over global templat
 - Only all.md is supported for tasks
 
 ## Resolution Order
-1. Local per-type (e.g., ./track/templates/issues/feature.md)
-2. Local all.md (./track/templates/issues/all.md)
+1. Local per-type (e.g., ./.track/templates/issues/feature.md)
+2. Local all.md (./.track/templates/issues/all.md)
 3. Global per-type (~/.track/config/templates/issues/feature.md)
 4. Global all.md (~/.track/config/templates/issues/all.md)
 

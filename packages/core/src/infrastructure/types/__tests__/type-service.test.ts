@@ -1,7 +1,7 @@
 /**
  * Type Service Tests
  *
- * Tests the type parsing and intelligent type assignment from ./track/types.md
+ * Tests the type parsing and intelligent type assignment from ./.track/types.md
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -80,7 +80,7 @@ describe("TypeService", () => {
     };
 
     config = {
-      localTypesPath: "/repo/track/types.md",
+      localTypesPath: "/repo/.track/types.md",
       globalTypesPath: "/global/config/types.md",
     };
 
@@ -96,7 +96,7 @@ describe("TypeService", () => {
     });
 
     it("should load types from local types.md when present", async () => {
-      fileContents.set("/repo/track/types.md", SAMPLE_TYPES_MD);
+      fileContents.set("/repo/.track/types.md", SAMPLE_TYPES_MD);
 
       const result = await service.loadTypes();
 
@@ -115,7 +115,7 @@ describe("TypeService", () => {
     });
 
     it("should prefer local types.md over global", async () => {
-      fileContents.set("/repo/track/types.md", PARTIAL_TYPES_MD);
+      fileContents.set("/repo/.track/types.md", PARTIAL_TYPES_MD);
       fileContents.set("/global/config/types.md", SAMPLE_TYPES_MD);
 
       const result = await service.loadTypes();
@@ -126,7 +126,7 @@ describe("TypeService", () => {
     });
 
     it("should cache types after first load", async () => {
-      fileContents.set("/repo/track/types.md", SAMPLE_TYPES_MD);
+      fileContents.set("/repo/.track/types.md", SAMPLE_TYPES_MD);
 
       await service.loadTypes();
       await service.loadTypes();
@@ -136,7 +136,7 @@ describe("TypeService", () => {
     });
 
     it("should reload types after clearCache", async () => {
-      fileContents.set("/repo/track/types.md", SAMPLE_TYPES_MD);
+      fileContents.set("/repo/.track/types.md", SAMPLE_TYPES_MD);
 
       await service.loadTypes();
       service.clearCache();
@@ -146,7 +146,7 @@ describe("TypeService", () => {
     });
 
     it("should only parse valid type names", async () => {
-      fileContents.set("/repo/track/types.md", INVALID_TYPES_MD);
+      fileContents.set("/repo/.track/types.md", INVALID_TYPES_MD);
 
       const result = await service.loadTypes();
 
@@ -156,7 +156,7 @@ describe("TypeService", () => {
     });
 
     it("should extract keywords from descriptions", async () => {
-      fileContents.set("/repo/track/types.md", SAMPLE_TYPES_MD);
+      fileContents.set("/repo/.track/types.md", SAMPLE_TYPES_MD);
 
       const result = await service.loadTypes();
 
@@ -204,7 +204,7 @@ Critical errors, data loss, security vulnerabilities.
 
 User-facing additions, new screens, new APIs.
 `;
-      fileContents.set("/repo/track/types.md", customTypes);
+      fileContents.set("/repo/.track/types.md", customTypes);
 
       // "critical" should match BUG with custom types (extracted as keyword)
       const result = await service.selectType("Critical application failure");
@@ -226,7 +226,7 @@ User-facing additions, new screens, new APIs.
   describe("graceful degradation", () => {
     it("should return defaults when file read fails", async () => {
       mockFileSystem.readFile = vi.fn().mockRejectedValue(new Error("Permission denied"));
-      fileContents.set("/repo/track/types.md", "exists"); // exists but can't be read
+      fileContents.set("/repo/.track/types.md", "exists"); // exists but can't be read
 
       const result = await service.loadTypes();
 
@@ -235,7 +235,7 @@ User-facing additions, new screens, new APIs.
     });
 
     it("should return defaults for empty types.md", async () => {
-      fileContents.set("/repo/track/types.md", "");
+      fileContents.set("/repo/.track/types.md", "");
 
       const result = await service.loadTypes();
 
@@ -244,7 +244,7 @@ User-facing additions, new screens, new APIs.
     });
 
     it("should return defaults for types.md with no valid types", async () => {
-      fileContents.set("/repo/track/types.md", "# Just a header\n\nSome text without types.");
+      fileContents.set("/repo/.track/types.md", "# Just a header\n\nSome text without types.");
 
       const result = await service.loadTypes();
 

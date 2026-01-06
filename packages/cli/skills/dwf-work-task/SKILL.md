@@ -699,11 +699,13 @@ If you were working on an issue/task and suddenly get "Issue not found" or "Task
 Any manual workaround (direct database updates, `gh` CLI, etc.) creates **corrupt, inconsistent state** that will cause more problems later. The MCP tools maintain consistency between the database, git, and GitHub - bypassing them breaks that guarantee.
 
 **What to do:**
+
 1. Stop all work immediately
 2. Tell the user: "The MCP server appears to be connected to the wrong database. Please restart your Claude session to reconnect, then we can resume where we left off."
 3. **Do not continue** until the user has restarted and confirmed
 
 **Resuming after restart:**
+
 - If a task was IN_PROGRESS, call `load_task_session` with the task ID - it's idempotent and will resume the session
 - The worktree and branch will still exist; work can continue from where it stopped
 - Check `git status` in the worktree to see what changes were in progress

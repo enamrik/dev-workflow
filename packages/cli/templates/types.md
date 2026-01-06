@@ -1,7 +1,7 @@
 # Issue Types
 
 This file defines the issue types available for your project.
-Copy this file to `./track/types.md` to customize type descriptions for intelligent type assignment.
+Copy this file to `./.track/types.md` to customize type descriptions for intelligent type assignment.
 
 ## FEATURE
 

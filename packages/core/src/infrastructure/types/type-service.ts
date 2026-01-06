@@ -1,10 +1,10 @@
 /**
  * Type Service Infrastructure
  *
- * Handles parsing of user-defined types from ./track/types.md
+ * Handles parsing of user-defined types from ./.track/types.md
  * and provides intelligent type assignment based on descriptions.
  *
- * File Format (./track/types.md):
+ * File Format (./.track/types.md):
  * ```markdown
  * ## FEATURE
  * New functionality that doesn't exist yet
@@ -44,7 +44,7 @@ export class TypeServiceError extends Error {
  * Configuration for type service
  */
 export interface TypeServiceConfig {
-  /** Path to local types.md: ./track/types.md */
+  /** Path to local types.md: ./.track/types.md */
   localTypesPath: string;
   /** Path to global types.md (fallback): ~/.track/config/types.md */
   globalTypesPath: string;
@@ -53,7 +53,7 @@ export interface TypeServiceConfig {
 /**
  * Type Service
  *
- * Parses user-defined types from ./track/types.md and provides
+ * Parses user-defined types from ./.track/types.md and provides
  * intelligent type assignment based on descriptions.
  */
 export class TypeService {
@@ -65,10 +65,10 @@ export class TypeService {
   ) {}
 
   /**
-   * Load type definitions from ./track/types.md or fall back to defaults
+   * Load type definitions from ./.track/types.md or fall back to defaults
    *
    * Resolution order:
-   * 1. Local ./track/types.md
+   * 1. Local ./.track/types.md
    * 2. Global ~/.track/config/types.md
    * 3. Default hardcoded types
    */
