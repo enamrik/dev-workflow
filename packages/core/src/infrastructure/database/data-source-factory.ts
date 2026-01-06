@@ -1,6 +1,7 @@
 import type { DataSourceProvider } from "../../domain/data-source.js";
 import { DataSourceError } from "../../domain/data-source.js";
 import { SqliteDataSource } from "./sqlite-data-source.js";
+import { NeonDataSource } from "./neon-data-source.js";
 
 // =============================================================================
 // Configuration Types
@@ -39,11 +40,11 @@ export interface DataSourceConfig {
  * It auto-detects the appropriate provider based on the connection string,
  * or uses an explicitly specified provider.
  *
- * Currently supports:
+ * Supported providers:
  * - SQLite (local file-based database)
+ * - Neon (serverless PostgreSQL for team collaboration)
  *
  * Future support planned for:
- * - Neon (serverless PostgreSQL)
  * - Turso (edge SQLite)
  */
 export class DataSourceFactory {
@@ -66,11 +67,7 @@ export class DataSourceFactory {
         return SqliteDataSource.create(config.connectionString);
 
       case "neon":
-        throw new DataSourceError(
-          "Neon PostgreSQL provider is not yet implemented. Use SQLite for now.",
-          "neon",
-          "create"
-        );
+        return NeonDataSource.create(config.connectionString);
 
       default: {
         const unknownProvider = provider as string;
@@ -93,6 +90,18 @@ export class DataSourceFactory {
    */
   static async createSqlite(databasePath: string): Promise<SqliteDataSource> {
     return SqliteDataSource.create(databasePath);
+  }
+
+  /**
+   * Create a Neon PostgreSQL data source directly
+   *
+   * Convenience method for creating a Neon connection.
+   *
+   * @param connectionString - PostgreSQL connection URL (e.g., "postgresql://user:pass@host.neon.tech/db")
+   * @returns A NeonDataSource instance
+   */
+  static async createNeon(connectionString: string): Promise<NeonDataSource> {
+    return NeonDataSource.create(connectionString);
   }
 
   /**

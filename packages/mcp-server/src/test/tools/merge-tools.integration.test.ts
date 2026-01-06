@@ -11,7 +11,7 @@ import { createRepositories, createTestIssue, createTestPlan, createTestTask } f
 import { VersioningService, MockGitHubCLI, SqliteProjectRepository } from "@dev-workflow/core";
 import { handleMergeIssues, type MergeToolContext } from "../../tools/merge-tools.js";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import * as schema from "@dev-workflow/core";
+import * as schema from "@dev-workflow/core/schema";
 
 /** Database type used by repositories */
 type DbType = BetterSQLite3Database<typeof schema>;

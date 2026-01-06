@@ -23,7 +23,7 @@ import {
   type TaskStatus,
   type TaskSource,
 } from "@dev-workflow/core";
-import * as schema from "@dev-workflow/core";
+import * as schema from "@dev-workflow/core/schema";
 import type { TestDatabase } from "./setup.js";
 
 /** Database type used by repositories */
