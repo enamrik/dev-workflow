@@ -86,13 +86,20 @@ Custom templates for issues and tasks. These take precedence over global templat
 - Fallback: all.md (used when per-type not found)
 
 ## Task Templates (./templates/tasks/)
-- Only all.md is supported for tasks
+- Per-type templates: feature.md, bug.md, enhancement.md, task.md
+- Fallback: all.md (used when per-type not found)
+- Used to generate GitHub issue bodies when tasks are synced
 
-## Resolution Order
-1. Local per-type (e.g., ./.track/templates/issues/feature.md)
-2. Local all.md (./.track/templates/issues/all.md)
-3. Global per-type (~/.track/config/templates/issues/feature.md)
-4. Global all.md (~/.track/config/templates/issues/all.md)
+## Resolution Order (same for both issues and tasks)
+1. Local per-type (e.g., ./.track/templates/tasks/feature.md)
+2. Local all.md (./.track/templates/tasks/all.md)
+3. Global per-type (~/.track/config/templates/tasks/feature.md)
+4. Global all.md (~/.track/config/templates/tasks/all.md)
+
+## Template Placeholders (tasks only)
+- {{description}} - Task description
+- {{acceptanceCriteria}} - Formatted acceptance criteria list
+- {{parentIssueLink}} - Link to parent dev-workflow issue
 
 ## Frontmatter Format
 \`\`\`yaml
@@ -242,12 +249,22 @@ Example: \`./.track/labels/testing.md\` creates a "testing" label.
       await this.fileSystem.mkdir(globalTaskTemplatesDir, { recursive: true });
 
       // Copy bundled issue templates to global directory
-      const bundledTemplatesSource = path.join(this.packageRoot, "templates/issues");
-      const templates = ["feature.md", "bug.md", "enhancement.md", "task.md"];
+      const bundledIssueTemplatesSource = path.join(this.packageRoot, "templates/issues");
+      const issueTemplates = ["feature.md", "bug.md", "enhancement.md", "task.md"];
 
-      for (const template of templates) {
-        const sourcePath = path.join(bundledTemplatesSource, template);
+      for (const template of issueTemplates) {
+        const sourcePath = path.join(bundledIssueTemplatesSource, template);
         const destPath = path.join(globalIssueTemplatesDir, template);
+        await this.fileSystem.copyFile(sourcePath, destPath);
+      }
+
+      // Copy bundled task templates to global directory
+      const bundledTaskTemplatesSource = path.join(this.packageRoot, "templates/tasks");
+      const taskTemplates = ["feature.md", "bug.md", "enhancement.md", "task.md"];
+
+      for (const template of taskTemplates) {
+        const sourcePath = path.join(bundledTaskTemplatesSource, template);
+        const destPath = path.join(globalTaskTemplatesDir, template);
         await this.fileSystem.copyFile(sourcePath, destPath);
       }
     } catch (error) {

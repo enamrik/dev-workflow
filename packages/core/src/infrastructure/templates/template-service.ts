@@ -11,8 +11,10 @@
  * 4. Global all.md: ~/.track/config/templates/issues/all.md
  *
  * Template Resolution Order (for tasks):
- * 1. Local all.md: ./.track/templates/tasks/all.md
- * 2. Global all.md: ~/.track/config/templates/tasks/all.md
+ * 1. Local per-type: ./.track/templates/tasks/<type>.md
+ * 2. Local all.md: ./.track/templates/tasks/all.md
+ * 3. Global per-type: ~/.track/config/templates/tasks/<type>.md
+ * 4. Global all.md: ~/.track/config/templates/tasks/all.md
  */
 
 import * as path from "node:path";
@@ -292,16 +294,31 @@ export class TemplateService {
   }
 
   /**
-   * Get a task template with fallback
+   * Get a task template with cascading fallback
    *
    * Resolution order:
-   * 1. Local all.md: ./.track/templates/tasks/all.md
-   * 2. Global all.md: ~/.track/config/templates/tasks/all.md
+   * 1. Local per-type: ./.track/templates/tasks/<type>.md
+   * 2. Local all.md: ./.track/templates/tasks/all.md
+   * 3. Global per-type: ~/.track/config/templates/tasks/<type>.md
+   * 4. Global all.md: ~/.track/config/templates/tasks/all.md
    *
+   * @param type - Optional task type (e.g., "FEATURE", "BUG"). If provided, tries per-type templates first.
    * @returns Template if found, null otherwise
    */
-  async getTaskTemplate(): Promise<Template | null> {
-    // 1. Try local all.md
+  async getTaskTemplate(type?: string): Promise<Template | null> {
+    const filename = type ? `${type.toLowerCase()}.md` : null;
+
+    // 1. Try local per-type (if type provided)
+    if (filename) {
+      const localPerType = await this.loadSingleTemplate(
+        this.config.localTaskTemplatesPath,
+        filename,
+        true
+      );
+      if (localPerType) return localPerType;
+    }
+
+    // 2. Try local all.md
     const localAll = await this.loadSingleTemplate(
       this.config.localTaskTemplatesPath,
       "all.md",
@@ -309,7 +326,17 @@ export class TemplateService {
     );
     if (localAll) return localAll;
 
-    // 2. Try global all.md
+    // 3. Try global per-type (if type provided)
+    if (filename) {
+      const globalPerType = await this.loadSingleTemplate(
+        this.config.globalTaskTemplatesPath,
+        filename,
+        false
+      );
+      if (globalPerType) return globalPerType;
+    }
+
+    // 4. Try global all.md
     const globalAll = await this.loadSingleTemplate(
       this.config.globalTaskTemplatesPath,
       "all.md",
