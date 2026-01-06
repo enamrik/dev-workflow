@@ -6,12 +6,15 @@
  *
  * File Format (./.track/types.md):
  * ```markdown
- * ## FEATURE
+ * ## FEATURE -> feature
  * New functionality that doesn't exist yet
  *
- * ## BUG
+ * ## BUG -> bug
  * Something is broken or not working as expected
  * ```
+ *
+ * The arrow syntax (-> label) specifies the GitHub label to apply when syncing.
+ * If omitted, the type name is lowercased (e.g., FEATURE -> feature).
  */
 
 import type { IssueType } from "../../domain/issue.js";
@@ -139,6 +142,43 @@ export class TypeService {
   }
 
   /**
+   * Get all available type definitions
+   *
+   * Returns the complete list of type definitions with their metadata,
+   * including name, description, keywords, and GitHub label.
+   *
+   * @returns Array of TypeDefinition objects
+   */
+  async getTypes(): Promise<TypeDefinition[]> {
+    const { types } = await this.loadTypes();
+    return types;
+  }
+
+  /**
+   * Check if a type name is valid
+   *
+   * Validates that the given type name exists in the available types list.
+   *
+   * @param typeName - Type name to validate (e.g., "FEATURE", "BUG")
+   * @returns true if the type is valid, false otherwise
+   */
+  async isValidType(typeName: string): Promise<boolean> {
+    const types = await this.getTypes();
+    return types.some((t) => t.name === typeName);
+  }
+
+  /**
+   * Get a type definition by name
+   *
+   * @param typeName - Type name to look up
+   * @returns The TypeDefinition if found, undefined otherwise
+   */
+  async getTypeByName(typeName: string): Promise<TypeDefinition | undefined> {
+    const types = await this.getTypes();
+    return types.find((t) => t.name === typeName);
+  }
+
+  /**
    * Clear the type cache
    */
   clearCache(): void {
@@ -171,11 +211,11 @@ export class TypeService {
    *
    * Format:
    * ```
-   * ## TYPE_NAME
+   * ## TYPE_NAME -> github-label
    * Description paragraph
    *
    * ## ANOTHER_TYPE
-   * Another description
+   * Another description (defaults to lowercase type name for github label)
    * ```
    *
    * @param content - Raw markdown content
@@ -186,6 +226,7 @@ export class TypeService {
     const lines = content.split("\n");
 
     let currentType: string | null = null;
+    let currentGithubLabel: string | null = null;
     let currentDescription: string[] = [];
 
     const saveCurrentType = () => {
@@ -199,6 +240,8 @@ export class TypeService {
             name: currentType as IssueType,
             description,
             keywords,
+            // Use explicit github label if provided, otherwise lowercase the type name
+            githubLabel: currentGithubLabel ?? currentType.toLowerCase(),
           });
         }
       }
@@ -207,14 +250,15 @@ export class TypeService {
     for (const line of lines) {
       const trimmed = line.trim();
 
-      // Check for type header: ## TYPE_NAME
-      const headerMatch = trimmed.match(/^##\s+([A-Z_]+)\s*$/);
+      // Check for type header: ## TYPE_NAME or ## TYPE_NAME -> github-label
+      const headerMatch = trimmed.match(/^##\s+([A-Z_]+)(?:\s*->\s*(\S+))?\s*$/);
       if (headerMatch) {
         // Save previous type if any
         saveCurrentType();
 
         // Start new type
-        currentType = headerMatch[1];
+        currentType = headerMatch[1]!;
+        currentGithubLabel = headerMatch[2] ?? null;
         currentDescription = [];
         continue;
       }

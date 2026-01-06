@@ -36,6 +36,7 @@ describe("SqliteTaskRepository", () => {
         title: "Test Task",
         description: "Test description",
         status: "BACKLOG",
+        type: "FEATURE",
         source: "generated",
         acceptanceCriteria: ["AC 1", "AC 2"],
         estimatedMinutes: 30,
@@ -46,6 +47,7 @@ describe("SqliteTaskRepository", () => {
       expect(task.planId).toBe(planId);
       expect(task.title).toBe("Test Task");
       expect(task.status).toBe("BACKLOG");
+      expect(task.type).toBe("FEATURE");
       expect(task.source).toBe("generated");
       expect(task.acceptanceCriteria).toEqual(["AC 1", "AC 2"]);
       expect(task.estimatedMinutes).toBe(30);
@@ -60,12 +62,43 @@ describe("SqliteTaskRepository", () => {
         title: "Manual Task",
         description: "User-created task",
         status: "BACKLOG",
+        type: "TASK",
         source: "manual",
         acceptanceCriteria: [],
         isDeleted: false,
       });
 
       expect(task.source).toBe("manual");
+    });
+
+    it("should create tasks with different types", () => {
+      const bugTask = createTestTask(repos.taskRepository, planId, {
+        title: "Bug Fix",
+        type: "BUG",
+      });
+      const featureTask = createTestTask(repos.taskRepository, planId, {
+        title: "New Feature",
+        type: "FEATURE",
+      });
+      const enhancementTask = createTestTask(repos.taskRepository, planId, {
+        title: "Enhancement",
+        type: "ENHANCEMENT",
+      });
+
+      expect(bugTask.type).toBe("BUG");
+      expect(featureTask.type).toBe("FEATURE");
+      expect(enhancementTask.type).toBe("ENHANCEMENT");
+    });
+
+    it("should persist and retrieve task type", () => {
+      const task = createTestTask(repos.taskRepository, planId, {
+        type: "BUG",
+      });
+
+      const retrieved = repos.taskRepository.findById(task.id);
+
+      expect(retrieved).toBeDefined();
+      expect(retrieved!.type).toBe("BUG");
     });
 
     it("should auto-increment order within a plan", () => {

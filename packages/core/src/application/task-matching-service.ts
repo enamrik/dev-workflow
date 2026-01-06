@@ -1,5 +1,6 @@
 import { distance as levenshtein } from "fastest-levenshtein";
 import type { Task, TaskStatus } from "../domain/task.js";
+import type { IssueType } from "../domain/issue.js";
 
 /**
  * Task definition for new tasks being created
@@ -13,6 +14,7 @@ export interface TaskDefinition {
   acceptanceCriteria: string[];
   estimatedMinutes?: number;
   dependsOn?: string[]; // Array of task IDs this task depends on
+  type?: IssueType; // Task type (defaults to "TASK" if not specified)
 }
 
 /**
