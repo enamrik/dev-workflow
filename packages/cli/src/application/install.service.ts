@@ -327,6 +327,10 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
     const dbService = await SqliteDataSource.create(dbPath);
 
     try {
+      // Run migrations first to ensure schema is up to date
+      // This is critical for handling cases where the database exists but is out of date
+      dbService.runMigrations();
+
       const projectRepo = new SqliteProjectRepository(dbService.getDb());
       const gitOps = new NodeGitOperations();
 
