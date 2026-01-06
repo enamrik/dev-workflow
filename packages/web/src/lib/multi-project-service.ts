@@ -7,6 +7,8 @@ import {
   SqliteTaskRepository,
   SqliteMilestoneRepository,
   SqliteProjectRepository,
+  SqliteWorkerRepository,
+  SqliteDispatchQueueRepository,
   getGlobalDatabasePath,
   resolveGlobalTrackDir,
   NodeGitWorktreeService,
@@ -20,6 +22,8 @@ import {
   type TaskStatusHistory,
   type TaskExecutionLog,
   type GitHubIssueSyncConfig,
+  type WorkerWithHealth,
+  type DispatchQueueEntryWithHealth,
 } from "@dev-workflow/core";
 
 /**
@@ -153,6 +157,29 @@ export interface ProjectWorktree {
   taskTitle?: string;
   taskStatus?: string;
   issueNumber?: number;
+}
+
+/**
+ * Extended dispatch queue entry with task details
+ */
+export interface DispatchQueueEntryWithDetails extends DispatchQueueEntryWithHealth {
+  taskNumber?: number;
+  issueNumber?: number;
+  taskTitle?: string;
+}
+
+/**
+ * Worker data combining workers, queue, and stats
+ */
+export interface WorkerData {
+  workers: WorkerWithHealth[];
+  queue: DispatchQueueEntryWithDetails[];
+  stats: {
+    total: number;
+    unclaimed: number;
+    claimed: number;
+    stale: number;
+  };
 }
 
 /**
@@ -773,6 +800,86 @@ export class MultiProjectService {
       return [];
     }
     return taskRepository.findByIds(task.dependsOn);
+  }
+
+  /**
+   * Get worker data including workers, dispatch queue, and stats
+   *
+   * Workers are global (not project-scoped) since they can work on
+   * tasks from any project in the dev-workflow installation.
+   */
+  async getWorkerData(): Promise<WorkerData> {
+    await this.ensureConnection();
+    const db = this.dbService!.getDb();
+
+    const workerRepository = new SqliteWorkerRepository(db);
+    const dispatchQueueRepository = new SqliteDispatchQueueRepository(db);
+
+    // Get workers with health info
+    const workers = workerRepository.findAllWithHealth();
+
+    // Get queue entries with health info
+    const queueEntries = dispatchQueueRepository.findAllWithHealth();
+
+    // Get stats
+    const stats = dispatchQueueRepository.getQueueStats();
+
+    // Enrich queue entries with task details
+    const { planRepository, taskRepository } = await this.ensureConnection();
+    const projects = await this.listProjects();
+
+    const enrichedQueue: DispatchQueueEntryWithDetails[] = [];
+
+    for (const entry of queueEntries) {
+      // Find the task
+      const task = taskRepository.findById(entry.taskId);
+      if (!task) {
+        // Task not found, include entry without details
+        enrichedQueue.push({
+          ...entry,
+          taskNumber: undefined,
+          issueNumber: undefined,
+          taskTitle: undefined,
+        });
+        continue;
+      }
+
+      // Find the plan to get the issue
+      const plan = planRepository.findById(task.planId);
+      if (!plan) {
+        enrichedQueue.push({
+          ...entry,
+          taskNumber: task.number,
+          issueNumber: undefined,
+          taskTitle: task.title,
+        });
+        continue;
+      }
+
+      // Find the issue
+      let issueNumber: number | undefined;
+      for (const project of projects) {
+        const issueRepository = await this.getIssueRepository(project.id);
+        const issue = issueRepository.findById(plan.issueId);
+        if (issue) {
+          issueNumber = issue.number;
+          break;
+        }
+      }
+
+      enrichedQueue.push({
+        ...entry,
+        taskNumber: task.number,
+        issueNumber,
+        taskTitle: task.title,
+      });
+    }
+
+    return {
+      workers,
+      queue: enrichedQueue,
+      stats,
+    };
   }
 
   /**
