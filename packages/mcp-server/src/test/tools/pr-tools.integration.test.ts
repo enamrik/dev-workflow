@@ -270,6 +270,117 @@ describe("create_pr", () => {
       expect(prBody).toContain("Closes #99");
       expect(prBody).toContain(`Task ${issue.number}.${task.number}: Test task`);
     });
+
+    it("should NOT include 'Part of' for regular tasks (parent not imported)", async () => {
+      // Arrange
+      const mockGitHubCLI = new MockGitHubCLI();
+      const mockGitWorktreeService = new MockGitWorktreeService();
+      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+
+      const issue = createTestIssue(ctx.issueRepository, { title: "Regular Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Regular task",
+        description: "Task description",
+        status: "IN_PROGRESS",
+      });
+
+      ctx.taskRepository.update(task.id, {
+        branchName: "issue-1/task-1-regular-task",
+        worktreePath: "/tmp/worktree/issue-1-task-1",
+      });
+
+      // Set GitHub sync for BOTH task and parent issue (but parent is NOT imported)
+      ctx.taskRepository.updateGitHubSync(task.id, {
+        githubIssueNumber: 101,
+        githubUrl: "https://github.com/test/repo/issues/101",
+        githubNodeId: "I_test_101",
+        syncStatus: "SYNCED",
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: null,
+        projectItemId: null,
+      });
+
+      ctx.issueRepository.update(issue.id, {
+        githubSync: {
+          githubIssueNumber: 100,
+          githubUrl: "https://github.com/test/repo/issues/100",
+          githubNodeId: "I_test_100",
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          projectItemId: null,
+        },
+      });
+
+      // Act
+      const result = await handleCreatePR(ctx, { taskId: task.id });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
+      const [, , , prBody] = createPRCalls[0]!.args as [string, string, string, string, boolean];
+      expect(prBody).toContain("Closes #101"); // Task's own issue
+      expect(prBody).not.toContain("Part of #100"); // Should NOT include parent reference
+      expect(prBody).toContain(`Task ${issue.number}.${task.number}: Regular task`);
+    });
+
+    it("should include 'Part of' for sub-issue tasks (parent imported from GitHub)", async () => {
+      // Arrange
+      const mockGitHubCLI = new MockGitHubCLI();
+      const mockGitWorktreeService = new MockGitWorktreeService();
+      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+
+      const issue = createTestIssue(ctx.issueRepository, {
+        title: "Imported Issue",
+      });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Sub-issue task",
+        description: "Task description",
+        status: "IN_PROGRESS",
+      });
+
+      ctx.taskRepository.update(task.id, {
+        branchName: "issue-1/task-1-sub-issue-task",
+        worktreePath: "/tmp/worktree/issue-1-task-1",
+      });
+
+      // Set GitHub sync for BOTH task and parent issue, AND mark parent as imported
+      ctx.taskRepository.updateGitHubSync(task.id, {
+        githubIssueNumber: 201,
+        githubUrl: "https://github.com/test/repo/issues/201",
+        githubNodeId: "I_test_201",
+        syncStatus: "SYNCED",
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: null,
+        projectItemId: null,
+      });
+
+      ctx.issueRepository.update(issue.id, {
+        sourceGitHubIssueNumber: 200, // Mark as imported
+        githubSync: {
+          githubIssueNumber: 200,
+          githubUrl: "https://github.com/test/repo/issues/200",
+          githubNodeId: "I_test_200",
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          projectItemId: null,
+        },
+      });
+
+      // Act
+      const result = await handleCreatePR(ctx, { taskId: task.id });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
+      const [, , , prBody] = createPRCalls[0]!.args as [string, string, string, string, boolean];
+      expect(prBody).toContain("Closes #201"); // Task's own issue
+      expect(prBody).toContain("Part of #200"); // SHOULD include parent reference for imported issues
+      expect(prBody).toContain(`Task ${issue.number}.${task.number}: Sub-issue task`);
+    });
   });
 
   describe("validation", () => {
