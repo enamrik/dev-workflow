@@ -53,7 +53,6 @@ export interface Task {
   status: "PLANNED" | "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
   estimatedMinutes: number | null;
   acceptanceCriteria: string[];
-  labels: string[];
   contextInstructions: string | null;
   isManual: boolean;
   sessionId: string | null;

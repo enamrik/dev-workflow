@@ -18,7 +18,6 @@ interface IssueRow {
   status: string;
   type: string;
   priority: string;
-  labels: string;
   created_at: string;
   updated_at: string;
 }

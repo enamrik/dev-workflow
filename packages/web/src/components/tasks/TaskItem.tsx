@@ -103,14 +103,6 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
             </ul>
           )}
 
-          {task.labels.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {task.labels.map((label) => (
-                <Badge key={label} variant="label" value={label} />
-              ))}
-            </div>
-          )}
-
           {/* Toggle link for details */}
           {canExpand && (
             <button
