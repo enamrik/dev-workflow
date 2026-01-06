@@ -12,6 +12,7 @@ import {
   type Project,
   type ProjectRepository,
   type StatusColumnMapping,
+  type ProviderRegistry,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -121,13 +122,14 @@ export const settingsToolDefinitions: ToolDefinition[] = [
  * Service context for settings handlers
  *
  * Uses project and projectRepository to store GitHub sync config
- * in the projects table.
+ * in the projects table. Includes providerRegistry for provider validation.
  */
 export interface SettingsToolContext {
   project: Project;
   projectRepository: ProjectRepository;
   githubCLI: GitHubCLI;
   gitRoot: string; // From env var, not database (machine-specific)
+  providerRegistry: ProviderRegistry; // For validating available providers
 }
 
 /**
@@ -204,11 +206,25 @@ async function handleGetSettings(ctx: SettingsToolContext): Promise<ToolResponse
         }
       : null;
 
+    // Get available providers from registry
+    const availableProviders = ctx.providerRegistry.list({ githubCLI: ctx.githubCLI }).map((p) => ({
+      id: p.providerId,
+      name: p.displayName,
+      available: p.available,
+      missingDependencies: p.missingDependencies,
+    }));
+
     return successResponse({
       projectId: project.id,
       projectName: project.name,
       gitRoot: ctx.gitRoot,
       gitRootHash: project.gitRootHash,
+      // Provider abstraction info
+      providers: {
+        available: availableProviders,
+        current: project.githubSync?.enabled ? "github" : null,
+      },
+      // GitHub-specific config (backwards compatible)
       github: project.githubSync
         ? {
             syncIssues: project.githubSync,
