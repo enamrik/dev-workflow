@@ -1,14 +1,16 @@
 /**
- * GitHubSyncService - Orchestrates synchronization between local issues and GitHub
+ * GitHubSyncService - Orchestrates synchronization between local issues and external project management systems
  *
  * Follows push-only sync pattern: local issues are source of truth,
- * pushed to GitHub on create/update. GitHub-first approach ensures
- * atomicity: create on GitHub before local to avoid partial state.
+ * pushed to external system on create/update. External-first approach ensures
+ * atomicity: create on external system before local to avoid partial state.
+ *
+ * Uses ProjectManagementProvider for abstraction, allowing sync with GitHub, Jira, Linear, etc.
  */
 
 import type { Issue, IssueRepository } from "../domain/issue.js";
-import type { GitHubSyncState, GitHubSyncResult, GitHubIssueData } from "../domain/github.js";
-import type { GitHubCLI } from "../infrastructure/github/github-cli.js";
+import type { GitHubSyncState, GitHubSyncResult } from "../domain/github.js";
+import type { ProjectManagementProvider } from "../domain/project-management-provider.js";
 import type {
   GitHubIssueSyncConfig,
   GitHubLabelsConfig,
@@ -16,7 +18,7 @@ import type {
 import type { ProjectRepository } from "../domain/project.js";
 
 /**
- * Error thrown when GitHub sync fails
+ * Error thrown when sync fails
  */
 export class GitHubSyncError extends Error {
   constructor(
@@ -29,19 +31,20 @@ export class GitHubSyncError extends Error {
 }
 
 /**
- * GitHubSyncService orchestrates push-only sync to GitHub
+ * GitHubSyncService orchestrates push-only sync to external project management systems
  *
  * Key design decisions:
  * - Local issues are source of truth
- * - Push-only: local -> GitHub (no pull)
- * - GitHub-first on create: create on GitHub before local for atomicity
+ * - Push-only: local -> external (no pull)
+ * - External-first on create: create externally before local for atomicity
  * - Fail fast: if sync fails, operation fails (no partial state)
  * - Config is read fresh from database on each call (not cached)
+ * - Uses ProjectManagementProvider for abstraction
  */
 export class GitHubSyncService {
   constructor(
     private readonly issueRepository: IssueRepository,
-    private readonly githubCLI: GitHubCLI,
+    private readonly provider: ProjectManagementProvider,
     private readonly projectRepository: ProjectRepository,
     private readonly projectId: string
   ) {}
@@ -56,7 +59,7 @@ export class GitHubSyncService {
   }
 
   /**
-   * Create a GitHub issue for a new local issue
+   * Create an external issue for a new local issue
    *
    * Called BEFORE creating the local issue to ensure atomicity.
    * If this fails, no local issue is created.
@@ -65,14 +68,17 @@ export class GitHubSyncService {
    * @param description - Issue description
    * @param acceptanceCriteria - Acceptance criteria for the issue
    * @param type - Issue type (FEATURE, BUG, etc.)
-   * @returns GitHub issue data and sync state
+   * @returns External issue data and sync state
    */
   async createGitHubIssue(
     title: string,
     description: string,
     acceptanceCriteria: string[],
     type: string
-  ): Promise<{ data: GitHubIssueData; syncState: GitHubSyncState }> {
+  ): Promise<{
+    data: { number: number; url: string; nodeId: string };
+    syncState: GitHubSyncState;
+  }> {
     // Get fresh config from database
     const config = this.getConfig();
     if (!config?.enabled) {
@@ -82,27 +88,28 @@ export class GitHubSyncService {
     // Build labels from config
     const labels = this.buildLabels(config, type);
 
-    // Ensure labels exist on the repo
-    await this.ensureLabelsExist(labels);
+    // Ensure labels exist on the repo (provider handles this)
+    await this.provider.ensureLabelsExist(labels);
 
     // Build issue body
     const body = this.buildIssueBody(description, acceptanceCriteria);
 
-    // Create on GitHub (gh CLI auto-detects repo from git remotes)
-    const data = await this.githubCLI.createIssue(title, body, labels);
+    // Create on external system via provider
+    const externalIssue = await this.provider.createIssue({ title, body, labels });
 
     // Add to project if configured - fail fast if association fails
     let projectItemId: string | null = null;
-    if (config.projectId) {
+    if (config.projectId && externalIssue.nodeId) {
       try {
-        projectItemId = await this.githubCLI.addToProject(config.projectId, data.nodeId);
+        const result = await this.provider.addToProject(externalIssue.nodeId, config.projectId);
 
         // Verify the association succeeded - projectItemId should be a valid string
-        if (!projectItemId) {
+        if (!result.success || !result.itemId) {
           throw new GitHubSyncError(
             `Project association returned empty item ID for project ${config.projectId}`
           );
         }
+        projectItemId = result.itemId;
       } catch (error) {
         // Wrap and re-throw with context - don't silently ignore
         if (error instanceof GitHubSyncError) {
@@ -116,20 +123,27 @@ export class GitHubSyncService {
     }
 
     const syncState: GitHubSyncState = {
-      githubIssueNumber: data.number,
-      githubUrl: data.url,
-      githubNodeId: data.nodeId,
+      githubIssueNumber: externalIssue.numericId ?? parseInt(externalIssue.id, 10),
+      githubUrl: externalIssue.url,
+      githubNodeId: externalIssue.nodeId ?? null,
       syncStatus: "SYNCED",
       lastSyncedAt: new Date().toISOString(),
       lastSyncError: null,
       projectItemId,
     };
 
+    // Return data in expected format for backwards compatibility
+    const data = {
+      number: externalIssue.numericId ?? parseInt(externalIssue.id, 10),
+      url: externalIssue.url,
+      nodeId: externalIssue.nodeId ?? "",
+    };
+
     return { data, syncState };
   }
 
   /**
-   * Update a GitHub issue for an existing local issue
+   * Update an external issue for an existing local issue
    *
    * Called BEFORE updating the local issue to ensure atomicity.
    * If this fails, no local update is made.
@@ -149,7 +163,7 @@ export class GitHubSyncService {
       throw new GitHubSyncError("Issue has no GitHub link");
     }
 
-    const githubNumber = issue.githubSync.githubIssueNumber;
+    const issueRef = String(issue.githubSync.githubIssueNumber);
 
     // Merge updates with current values
     const title = updates.title ?? issue.title;
@@ -161,23 +175,23 @@ export class GitHubSyncService {
     // Build labels from config
     const labels = this.buildLabels(config, type);
 
-    // Ensure labels exist on the repo
-    await this.ensureLabelsExist(labels);
+    // Ensure labels exist on the repo (provider handles this)
+    await this.provider.ensureLabelsExist(labels);
 
     // Build issue body
     const body = this.buildIssueBody(description, acceptanceCriteria);
 
-    // Update on GitHub (gh CLI auto-detects repo from git remotes)
-    await this.githubCLI.updateIssue(githubNumber, title, body, labels);
+    // Update on external system via provider
+    await this.provider.updateIssue({ issueRef, title, body, labels });
 
     // Handle status change to CLOSED
     if (status === "CLOSED" && issue.status !== "CLOSED") {
-      await this.githubCLI.closeIssue(githubNumber);
+      await this.provider.closeIssue(issueRef);
     }
 
     // Handle reopening (CLOSED -> not CLOSED)
     if (status !== "CLOSED" && issue.status === "CLOSED") {
-      await this.githubCLI.reopenIssue(githubNumber);
+      await this.provider.reopenIssue(issueRef);
     }
 
     return {
@@ -248,10 +262,11 @@ export class GitHubSyncService {
   }
 
   /**
-   * Check if GitHub CLI is authenticated
+   * Check if the provider is authenticated
    */
   async checkAuth(): Promise<boolean> {
-    return this.githubCLI.checkAuth();
+    const result = await this.provider.checkAuth();
+    return result.authenticated;
   }
 
   /**
@@ -288,36 +303,5 @@ export class GitHubSyncService {
     }
 
     return sections.join("\n");
-  }
-
-  /**
-   * Ensure all required labels exist on the repository
-   */
-  private async ensureLabelsExist(labels: string[]): Promise<void> {
-    if (labels.length === 0) return;
-
-    try {
-      // gh CLI auto-detects repo from git remotes
-      const existingLabels = await this.githubCLI.listLabels();
-      const existingSet = new Set(existingLabels);
-
-      // Default colors for different label types
-      const labelColors: Record<string, string> = {
-        feature: "a2eeef",
-        bug: "d73a4a",
-        enhancement: "84b6eb",
-        task: "c5def5",
-      };
-
-      for (const label of labels) {
-        if (!existingSet.has(label)) {
-          const color = labelColors[label.toLowerCase()] ?? "ededed";
-          await this.githubCLI.createLabel(label, color);
-        }
-      }
-    } catch (error) {
-      // Don't fail if we can't ensure labels - just warn
-      console.warn("Failed to ensure labels exist:", error);
-    }
   }
 }

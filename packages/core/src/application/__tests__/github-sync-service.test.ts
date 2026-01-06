@@ -2,79 +2,55 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createTestDatabase } from "../../__tests__/setup.js";
 import { createRepositories } from "../../__tests__/helpers.js";
 import { GitHubSyncService, GitHubSyncError } from "../github-sync-service.js";
-import type { GitHubCLI } from "../../infrastructure/github/github-cli.js";
-import type { GitHubIssueData } from "../../domain/github.js";
+import type {
+  ProjectManagementProvider,
+  ExternalIssue,
+} from "../../domain/project-management-provider.js";
 
 /**
- * Create a mock GitHubCLI for testing
+ * Create a mock ProjectManagementProvider for testing
  */
-function createMockGitHubCLI(overrides: Partial<GitHubCLI> = {}): GitHubCLI {
+function createMockProvider(
+  overrides: Partial<ProjectManagementProvider> = {}
+): ProjectManagementProvider {
+  const defaultIssue: ExternalIssue = {
+    id: "1",
+    numericId: 1,
+    url: "https://github.com/owner/repo/issues/1",
+    nodeId: "I_abc123",
+    title: "Test Issue",
+    body: "Test body",
+    state: "OPEN",
+    labels: [],
+  };
+
   return {
-    checkAuth: vi.fn().mockResolvedValue(true),
-    checkCurrentRepository: vi.fn().mockResolvedValue(true),
-    createIssue: vi.fn().mockResolvedValue({
-      number: 1,
-      url: "https://github.com/owner/repo/issues/1",
-      nodeId: "I_abc123",
-      title: "Test Issue",
-      body: "Test body",
-      state: "OPEN",
-      labels: [],
-    } as GitHubIssueData),
+    providerId: "github",
+    displayName: "GitHub",
+    checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
+    checkRepository: vi.fn().mockResolvedValue({ accessible: true }),
+    createIssue: vi.fn().mockResolvedValue(defaultIssue),
     updateIssue: vi.fn().mockResolvedValue({
-      number: 1,
-      url: "https://github.com/owner/repo/issues/1",
-      nodeId: "I_abc123",
+      ...defaultIssue,
       title: "Updated Issue",
       body: "Updated body",
-      state: "OPEN",
-      labels: [],
-    } as GitHubIssueData),
+    }),
     closeIssue: vi.fn().mockResolvedValue(undefined),
     reopenIssue: vi.fn().mockResolvedValue(undefined),
     getIssue: vi.fn().mockResolvedValue(null),
-    listLabels: vi.fn().mockResolvedValue([]),
-    createLabel: vi.fn().mockResolvedValue(undefined),
-    addToProject: vi.fn().mockResolvedValue("PVTI_project_item_123"),
+    searchIssues: vi.fn().mockResolvedValue([]),
+    ensureLabelsExist: vi.fn().mockResolvedValue(undefined),
+    addToProject: vi.fn().mockResolvedValue({ success: true, itemId: "PVTI_project_item_123" }),
+    moveToColumn: vi.fn().mockResolvedValue(undefined),
     checkProject: vi.fn().mockResolvedValue(true),
     getProjectDetails: vi.fn().mockResolvedValue({
       id: "PVT_123",
       title: "Test Project",
       url: "https://github.com/orgs/owner/projects/1",
     }),
-    createPR: vi.fn().mockResolvedValue({
-      number: 1,
-      url: "https://github.com/owner/repo/pull/1",
-      nodeId: "PR_abc123",
-      title: "Test PR",
-      body: "",
-      state: "OPEN",
-      isDraft: false,
-      headBranch: "feature",
-      baseBranch: "main",
-      merged: false,
-      mergeable: "MERGEABLE",
-    }),
-    mergePR: vi.fn().mockResolvedValue({
-      number: 1,
-      url: "https://github.com/owner/repo/pull/1",
-      nodeId: "PR_abc123",
-      title: "Test PR",
-      body: "",
-      state: "MERGED",
-      isDraft: false,
-      headBranch: "feature",
-      baseBranch: "main",
-      merged: true,
-      mergeable: "UNKNOWN",
-    }),
-    getPR: vi.fn().mockResolvedValue(null),
-    findPRByBranch: vi.fn().mockResolvedValue(null),
-    linkSubIssue: vi.fn().mockResolvedValue(undefined),
-    searchIssues: vi.fn().mockResolvedValue([]),
-    commentOnIssue: vi.fn().mockResolvedValue(undefined),
-    closeIssueWithComment: vi.fn().mockResolvedValue(undefined),
-    run: vi.fn().mockResolvedValue({ success: true, stdout: "", stderr: "", exitCode: 0 }),
+    getProjectStatusField: vi.fn().mockResolvedValue(null),
+    linkParentChild: vi.fn().mockResolvedValue(undefined),
+    addComment: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -82,14 +58,14 @@ function createMockGitHubCLI(overrides: Partial<GitHubCLI> = {}): GitHubCLI {
 describe("GitHubSyncService", () => {
   let testDb: ReturnType<typeof createTestDatabase>;
   let repos: ReturnType<typeof createRepositories>;
-  let mockGitHubCLI: GitHubCLI;
+  let mockProvider: ProjectManagementProvider;
   let service: GitHubSyncService;
   let testProjectId: string;
 
   beforeEach(() => {
     testDb = createTestDatabase();
     repos = createRepositories(testDb.db);
-    mockGitHubCLI = createMockGitHubCLI();
+    mockProvider = createMockProvider();
 
     // Create a project with GitHub sync enabled
     const project = repos.projectRepository.create({
@@ -113,7 +89,7 @@ describe("GitHubSyncService", () => {
 
     service = new GitHubSyncService(
       repos.issueRepository,
-      mockGitHubCLI,
+      mockProvider,
       repos.projectRepository,
       testProjectId
     );
@@ -124,7 +100,7 @@ describe("GitHubSyncService", () => {
   });
 
   describe("createGitHubIssue", () => {
-    it("should create a GitHub issue and add to project successfully", async () => {
+    it("should create an external issue and add to project successfully", async () => {
       const result = await service.createGitHubIssue(
         "Test Issue",
         "Test description",
@@ -136,16 +112,16 @@ describe("GitHubSyncService", () => {
       expect(result.data.url).toBe("https://github.com/owner/repo/issues/1");
       expect(result.syncState.projectItemId).toBe("PVTI_project_item_123");
       expect(result.syncState.syncStatus).toBe("SYNCED");
-      expect(mockGitHubCLI.addToProject).toHaveBeenCalledWith("PVT_test_project_456", "I_abc123");
+      expect(mockProvider.addToProject).toHaveBeenCalledWith("I_abc123", "PVT_test_project_456");
     });
 
-    it("should fail when GitHub issue creation fails", async () => {
-      mockGitHubCLI = createMockGitHubCLI({
+    it("should fail when external issue creation fails", async () => {
+      mockProvider = createMockProvider({
         createIssue: vi.fn().mockRejectedValue(new Error("GitHub API error")),
       });
       service = new GitHubSyncService(
         repos.issueRepository,
-        mockGitHubCLI,
+        mockProvider,
         repos.projectRepository,
         testProjectId
       );
@@ -156,12 +132,12 @@ describe("GitHubSyncService", () => {
     });
 
     it("should fail when project association fails", async () => {
-      mockGitHubCLI = createMockGitHubCLI({
+      mockProvider = createMockProvider({
         addToProject: vi.fn().mockRejectedValue(new Error("Project not found")),
       });
       service = new GitHubSyncService(
         repos.issueRepository,
-        mockGitHubCLI,
+        mockProvider,
         repos.projectRepository,
         testProjectId
       );
@@ -176,12 +152,12 @@ describe("GitHubSyncService", () => {
     });
 
     it("should fail when project association returns empty item ID", async () => {
-      mockGitHubCLI = createMockGitHubCLI({
-        addToProject: vi.fn().mockResolvedValue(""), // Empty string
+      mockProvider = createMockProvider({
+        addToProject: vi.fn().mockResolvedValue({ success: true, itemId: "" }), // Empty string
       });
       service = new GitHubSyncService(
         repos.issueRepository,
-        mockGitHubCLI,
+        mockProvider,
         repos.projectRepository,
         testProjectId
       );
@@ -195,13 +171,13 @@ describe("GitHubSyncService", () => {
       ).rejects.toThrow("Project association returned empty item ID");
     });
 
-    it("should fail when project association returns null", async () => {
-      mockGitHubCLI = createMockGitHubCLI({
-        addToProject: vi.fn().mockResolvedValue(null),
+    it("should fail when project association returns unsuccessful result", async () => {
+      mockProvider = createMockProvider({
+        addToProject: vi.fn().mockResolvedValue({ success: false, error: "Failed" }),
       });
       service = new GitHubSyncService(
         repos.issueRepository,
-        mockGitHubCLI,
+        mockProvider,
         repos.projectRepository,
         testProjectId
       );
@@ -229,7 +205,7 @@ describe("GitHubSyncService", () => {
 
       expect(result.data.number).toBe(1);
       expect(result.syncState.projectItemId).toBeNull();
-      expect(mockGitHubCLI.addToProject).not.toHaveBeenCalled();
+      expect(mockProvider.addToProject).not.toHaveBeenCalled();
     });
 
     it("should throw when GitHub sync is not enabled", async () => {
@@ -251,12 +227,12 @@ describe("GitHubSyncService", () => {
 
     it("should preserve original error cause when wrapping", async () => {
       const originalError = new Error("Network timeout");
-      mockGitHubCLI = createMockGitHubCLI({
+      mockProvider = createMockProvider({
         addToProject: vi.fn().mockRejectedValue(originalError),
       });
       service = new GitHubSyncService(
         repos.issueRepository,
-        mockGitHubCLI,
+        mockProvider,
         repos.projectRepository,
         testProjectId
       );

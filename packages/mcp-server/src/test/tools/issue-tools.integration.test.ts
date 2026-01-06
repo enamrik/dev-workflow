@@ -15,6 +15,7 @@ import {
   VersioningService,
   GitHubSyncService,
   MockGitHubCLI,
+  GitHubProjectManagementProvider,
   SqliteProjectRepository,
 } from "@dev-workflow/core";
 import {
@@ -84,9 +85,10 @@ function createIssueToolContext(testDb: TestDatabase): IssueToolContext {
 
   // Mock GitHub services (disabled)
   const mockGitHubCLI = new MockGitHubCLI();
+  const mockProvider = new GitHubProjectManagementProvider(mockGitHubCLI);
   const githubSyncService = new GitHubSyncService(
     repos.issueRepository,
-    mockGitHubCLI,
+    mockProvider,
     projectRepository,
     project.id
   );
