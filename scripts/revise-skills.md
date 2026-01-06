@@ -9,6 +9,7 @@ When revising Claude Code skills, the focus must be on **what Claude needs to do
 ## What to Keep
 
 ### Step-by-Step Instructions
+
 Process sections that tell Claude exactly what to do. These are referenced constantly during work.
 
 ```
@@ -16,6 +17,7 @@ Process sections that tell Claude exactly what to do. These are referenced const
 ```
 
 ### Critical Warnings
+
 Sections that prevent mistakes, data corruption, or wrong behavior. If skipping this instruction would cause problems, keep it.
 
 ```
@@ -24,6 +26,7 @@ Sections that prevent mistakes, data corruption, or wrong behavior. If skipping 
 ```
 
 ### Reference Tables
+
 Quick lookups for state machines, error handling, status transitions. Claude uses these during work.
 
 ```
@@ -31,6 +34,7 @@ Quick lookups for state machines, error handling, status transitions. Claude use
 ```
 
 ### Trigger Phrases for Skill Matching
+
 Natural language phrases that help Claude Code match the skill to user requests.
 
 ```
@@ -38,11 +42,13 @@ Natural language phrases that help Claude Code match the skill to user requests.
 ```
 
 ### One Example Per Pattern
+
 Examples that show the expected output format and tone. One example is enough to understand a pattern.
 
 ## What to Remove
 
 ### Duplicate Explanations
+
 If the same concept is explained in two places, keep the better one and remove or reference the other.
 
 ```
@@ -51,6 +57,7 @@ If the same concept is explained in two places, keep the better one and remove o
 ```
 
 ### Multiple Examples Showing Same Pattern
+
 If 3 examples all demonstrate the same concept, one is enough.
 
 ```
@@ -59,6 +66,7 @@ If 3 examples all demonstrate the same concept, one is enough.
 ```
 
 ### Verbose Prose That Can Be a Table
+
 Lists of errors with multi-line explanations can usually become a table.
 
 ```
@@ -74,6 +82,7 @@ Lists of errors with multi-line explanations can usually become a table.
 ```
 
 ### Explanatory Text When Instructions Suffice
+
 "Why" explanations can often be trimmed if the "what" is clear.
 
 ```
