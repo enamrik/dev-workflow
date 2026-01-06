@@ -12,10 +12,11 @@ export interface Label {
 /**
  * LabelService loads and manages label files
  *
- * Labels are markdown files in ~/.track/<project-id>/labels/{label}.md that provide
+ * Labels are markdown files in ./track/labels/{label}.md that provide
  * contextual guidance for task execution. When a task has labels,
  * the corresponding label files are loaded and returned as context.
  *
+ * Labels are stored locally per-project (no global fallback).
  * Labels define the vocabulary of available task labels - labels can only
  * be assigned if a corresponding label file exists.
  */
@@ -29,7 +30,7 @@ export class LabelService {
   /**
    * Load label files for given labels
    *
-   * Labels map to ~/.track/<project-id>/labels/{label}.md files.
+   * Labels map to ./track/labels/{label}.md files.
    * Missing files are silently skipped (not an error).
    *
    * @param labels - Array of label names to load
