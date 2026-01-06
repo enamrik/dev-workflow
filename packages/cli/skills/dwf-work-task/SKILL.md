@@ -1,7 +1,7 @@
 ---
 name: dwf-work-task
 description: Manage task execution lifecycle - start, complete, or abandon tasks. Supports 3 execution modes (isolated, branch, main) and PR-based workflow. Auto-invoked when user wants to "start task", "work on task", "complete task", "finish task", "abandon task", "create PR", "submit for review", "merge PR", "pause issue", etc. (project)
-allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:create_pr, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:log_task_progress
+allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:create_pr, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:log_task_progress, mcp:dev-workflow-tracker:get_task_execution_log
 ---
 
 # Work Task Skill
@@ -182,7 +182,14 @@ BACKLOG tasks back to READY.
    - If task is already IN_PROGRESS, it resumes the existing session
    - Review title, description, and acceptance criteria from the response
 
-6. **Present task to user:**
+6. **If resuming (task was already IN_PROGRESS):**
+   - Call `get_task_execution_log` to read previous session's progress
+   - Review the logged entries to understand what was already done
+   - Summarize the previous progress to the user before continuing
+   - Check `git status` in the worktree to see uncommitted changes
+   - Continue from where the previous session left off
+
+7. **Present task to user:**
    - Show what needs to be implemented
    - Show acceptance criteria as a checklist
    - For isolated mode: show worktree path and branch name
@@ -707,6 +714,8 @@ Any manual workaround (direct database updates, `gh` CLI, etc.) creates **corrup
 **Resuming after restart:**
 
 - If a task was IN_PROGRESS, call `load_task_session` with the task ID - it's idempotent and will resume the session
+- Call `get_task_execution_log` to read progress from previous sessions - this shows what was already done
+- Summarize the previous progress to the user before continuing work
 - The worktree and branch will still exist; work can continue from where it stopped
 - Check `git status` in the worktree to see what changes were in progress
 
@@ -933,20 +942,81 @@ Before execution, tasks can be tuned using `update_task`:
 - **acceptanceCriteria**: Refine what needs to be verified
 - **description**: Clarify implementation details
 
+## Progress Logging for Session Continuity
+
+Log progress during task execution so that if a session ends unexpectedly, the next session can pick up where you left off. This is about **memory**, not audit trails.
+
+### When to Log
+
+Log at **milestones only** - not every step. Key moments:
+
+1. **Starting significant work** - what approach you're taking
+2. **Major findings or decisions** - "Found the issue in X", "Decided to use Y approach"
+3. **Completing significant chunks** - after implementing a component, fixing a bug, adding tests
+4. **Before natural break points** - if you sense the session might end
+
+### What Makes a Good Log Entry
+
+**Good entries** (meaningful milestones):
+
+```typescript
+log_task_progress({
+  taskId: "...",
+  sessionId: "...",
+  message: "Implemented OAuth callback handler with token validation. Added unit tests.",
+  filesModified: ["src/auth/callback.ts", "src/auth/__tests__/callback.test.ts"],
+});
+
+log_task_progress({
+  taskId: "...",
+  sessionId: "...",
+  message: "Found root cause: session middleware redirects without error param. Starting fix.",
+});
+
+log_task_progress({
+  taskId: "...",
+  sessionId: "...",
+  message: "Completed: API endpoints for user profile. Next: add frontend components.",
+  filesModified: ["src/routes/user.ts", "src/services/user-service.ts"],
+});
+```
+
+**Bad entries** (too granular - don't do this):
+
+```typescript
+// ❌ Don't log every file read
+log_task_progress({ message: "Reading src/auth/session.ts" });
+
+// ❌ Don't log routine operations
+log_task_progress({ message: "Running pnpm test" });
+
+// ❌ Don't log trivial steps
+log_task_progress({ message: "Added import statement" });
+```
+
+### How Often to Log
+
+- **Feature tasks**: 2-4 entries typically (start approach, major milestones, completion)
+- **Bug tasks**: 3-5 entries (investigation, root cause, fix applied)
+- **Simple tasks**: 1-2 entries may be enough
+
+The goal is that if a new session reads the log, it understands what was done and where to continue.
+
 ## Bug Investigation Workflow
 
-When working on a **BUG** type issue, the task follows an investigation-first approach. Use `log_task_progress` to document your findings throughout the investigation.
+When working on a **BUG** type issue, the task follows an investigation-first approach. Progress logging is especially valuable for bugs since the investigation journey informs the fix.
 
 ### Why Log During Bug Investigation?
 
-- **Creates an audit trail**: Documents what was investigated and why
-- **Captures the journey**: Root cause discovery is not always linear
-- **Helps future debugging**: Similar bugs can reference the investigation log
-- **Informs the PR**: Findings can be summarized in the PR description
+In addition to the general session continuity benefits (see "Progress Logging for Session Continuity" above), bug investigation logs are especially valuable:
 
-### When to Log Progress
+- **Captures the investigation journey**: Root cause discovery is not always linear
+- **Documents what was ruled out**: Knowing what you already checked saves time
+- **Informs the PR description**: Investigation summary explains the fix rationale
 
-Call `log_task_progress` at these key moments:
+### When to Log Progress (Bug-Specific)
+
+In addition to the general logging guidelines, call `log_task_progress` at these bug-specific moments:
 
 1. **Initial investigation findings**
    - What areas of code you are examining
