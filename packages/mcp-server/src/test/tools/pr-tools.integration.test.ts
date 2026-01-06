@@ -14,7 +14,7 @@ import {
   SqliteProjectRepository,
   TaskGitHubSyncService,
   taskExecutionLogs,
-  type DatabaseService,
+  type SqliteDataSource,
   type ProjectManagementProvider,
 } from "@dev-workflow/core";
 import {
@@ -30,7 +30,7 @@ type DbType = BetterSQLite3Database<typeof schema>;
 const TEST_PROJECT_ID = "test-project-pr";
 
 /**
- * Create a mock DatabaseService for testing
+ * Create a mock SqliteDataSource for testing
  * Only implements getDb() which is what PRToolContext needs
  */
 function createMockDbService(db: DbType) {
@@ -117,7 +117,7 @@ function createPRToolContext(
     taskRepository: repos.taskRepository,
     gitWorktreeService,
     taskGitHubSyncService,
-    dbService: createMockDbService(db) as unknown as DatabaseService,
+    dbService: createMockDbService(db) as unknown as SqliteDataSource,
     taskExecutionLogsSchema: taskExecutionLogs,
   };
 }
@@ -586,7 +586,7 @@ describe("submit_for_review", () => {
         taskRepository: repos.taskRepository,
         gitWorktreeService: mockGitWorktreeService,
         taskGitHubSyncService,
-        dbService: createMockDbService(db) as unknown as DatabaseService,
+        dbService: createMockDbService(db) as unknown as SqliteDataSource,
         taskExecutionLogsSchema: taskExecutionLogs,
       };
 
