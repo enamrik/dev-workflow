@@ -20,10 +20,10 @@ import type { GitHubCLI } from "../infrastructure/github/github-cli.js";
 import {
   DEFAULT_COLUMN_MAPPING,
   type GitHubIssueSyncConfig,
-  type GitHubLabelsConfig,
 } from "../infrastructure/database/schema.js";
 import type { ProjectRepository } from "../domain/project.js";
 import type { TemplateService } from "../infrastructure/templates/template-service.js";
+import type { TypeService } from "../infrastructure/types/type-service.js";
 
 /**
  * Error thrown when task GitHub sync fails
@@ -97,7 +97,8 @@ export class TaskGitHubSyncService {
     private readonly githubCLI: GitHubCLI,
     private readonly projectRepository: ProjectRepository,
     private readonly projectId: string,
-    private readonly templateService?: TemplateService
+    private readonly templateService?: TemplateService,
+    private readonly typeService?: TypeService
   ) {}
 
   /**
@@ -393,8 +394,8 @@ export class TaskGitHubSyncService {
     // Uses task template if available (based on task type)
     const body = await this.buildTaskBody(issue, task);
 
-    // Build labels (include issue type label)
-    const labels = this.buildLabels(config, issue.type);
+    // Build labels using task type (for GitHub label mapping)
+    const labels = await this.buildLabels(config, task.type);
 
     // Ensure labels exist on the repo
     await this.ensureLabelsExist(labels);
@@ -953,18 +954,41 @@ export class TaskGitHubSyncService {
   }
 
   /**
-   * Build labels array from issue type and config
+   * Build labels array from task type
+   *
+   * Uses TypeService to look up the GitHub label for the task type.
+   * Falls back to lowercase type name if no explicit githubLabel is configured.
+   *
+   * @param config - GitHub sync config (for custom labels)
+   * @param taskType - The task's type (e.g., "FEATURE", "BUG")
+   * @returns Array of labels to apply to the GitHub issue
    */
-  private buildLabels(config: GitHubIssueSyncConfig, type: string): string[] {
+  private async buildLabels(config: GitHubIssueSyncConfig, taskType: string): Promise<string[]> {
     const labels: string[] = [];
 
-    if (config.labels?.typeLabels) {
-      const typeLabel = config.labels.typeLabels[type as keyof GitHubLabelsConfig["typeLabels"]];
-      if (typeLabel) {
-        labels.push(typeLabel);
+    // Look up the GitHub label for this task type via TypeService
+    let typeLabel: string | undefined;
+
+    if (this.typeService) {
+      try {
+        const typeDef = await this.typeService.getTypeByName(taskType);
+        if (typeDef) {
+          typeLabel = typeDef.githubLabel;
+        }
+      } catch {
+        // Log but don't fail - fall back to lowercase
+        console.warn(`Failed to look up type ${taskType}, falling back to lowercase`);
       }
     }
 
+    // Fallback to lowercase type name if no TypeService or no explicit label
+    if (!typeLabel) {
+      typeLabel = taskType.toLowerCase();
+    }
+
+    labels.push(typeLabel);
+
+    // Add custom labels from config
     if (config.labels?.customLabels) {
       labels.push(...config.labels.customLabels);
     }

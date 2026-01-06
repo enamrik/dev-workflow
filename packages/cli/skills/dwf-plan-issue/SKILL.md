@@ -1,7 +1,7 @@
 ---
 name: dwf-plan-issue
 description: Generate implementation plans with properly-scoped tasks. Auto-invoked when user wants to "plan issue", "create implementation plan", "break down into tasks", "plan #N", etc. (project)
-allowed-tools: mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:generate_plan, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:list_available_task_labels, mcp:dev-workflow-tracker:move_issue_to_backlog
+allowed-tools: mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:generate_plan, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:list_available_task_labels, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:list_types
 ---
 
 # Plan Issue Skill
@@ -67,51 +67,59 @@ If no context was passed, make reasonable decisions based on the codebase patter
 
 ## Process
 
-1. **Get Issue Context:**
+1. **Get Available Types (REQUIRED):**
+   - Call `list_types` to get the valid type list
+   - This returns all available types with their descriptions and GitHub label mappings
+   - You MUST use types from this list when defining tasks - **invalid types will be rejected**
+   - Store this information for step 7
+
+2. **Get Issue Context:**
    - Call `get_issue` with the issue number
    - Read the issue title, description, and acceptance criteria
    - Note any implementation context passed from manage-issue
    - **Check the issue type** - if it's a BUG, use the single-task investigation approach (see "Bug Issues" section below)
 
-2. **For BUG Issues - Use Single-Task Approach:**
+3. **For BUG Issues - Use Single-Task Approach:**
    - Skip multi-task planning entirely
    - Generate ONE task: "Investigate and fix: [bug title]"
    - Include symptoms and reproduction steps in description
    - Set complexity to LOW
-   - Proceed to step 6 (Generate Plan)
+   - Proceed to step 7 (Generate Plan)
 
-3. **Analyze Scope and Complexity (non-bug issues):**
+4. **Analyze Scope and Complexity (non-bug issues):**
    - Consider what files/components will be touched
    - Identify natural boundaries (different subsystems, different APIs)
    - Incorporate any technology choices from the context
    - Estimate if this is a 1-task or multi-task issue
 
-4. **Design Tasks as Deployable Units:**
+5. **Design Tasks as Deployable Units:**
    For each potential task, ask:
    - Can this be deployed independently without breaking prod?
    - Does it include all necessary tests?
    - Would this make sense as a single commit message?
    - Is anything missing that would cause issues if deployed?
 
-5. **Write Clear Task Definitions:**
+6. **Write Clear Task Definitions:**
    Each task should have:
    - **Title**: Verb phrase describing the deliverable (e.g., "Add user authentication with session management")
    - **Description**: What will be implemented AND tested
+   - **Type**: One of the valid types from step 1 (e.g., FEATURE, BUG, ENHANCEMENT, TASK)
    - **Acceptance Criteria**: Specific, verifiable outcomes (include test expectations)
 
-6. **Generate Plan:**
-   - Call `generate_plan` with `issueNumber` (from step 1), summary, approach, and tasks
+7. **Generate Plan:**
+   - Call `generate_plan` with `issueNumber` (from step 2), summary, approach, and tasks
+   - **Each task MUST include a `type` field** with a valid type from step 1
    - Use appropriate complexity estimate (LOW, MEDIUM, HIGH, VERY_HIGH)
    - **Tasks are created in PLANNED status** (no GitHub sync yet)
    - **Display the issue URL** from the `generate_plan` response (the `url` field)
 
-7. **Ask if User is Satisfied with the Plan (REQUIRED):**
+8. **Ask if User is Satisfied with the Plan (REQUIRED):**
    - **NEVER automatically start work.** Always ask the user if they're satisfied with the plan first.
    - Show the issue URL so the user can view the full details in the web UI
    - Present the plan summary and ask: "Are you satisfied with this plan? Ready to start working on it?"
    - Wait for explicit user approval before calling `move_issue_to_backlog`
 
-8. **Start Work on Confirmation:**
+9. **Start Work on Confirmation:**
    - Only after user confirms, call `move_issue_to_backlog` with the issue number
    - This transitions: Issue PLANNED → OPEN, Tasks PLANNED → BACKLOG
    - If GitHub sync is enabled, creates GitHub issues for each task
@@ -440,14 +448,26 @@ Only use labels from the available labels list. Do not invent labels.
 
 When calling `generate_plan`, use **short placeholder IDs** for tasks instead of UUIDs. The tool generates real UUIDs internally.
 
-**Example with dependencies:**
+**Example with dependencies and types:**
 
 ```json
 {
   "tasks": [
-    { "id": "db", "title": "Set up database schema", "description": "..." },
-    { "id": "api", "title": "Add API endpoints", "description": "...", "dependsOn": ["db"] },
-    { "id": "ui", "title": "Build UI components", "description": "...", "dependsOn": ["api"] }
+    { "id": "db", "title": "Set up database schema", "description": "...", "type": "TASK" },
+    {
+      "id": "api",
+      "title": "Add API endpoints",
+      "description": "...",
+      "type": "FEATURE",
+      "dependsOn": ["db"]
+    },
+    {
+      "id": "ui",
+      "title": "Build UI components",
+      "description": "...",
+      "type": "FEATURE",
+      "dependsOn": ["api"]
+    }
   ]
 }
 ```
@@ -458,6 +478,58 @@ When calling `generate_plan`, use **short placeholder IDs** for tasks instead of
 - Reference dependencies by their placeholder ID
 - All `dependsOn` references must match an `id` in the tasks array
 - For single-task plans, the ID can be anything (e.g., `"main"` or `"task1"`)
+
+## Task Types (REQUIRED)
+
+Every task **MUST** have a `type` field. The type determines the GitHub label applied when the task is synced to GitHub.
+
+**Step 1: Always call `list_types` first** to get the valid type list. This returns types with their descriptions and GitHub label mappings.
+
+**Step 2: Select the appropriate type** for each task based on its content:
+
+| Type            | Use When                                               | GitHub Label  |
+| --------------- | ------------------------------------------------------ | ------------- |
+| **FEATURE**     | Task adds new functionality that doesn't exist yet     | `feature`     |
+| **BUG**         | Task fixes something broken or not working as expected | `bug`         |
+| **ENHANCEMENT** | Task improves existing functionality                   | `enhancement` |
+| **TASK**        | Technical work, chores, infrastructure, maintenance    | `task`        |
+
+**Type Selection Guidance:**
+
+- **FEATURE**: "Add user authentication", "Implement payment processing", "Create dashboard page"
+- **BUG**: "Fix login timeout error", "Resolve memory leak", "Investigate and fix: [bug title]"
+- **ENHANCEMENT**: "Improve search performance", "Refactor database queries", "Optimize image loading"
+- **TASK**: "Set up CI/CD pipeline", "Update dependencies", "Configure logging", "Add database migration"
+
+**Example generate_plan call with types:**
+
+```typescript
+generate_plan({
+  issueNumber: 5,
+  summary: "Add user authentication with OAuth",
+  approach: "Implement OAuth2 flow using passport.js...",
+  estimatedComplexity: "MEDIUM",
+  tasks: [
+    {
+      id: "auth",
+      title: "Implement OAuth2 authentication with passport.js",
+      description: "Add complete OAuth2 flow including callback handler...",
+      type: "FEATURE", // New functionality
+      acceptanceCriteria: ["User can sign in with Google", "Session persists"],
+    },
+    {
+      id: "session",
+      title: "Add Redis session storage",
+      description: "Implement session persistence using Redis...",
+      type: "TASK", // Infrastructure work
+      acceptanceCriteria: ["Sessions stored in Redis", "TTL configurable"],
+      dependsOn: ["auth"],
+    },
+  ],
+});
+```
+
+**Note:** If a task type is missing or invalid, `generate_plan` will reject the request.
 
 ## Notes
 
