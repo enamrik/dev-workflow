@@ -21,6 +21,7 @@ export * from "./domain/errors.js";
 export * from "./domain/backup.js";
 export * from "./domain/type-definition.js";
 export * from "./domain/worker.js";
+export * from "./domain/data-source.js";
 
 // Application services
 export { PlanningService } from "./application/planning-service.js";
@@ -79,9 +80,20 @@ export {
 
 // Infrastructure - Database
 export * from "./infrastructure/database/schema.js";
-export { DatabaseService } from "./infrastructure/database/database.js";
 // Re-export sql from drizzle-orm for raw SQL queries
 export { sql } from "drizzle-orm";
+
+// Data Source abstraction (new API)
+export { SqliteDataSource } from "./infrastructure/database/sqlite-data-source.js";
+export {
+  DataSourceFactory,
+  type DataSourceConfig,
+} from "./infrastructure/database/data-source-factory.js";
+
+// Legacy exports (deprecated, use DataSourceFactory/SqliteDataSource instead)
+/** @deprecated Use SqliteDataSource instead */
+export { DatabaseService } from "./infrastructure/database/database.js";
+/** @deprecated Internal SQLite adapter factory, use DataSourceFactory instead */
 export { DatabaseFactory } from "./infrastructure/database/database-factory.js";
 export type {
   DatabaseAdapter,
