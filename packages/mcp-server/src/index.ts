@@ -463,7 +463,7 @@ async function main() {
     taskRepository,
     issueRepository,
     planRepository,
-    githubCLI,
+    projectManagementProvider,
     projectRepository,
     projectId,
     templateService,

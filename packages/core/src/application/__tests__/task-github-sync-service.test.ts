@@ -6,10 +6,9 @@
  * - Issue close on task completion
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createTestDatabase, type TestDatabase } from "../../__tests__/setup.js";
 import { createRepositories } from "../../__tests__/helpers.js";
-import { MockGitHubCLI } from "../../__tests__/mocks/mock-github-cli.js";
 import { MockFileSystem } from "../../__tests__/mocks/mock-file-system.js";
 import { TaskGitHubSyncService } from "../task-github-sync-service.js";
 import {
@@ -18,18 +17,80 @@ import {
 } from "../../infrastructure/templates/template-service.js";
 import { TypeService, type TypeServiceConfig } from "../../infrastructure/types/type-service.js";
 import type { Task } from "../../domain/task.js";
+import type {
+  ProjectManagementProvider,
+  ExternalIssue,
+} from "../../domain/project-management-provider.js";
+
+/**
+ * Create a mock ProjectManagementProvider for testing
+ */
+function createMockProvider(
+  overrides: Partial<ProjectManagementProvider> = {}
+): ProjectManagementProvider {
+  const defaultIssue: ExternalIssue = {
+    id: "1",
+    numericId: 1,
+    url: "https://github.com/owner/repo/issues/1",
+    nodeId: "I_abc123",
+    title: "Test Issue",
+    body: "Test body",
+    state: "OPEN",
+    labels: [],
+  };
+
+  return {
+    providerId: "github",
+    displayName: "GitHub",
+    checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
+    checkRepository: vi.fn().mockResolvedValue({ accessible: true }),
+    createIssue: vi.fn().mockResolvedValue(defaultIssue),
+    updateIssue: vi.fn().mockResolvedValue({
+      ...defaultIssue,
+      title: "Updated Issue",
+      body: "Updated body",
+    }),
+    closeIssue: vi.fn().mockResolvedValue(undefined),
+    reopenIssue: vi.fn().mockResolvedValue(undefined),
+    getIssue: vi.fn().mockResolvedValue(null),
+    searchIssues: vi.fn().mockResolvedValue([]),
+    ensureLabelsExist: vi.fn().mockResolvedValue(undefined),
+    addToProject: vi.fn().mockResolvedValue({ success: true, itemId: "PVTI_test_item_123" }),
+    moveToColumn: vi.fn().mockResolvedValue(undefined),
+    checkProject: vi.fn().mockResolvedValue(true),
+    getProjectDetails: vi.fn().mockResolvedValue({
+      id: "PVT_123",
+      title: "Test Project",
+      url: "https://github.com/orgs/owner/projects/1",
+    }),
+    getProjectStatusField: vi.fn().mockResolvedValue({
+      fieldId: "field_status_123",
+      fieldName: "Status",
+      options: [
+        { id: "opt_backlog", name: "Backlog" },
+        { id: "opt_ready", name: "Ready" },
+        { id: "opt_in_progress", name: "In Progress" },
+        { id: "opt_in_review", name: "In Review" },
+        { id: "opt_done", name: "Done" },
+      ],
+    }),
+    linkParentChild: vi.fn().mockResolvedValue(undefined),
+    addComment: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+}
 
 describe("TaskGitHubSyncService", () => {
   let testDb: TestDatabase;
   let repos: ReturnType<typeof createRepositories>;
-  let mockGitHubCLI: MockGitHubCLI;
+  let mockProvider: ProjectManagementProvider;
   let testProjectId: string;
   let service: TaskGitHubSyncService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
     repos = createRepositories(testDb.db);
-    mockGitHubCLI = new MockGitHubCLI();
+    mockProvider = createMockProvider();
 
     // Create a project with GitHub sync enabled (including projectId for column moves)
     const project = repos.projectRepository.create({
@@ -55,7 +116,7 @@ describe("TaskGitHubSyncService", () => {
       repos.taskRepository,
       repos.issueRepository,
       repos.planRepository,
-      mockGitHubCLI,
+      mockProvider,
       repos.projectRepository,
       testProjectId
     );
@@ -113,52 +174,24 @@ describe("TaskGitHubSyncService", () => {
       // Act
       await service.syncTaskStatus(testTask.id, "READY");
 
-      // Assert - verify the run method was called to update the project item field
-      const runCalls = mockGitHubCLI.getCallsTo("run");
-
-      // Should have 2 calls: 1 to get project fields, 1 to update the field
-      expect(runCalls.length).toBeGreaterThanOrEqual(2);
-
-      // Find the update mutation call
-      const updateCall = runCalls.find((call) => {
-        const args = call.args[0] as string[];
-        return args.some((arg) => arg.includes("updateProjectV2ItemFieldValue"));
-      });
-
-      expect(updateCall).toBeDefined();
-
-      // Verify the call includes the correct item ID
-      const updateArgs = updateCall!.args[0] as string[];
-      expect(updateArgs.some((arg) => arg.includes("PVTI_test_item_123"))).toBe(true);
-
-      // Verify the call includes the "Ready" option ID
-      expect(updateArgs.some((arg) => arg.includes("opt_ready"))).toBe(true);
+      // Assert - verify moveToColumn was called with correct arguments
+      expect(mockProvider.moveToColumn).toHaveBeenCalledWith(
+        "PVTI_test_item_123",
+        "PVT_test_project_456",
+        "Ready"
+      );
     });
 
     it("should move to In Review column when status changes to PR_REVIEW", async () => {
       // Act
       await service.syncTaskStatus(testTask.id, "PR_REVIEW");
 
-      // Assert - verify the run method was called to update the project item field
-      const runCalls = mockGitHubCLI.getCallsTo("run");
-
-      // Should have 2 calls: 1 to get project fields, 1 to update the field
-      expect(runCalls.length).toBeGreaterThanOrEqual(2);
-
-      // Find the update mutation call
-      const updateCall = runCalls.find((call) => {
-        const args = call.args[0] as string[];
-        return args.some((arg) => arg.includes("updateProjectV2ItemFieldValue"));
-      });
-
-      expect(updateCall).toBeDefined();
-
-      // Verify the call includes the correct item ID
-      const updateArgs = updateCall!.args[0] as string[];
-      expect(updateArgs.some((arg) => arg.includes("PVTI_test_item_123"))).toBe(true);
-
-      // Verify the call includes the "In Review" option ID
-      expect(updateArgs.some((arg) => arg.includes("opt_in_review"))).toBe(true);
+      // Assert - verify moveToColumn was called with correct arguments
+      expect(mockProvider.moveToColumn).toHaveBeenCalledWith(
+        "PVTI_test_item_123",
+        "PVT_test_project_456",
+        "In Review"
+      );
     });
 
     it("should move to Done column and close issue when status changes to COMPLETED", async () => {
@@ -166,24 +199,14 @@ describe("TaskGitHubSyncService", () => {
       await service.syncTaskStatus(testTask.id, "COMPLETED");
 
       // Assert - verify closeIssue was called
-      const closeIssueCalls = mockGitHubCLI.getCallsTo("closeIssue");
-      expect(closeIssueCalls).toHaveLength(1);
-      expect(closeIssueCalls[0].args[0]).toBe(42);
+      expect(mockProvider.closeIssue).toHaveBeenCalledWith("42");
 
-      // Assert - verify the run method was called to update the project item field
-      const runCalls = mockGitHubCLI.getCallsTo("run");
-
-      // Find the update mutation call
-      const updateCall = runCalls.find((call) => {
-        const args = call.args[0] as string[];
-        return args.some((arg) => arg.includes("updateProjectV2ItemFieldValue"));
-      });
-
-      expect(updateCall).toBeDefined();
-
-      // Verify the call includes the "Done" option ID
-      const updateArgs = updateCall!.args[0] as string[];
-      expect(updateArgs.some((arg) => arg.includes("opt_done"))).toBe(true);
+      // Assert - verify moveToColumn was called with Done
+      expect(mockProvider.moveToColumn).toHaveBeenCalledWith(
+        "PVTI_test_item_123",
+        "PVT_test_project_456",
+        "Done"
+      );
     });
 
     it("should update lastSyncedAt after successful sync", async () => {
@@ -216,14 +239,8 @@ describe("TaskGitHubSyncService", () => {
       // Act
       await service.syncTaskStatus(testTask.id, "PR_REVIEW");
 
-      // Assert - should NOT have any updateProjectV2ItemFieldValue calls
-      const runCalls = mockGitHubCLI.getCallsTo("run");
-      const updateCall = runCalls.find((call) => {
-        const args = call.args[0] as string[];
-        return args.some((arg) => arg.includes("updateProjectV2ItemFieldValue"));
-      });
-
-      expect(updateCall).toBeUndefined();
+      // Assert - moveToColumn should NOT be called
+      expect(mockProvider.moveToColumn).not.toHaveBeenCalled();
     });
 
     it("should not call moveToColumn if project has no projectId configured", async () => {
@@ -246,32 +263,30 @@ describe("TaskGitHubSyncService", () => {
       // Act
       await service.syncTaskStatus(testTask.id, "PR_REVIEW");
 
-      // Assert - should NOT have any updateProjectV2ItemFieldValue calls
-      const runCalls = mockGitHubCLI.getCallsTo("run");
-      const updateCall = runCalls.find((call) => {
-        const args = call.args[0] as string[];
-        return args.some((arg) => arg.includes("updateProjectV2ItemFieldValue"));
-      });
-
-      expect(updateCall).toBeUndefined();
+      // Assert - moveToColumn should NOT be called
+      expect(mockProvider.moveToColumn).not.toHaveBeenCalled();
     });
 
     it("should record error in lastSyncError if column move fails", async () => {
-      // Arrange - configure mock to fail on run
-      mockGitHubCLI.setConfig({
-        errors: {
-          run: new Error("GraphQL mutation failed"),
-        },
+      // Arrange - configure provider to fail on moveToColumn
+      mockProvider = createMockProvider({
+        moveToColumn: vi.fn().mockRejectedValue(new Error("Column move failed")),
       });
+      service = new TaskGitHubSyncService(
+        repos.taskRepository,
+        repos.issueRepository,
+        repos.planRepository,
+        mockProvider,
+        repos.projectRepository,
+        testProjectId
+      );
 
       // Act
       await service.syncTaskStatus(testTask.id, "PR_REVIEW");
 
       // Assert
       const updatedTask = repos.taskRepository.findById(testTask.id);
-      expect(updatedTask?.githubSync?.lastSyncError).toContain(
-        "Failed to move project item to In Review"
-      );
+      expect(updatedTask?.githubSync?.lastSyncError).toContain("Failed to move to column");
     });
   });
 
@@ -323,20 +338,6 @@ describe("TaskGitHubSyncService", () => {
 
     it("should use custom column mapping when configured", async () => {
       // Arrange - configure custom column mapping with a custom column name
-      // Configure mock to include the custom column in available options
-      mockGitHubCLI.setConfig({
-        projectStatusField: {
-          fieldId: "PVTSSF_test_status",
-          options: [
-            { id: "opt_backlog", name: "Backlog" },
-            { id: "opt_ready", name: "Ready" },
-            { id: "opt_in_progress", name: "In Progress" },
-            { id: "opt_code_review", name: "Code Review" }, // Custom name
-            { id: "opt_done", name: "Done" },
-          ],
-        },
-      });
-
       repos.projectRepository.update(testProjectId, {
         githubSync: {
           enabled: true,
@@ -358,17 +359,12 @@ describe("TaskGitHubSyncService", () => {
       // Act
       await service.syncTaskStatus(testTask.id, "PR_REVIEW");
 
-      // Assert
-      const runCalls = mockGitHubCLI.getCallsTo("run");
-      const updateCall = runCalls.find((call) => {
-        const args = call.args[0] as string[];
-        return args.some((arg) => arg.includes("updateProjectV2ItemFieldValue"));
-      });
-
-      expect(updateCall).toBeDefined();
-      const updateArgs = updateCall!.args[0] as string[];
-      // Should use the custom "Code Review" option ID
-      expect(updateArgs.some((arg) => arg.includes("opt_code_review"))).toBe(true);
+      // Assert - should call moveToColumn with the custom column name
+      expect(mockProvider.moveToColumn).toHaveBeenCalledWith(
+        "PVTI_test_item_mapping",
+        "PVT_test_project_456",
+        "Code Review"
+      );
     });
 
     it("should use default mapping for unmapped statuses when custom mapping is partial", async () => {
@@ -392,24 +388,31 @@ describe("TaskGitHubSyncService", () => {
         },
       });
 
-      // Act - sync to IN_PROGRESS which uses default mapping
+      // Act - sync to READY which uses default mapping
       await service.syncTaskStatus(testTask.id, "READY");
 
-      // Assert
-      const runCalls = mockGitHubCLI.getCallsTo("run");
-      const updateCall = runCalls.find((call) => {
-        const args = call.args[0] as string[];
-        return args.some((arg) => arg.includes("updateProjectV2ItemFieldValue"));
-      });
-
-      expect(updateCall).toBeDefined();
-      const updateArgs = updateCall!.args[0] as string[];
-      // Should use the default "Ready" option ID (not customized)
-      expect(updateArgs.some((arg) => arg.includes("opt_ready"))).toBe(true);
+      // Assert - should call moveToColumn with the default column name
+      expect(mockProvider.moveToColumn).toHaveBeenCalledWith(
+        "PVTI_test_item_mapping",
+        "PVT_test_project_456",
+        "Ready" // Default column name
+      );
     });
 
-    it("should record error if custom column name does not exist in project", async () => {
-      // Arrange - configure custom column mapping with non-existent column
+    it("should record error if column move fails due to non-existent column", async () => {
+      // Arrange - configure provider to fail on moveToColumn
+      mockProvider = createMockProvider({
+        moveToColumn: vi.fn().mockRejectedValue(new Error("Column 'NonExistent Column' not found")),
+      });
+      service = new TaskGitHubSyncService(
+        repos.taskRepository,
+        repos.issueRepository,
+        repos.planRepository,
+        mockProvider,
+        repos.projectRepository,
+        testProjectId
+      );
+
       repos.projectRepository.update(testProjectId, {
         githubSync: {
           enabled: true,
@@ -423,7 +426,7 @@ describe("TaskGitHubSyncService", () => {
             },
           },
           columnMapping: {
-            PR_REVIEW: "NonExistent Column", // This doesn't exist in mock options
+            PR_REVIEW: "NonExistent Column", // This doesn't exist
           },
         },
       });
@@ -433,9 +436,7 @@ describe("TaskGitHubSyncService", () => {
 
       // Assert - should record error about missing column
       const updatedTask = repos.taskRepository.findById(testTask.id);
-      expect(updatedTask?.githubSync?.lastSyncError).toContain(
-        'Could not find "NonExistent Column" option'
-      );
+      expect(updatedTask?.githubSync?.lastSyncError).toContain("NonExistent Column");
     });
   });
 
@@ -474,17 +475,31 @@ describe("TaskGitHubSyncService", () => {
       });
 
       // Set up the parent GitHub issue in the mock
-      mockGitHubCLI.setIssues([
-        {
-          number: 42,
-          url: "https://github.com/test/repo/issues/42",
-          nodeId: "I_parent_42",
-          title: "Parent Issue",
-          body: "Parent body",
-          state: "OPEN",
-          labels: [],
-        },
-      ]);
+      mockProvider = createMockProvider({
+        getIssue: vi.fn().mockImplementation((ref: string) => {
+          if (ref === "42") {
+            return Promise.resolve({
+              id: "42",
+              numericId: 42,
+              url: "https://github.com/test/repo/issues/42",
+              nodeId: "I_parent_42",
+              title: "Parent Issue",
+              body: "Parent body",
+              state: "OPEN" as const,
+              labels: [],
+            });
+          }
+          return Promise.resolve(null);
+        }),
+      });
+      service = new TaskGitHubSyncService(
+        repos.taskRepository,
+        repos.issueRepository,
+        repos.planRepository,
+        mockProvider,
+        repos.projectRepository,
+        testProjectId
+      );
 
       // Act
       const result = await service.activatePlannedTasks(issue.id);
@@ -495,12 +510,10 @@ describe("TaskGitHubSyncService", () => {
       expect(result.tasksActivated[0].githubIssueNumber).toBe(42); // Linked to parent
 
       // Verify NO new issue was created (only getIssue was called)
-      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
-      expect(createIssueCalls).toHaveLength(0);
+      expect(mockProvider.createIssue).not.toHaveBeenCalled();
 
       // Verify getIssue was called to fetch parent
-      const getIssueCalls = mockGitHubCLI.getCallsTo("getIssue");
-      expect(getIssueCalls.some((c) => c.args[0] === 42)).toBe(true);
+      expect(mockProvider.getIssue).toHaveBeenCalledWith("42");
     });
 
     it("should create sub-issues for imported issues with multiple tasks", async () => {
@@ -548,18 +561,61 @@ describe("TaskGitHubSyncService", () => {
         isDeleted: false,
       });
 
-      // Set up the parent GitHub issue in the mock
-      mockGitHubCLI.setIssues([
-        {
-          number: 100,
-          url: "https://github.com/test/repo/issues/100",
-          nodeId: "I_parent_100",
-          title: "Parent Issue",
-          body: "Parent body",
-          state: "OPEN",
-          labels: [],
-        },
-      ]);
+      // Set up the parent GitHub issue and created sub-issues in the mock
+      let createCount = 0;
+      mockProvider = createMockProvider({
+        getIssue: vi.fn().mockImplementation((ref: string) => {
+          if (ref === "100") {
+            return Promise.resolve({
+              id: "100",
+              numericId: 100,
+              url: "https://github.com/test/repo/issues/100",
+              nodeId: "I_parent_100",
+              title: "Parent Issue",
+              body: "Parent body",
+              state: "OPEN" as const,
+              labels: [],
+            });
+          }
+          // Return created sub-issues when asked
+          const num = parseInt(ref, 10);
+          if (num > 0) {
+            return Promise.resolve({
+              id: ref,
+              numericId: num,
+              url: `https://github.com/test/repo/issues/${ref}`,
+              nodeId: `I_subissue_${ref}`,
+              title: `Sub-issue ${ref}`,
+              body: "Sub-issue body",
+              state: "OPEN" as const,
+              labels: [],
+            });
+          }
+          return Promise.resolve(null);
+        }),
+        createIssue: vi.fn().mockImplementation(() => {
+          createCount++;
+          return Promise.resolve({
+            id: String(createCount),
+            numericId: createCount,
+            url: `https://github.com/test/repo/issues/${createCount}`,
+            nodeId: `I_subissue_${createCount}`,
+            title: `Sub-issue ${createCount}`,
+            body: "Sub-issue body",
+            state: "OPEN" as const,
+            labels: [],
+          });
+        }),
+        linkParentChild: vi.fn().mockResolvedValue(undefined),
+      });
+      service = new TaskGitHubSyncService(
+        repos.taskRepository,
+        repos.issueRepository,
+        repos.planRepository,
+        mockProvider,
+        repos.projectRepository,
+        testProjectId
+      );
 
       // Act
       const result = await service.activatePlannedTasks(issue.id);
@@ -569,17 +625,14 @@ describe("TaskGitHubSyncService", () => {
       expect(result.tasksActivated).toHaveLength(2);
 
       // Verify new issues were created (2 sub-issues)
-      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
-      expect(createIssueCalls).toHaveLength(2);
+      expect(mockProvider.createIssue).toHaveBeenCalledTimes(2);
 
-      // Verify linkSubIssue was called for each task
-      const linkSubIssueCalls = mockGitHubCLI.getCallsTo("linkSubIssue");
-      expect(linkSubIssueCalls).toHaveLength(2);
+      // Verify linkParentChild was called for each task
+      expect(mockProvider.linkParentChild).toHaveBeenCalledTimes(2);
 
       // Verify both calls link to parent issue 100
-      for (const call of linkSubIssueCalls) {
-        expect(call.args[0]).toBe(100); // Parent issue number
-      }
+      expect(mockProvider.linkParentChild).toHaveBeenNthCalledWith(1, "100", "1");
+      expect(mockProvider.linkParentChild).toHaveBeenNthCalledWith(2, "100", "2");
     });
 
     it("should create regular GitHub issues for non-imported issues", async () => {
@@ -635,12 +688,10 @@ describe("TaskGitHubSyncService", () => {
       expect(result.tasksActivated).toHaveLength(2);
 
       // Verify new issues were created (2 independent issues)
-      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
-      expect(createIssueCalls).toHaveLength(2);
+      expect(mockProvider.createIssue).toHaveBeenCalledTimes(2);
 
-      // Verify linkSubIssue was NOT called (no parent-child relationship)
-      const linkSubIssueCalls = mockGitHubCLI.getCallsTo("linkSubIssue");
-      expect(linkSubIssueCalls).toHaveLength(0);
+      // Verify linkParentChild was NOT called (no parent-child relationship)
+      expect(mockProvider.linkParentChild).not.toHaveBeenCalled();
     });
   });
 
@@ -689,17 +740,31 @@ describe("TaskGitHubSyncService", () => {
       });
 
       // Set up mock to return the existing issue
-      mockGitHubCLI.setIssues([
-        {
-          number: 50,
-          url: "https://github.com/test/repo/issues/50",
-          nodeId: "I_test_50",
-          title: "Already Synced Task",
-          body: "Body",
-          state: "OPEN",
-          labels: [],
-        },
-      ]);
+      mockProvider = createMockProvider({
+        getIssue: vi.fn().mockImplementation((ref: string) => {
+          if (ref === "50") {
+            return Promise.resolve({
+              id: "50",
+              numericId: 50,
+              url: "https://github.com/test/repo/issues/50",
+              nodeId: "I_test_50",
+              title: "Already Synced Task",
+              body: "Body",
+              state: "OPEN" as const,
+              labels: [],
+            });
+          }
+          return Promise.resolve(null);
+        }),
+      });
+      service = new TaskGitHubSyncService(
+        repos.taskRepository,
+        repos.issueRepository,
+        repos.planRepository,
+        mockProvider,
+        repos.projectRepository,
+        testProjectId
+      );
 
       // Act
       const result = await service.syncIssue(issue.number);
@@ -745,7 +810,7 @@ describe("TaskGitHubSyncService", () => {
         isDeleted: false,
       });
 
-      // No GitHub issues set up in mock (empty search results)
+      // No GitHub issues set up in mock (empty search results - already the default)
 
       // Act
       const result = await service.syncIssue(issue.number);
@@ -757,8 +822,7 @@ describe("TaskGitHubSyncService", () => {
       expect(result.linked).toHaveLength(0);
 
       // Verify createIssue was called
-      const createCalls = mockGitHubCLI.getCallsTo("createIssue");
-      expect(createCalls).toHaveLength(1);
+      expect(mockProvider.createIssue).toHaveBeenCalledTimes(1);
     });
 
     it("should link existing GitHub issues found by title search", async () => {
@@ -794,19 +858,28 @@ describe("TaskGitHubSyncService", () => {
       });
 
       // Set up mock to return matching search results
-      mockGitHubCLI.setConfig({
-        searchResults: [
+      mockProvider = createMockProvider({
+        searchIssues: vi.fn().mockResolvedValue([
           {
-            number: 60,
+            id: "60",
+            numericId: 60,
             url: "https://github.com/test/repo/issues/60",
             nodeId: "I_test_60",
             title: "Task to Link",
             body: `Some content\n\n---\nTask ${issue.number}.1: Task to Link`,
-            state: "OPEN",
+            state: "OPEN" as const,
             labels: [],
           },
-        ],
+        ]),
       });
+      service = new TaskGitHubSyncService(
+        repos.taskRepository,
+        repos.issueRepository,
+        repos.planRepository,
+        mockProvider,
+        repos.projectRepository,
+        testProjectId
+      );
 
       // Act
       const result = await service.syncIssue(issue.number);
@@ -819,8 +892,7 @@ describe("TaskGitHubSyncService", () => {
       expect(result.verified).toHaveLength(0);
 
       // Verify createIssue was NOT called (we linked instead)
-      const createCalls = mockGitHubCLI.getCallsTo("createIssue");
-      expect(createCalls).toHaveLength(0);
+      expect(mockProvider.createIssue).not.toHaveBeenCalled();
     });
 
     it("should be idempotent - running twice produces same result", async () => {
@@ -855,26 +927,59 @@ describe("TaskGitHubSyncService", () => {
         isDeleted: false,
       });
 
+      // Set up mock to track created issues and return them on getIssue
+      const createdIssues = new Map<string, ExternalIssue>();
+      let issueCounter = 0;
+
+      mockProvider = createMockProvider({
+        createIssue: vi.fn().mockImplementation(() => {
+          issueCounter++;
+          const newIssue: ExternalIssue = {
+            id: String(issueCounter),
+            numericId: issueCounter,
+            url: `https://github.com/test/repo/issues/${issueCounter}`,
+            nodeId: `I_test_${issueCounter}`,
+            title: "Idempotent Task",
+            body: "Body",
+            state: "OPEN" as const,
+            labels: [],
+          };
+          createdIssues.set(String(issueCounter), newIssue);
+          return Promise.resolve(newIssue);
+        }),
+        getIssue: vi.fn().mockImplementation((ref: string) => {
+          return Promise.resolve(createdIssues.get(ref) ?? null);
+        }),
+      });
+      service = new TaskGitHubSyncService(
+        repos.taskRepository,
+        repos.issueRepository,
+        repos.planRepository,
+        mockProvider,
+        repos.projectRepository,
+        testProjectId
+      );
+
       // Act - first sync
       const result1 = await service.syncIssue(issue.number);
 
-      // Reset mock call counts but keep the issues
-      mockGitHubCLI.clearCalls();
+      // Assert first run created an issue
+      expect(result1.success).toBe(true);
+      expect(result1.created).toHaveLength(1);
+
+      // Reset mock call counts for second run
+      vi.mocked(mockProvider.createIssue).mockClear();
 
       // Act - second sync
       const result2 = await service.syncIssue(issue.number);
 
       // Assert
-      expect(result1.success).toBe(true);
-      expect(result1.created).toHaveLength(1);
-
       expect(result2.success).toBe(true);
       expect(result2.verified).toHaveLength(1); // Now verified, not created
       expect(result2.created).toHaveLength(0);
 
       // Verify createIssue was NOT called on second run
-      const createCalls = mockGitHubCLI.getCallsTo("createIssue");
-      expect(createCalls).toHaveLength(0);
+      expect(mockProvider.createIssue).not.toHaveBeenCalled();
     });
 
     it("should skip PLANNED, COMPLETED, and ABANDONED tasks", async () => {
@@ -958,8 +1063,7 @@ describe("TaskGitHubSyncService", () => {
       expect(result.created).toHaveLength(1);
 
       // Verify only one GitHub issue was created
-      const createCalls = mockGitHubCLI.getCallsTo("createIssue");
-      expect(createCalls).toHaveLength(1);
+      expect(mockProvider.createIssue).toHaveBeenCalledTimes(1);
     });
 
     it("should return error when GitHub sync is disabled", async () => {
@@ -1033,17 +1137,31 @@ describe("TaskGitHubSyncService", () => {
       });
 
       // Set up parent issue in mock
-      mockGitHubCLI.setIssues([
-        {
-          number: 70,
-          url: "https://github.com/test/repo/issues/70",
-          nodeId: "I_parent_70",
-          title: "Parent Issue",
-          body: "Parent body",
-          state: "OPEN",
-          labels: [],
-        },
-      ]);
+      mockProvider = createMockProvider({
+        getIssue: vi.fn().mockImplementation((ref: string) => {
+          if (ref === "70") {
+            return Promise.resolve({
+              id: "70",
+              numericId: 70,
+              url: "https://github.com/test/repo/issues/70",
+              nodeId: "I_parent_70",
+              title: "Parent Issue",
+              body: "Parent body",
+              state: "OPEN" as const,
+              labels: [],
+            });
+          }
+          return Promise.resolve(null);
+        }),
+      });
+      service = new TaskGitHubSyncService(
+        repos.taskRepository,
+        repos.issueRepository,
+        repos.planRepository,
+        mockProvider,
+        repos.projectRepository,
+        testProjectId
+      );
 
       // Act
       const result = await service.syncIssue(issue.number);
@@ -1054,8 +1172,7 @@ describe("TaskGitHubSyncService", () => {
       expect(result.created[0].githubIssueNumber).toBe(70); // Linked to parent
 
       // Verify NO new issue was created
-      const createCalls = mockGitHubCLI.getCallsTo("createIssue");
-      expect(createCalls).toHaveLength(0);
+      expect(mockProvider.createIssue).not.toHaveBeenCalled();
     });
   });
 
@@ -1098,7 +1215,7 @@ labels: []
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
-        mockGitHubCLI,
+        mockProvider,
         repos.projectRepository,
         testProjectId,
         templateService
@@ -1142,10 +1259,10 @@ labels: []
       expect(result.success).toBe(true);
 
       // Verify the body was created using the template
-      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
-      expect(createIssueCalls).toHaveLength(1);
+      expect(mockProvider.createIssue).toHaveBeenCalledTimes(1);
 
-      const body = createIssueCalls[0].args[1] as string;
+      const createCall = vi.mocked(mockProvider.createIssue).mock.calls[0];
+      const body = createCall[0].body;
 
       // Check template sections are present
       expect(body).toContain("## Description");
@@ -1181,7 +1298,7 @@ labels: []
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
-        mockGitHubCLI,
+        mockProvider,
         repos.projectRepository,
         testProjectId,
         templateService
@@ -1225,10 +1342,10 @@ labels: []
       expect(result.success).toBe(true);
 
       // Verify the body was created using fallback format
-      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
-      expect(createIssueCalls).toHaveLength(1);
+      expect(mockProvider.createIssue).toHaveBeenCalledTimes(1);
 
-      const body = createIssueCalls[0].args[1] as string;
+      const createCall = vi.mocked(mockProvider.createIssue).mock.calls[0];
+      const body = createCall[0].body;
 
       // Check fallback format
       expect(body).toContain("Fallback description.");
@@ -1278,10 +1395,10 @@ labels: []
       expect(result.success).toBe(true);
 
       // Verify the body was created using fallback format
-      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
-      expect(createIssueCalls).toHaveLength(1);
+      expect(mockProvider.createIssue).toHaveBeenCalledTimes(1);
 
-      const body = createIssueCalls[0].args[1] as string;
+      const createCall = vi.mocked(mockProvider.createIssue).mock.calls[0];
+      const body = createCall[0].body;
 
       // Check fallback format
       expect(body).toContain("Works without templates.");
@@ -1320,7 +1437,7 @@ Technical work.`
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
-        mockGitHubCLI,
+        mockProvider,
         repos.projectRepository,
         testProjectId,
         undefined, // no templateService
@@ -1366,10 +1483,10 @@ Technical work.`
       expect(result.success).toBe(true);
 
       // Verify the correct label was applied (chore from TypeService)
-      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
-      expect(createIssueCalls).toHaveLength(1);
+      expect(mockProvider.createIssue).toHaveBeenCalledTimes(1);
 
-      const labels = createIssueCalls[0].args[2] as string[];
+      const createCall = vi.mocked(mockProvider.createIssue).mock.calls[0];
+      const labels = createCall[0].labels;
       expect(labels).toContain("chore"); // From TypeService: TASK -> chore
       expect(labels).toContain("task"); // Standard "task" label
     });
@@ -1396,7 +1513,7 @@ Technical work.`
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
-        mockGitHubCLI,
+        mockProvider,
         repos.projectRepository,
         testProjectId,
         undefined,
@@ -1441,8 +1558,8 @@ Technical work.`
       // Assert
       expect(result.success).toBe(true);
 
-      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
-      const labels = createIssueCalls[0].args[2] as string[];
+      const createCall = vi.mocked(mockProvider.createIssue).mock.calls[0];
+      const labels = createCall[0].labels;
       expect(labels).toContain("feat"); // From TypeService: FEATURE -> feat
       expect(labels).toContain("task");
     });
@@ -1485,8 +1602,8 @@ Technical work.`
       // Assert
       expect(result.success).toBe(true);
 
-      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
-      const labels = createIssueCalls[0].args[2] as string[];
+      const createCall = vi.mocked(mockProvider.createIssue).mock.calls[0];
+      const labels = createCall[0].labels;
       expect(labels).toContain("enhancement"); // Lowercase fallback
       expect(labels).toContain("task");
     });
@@ -1506,7 +1623,7 @@ Technical work.`
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
-        mockGitHubCLI,
+        mockProvider,
         repos.projectRepository,
         testProjectId,
         undefined,
@@ -1550,8 +1667,8 @@ Technical work.`
       // Assert
       expect(result.success).toBe(true);
 
-      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
-      const labels = createIssueCalls[0].args[2] as string[];
+      const createCall = vi.mocked(mockProvider.createIssue).mock.calls[0];
+      const labels = createCall[0].labels;
       // Default TypeService has: BUG -> "bug"
       expect(labels).toContain("bug");
       expect(labels).toContain("task");
