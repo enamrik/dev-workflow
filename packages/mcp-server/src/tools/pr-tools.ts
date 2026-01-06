@@ -12,6 +12,8 @@ import {
   type SqliteTaskRepository,
   type PRStatus,
   type TaskGitHubSyncService,
+  type DatabaseService,
+  taskExecutionLogs,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -122,6 +124,12 @@ export const prToolDefinitions: ToolDefinition[] = [
           type: "string",
           description: "Claude session ID",
         },
+        finalLogEntry: {
+          type: "string",
+          description:
+            "Required summary of what was accomplished in this task. " +
+            "This is written to the task execution log before completing.",
+        },
         force: {
           type: "boolean",
           description:
@@ -129,7 +137,7 @@ export const prToolDefinitions: ToolDefinition[] = [
             "(e.g., task is IN_PROGRESS but PR is already merged). Requires user confirmation before use.",
         },
       },
-      required: ["taskId", "sessionId"],
+      required: ["taskId", "sessionId", "finalLogEntry"],
     },
   },
 ];
@@ -144,6 +152,9 @@ export interface PRToolContext {
   taskRepository: SqliteTaskRepository;
   gitWorktreeService?: GitWorktreeService;
   taskGitHubSyncService?: TaskGitHubSyncService;
+  /** Required for writing final log entry on task completion */
+  dbService: DatabaseService;
+  taskExecutionLogsSchema: typeof taskExecutionLogs;
 }
 
 /**
@@ -529,22 +540,48 @@ export async function handleSubmitForReview(
  * - Bypasses state machine validation (status checks)
  * - Still verifies PR is merged for branch/isolated modes (unless no PR exists)
  * - Use when task state has drifted from reality
+ *
+ * Requires finalLogEntry to document what was accomplished before completing.
  */
 export async function handleCompleteTask(
   ctx: PRToolContext,
   args: {
     taskId: string;
     sessionId: string;
+    finalLogEntry: string;
     force?: boolean;
   }
 ): Promise<ToolResponse> {
-  const { taskId, sessionId, force = false } = args;
+  const { taskId, sessionId, finalLogEntry, force = false } = args;
+
+  // Validate finalLogEntry is provided and not empty
+  if (!finalLogEntry || finalLogEntry.trim().length === 0) {
+    return errorResponse(
+      "finalLogEntry is required. Please provide a summary of what was accomplished in this task."
+    );
+  }
 
   // 1. Get task and validate
   const task = ctx.taskRepository.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
+
+  // 2. Write the final log entry before completing
+  const db = ctx.dbService.getDb();
+  const logId = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  db.insert(ctx.taskExecutionLogsSchema)
+    .values({
+      id: logId,
+      taskId,
+      sessionId,
+      message: finalLogEntry.trim(),
+      filesModified: null,
+      createdAt: now,
+    })
+    .run();
 
   // Determine mode based on task state
   const hasWorktree = !!task.worktreePath;

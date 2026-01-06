@@ -577,6 +577,8 @@ async function main() {
     taskRepository,
     gitWorktreeService,
     taskGitHubSyncService,
+    dbService,
+    taskExecutionLogsSchema: taskExecutionLogs,
   };
 
   mergeToolContext = {

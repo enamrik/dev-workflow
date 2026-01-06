@@ -167,16 +167,19 @@ If MCP tool call fails:
 ### Creating / Assigning / Viewing
 
 **Create:** "Create milestone for Q1 release, Jan 1 - Mar 31"
+
 ```
 Created M1: Q1 Release (2025-01-01 to 2025-03-31, PLANNED)
 ```
 
 **Assign:** "Add issues #1, #3, #5 to M1"
+
 ```
 Assigned to M1. Progress: 0/3 completed
 ```
 
 **View:** "Show M1"
+
 ```
 M1: Q1 Release | IN_PROGRESS | 2025-01-01 to 2025-03-31
 Issues: #1 (IN_PROGRESS), #3 (OPEN), #5 (COMPLETED)

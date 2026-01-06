@@ -70,6 +70,7 @@ If no context was passed, make reasonable decisions based on the codebase patter
 The plan summary and approach fields support **GitHub Flavored Markdown**. Use rich formatting to make plans clear and scannable:
 
 **Available formatting:**
+
 - **Tables** for comparisons, mappings, or structured data: `| Header | Header |`
 - **Task lists** for checklists: `- [x] done` / `- [ ] pending`
 - **Strikethrough** for deprecated/removed items: `~~old approach~~`
@@ -79,19 +80,21 @@ The plan summary and approach fields support **GitHub Flavored Markdown**. Use r
 - **Bullet/numbered lists** for steps or options
 
 **Use tables when appropriate:**
+
 - Comparing approaches or technologies
 - Mapping components to responsibilities
 - Showing file → change summaries
 - Status/phase breakdowns
 
 **Example approach with table:**
+
 ```markdown
 ## Approach
 
-| Phase | Focus | Components |
-|-------|-------|------------|
-| 1 | Core auth | OAuth handler, session store |
-| 2 | User profile | API endpoint, UI components |
+| Phase | Focus        | Components                   |
+| ----- | ------------ | ---------------------------- |
+| 1     | Core auth    | OAuth handler, session store |
+| 2     | User profile | API endpoint, UI components  |
 
 We'll use passport.js for OAuth handling...
 ```
