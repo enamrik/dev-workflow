@@ -18,6 +18,7 @@ export {
   handleDeleteTemplate,
   handleUpdateIssue,
   handleCloseIssue,
+  handleChangeIssueType,
   handleDeleteIssue,
   handleRestoreIssue,
   handleGetProjectStats,
