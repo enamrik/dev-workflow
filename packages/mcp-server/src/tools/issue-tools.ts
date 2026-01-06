@@ -123,7 +123,7 @@ export const issueToolDefinitions: ToolDefinition[] = [
           type: "string",
           description: "Issue UUID",
         },
-        number: {
+        issueNumber: {
           type: "number",
           description: "Issue number (e.g., 123 for #123)",
         },
@@ -489,11 +489,13 @@ export async function handleCreateIssue(
  */
 export function handleGetIssue(
   ctx: IssueToolContext,
-  args: { id?: string; number?: number; includePlan?: boolean }
+  args: { id?: string; issueNumber?: number; includePlan?: boolean }
 ): ToolResponse {
-  const { id, number, includePlan = false } = args;
+  const { id, issueNumber, includePlan = false } = args;
 
-  const issue = id ? ctx.issueRepository.findById(id) : ctx.issueRepository.findByNumber(number!);
+  const issue = id
+    ? ctx.issueRepository.findById(id)
+    : ctx.issueRepository.findByNumber(issueNumber!);
 
   if (!issue) {
     return errorResponse("Issue not found");
