@@ -169,7 +169,7 @@ export function WorkQueueRibbon({ issuesWithTasks }: WorkQueueRibbonProps) {
   ];
 
   return (
-    <div className="sticky bottom-0 border-t border-gray-200 bg-gray-50 px-4 py-3 z-10">
+    <div className="sticky bottom-0 flex-shrink-0 border-t border-gray-200 bg-gray-50 px-3 md:px-4 py-2 md:py-3 z-10 rounded-b-lg">
       <div className="flex items-center gap-2 mb-2">
         <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
           Work Queue
@@ -178,7 +178,7 @@ export function WorkQueueRibbon({ issuesWithTasks }: WorkQueueRibbonProps) {
           {sortedIssues.length} issue{sortedIssues.length !== 1 ? "s" : ""}
         </span>
       </div>
-      <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-auto-hide">
+      <div className="flex gap-3 md:gap-4 overflow-x-auto pb-1 scrollbar-auto-hide">
         {orderedStatuses.map((status) => {
           const issues = groupedByStatus[status];
           if (!issues || issues.length === 0) return null;

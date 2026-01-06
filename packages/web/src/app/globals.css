@@ -25,6 +25,7 @@
 /* Auto-hide scrollbar utility - subtle by default, visible on hover */
 .scrollbar-auto-hide::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 
 .scrollbar-auto-hide::-webkit-scrollbar-track {
