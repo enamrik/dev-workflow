@@ -66,6 +66,14 @@ export {
   type GitOperations,
 } from "./application/project-service.js";
 export { BackupService } from "./application/backup-service.js";
+export {
+  MergeService,
+  MergeValidationError,
+  type MergeMode,
+  type MergeIssuesRequest,
+  type MergeWarning,
+  type MergeResult,
+} from "./application/merge-service.js";
 
 // Infrastructure - Database
 export * from "./infrastructure/database/schema.js";
