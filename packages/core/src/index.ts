@@ -82,8 +82,12 @@ export {
 export * from "./infrastructure/database/schema.js";
 export { sql } from "drizzle-orm";
 
+// PostgreSQL schema (Neon) - exported as a namespace to avoid polluting SQLite schema
+export { pgSchema } from "./infrastructure/database/pg-schema-export.js";
+
 // Data Source providers
 export { SqliteDataSource } from "./infrastructure/database/sqlite-data-source.js";
+export { NeonDataSource } from "./infrastructure/database/neon-data-source.js";
 export {
   DataSourceFactory,
   type DataSourceConfig,

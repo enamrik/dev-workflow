@@ -27,7 +27,7 @@ import {
   type IssueToolContext,
 } from "../../tools/issue-tools.js";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import * as schema from "@dev-workflow/core";
+import * as schema from "@dev-workflow/core/schema";
 
 /** Database type used by repositories */
 type DbType = BetterSQLite3Database<typeof schema>;

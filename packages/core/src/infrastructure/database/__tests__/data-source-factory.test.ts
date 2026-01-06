@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { DataSourceFactory } from "../data-source-factory.js";
 import { SqliteDataSource } from "../sqlite-data-source.js";
-import { DataSourceError } from "../../../domain/data-source.js";
+import { ConnectionError } from "../../../domain/data-source.js";
 import { existsSync, unlinkSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -62,29 +62,32 @@ describe("DataSourceFactory", () => {
       expect(dataSource).toBeInstanceOf(SqliteDataSource);
     });
 
-    it("should throw DataSourceError for neon provider (not implemented)", async () => {
+    it("should attempt to create NeonDataSource for postgresql:// URLs", async () => {
+      // With an invalid connection string, it should throw ConnectionError
       await expect(
         DataSourceFactory.create({
           connectionString: "postgresql://user:pass@host/db",
           provider: "neon",
         })
-      ).rejects.toThrow(DataSourceError);
+      ).rejects.toThrow(ConnectionError);
     });
 
-    it("should auto-detect neon from postgresql:// URL and throw (not implemented)", async () => {
+    it("should auto-detect neon from postgresql:// URL", async () => {
+      // With an invalid host, it should throw ConnectionError
       await expect(
         DataSourceFactory.create({
           connectionString: "postgresql://user:pass@host/db",
         })
-      ).rejects.toThrow("Neon PostgreSQL provider is not yet implemented");
+      ).rejects.toThrow(ConnectionError);
     });
 
-    it("should auto-detect neon from postgres:// URL and throw (not implemented)", async () => {
+    it("should auto-detect neon from postgres:// URL", async () => {
+      // With an invalid host, it should throw ConnectionError
       await expect(
         DataSourceFactory.create({
           connectionString: "postgres://user:pass@host/db",
         })
-      ).rejects.toThrow("Neon PostgreSQL provider is not yet implemented");
+      ).rejects.toThrow(ConnectionError);
     });
   });
 
@@ -95,6 +98,15 @@ describe("DataSourceFactory", () => {
 
       expect(dataSource).toBeInstanceOf(SqliteDataSource);
       expect(dataSource.providerId).toBe("sqlite");
+    });
+  });
+
+  describe("createNeon", () => {
+    it("should attempt to create NeonDataSource directly", async () => {
+      // With an invalid connection string, it should throw ConnectionError
+      await expect(DataSourceFactory.createNeon("postgresql://user:pass@host/db")).rejects.toThrow(
+        ConnectionError
+      );
     });
   });
 

@@ -10,7 +10,7 @@ import { join } from "path";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import * as schema from "@dev-workflow/core";
+import * as schema from "@dev-workflow/core/schema";
 
 /**
  * Type for the test database instance
