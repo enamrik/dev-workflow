@@ -273,6 +273,23 @@ export class MockGitHubCLI implements GitHubCLI {
     return results.slice(0, limit);
   }
 
+  async commentOnIssue(issueNumber: number, comment: string): Promise<void> {
+    this.recordCall("commentOnIssue", [issueNumber, comment]);
+    this.checkError("commentOnIssue");
+    // Just record the call - comments aren't stored in the mock
+  }
+
+  async closeIssueWithComment(issueNumber: number, comment?: string): Promise<void> {
+    this.recordCall("closeIssueWithComment", [issueNumber, comment]);
+    this.checkError("closeIssueWithComment");
+
+    // Add comment if provided, then close the issue
+    if (comment) {
+      await this.commentOnIssue(issueNumber, comment);
+    }
+    await this.closeIssue(issueNumber);
+  }
+
   async listLabels(): Promise<string[]> {
     this.recordCall("listLabels", []);
     this.checkError("listLabels");
