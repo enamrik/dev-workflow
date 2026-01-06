@@ -1,0 +1,109 @@
+/**
+ * ProviderFactory - Interface for creating ProjectManagementProvider instances
+ *
+ * Factories encapsulate provider instantiation and dependency injection.
+ * Each provider type has its own factory that knows how to create instances
+ * with the appropriate dependencies.
+ */
+
+import type { ProjectManagementProvider } from "../../domain/project-management-provider.js";
+import type { ProjectManagementConfig } from "../../domain/project-management-config.js";
+import { GitHubProjectManagementProvider } from "./github-project-management-provider.js";
+
+/**
+ * Dependencies that can be injected into providers
+ *
+ * Different providers may need different dependencies:
+ * - GitHub: GitHubCLI for API calls
+ * - Jira: JiraClient for REST API
+ * - Linear: LinearClient for GraphQL API
+ */
+export interface ProviderDependencies {
+  /**
+   * GitHub CLI interface (for GitHub provider)
+   */
+  githubCLI?: import("../github/github-cli.js").GitHubCLI;
+
+  // Future providers can add their dependencies here:
+  // jiraClient?: JiraClient;
+  // linearClient?: LinearClient;
+}
+
+/**
+ * Factory interface for creating ProjectManagementProvider instances
+ *
+ * Each provider type implements this interface to encapsulate
+ * its specific instantiation logic and dependency requirements.
+ */
+export interface ProviderFactory {
+  /**
+   * Unique identifier for the provider this factory creates
+   * Must match the providerId used in configuration
+   */
+  readonly providerId: string;
+
+  /**
+   * Human-readable name for the provider
+   */
+  readonly displayName: string;
+
+  /**
+   * Create a new provider instance
+   *
+   * @param config - Project management configuration
+   * @param deps - Dependencies for the provider
+   * @returns A configured provider instance
+   * @throws Error if required dependencies are missing
+   */
+  createProvider(
+    config: ProjectManagementConfig,
+    deps: ProviderDependencies
+  ): ProjectManagementProvider;
+
+  /**
+   * Check if all required dependencies are available
+   *
+   * @param deps - Available dependencies
+   * @returns True if all required dependencies are present
+   */
+  canCreate(deps: ProviderDependencies): boolean;
+
+  /**
+   * Get list of missing required dependencies
+   *
+   * @param deps - Available dependencies
+   * @returns Array of missing dependency names (empty if all present)
+   */
+  getMissingDependencies(deps: ProviderDependencies): string[];
+}
+
+/**
+ * Factory for creating GitHub ProjectManagementProvider instances
+ */
+export class GitHubProviderFactory implements ProviderFactory {
+  readonly providerId = "github";
+  readonly displayName = "GitHub";
+
+  createProvider(
+    _config: ProjectManagementConfig,
+    deps: ProviderDependencies
+  ): ProjectManagementProvider {
+    if (!deps.githubCLI) {
+      throw new Error("GitHubProviderFactory requires githubCLI dependency");
+    }
+
+    return new GitHubProjectManagementProvider(deps.githubCLI);
+  }
+
+  canCreate(deps: ProviderDependencies): boolean {
+    return deps.githubCLI !== undefined;
+  }
+
+  getMissingDependencies(deps: ProviderDependencies): string[] {
+    const missing: string[] = [];
+    if (!deps.githubCLI) {
+      missing.push("githubCLI");
+    }
+    return missing;
+  }
+}

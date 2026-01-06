@@ -135,7 +135,17 @@ export {
 } from "./infrastructure/github/github-cli.js";
 
 // Infrastructure - Project Management Providers
-export { GitHubProjectManagementProvider } from "./infrastructure/providers/index.js";
+export {
+  GitHubProjectManagementProvider,
+  ProviderRegistry,
+  ProviderNotFoundError,
+  ProviderDependencyError,
+  getProjectManagementProvider,
+  GitHubProviderFactory,
+  type ProviderFactory,
+  type ProviderDependencies,
+  type RegisteredProvider,
+} from "./infrastructure/providers/index.js";
 
 // Infrastructure - Git Worktrees
 export {
