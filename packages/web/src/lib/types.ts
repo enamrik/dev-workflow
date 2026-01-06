@@ -21,7 +21,7 @@ export interface Issue {
   number: number;
   title: string;
   description: string;
-  type: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
+  type: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK" | "SPIKE";
   priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   status: "PLANNED" | "OPEN" | "IN_PROGRESS" | "CLOSED";
   acceptanceCriteria: string[];
@@ -50,7 +50,7 @@ export interface Task {
   number: number;
   title: string;
   description: string;
-  type: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
+  type: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK" | "SPIKE";
   status: "PLANNED" | "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
   estimatedMinutes: number | null;
   acceptanceCriteria: string[];
@@ -158,7 +158,7 @@ export interface CompletedTask extends Task {
   projectSlug: string;
   issueNumber: number;
   issueTitle: string;
-  issueType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
+  issueType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK" | "SPIKE";
   issueStatus: string;
 }
 

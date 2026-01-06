@@ -28,7 +28,7 @@ import type { FileSystem } from "../file-system/file-system.js";
 /**
  * Valid issue types that can be defined
  */
-const VALID_ISSUE_TYPES: Set<string> = new Set(["FEATURE", "BUG", "ENHANCEMENT", "TASK"]);
+const VALID_ISSUE_TYPES: Set<string> = new Set(["FEATURE", "BUG", "ENHANCEMENT", "TASK", "SPIKE"]);
 
 /**
  * Type service error
