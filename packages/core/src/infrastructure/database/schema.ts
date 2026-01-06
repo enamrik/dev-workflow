@@ -456,6 +456,22 @@ export interface BackupConfig {
 }
 
 /**
+ * Database configuration for remote database support
+ *
+ * Stored in global settings. Can be overridden by TRACK_DATABASE_URL env var.
+ */
+export interface DatabaseConfig {
+  /** Database provider type */
+  provider: "sqlite" | "neon";
+
+  /** Connection string (for remote databases) */
+  connectionString?: string;
+
+  /** When the configuration was set */
+  configuredAt: string;
+}
+
+/**
  * Global settings table schema
  *
  * Stores application-wide settings that are not project-specific.
