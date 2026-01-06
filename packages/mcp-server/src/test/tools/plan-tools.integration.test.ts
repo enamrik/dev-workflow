@@ -13,6 +13,9 @@ import {
   MockGitHubCLI,
   SqliteProjectRepository,
   TaskGitHubSyncService,
+  TypeService,
+  type TypeServiceConfig,
+  NodeFileSystem,
 } from "@dev-workflow/core";
 import {
   handleGeneratePlan,
@@ -80,6 +83,14 @@ function createPlanToolContext(testDb: TestDatabase): PlanToolContext {
     project.id
   );
 
+  // TypeService for type validation
+  const fileSystem = new NodeFileSystem();
+  const typeConfig: TypeServiceConfig = {
+    localTypesPath: "/tmp/test-types-local.md",
+    globalTypesPath: "/tmp/test-types-global.md",
+  };
+  const typeService = new TypeService(fileSystem, typeConfig);
+
   return {
     project,
     issueRepository: repos.issueRepository,
@@ -87,6 +98,7 @@ function createPlanToolContext(testDb: TestDatabase): PlanToolContext {
     taskRepository: repos.taskRepository,
     planningService,
     taskGitHubSyncService,
+    typeService,
   };
 }
 
@@ -112,8 +124,14 @@ describe("Plan Tools Integration", () => {
         summary: "Implementation plan",
         approach: "Build step by step",
         tasks: [
-          { id: "t1", title: "Task 1", description: "First task" },
-          { id: "t2", title: "Task 2", description: "Second task", dependsOn: ["t1"] },
+          { id: "t1", title: "Task 1", description: "First task", type: "TASK" },
+          {
+            id: "t2",
+            title: "Task 2",
+            description: "Second task",
+            type: "TASK",
+            dependsOn: ["t1"],
+          },
         ],
         estimatedComplexity: "MEDIUM",
       });
@@ -145,6 +163,83 @@ describe("Plan Tools Integration", () => {
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
     });
+
+    it("should return error when task is missing type field", async () => {
+      const issue = createTestIssue(ctx.issueRepository, {
+        title: "Test Feature",
+        status: "PLANNED",
+      });
+
+      // Cast to bypass TypeScript check - testing runtime validation
+      const result = await handleGeneratePlan(ctx, {
+        issueNumber: issue.number,
+        summary: "Implementation plan",
+        approach: "Build step by step",
+        tasks: [{ id: "t1", title: "Task 1", description: "First task" } as any],
+        estimatedComplexity: "MEDIUM",
+      });
+
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(false);
+      expect(content.error).toContain("missing required 'type' field");
+      expect(content.error).toContain("Valid types:");
+      expect(content.error).toContain("list_types");
+    });
+
+    it("should return error when task has invalid type", async () => {
+      const issue = createTestIssue(ctx.issueRepository, {
+        title: "Test Feature",
+        status: "PLANNED",
+      });
+
+      const result = await handleGeneratePlan(ctx, {
+        issueNumber: issue.number,
+        summary: "Implementation plan",
+        approach: "Build step by step",
+        tasks: [
+          { id: "t1", title: "Task 1", description: "First task", type: "INVALID_TYPE" as any },
+        ],
+        estimatedComplexity: "MEDIUM",
+      });
+
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(false);
+      expect(content.error).toContain("invalid type 'INVALID_TYPE'");
+      expect(content.error).toContain("Valid types:");
+      expect(content.error).toContain("list_types");
+    });
+
+    it("should accept valid types", async () => {
+      const issue = createTestIssue(ctx.issueRepository, {
+        title: "Test Feature",
+        status: "PLANNED",
+      });
+
+      const result = await handleGeneratePlan(ctx, {
+        issueNumber: issue.number,
+        summary: "Implementation plan",
+        approach: "Build step by step",
+        tasks: [
+          { id: "t1", title: "Feature task", description: "Add a feature", type: "FEATURE" },
+          { id: "t2", title: "Bug fix", description: "Fix a bug", type: "BUG" },
+          { id: "t3", title: "Enhancement", description: "Improve something", type: "ENHANCEMENT" },
+          { id: "t4", title: "Maintenance", description: "Clean up", type: "TASK" },
+        ],
+        estimatedComplexity: "MEDIUM",
+      });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.plan).toBeDefined();
+      expect(content.tasks).toHaveLength(4);
+
+      // Verify task types are stored correctly
+      const tasks = ctx.taskRepository.findByPlanId(content.plan.id);
+      expect(tasks[0].type).toBe("FEATURE");
+      expect(tasks[1].type).toBe("BUG");
+      expect(tasks[2].type).toBe("ENHANCEMENT");
+      expect(tasks[3].type).toBe("TASK");
+    });
   });
 
   describe("handleGetPlan", () => {
@@ -155,7 +250,7 @@ describe("Plan Tools Integration", () => {
         issueNumber: issue.number,
         summary: "Test plan",
         approach: "Test approach",
-        tasks: [{ id: "t1", title: "Task 1", description: "Desc" }],
+        tasks: [{ id: "t1", title: "Task 1", description: "Desc", type: "TASK" }],
         estimatedComplexity: "LOW",
       });
 
@@ -186,8 +281,8 @@ describe("Plan Tools Integration", () => {
         summary: "Test plan",
         approach: "Test approach",
         tasks: [
-          { id: "t1", title: "Task 1", description: "Desc 1" },
-          { id: "t2", title: "Task 2", description: "Desc 2" },
+          { id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" },
+          { id: "t2", title: "Task 2", description: "Desc 2", type: "TASK" },
         ],
         estimatedComplexity: "LOW",
       });
@@ -218,8 +313,8 @@ describe("Plan Tools Integration", () => {
         summary: "Test plan",
         approach: "Test approach",
         tasks: [
-          { id: "t1", title: "Task 1", description: "Desc 1" },
-          { id: "t2", title: "Task 2", description: "Desc 2" },
+          { id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" },
+          { id: "t2", title: "Task 2", description: "Desc 2", type: "TASK" },
         ],
         estimatedComplexity: "LOW",
       });
@@ -256,7 +351,7 @@ describe("Plan Tools Integration", () => {
         issueNumber: issue.number,
         summary: "Test plan",
         approach: "Test approach",
-        tasks: [{ id: "t1", title: "Task 1", description: "Desc 1" }],
+        tasks: [{ id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" }],
         estimatedComplexity: "LOW",
       });
 
@@ -282,8 +377,8 @@ describe("Plan Tools Integration", () => {
         summary: "Test plan",
         approach: "Test approach",
         tasks: [
-          { id: "t1", title: "Task 1", description: "Desc 1" },
-          { id: "t2", title: "Task 2", description: "Desc 2" },
+          { id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" },
+          { id: "t2", title: "Task 2", description: "Desc 2", type: "TASK" },
         ],
         estimatedComplexity: "LOW",
       });
@@ -312,7 +407,7 @@ describe("Plan Tools Integration", () => {
         issueNumber: issue.number,
         summary: "Test plan",
         approach: "Test approach",
-        tasks: [{ id: "t1", title: "Task 1", description: "Desc 1" }],
+        tasks: [{ id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" }],
         estimatedComplexity: "LOW",
       });
 
