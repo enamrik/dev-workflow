@@ -58,7 +58,7 @@ export interface CompletedTask extends Task {
   projectSlug: string;
   issueNumber: number;
   issueTitle: string;
-  issueType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
+  issueType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK" | "SPIKE";
   issueStatus: string;
 }
 

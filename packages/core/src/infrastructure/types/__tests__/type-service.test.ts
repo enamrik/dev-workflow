@@ -207,6 +207,13 @@ describe("TypeService", () => {
       expect(result).toBe("TASK");
     });
 
+    it("should select SPIKE for descriptions mentioning research or investigation", async () => {
+      expect(await service.selectType("Research OAuth providers")).toBe("SPIKE");
+      expect(await service.selectType("Investigate performance bottleneck")).toBe("SPIKE");
+      expect(await service.selectType("Spike to explore caching options")).toBe("SPIKE");
+      expect(await service.selectType("Prototype different API approaches")).toBe("SPIKE");
+    });
+
     it("should default to FEATURE when no match", async () => {
       const result = await service.selectType("Build a new dashboard widget");
       expect(result).toBe("FEATURE");
@@ -323,8 +330,8 @@ User-facing additions, new screens, new APIs.
     it("should return all available types", async () => {
       const types = await service.getTypes();
 
-      expect(types).toHaveLength(4);
-      expect(types.map((t) => t.name)).toEqual(["FEATURE", "BUG", "ENHANCEMENT", "TASK"]);
+      expect(types).toHaveLength(5);
+      expect(types.map((t) => t.name)).toEqual(["FEATURE", "BUG", "ENHANCEMENT", "TASK", "SPIKE"]);
     });
 
     it("should return user-defined types when types.md exists", async () => {
@@ -343,6 +350,7 @@ User-facing additions, new screens, new APIs.
       expect(await service.isValidType("BUG")).toBe(true);
       expect(await service.isValidType("ENHANCEMENT")).toBe(true);
       expect(await service.isValidType("TASK")).toBe(true);
+      expect(await service.isValidType("SPIKE")).toBe(true);
     });
 
     it("should return false for invalid types", async () => {

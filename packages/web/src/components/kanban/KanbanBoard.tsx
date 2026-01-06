@@ -40,7 +40,7 @@ function computeIssueStatus(issue: Issue, tasks: Task[]): ComputedIssueStatus {
 interface KanbanTask extends Task {
   issueNumber: number;
   issueTitle: string;
-  issueType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
+  issueType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK" | "SPIKE";
   issueGithubUrl?: string;
   issueComputedStatus: ComputedIssueStatus;
   projectId?: string;

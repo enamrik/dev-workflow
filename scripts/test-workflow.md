@@ -14,13 +14,13 @@ GITHUB_PROJECT_ID="PVT_kwHOAAtNZM4BLyP8"
 STATUS_FIELD_ID="PVTSSF_lAHOAAtNZM4BLyP8zg7QWhw"
 ```
 
-| Column | Option ID |
-|--------|-----------|
-| Backlog | f75ad846 |
-| Ready | 61e4505c |
-| In progress | 47fc9ee4 |
-| In review | df73e18b |
-| Done | 98236657 |
+| Column      | Option ID |
+| ----------- | --------- |
+| Backlog     | f75ad846  |
+| Ready       | 61e4505c  |
+| In progress | 47fc9ee4  |
+| In review   | df73e18b  |
+| Done        | 98236657  |
 
 ## Verification Query
 
@@ -171,13 +171,13 @@ git fetch --prune
 
 ## Test Results
 
-| Step | Status → Column | Pass/Fail |
-|------|-----------------|-----------|
-| 3. Backlog | BACKLOG → "Backlog" | |
-| 4. Ready | READY → "Ready" | |
-| 5. Start | IN_PROGRESS → "In progress" | |
-| 8. Review | PR_REVIEW → "In review" | |
-| 9. Complete | COMPLETED → "Done" + CLOSED | |
+| Step        | Status → Column             | Pass/Fail |
+| ----------- | --------------------------- | --------- |
+| 3. Backlog  | BACKLOG → "Backlog"         |           |
+| 4. Ready    | READY → "Ready"             |           |
+| 5. Start    | IN_PROGRESS → "In progress" |           |
+| 8. Review   | PR_REVIEW → "In review"     |           |
+| 9. Complete | COMPLETED → "Done" + CLOSED |           |
 
 ---
 
@@ -185,20 +185,22 @@ git fetch --prune
 
 ### Sync Not Working
 
-| Check | Command |
-|-------|---------|
+| Check                 | Command                                                                                              |
+| --------------------- | ---------------------------------------------------------------------------------------------------- |
 | Rebuild & restart MCP | `pnpm --filter @dev-workflow/core build && pnpm --filter @dev-workflow/mcp-server build` then `/mcp` |
-| Task sync error | `sqlite3 ~/.track/workflow.db "SELECT github_last_sync_error FROM tasks WHERE id = '[TASK_ID]'"` |
-| Project config | `sqlite3 ~/.track/workflow.db "SELECT github_sync FROM projects LIMIT 1"` |
+| Task sync error       | `sqlite3 ~/.track/workflow.db "SELECT github_last_sync_error FROM tasks WHERE id = '[TASK_ID]'"`     |
+| Project config        | `sqlite3 ~/.track/workflow.db "SELECT github_sync FROM projects LIMIT 1"`                            |
 
 ### Fix Stuck Project Items
 
 1. Get project item ID:
+
 ```bash
 gh api graphql -f query='query { repository(owner: "enamrik", name: "dev-workflow") { issue(number: [NUM]) { projectItems(first: 1) { nodes { id } } } } }'
 ```
 
 2. Move to correct column:
+
 ```bash
 gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOAAtNZM4BLyP8", itemId: "[ITEM_ID]", fieldId: "PVTSSF_lAHOAAtNZM4BLyP8zg7QWhw", value: { singleSelectOptionId: "[OPTION_ID]" } }) { projectV2Item { id } } }'
 ```

@@ -62,4 +62,19 @@ export const DEFAULT_TYPE_DEFINITIONS: TypeDefinition[] = [
     keywords: ["task", "chore", "setup", "config", "maintenance", "cleanup"],
     remoteLabel: "task",
   },
+  {
+    name: "SPIKE",
+    description: "Timeboxed research/investigation where the goal is learning, not shipping code",
+    keywords: [
+      "spike",
+      "research",
+      "investigate",
+      "explore",
+      "prototype",
+      "experiment",
+      "poc",
+      "proof",
+    ],
+    remoteLabel: "spike",
+  },
 ];

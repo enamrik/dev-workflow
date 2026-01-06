@@ -408,6 +408,7 @@ Every task **MUST** have a `type` field. The type determines the GitHub label ap
 | **BUG**         | Task fixes something broken or not working as expected | `bug`         |
 | **ENHANCEMENT** | Task improves existing functionality                   | `enhancement` |
 | **TASK**        | Technical work, chores, infrastructure, maintenance    | `task`        |
+| **SPIKE**       | Timeboxed research/investigation; goal is learning     | `spike`       |
 
 **Type Selection Guidance:**
 
@@ -415,6 +416,7 @@ Every task **MUST** have a `type` field. The type determines the GitHub label ap
 - **BUG**: "Fix login timeout error", "Resolve memory leak", "Investigate and fix: [bug title]"
 - **ENHANCEMENT**: "Improve search performance", "Refactor database queries", "Optimize image loading"
 - **TASK**: "Set up CI/CD pipeline", "Update dependencies", "Configure logging", "Add database migration"
+- **SPIKE**: "Research OAuth providers", "Prototype caching strategy", "Investigate performance bottleneck", "Explore new framework"
 
 **Example generate_plan call with types:**
 

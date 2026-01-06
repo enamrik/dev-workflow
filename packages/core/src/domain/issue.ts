@@ -4,7 +4,7 @@
 
 import type { GitHubSyncState } from "./github.js";
 
-export type IssueType = "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
+export type IssueType = "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK" | "SPIKE";
 export type IssuePriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type IssueStatus = "PLANNED" | "OPEN" | "IN_PROGRESS" | "CLOSED";
 
