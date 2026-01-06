@@ -236,4 +236,12 @@ export class DatabaseConfigService {
   getDatabasePath(): string {
     return getGlobalDatabasePath();
   }
+
+  /**
+   * Check if the current configuration uses a remote database
+   */
+  async isRemote(): Promise<boolean> {
+    const status = await this.getStatus();
+    return status.provider !== "sqlite";
+  }
 }
