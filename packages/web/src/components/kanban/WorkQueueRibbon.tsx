@@ -3,6 +3,11 @@ import { clsx } from "clsx";
 import { Tooltip } from "../ui";
 import type { ProjectIssueWithTasks, Task, ComputedIssueStatus } from "@/lib/types";
 
+interface IssuePreviewTarget {
+  projectSlug: string;
+  issueNumber: number;
+}
+
 /**
  * Status tag config for corner tags
  */
@@ -63,9 +68,15 @@ interface IssueWithStatus {
 
 interface WorkQueueRibbonProps {
   issuesWithTasks: ProjectIssueWithTasks[];
+  onIssueClick?: (target: IssuePreviewTarget) => void;
 }
 
-function IssueCard({ item }: { item: IssueWithStatus }) {
+interface IssueCardProps {
+  item: IssueWithStatus;
+  onIssueClick?: (target: IssuePreviewTarget) => void;
+}
+
+function IssueCard({ item, onIssueClick }: IssueCardProps) {
   const issueUrl = item.projectSlug
     ? `/projects/${encodeURIComponent(item.projectSlug)}/issues/${item.issue.number}`
     : `/issues/${item.issue.number}`;
@@ -77,6 +88,78 @@ function IssueCard({ item }: { item: IssueWithStatus }) {
 
   const statusConfig = statusTagConfig[item.computedStatus];
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Only handle if we have a callback and projectSlug
+    if (onIssueClick && item.projectSlug) {
+      e.preventDefault();
+      onIssueClick({
+        projectSlug: item.projectSlug,
+        issueNumber: item.issue.number,
+      });
+    }
+  };
+
+  // If we have an onIssueClick callback, render as a clickable div with a separate link
+  // Otherwise, render as a Link for full navigation
+  if (onIssueClick && item.projectSlug) {
+    return (
+      <div
+        onClick={handleCardClick}
+        className={clsx(
+          "relative flex-shrink-0 p-2 pr-3 rounded-lg border border-gray-200 bg-white cursor-pointer",
+          "hover:shadow-md hover:border-gray-300 transition-all",
+          "min-w-[120px] max-w-[160px]"
+        )}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onIssueClick({
+              projectSlug: item.projectSlug!,
+              issueNumber: item.issue.number,
+            });
+          }
+        }}
+      >
+        {/* Status tag - corner */}
+        <span
+          className={clsx(
+            "absolute top-0 right-0 text-[8px] font-medium uppercase px-1 py-px rounded-bl",
+            statusConfig.style
+          )}
+        >
+          {statusConfig.label}
+        </span>
+
+        {/* Task progress tag - top left corner */}
+        {taskProgress && (
+          <span className="absolute top-0 left-0 text-[8px] font-medium px-1 py-px rounded-br bg-gray-100 text-gray-500">
+            {taskProgress}
+          </span>
+        )}
+
+        {/* Issue number and title - 2 lines max with ellipsis */}
+        <Tooltip content={`#${item.issue.number} ${item.issue.title}`} side="top">
+          <p
+            className="text-[11px] leading-tight overflow-hidden text-gray-700 mt-1"
+            style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
+          >
+            <Link
+              href={issueUrl}
+              className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              #{item.issue.number}
+            </Link>{" "}
+            {item.issue.title}
+          </p>
+        </Tooltip>
+      </div>
+    );
+  }
+
+  // Default: full card is a link
   return (
     <Link
       href={issueUrl}
@@ -116,7 +199,7 @@ function IssueCard({ item }: { item: IssueWithStatus }) {
   );
 }
 
-export function WorkQueueRibbon({ issuesWithTasks }: WorkQueueRibbonProps) {
+export function WorkQueueRibbon({ issuesWithTasks, onIssueClick }: WorkQueueRibbonProps) {
   // Compute status and prepare issues for display
   const issuesWithStatus: IssueWithStatus[] = issuesWithTasks.map(
     ({ issue, tasks, projectSlug }) => ({
@@ -190,7 +273,7 @@ export function WorkQueueRibbon({ issuesWithTasks }: WorkQueueRibbonProps) {
               </div>
               <div className="flex gap-2">
                 {issues.map((item) => (
-                  <IssueCard key={item.issue.id} item={item} />
+                  <IssueCard key={item.issue.id} item={item} onIssueClick={onIssueClick} />
                 ))}
               </div>
             </div>
