@@ -690,22 +690,23 @@ any task and the remaining BACKLOG tasks will transition back to READY.
 
 ### MCP Server Connection Issues (CRITICAL)
 
-**When MCP tools return "not found" for data that should exist:**
+**When MCP tools return unexpected "not found" errors for data that should exist:**
 
-This is the most important error to handle correctly. If you were just working on an issue/task and suddenly get "Issue not found" or "Task not found" errors, this indicates the **MCP server is connected to the wrong database**.
+If you were working on an issue/task and suddenly get "Issue not found" or "Task not found" errors, the MCP server is likely connected to the wrong database.
 
-**STOP IMMEDIATELY. Do NOT:**
-- Manually update databases with `sqlite3` commands
-- Use `gh` CLI to create PRs directly
-- Try to work around the issue in any way
+**STOP IMMEDIATELY. Do NOT try to work around the issue.**
 
-**Instead:**
+Any manual workaround (direct database updates, `gh` CLI, etc.) creates **corrupt, inconsistent state** that will cause more problems later. The MCP tools maintain consistency between the database, git, and GitHub - bypassing them breaks that guarantee.
+
+**What to do:**
 1. Stop all work immediately
-2. Explain to the user: "The MCP server appears to be connected to a different database than expected. This can happen when sessions are continued or the server restarts."
-3. Ask the user to restart the MCP server: "Please run `/mcp` to restart the MCP server, then we can continue."
-4. Wait for the user to confirm the server is restarted before proceeding
+2. Tell the user: "The MCP server appears to be connected to the wrong database. Please restart your Claude session to reconnect, then we can resume where we left off."
+3. **Do not continue** until the user has restarted and confirmed
 
-**Why this matters:** Manual workarounds create inconsistent state between the database and actual git/GitHub state, leading to more errors down the line. The MCP tools are designed to maintain consistency - bypassing them breaks that guarantee.
+**Resuming after restart:**
+- If a task was IN_PROGRESS, call `load_task_session` with the task ID - it's idempotent and will resume the session
+- The worktree and branch will still exist; work can continue from where it stopped
+- Check `git status` in the worktree to see what changes were in progress
 
 ---
 
