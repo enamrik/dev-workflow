@@ -50,6 +50,7 @@ export interface Task {
   number: number;
   title: string;
   description: string;
+  type: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
   status: "PLANNED" | "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
   estimatedMinutes: number | null;
   acceptanceCriteria: string[];
