@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
   TrackDirectoryResolver,
-  DatabaseService,
+  SqliteDataSource,
   SqliteProjectRepository,
   ProjectService,
   NodeGitOperations,
@@ -55,7 +55,7 @@ export class UpdateService {
    */
   async registerProject(): Promise<Project> {
     const dbPath = this.resolver.getDatabasePath();
-    const dbService = await DatabaseService.create(dbPath);
+    const dbService = await SqliteDataSource.create(dbPath);
 
     try {
       const projectRepo = new SqliteProjectRepository(dbService.getDb());
@@ -100,7 +100,7 @@ export class UpdateService {
       return { migrated: 0, oldProjectId };
     }
 
-    const dbService = await DatabaseService.create(dbPath);
+    const dbService = await SqliteDataSource.create(dbPath);
 
     try {
       const db = dbService.getDb();
@@ -299,9 +299,9 @@ export class UpdateService {
       }
 
       // Import and run migrations with automatic native/WASM detection
-      const { DatabaseService } = await import("@dev-workflow/core");
+      const { SqliteDataSource } = await import("@dev-workflow/core");
 
-      const dbService = await DatabaseService.create(dbPath);
+      const dbService = await SqliteDataSource.create(dbPath);
       dbService.runMigrations();
       dbService.close();
     } catch (error) {

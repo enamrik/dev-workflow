@@ -3,7 +3,7 @@ import { execSync, spawnSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
   TrackDirectoryResolver,
-  DatabaseService,
+  SqliteDataSource,
   SqliteProjectRepository,
   ProjectService,
   NodeGitOperations,
@@ -40,7 +40,7 @@ export class InstallService {
    */
   async registerProject(): Promise<Project> {
     const dbPath = this.resolver.getDatabasePath();
-    const dbService = await DatabaseService.create(dbPath);
+    const dbService = await SqliteDataSource.create(dbPath);
 
     try {
       const projectRepo = new SqliteProjectRepository(dbService.getDb());
@@ -201,11 +201,11 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
       const globalTrackDir = this.resolver.getGlobalTrackDirectory();
       await this.fileSystem.mkdir(globalTrackDir, { recursive: true });
 
-      // Import DatabaseService from core package
-      const { DatabaseService } = await import("@dev-workflow/core");
+      // Import SqliteDataSource from core package
+      const { SqliteDataSource } = await import("@dev-workflow/core");
 
       // Create database with automatic native/WASM detection and run migrations
-      const dbService = await DatabaseService.create(dbPath);
+      const dbService = await SqliteDataSource.create(dbPath);
       dbService.runMigrations();
       dbService.close();
     } catch (error) {
@@ -324,7 +324,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
       return null;
     }
 
-    const dbService = await DatabaseService.create(dbPath);
+    const dbService = await SqliteDataSource.create(dbPath);
 
     try {
       const projectRepo = new SqliteProjectRepository(dbService.getDb());

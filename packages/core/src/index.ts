@@ -80,20 +80,16 @@ export {
 
 // Infrastructure - Database
 export * from "./infrastructure/database/schema.js";
-// Re-export sql from drizzle-orm for raw SQL queries
 export { sql } from "drizzle-orm";
 
-// Data Source abstraction (new API)
+// Data Source providers
 export { SqliteDataSource } from "./infrastructure/database/sqlite-data-source.js";
 export {
   DataSourceFactory,
   type DataSourceConfig,
 } from "./infrastructure/database/data-source-factory.js";
 
-// Legacy exports (deprecated, use DataSourceFactory/SqliteDataSource instead)
-/** @deprecated Use SqliteDataSource instead */
-export { DatabaseService } from "./infrastructure/database/database.js";
-/** @deprecated Internal SQLite adapter factory, use DataSourceFactory instead */
+// Low-level SQLite adapters (internal use)
 export { DatabaseFactory } from "./infrastructure/database/database-factory.js";
 export type {
   DatabaseAdapter,

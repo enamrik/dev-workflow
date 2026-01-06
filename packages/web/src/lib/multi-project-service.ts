@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
-  DatabaseService,
+  SqliteDataSource,
   SqliteIssueRepository,
   SqlitePlanRepository,
   SqliteTaskRepository,
@@ -160,7 +160,7 @@ export interface ProjectWorktree {
  * and provides aggregated views of issues and tasks across all projects.
  */
 export class MultiProjectService {
-  private dbService: DatabaseService | null = null;
+  private dbService: SqliteDataSource | null = null;
   private planRepository: SqlitePlanRepository | null = null;
   private taskRepository: SqliteTaskRepository | null = null;
   private projectRepository: SqliteProjectRepository | null = null;
@@ -199,7 +199,7 @@ export class MultiProjectService {
       throw new Error(`Global database not found at ${dbPath}. Run 'dev-workflow init' first.`);
     }
 
-    this.dbService = await DatabaseService.create(dbPath);
+    this.dbService = await SqliteDataSource.create(dbPath);
     // Run migrations to ensure schema is up to date
     this.dbService.runMigrations();
     const db = this.dbService.getDb();

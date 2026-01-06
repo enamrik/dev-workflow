@@ -132,11 +132,11 @@ describe("SqliteDataSource", () => {
     });
   });
 
-  describe("backward compatibility", () => {
-    it("should have same API as DatabaseService", async () => {
+  describe("public API", () => {
+    it("should have required database service methods", async () => {
       dataSource = await SqliteDataSource.create(testDbPath);
 
-      // These methods should exist (same as DatabaseService)
+      // These methods should exist for database service functionality
       expect(typeof dataSource.getDb).toBe("function");
       expect(typeof dataSource.runMigrations).toBe("function");
       expect(typeof dataSource.checkpoint).toBe("function");

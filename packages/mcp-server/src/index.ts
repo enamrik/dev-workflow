@@ -14,7 +14,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 
 // Import everything from core
 import {
-  DatabaseService,
+  SqliteDataSource,
   SqliteIssueRepository,
   SqliteSnapshotRepository,
   SqlitePlanRepository,
@@ -165,7 +165,7 @@ if (!GIT_ROOT) {
 const validatedGitRoot: string = GIT_ROOT;
 
 // Service instances (initialized in main)
-let dbService: DatabaseService;
+let dbService: SqliteDataSource;
 let issueToolContext: IssueToolContext;
 let planToolContext: PlanToolContext;
 let taskToolContext: TaskToolContext;
@@ -406,7 +406,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
 async function main() {
   // Initialize database with automatic native/WASM detection
   // Migrations are run during `dev-workflow init` and `dev-workflow update`, not on server startup
-  dbService = await DatabaseService.create(DATABASE_PATH);
+  dbService = await SqliteDataSource.create(DATABASE_PATH);
 
   // Initialize repositories with project scoping
   // PROJECT_ID is validated at startup so it's guaranteed to be defined here

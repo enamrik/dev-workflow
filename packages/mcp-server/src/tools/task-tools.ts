@@ -5,7 +5,7 @@
 import { eq, asc } from "drizzle-orm";
 import {
   taskExecutionLogs,
-  type DatabaseService,
+  type SqliteDataSource,
   type SqliteIssueRepository,
   type SqlitePlanRepository,
   type SqliteTaskRepository,
@@ -251,7 +251,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
  * Service context for task handlers
  */
 export interface TaskToolContext {
-  dbService: DatabaseService;
+  dbService: SqliteDataSource;
   issueRepository: SqliteIssueRepository;
   planRepository: SqlitePlanRepository;
   taskRepository: SqliteTaskRepository;

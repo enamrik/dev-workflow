@@ -1,6 +1,6 @@
 import {
   TrackDirectoryResolver,
-  DatabaseService,
+  SqliteDataSource,
   SqliteProjectRepository,
   SqliteTaskRepository,
   SqliteIssueRepository,
@@ -62,7 +62,7 @@ export class ArchiveService {
    */
   async hasInProgressTasks(_projectId: string): Promise<boolean> {
     const dbPath = this.resolver.getDatabasePath();
-    const dbService = await DatabaseService.create(dbPath);
+    const dbService = await SqliteDataSource.create(dbPath);
 
     try {
       const taskRepository = new SqliteTaskRepository(dbService.getDb());
@@ -122,7 +122,7 @@ export class ArchiveService {
    */
   async hasOpenIssues(projectId: string): Promise<boolean> {
     const dbPath = this.resolver.getDatabasePath();
-    const dbService = await DatabaseService.create(dbPath);
+    const dbService = await SqliteDataSource.create(dbPath);
 
     try {
       const issueRepository = new SqliteIssueRepository(dbService.getDb(), projectId);
@@ -197,7 +197,7 @@ export class ArchiveService {
 
     // Hard delete project from database
     const dbPath = this.resolver.getDatabasePath();
-    const dbService = await DatabaseService.create(dbPath);
+    const dbService = await SqliteDataSource.create(dbPath);
 
     try {
       const projectRepository = new SqliteProjectRepository(dbService.getDb());
@@ -229,7 +229,7 @@ export class ArchiveService {
       return null;
     }
 
-    const dbService = await DatabaseService.create(dbPath);
+    const dbService = await SqliteDataSource.create(dbPath);
 
     try {
       const projectRepository = new SqliteProjectRepository(dbService.getDb());
@@ -279,7 +279,7 @@ export class ArchiveService {
 
     // Mark project as archived in database
     const dbPath = this.resolver.getDatabasePath();
-    const dbService = await DatabaseService.create(dbPath);
+    const dbService = await SqliteDataSource.create(dbPath);
 
     try {
       const projectRepository = new SqliteProjectRepository(dbService.getDb());
@@ -304,7 +304,7 @@ export class ArchiveService {
       return null;
     }
 
-    const dbService = await DatabaseService.create(dbPath);
+    const dbService = await SqliteDataSource.create(dbPath);
 
     try {
       const projectRepository = new SqliteProjectRepository(dbService.getDb());
@@ -347,7 +347,7 @@ export class ArchiveService {
     }
 
     const dbPath = this.resolver.getDatabasePath();
-    const dbService = await DatabaseService.create(dbPath);
+    const dbService = await SqliteDataSource.create(dbPath);
 
     try {
       const projectRepository = new SqliteProjectRepository(dbService.getDb());

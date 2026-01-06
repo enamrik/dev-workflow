@@ -8,7 +8,7 @@
 import { spawn, ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
-  DatabaseService,
+  SqliteDataSource,
   SqliteWorkerRepository,
   SqliteDispatchQueueRepository,
   SqliteTaskRepository,
@@ -63,7 +63,7 @@ function setTerminalTitle(title: string): void {
  * 5. Handles graceful shutdown (DRAINING status)
  */
 export class ClaudeWorkerService {
-  private dbService: DatabaseService | null = null;
+  private dbService: SqliteDataSource | null = null;
   private workerRepository: SqliteWorkerRepository | null = null;
   private dispatchQueueRepository: SqliteDispatchQueueRepository | null = null;
   private taskRepository: SqliteTaskRepository | null = null;
@@ -98,7 +98,7 @@ export class ClaudeWorkerService {
    */
   async initialize(): Promise<void> {
     const dbPath = getGlobalDatabasePath();
-    this.dbService = await DatabaseService.create(dbPath);
+    this.dbService = await SqliteDataSource.create(dbPath);
     const db = this.dbService.getDb();
 
     this.workerRepository = new SqliteWorkerRepository(db);
