@@ -16,7 +16,7 @@ import type {
 } from "../../domain/backup.js";
 import { BackupError } from "../../domain/backup.js";
 import type { GlobalSettingsRepository } from "../../infrastructure/repositories/global-settings-repository.js";
-import type { BackupConfig } from "../../infrastructure/database/schema.js";
+import type { BackupConfig, DatabaseConfig } from "../../infrastructure/database/schema.js";
 
 // Mock provider for testing
 class MockBackupProvider implements BackupProvider {
@@ -129,6 +129,18 @@ class MockSettingsRepository implements GlobalSettingsRepository {
 
   deleteBackupConfig(): void {
     this.config = null;
+  }
+
+  getDatabaseConfig(): DatabaseConfig | null {
+    return null;
+  }
+
+  setDatabaseConfig(_config: DatabaseConfig): void {
+    // Not used in backup tests
+  }
+
+  deleteDatabaseConfig(): void {
+    // Not used in backup tests
   }
 }
 

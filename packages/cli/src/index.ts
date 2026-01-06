@@ -11,6 +11,7 @@ import { UninstallService } from "./application/uninstall.service.js";
 import { ArchiveService, ArchiveError } from "./application/archive.service.js";
 import { UIService } from "./application/ui.service.js";
 import { BackupConfigService } from "./application/backup.service.js";
+import { DatabaseConfigService, TRACK_DATABASE_URL_ENV } from "./application/database.service.js";
 import { ClaudeWorkerService } from "./application/claude-worker.service.js";
 import { NodeFileSystem } from "./infrastructure/file-system.js";
 import {
@@ -1422,5 +1423,108 @@ program
       }
     }
   );
+
+// Database command with subcommands
+const databaseCmd = program
+  .command("database")
+  .description("Configure database connection (local SQLite or remote PostgreSQL)");
+
+// Configure remote database
+databaseCmd
+  .command("configure")
+  .description("Configure database connection")
+  .option(
+    "--url <connection-string>",
+    "PostgreSQL connection URL (e.g., postgresql://user:pass@host/db)"
+  )
+  .option("--local", "Reset to local SQLite database")
+  .action(async (options: { url?: string; local?: boolean }) => {
+    const service = new DatabaseConfigService();
+
+    try {
+      // Validate options
+      if (options.url && options.local) {
+        console.error("❌ Cannot specify both --url and --local");
+        process.exit(1);
+      }
+
+      if (!options.url && !options.local) {
+        console.error("❌ Must specify either --url <connection-string> or --local");
+        console.error("\nExamples:");
+        console.error(
+          "  dev-workflow database configure --url postgresql://user:pass@host.neon.tech/db"
+        );
+        console.error("  dev-workflow database configure --local");
+        process.exit(1);
+      }
+
+      if (options.local) {
+        console.log("🔧 Resetting to local SQLite database...\n");
+        const result = await service.configureLocal();
+
+        if (result.success) {
+          console.log("✓ " + result.message);
+          console.log(`  Path: ${service.getDatabasePath()}`);
+          console.log("\n⚠️  IMPORTANT: Restart Claude Code to use the new configuration.");
+        } else {
+          console.error(`❌ ${result.message}`);
+          process.exit(1);
+        }
+      } else if (options.url) {
+        console.log("🔧 Configuring remote database...\n");
+        console.log("Validating connection...");
+
+        const result = await service.configureRemote(options.url);
+
+        if (result.success) {
+          console.log("\n✓ " + result.message);
+          console.log(`  URL: ${DatabaseConfigService.maskPassword(options.url)}`);
+          console.log("\n⚠️  IMPORTANT: Restart Claude Code to use the new configuration.");
+        } else {
+          console.error(`\n❌ ${result.message}`);
+          process.exit(1);
+        }
+      }
+    } catch (error) {
+      console.error(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    } finally {
+      service.close();
+    }
+  });
+
+// Show database status
+databaseCmd
+  .command("status")
+  .description("Show current database configuration")
+  .action(async () => {
+    const service = new DatabaseConfigService();
+
+    try {
+      const status = await service.getStatus();
+
+      console.log("Database Configuration:");
+      console.log(`  Provider: ${status.provider}`);
+      console.log(`  Connection: ${DatabaseConfigService.maskPassword(status.connectionString)}`);
+      console.log(
+        `  Source: ${status.source === "env" ? `environment (${TRACK_DATABASE_URL_ENV})` : status.source === "config" ? "stored configuration" : "default"}`
+      );
+
+      if (status.configuredAt) {
+        console.log(`  Configured at: ${status.configuredAt}`);
+      }
+
+      if (status.source === "env") {
+        console.log(
+          `\n⚠️  Note: Environment variable ${TRACK_DATABASE_URL_ENV} overrides stored configuration.`
+        );
+      }
+    } catch (error) {
+      console.error(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    } finally {
+      service.close();
+    }
+  });
 
 program.parse(process.argv);
