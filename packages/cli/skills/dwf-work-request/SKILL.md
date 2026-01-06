@@ -125,6 +125,24 @@ Pass along any context the user provided - requirements, preferences, constraint
 - Create the issue with proper structure
 - Chain to planning automatically
 
+## User Communication
+
+**NEVER reference skill names or slash commands to users.** Users interact in natural language - they cannot invoke skills directly. Always use conversational prompts.
+
+| ❌ Wrong                                   | ✅ Right                                     |
+| ------------------------------------------ | -------------------------------------------- |
+| "Use /dwf-manage-issue to create an issue" | "I'll create an issue to track this work."   |
+| "Run the dwf-plan-issue skill"             | "Now creating the implementation plan..."    |
+| "Invoke dwf-work-task to start"            | "Would you like to start working on task 1?" |
+
+### Example Acknowledgments
+
+When acknowledging a work request, use natural language:
+
+- "I'll create an issue to track this work."
+- "Let me set up an issue for this feature."
+- "I'll import that GitHub issue so we can plan the implementation."
+
 ## Example Flow
 
 ### Creating New Work
@@ -134,12 +152,10 @@ Pass along any context the user provided - requirements, preferences, constraint
 **Your response:**
 
 ```
-I'll track this as an issue so we can plan it properly.
-
-[Invoke dwf-manage-issue skill]
+I'll create an issue to track this work.
 ```
 
-The manage-issue skill takes over from here, creating the issue and then the implementation plan.
+Then invoke `dwf-manage-issue` internally - the user doesn't need to know about the skill.
 
 ### Importing Existing GitHub Issue
 
@@ -148,9 +164,7 @@ The manage-issue skill takes over from here, creating the issue and then the imp
 **Your response:**
 
 ```
-I'll import GitHub issue #42 into dev-workflow so we can plan and track the implementation.
-
-[Invoke dwf-manage-issue skill with import context]
+I'll import GitHub issue #42 so we can plan and track the implementation.
 ```
 
-The manage-issue skill will call `import_github_issue` to fetch the GitHub issue details and create a linked dev-workflow issue, then chain to planning.
+Then invoke `dwf-manage-issue` with import context.

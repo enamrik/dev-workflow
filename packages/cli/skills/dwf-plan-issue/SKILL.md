@@ -23,6 +23,30 @@ This indicates the MCP server is connected to the wrong database. **Do NOT work 
 - Auto-chained from manage-issue after issue create/update
 - User wants to re-plan: "regenerate plan", "update the plan"
 
+## User Communication
+
+**NEVER reference skill names or slash commands to users.** Users interact in natural language - they cannot invoke skills directly. Always use conversational prompts.
+
+| ❌ Wrong                         | ✅ Right                                       |
+| -------------------------------- | ---------------------------------------------- |
+| "Run /dwf-work-task to start"    | "Would you like to start working on task 1?"   |
+| "Use the dwf-manage-issue skill" | "I'll update the issue."                       |
+| "Invoke dwf-plan-issue again"    | "I'll regenerate the plan with those changes." |
+
+### Key Transition Prompts
+
+**After generating a plan:**
+
+> "Are you satisfied with this plan? Ready to start working on it?"
+
+**After moving to backlog (user approved plan):**
+
+> "Issue #N is now open with X task(s) ready. Would you like to start working on task 1?"
+
+**When re-planning:**
+
+> "I'll update the plan with those changes."
+
 ## Core Philosophy: Tasks as Deployable Units
 
 **A task is NOT a small implementation step. A task is a COMMITABLE, DEPLOYABLE UNIT OF WORK.**
