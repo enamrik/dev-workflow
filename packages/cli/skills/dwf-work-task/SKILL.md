@@ -675,11 +675,13 @@ log_task_progress({ message: "Running pnpm test" });
 
 ### How Often to Log
 
-- **Feature tasks**: 2-4 entries typically (start approach, major milestones, completion)
-- **Bug tasks**: 3-5 entries (investigation, root cause, fix applied)
-- **Simple tasks**: 1-2 entries may be enough
+- **Feature tasks**: 2-4 entries (approach, milestones)
+- **Bug tasks**: 3-5 entries (hypotheses, root cause, fix)
+- **Simple tasks**: 0 entries - just use `finalLogEntry` in `complete_task`
 
-The goal is that if a new session reads the log, it understands what was done and where to continue.
+> **Tip:** `complete_task` requires a `finalLogEntry` parameter. For simple tasks with no intermediate milestones, skip `log_task_progress` entirely and save your summary for `finalLogEntry`. This avoids duplicate entries.
+
+The goal is session continuity - if a session ends unexpectedly, can the next one pick up?
 
 ### Bug Investigation Logging
 
