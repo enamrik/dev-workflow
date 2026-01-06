@@ -13,6 +13,8 @@ import { SqliteSnapshotRepository } from "../infrastructure/repositories/snapsho
 import { SqliteProjectRepository } from "../infrastructure/repositories/project-repository.js";
 import { SqliteMilestoneRepository } from "../infrastructure/repositories/milestone-repository.js";
 import { SqliteGlobalSettingsRepository } from "../infrastructure/repositories/global-settings-repository.js";
+import { SqliteWorkerRepository } from "../infrastructure/repositories/worker-repository.js";
+import { SqliteDispatchQueueRepository } from "../infrastructure/repositories/dispatch-queue-repository.js";
 import { VersioningService } from "../application/versioning-service.js";
 import { PlanningService } from "../application/planning-service.js";
 import { TaskManagementService } from "../application/task-management-service.js";
@@ -41,6 +43,8 @@ export function createRepositories(db: TestDatabase["db"], projectId: string = T
     projectRepository: new SqliteProjectRepository(typedDb),
     milestoneRepository: new SqliteMilestoneRepository(typedDb, projectId),
     globalSettingsRepository: new SqliteGlobalSettingsRepository(typedDb),
+    workerRepository: new SqliteWorkerRepository(typedDb),
+    dispatchQueueRepository: new SqliteDispatchQueueRepository(typedDb),
   };
 }
 

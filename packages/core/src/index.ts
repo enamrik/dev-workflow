@@ -20,6 +20,7 @@ export * from "./domain/project.js";
 export * from "./domain/errors.js";
 export * from "./domain/backup.js";
 export * from "./domain/type-definition.js";
+export * from "./domain/worker.js";
 
 // Application services
 export { PlanningService } from "./application/planning-service.js";
@@ -103,6 +104,8 @@ export {
   type GlobalSettingsRepository,
   type SettingKey,
 } from "./infrastructure/repositories/global-settings-repository.js";
+export { SqliteWorkerRepository } from "./infrastructure/repositories/worker-repository.js";
+export { SqliteDispatchQueueRepository } from "./infrastructure/repositories/dispatch-queue-repository.js";
 
 // Infrastructure - Backup
 export { S3BackupProvider } from "./infrastructure/backup/s3-backup-provider.js";

@@ -21,6 +21,7 @@ import {
   SqliteTaskRepository,
   SqliteMilestoneRepository,
   SqliteProjectRepository,
+  SqliteDispatchQueueRepository,
   TemplateService,
   type TemplateServiceConfig,
   TypeService,
@@ -120,6 +121,9 @@ import {
   // Type handlers
   typeToolDefinitions,
   handleListTypes,
+  // Dispatch handlers (worker task assignment)
+  dispatchToolDefinitions,
+  handleDispatchTask,
   // Types
   type IssueToolContext,
   type PlanToolContext,
@@ -131,6 +135,7 @@ import {
   type PRToolContext,
   type MergeToolContext,
   type TypeToolContext,
+  type DispatchToolContext,
   errorResponse,
 } from "./tools/index.js";
 
@@ -168,6 +173,7 @@ let worktreeToolContext: WorktreeToolContext;
 let prToolContext: PRToolContext;
 let mergeToolContext: MergeToolContext;
 let typeToolContext: TypeToolContext;
+let dispatchToolContext: DispatchToolContext;
 
 // Create MCP server
 const server = new Server(
@@ -195,6 +201,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     ...prToolDefinitions,
     ...mergeToolDefinitions,
     ...typeToolDefinitions,
+    ...dispatchToolDefinitions,
   ],
 }));
 
@@ -379,6 +386,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
       return await handleListTypes(typeToolContext);
     }
 
+    // Dispatch tools (worker task assignment)
+    if (name === "dispatch_task") {
+      return handleDispatchTask(dispatchToolContext, a);
+    }
+
     return errorResponse(`Unknown tool: ${name}`);
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));
@@ -416,6 +428,7 @@ async function main() {
   const planRepository = new SqlitePlanRepository(db);
   const taskRepository = new SqliteTaskRepository(db);
   const milestoneRepository = new SqliteMilestoneRepository(db, projectId);
+  const dispatchQueueRepository = new SqliteDispatchQueueRepository(db);
 
   // Initialize file system and paths
   const fileSystem = new NodeFileSystem();
@@ -596,6 +609,11 @@ async function main() {
 
   typeToolContext = {
     typeService,
+  };
+
+  dispatchToolContext = {
+    dispatchQueueRepository,
+    taskRepository,
   };
 
   // Start server with stdio transport
