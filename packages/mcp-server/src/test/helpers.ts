@@ -49,16 +49,6 @@ export function createRepositories(db: TestDatabase["db"], projectId: string = T
  * Create all services from repositories
  */
 export function createServices(repos: ReturnType<typeof createRepositories>) {
-  // Mock LabelService that returns no labels (for testing)
-  const mockLabelService = {
-    loadLabelsForTask: async () => [],
-    listAvailableLabels: async () => [],
-    getLabel: async () => null,
-    createLabel: async () => ({ name: "", content: "" }),
-    updateLabel: async () => ({ name: "", content: "" }),
-    removeLabel: async () => {},
-  };
-
   const versioningService = new VersioningService(
     repos.issueRepository,
     repos.snapshotRepository,
@@ -70,7 +60,6 @@ export function createServices(repos: ReturnType<typeof createRepositories>) {
     repos.issueRepository,
     repos.planRepository,
     repos.taskRepository,
-    mockLabelService as any,
     versioningService
   );
 

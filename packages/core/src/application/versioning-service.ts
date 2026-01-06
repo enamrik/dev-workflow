@@ -217,7 +217,6 @@ export class VersioningService {
             acceptanceCriteria: taskState.acceptanceCriteria,
             estimatedMinutes: taskState.estimatedMinutes,
             isDeleted: false,
-            labels: taskState.labels,
             dependsOn: remappedDependsOn, // Restore with remapped dependencies
             startedAt: taskState.startedAt,
             completedAt: taskState.completedAt,
@@ -326,7 +325,6 @@ export class VersioningService {
       isDeleted: task.isDeleted,
       deletedAt: task.deletedAt,
       deletedBy: task.deletedBy,
-      labels: task.labels,
       dependsOn: task.dependsOn, // Capture task dependencies
       startedAt: task.startedAt,
       completedAt: task.completedAt,

@@ -442,11 +442,7 @@ Read scripts/test-workflow.md and execute the test workflow
 
 This script tests the full issue lifecycle with verification steps using `gh api graphql` and `sqlite3` queries.
 
-## Claude Code Skills vs Task Labels
-
-This project has TWO separate systems - don't confuse them:
-
-### 1. Claude Code Skills (for Claude's behavior)
+## Claude Code Skills
 
 These guide Claude's behavior during conversations. Claude decides when to activate them.
 
@@ -460,18 +456,6 @@ These guide Claude's behavior during conversations. Claude decides when to activ
   - `dwf-work-task` - Manages task execution lifecycle
 
 **Key constraint**: Claude Code does NOT support nested skill folders. Skills must be at `.claude/skills/{skill-name}/SKILL.md`, not `.claude/skills/namespace/{skill-name}/SKILL.md`.
-
-### 2. Task Labels (for task execution context)
-
-These provide contextual text returned from MCP tools during task execution.
-
-- **Project labels**: `.track/labels/<label>.md` (per-project)
-- **Global labels**: `~/.track/labels/<label>.md` (shared across projects)
-- **Discovery**: Returned when calling `get_task_for_session` for tasks with matching labels
-- **Validation**: MCP tools validate labels exist before assignment
-- **Examples**: `api`, `db`, `security` (and any custom labels)
-
-When a task has `labels: ["db", "api"]`, the corresponding label files are loaded and provided as context when retrieving the task for execution. Project labels take precedence over global labels with the same name.
 
 ## References
 

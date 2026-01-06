@@ -66,16 +66,6 @@ function createIssueToolContext(testDb: TestDatabase): IssueToolContext {
     deleteTemplate: async () => {},
   } as unknown as TemplateService;
 
-  // Mock label service
-  const mockLabelService = {
-    loadLabelsForTask: async () => [],
-    listAvailableLabels: async () => [],
-    getLabel: async () => null,
-    createLabel: async () => ({ name: "", content: "" }),
-    updateLabel: async () => ({ name: "", content: "" }),
-    removeLabel: async () => {},
-  };
-
   // Create real services
   const snapshotRepository = repos.snapshotRepository;
   const versioningService = new VersioningService(
@@ -89,7 +79,6 @@ function createIssueToolContext(testDb: TestDatabase): IssueToolContext {
     repos.issueRepository,
     repos.planRepository,
     repos.taskRepository,
-    mockLabelService as any,
     versioningService
   );
 

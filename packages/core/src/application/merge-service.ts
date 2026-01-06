@@ -546,7 +546,6 @@ export class MergeService {
         source: task.source,
         estimatedMinutes: task.estimatedMinutes,
         isDeleted: false,
-        labels: task.labels,
         contextInstructions: task.contextInstructions,
         // Preserve GitHub sync state - the task still references the same GitHub issue
         githubSync: task.githubSync,

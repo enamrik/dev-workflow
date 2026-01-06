@@ -36,7 +36,6 @@ export {
   type ConflictDetectionResult,
   type FileModification,
 } from "./application/conflict-detection-service.js";
-export { LabelService, type Label } from "./application/label-service.js";
 export {
   TaskMatchingService,
   type TaskMatchResult,

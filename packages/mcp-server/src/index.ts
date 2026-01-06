@@ -28,7 +28,6 @@ import {
   NodeFileSystem,
   VersioningService,
   PlanningService,
-  LabelService,
   TaskSessionService,
   TaskManagementService,
   taskExecutionLogs,
@@ -82,12 +81,6 @@ import {
   handleAbandonTaskSession,
   handleGetTask,
   handleListAvailableTasks,
-  handleUpdateTaskLabels,
-  handleListAvailableTaskLabels,
-  handleGetTaskLabel,
-  handleCreateTaskLabel,
-  handleUpdateTaskLabel,
-  handleRemoveTaskLabel,
   handleDeleteTask,
   handleUpdateTask,
   handleGetTaskExecutionPrompt,
@@ -295,29 +288,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     if (name === "list_available_tasks") {
       return await handleListAvailableTasks(taskToolContext, a);
     }
-    if (name === "update_task_labels") {
-      return await handleUpdateTaskLabels(taskToolContext, a);
-    }
-    if (name === "list_available_task_labels") {
-      return await handleListAvailableTaskLabels(taskToolContext);
-    }
-    if (name === "get_task_label") {
-      return await handleGetTaskLabel(taskToolContext, a);
-    }
-    if (name === "create_task_label") {
-      return await handleCreateTaskLabel(taskToolContext, a);
-    }
-    if (name === "update_task_label") {
-      return await handleUpdateTaskLabel(taskToolContext, a);
-    }
-    if (name === "remove_task_label") {
-      return await handleRemoveTaskLabel(taskToolContext, a);
-    }
     if (name === "delete_task") {
       return handleDeleteTask(taskToolContext, a);
     }
     if (name === "update_task") {
-      return await handleUpdateTask(taskToolContext, a);
+      return handleUpdateTask(taskToolContext, a);
     }
     if (name === "get_task_execution_prompt") {
       return handleGetTaskExecutionPrompt(taskToolContext, a);
@@ -464,11 +439,6 @@ async function main() {
     globalTypesPath: path.join(globalTrackDir, "config", "types.md"),
   };
 
-  // Initialize label service with local ./.track/ path
-  // LabelService appends "labels" to make ./.track/labels/
-  const localTrackPath = path.join(projectRoot, ".track");
-  const labelService = new LabelService(localTrackPath);
-
   // Initialize type service for intelligent type assignment
   const typeService = new TypeService(fileSystem, typeConfig);
   const templateService = new TemplateService(fileSystem, templateConfig, typeService);
@@ -514,7 +484,6 @@ async function main() {
     issueRepository,
     planRepository,
     taskRepository,
-    labelService,
     versioningService
   );
 
@@ -572,7 +541,6 @@ async function main() {
     taskRepository,
     taskSessionService,
     taskManagementService,
-    labelService,
     taskExecutionLogsSchema: taskExecutionLogs,
     conflictDetectionService,
     taskGitHubSyncService,
