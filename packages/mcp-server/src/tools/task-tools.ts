@@ -11,8 +11,6 @@ import {
   type SqliteTaskRepository,
   type TaskSessionService,
   type TaskManagementService,
-  type LabelService,
-  type Label,
   type TaskExecutionLogRow,
   type ConflictDetectionService,
   type ConflictWarning,
@@ -28,7 +26,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
     name: "load_task_session",
     description:
       "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Load a task for execution. " +
-      "Returns full context (task, issue, plan, labels) and starts/resumes the session. " +
+      "Returns full context (task, issue, plan) and starts/resumes the session. " +
       "Idempotent: if task is already IN_PROGRESS, returns context without restarting. " +
       "ALWAYS use 'isolated' mode (default) unless user explicitly requests otherwise.",
     inputSchema: {
@@ -125,100 +123,6 @@ export const taskToolDefinitions: ToolDefinition[] = [
     },
   },
   {
-    name: "update_task_labels",
-    description: "Update labels for a task. Labels map to files in .track/labels/{label}.md.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        taskId: {
-          type: "string",
-          description: "Task UUID",
-        },
-        labels: {
-          type: "array",
-          items: { type: "string" },
-          description: 'Array of labels (e.g., ["db", "api", "security"])',
-        },
-      },
-      required: ["taskId", "labels"],
-    },
-  },
-  {
-    name: "list_available_task_labels",
-    description:
-      "List all available task labels. Labels are defined in .track/labels/{name}.md files.",
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
-  },
-  {
-    name: "get_task_label",
-    description: "Get a task label's content by name. Returns the label's markdown content.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: {
-          type: "string",
-          description: "Label name (without .md extension)",
-        },
-      },
-      required: ["name"],
-    },
-  },
-  {
-    name: "create_task_label",
-    description:
-      "Create a new task label. Labels are markdown files in .track/labels/ that provide contextual guidance for tasks.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: {
-          type: "string",
-          description:
-            "Label name (without .md extension). Use only letters, numbers, hyphens, and underscores.",
-        },
-        content: {
-          type: "string",
-          description: "Label content in markdown format",
-        },
-      },
-      required: ["name", "content"],
-    },
-  },
-  {
-    name: "update_task_label",
-    description: "Update an existing task label's content.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: {
-          type: "string",
-          description: "Label name (without .md extension)",
-        },
-        content: {
-          type: "string",
-          description: "New label content in markdown format",
-        },
-      },
-      required: ["name", "content"],
-    },
-  },
-  {
-    name: "remove_task_label",
-    description: "Remove a task label. This deletes the label file from .track/labels/.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: {
-          type: "string",
-          description: "Label name (without .md extension)",
-        },
-      },
-      required: ["name"],
-    },
-  },
-  {
     name: "delete_task",
     description: "Delete a task (soft delete). Only BACKLOG or READY tasks can be deleted.",
     inputSchema: {
@@ -263,11 +167,6 @@ export const taskToolDefinitions: ToolDefinition[] = [
         estimatedMinutes: {
           type: "number",
           description: "Estimated time in minutes",
-        },
-        labels: {
-          type: "array",
-          items: { type: "string" },
-          description: "Labels",
         },
       },
       required: ["taskId"],
@@ -358,7 +257,6 @@ export interface TaskToolContext {
   taskRepository: SqliteTaskRepository;
   taskSessionService: TaskSessionService;
   taskManagementService: TaskManagementService;
-  labelService: LabelService;
   taskExecutionLogsSchema: typeof taskExecutionLogs;
   conflictDetectionService?: ConflictDetectionService;
   /** Optional - for syncing task status changes to GitHub */
@@ -460,7 +358,6 @@ export async function handleLoadTaskSession(
   const task = response.task as {
     planId: string;
     dependsOn?: string[];
-    labels?: string[];
     contextInstructions?: string;
   };
 
@@ -495,20 +392,9 @@ export async function handleLoadTaskSession(
     }));
   }
 
-  // Load label content
-  if (task.labels?.length) {
-    const loadedLabels = await ctx.labelService.loadLabelsForTask(task.labels);
-    if (loadedLabels.length > 0) {
-      response.loadedLabels = loadedLabels;
-    }
-  }
-
   // Format task requirements prominently
-  if (task.contextInstructions || response.loadedLabels) {
-    response.taskRequirements = formatTaskRequirements(
-      task.contextInstructions,
-      response.loadedLabels as Label[] | undefined
-    );
+  if (task.contextInstructions) {
+    response.taskRequirements = formatTaskRequirements(task.contextInstructions);
   }
 
   return successResponse(response);
@@ -616,7 +502,6 @@ export function handleGetTask(
     source: task.source,
     acceptanceCriteria: task.acceptanceCriteria,
     estimatedMinutes: task.estimatedMinutes,
-    labels: task.labels,
     dependsOn: task.dependsOn,
     startedAt: task.startedAt,
     completedAt: task.completedAt,
@@ -628,24 +513,8 @@ export function handleGetTask(
 /**
  * Format task requirements for Claude consumption
  */
-function formatTaskRequirements(
-  contextInstructions: string | undefined,
-  labels: Label[] | undefined
-): string {
-  const parts: string[] = [];
-
-  if (contextInstructions) {
-    parts.push("## Task-Specific Instructions\n" + contextInstructions);
-  }
-
-  if (labels?.length) {
-    parts.push("## Required Practices\n");
-    for (const label of labels) {
-      parts.push(`### ${label.name}\n${label.content}\n`);
-    }
-  }
-
-  return parts.join("\n\n");
+function formatTaskRequirements(contextInstructions: string): string {
+  return "## Task-Specific Instructions\n" + contextInstructions;
 }
 
 /**
@@ -699,122 +568,6 @@ export async function handleListAvailableTasks(
 }
 
 /**
- * Handle update_task_labels tool call
- */
-export async function handleUpdateTaskLabels(
-  ctx: TaskToolContext,
-  args: { taskId: string; labels: string[] }
-): Promise<ToolResponse> {
-  const { taskId, labels } = args;
-
-  // Validate labels exist
-  if (labels.length > 0) {
-    const available = await ctx.labelService.listAvailableLabels();
-    const availableSet = new Set(available);
-    const invalidLabels = labels.filter((l) => !availableSet.has(l));
-
-    if (invalidLabels.length > 0) {
-      return errorResponse(
-        `Invalid labels: [${invalidLabels.join(", ")}]. ` + `Available: [${available.join(", ")}]`
-      );
-    }
-  }
-
-  const task = ctx.taskRepository.updateLabels(taskId, labels);
-
-  return successResponse({
-    success: true,
-    task,
-  });
-}
-
-/**
- * Handle list_available_task_labels tool call
- */
-export async function handleListAvailableTaskLabels(ctx: TaskToolContext): Promise<ToolResponse> {
-  const labels = await ctx.labelService.listAvailableLabels();
-
-  return successResponse({
-    success: true,
-    labels,
-    description: "Available labels that can be assigned to tasks",
-  });
-}
-
-/**
- * Handle get_task_label tool call
- */
-export async function handleGetTaskLabel(
-  ctx: TaskToolContext,
-  args: { name: string }
-): Promise<ToolResponse> {
-  const { name } = args;
-
-  const label = await ctx.labelService.getLabel(name);
-  if (!label) {
-    return errorResponse(`Label not found: ${name}`);
-  }
-
-  return successResponse({
-    success: true,
-    label,
-  });
-}
-
-/**
- * Handle create_task_label tool call
- */
-export async function handleCreateTaskLabel(
-  ctx: TaskToolContext,
-  args: { name: string; content: string }
-): Promise<ToolResponse> {
-  const { name, content } = args;
-
-  const label = await ctx.labelService.createLabel(name, content);
-
-  return successResponse({
-    success: true,
-    label,
-    message: `Created label "${name}" at .track/labels/${name}.md`,
-  });
-}
-
-/**
- * Handle update_task_label tool call
- */
-export async function handleUpdateTaskLabel(
-  ctx: TaskToolContext,
-  args: { name: string; content: string }
-): Promise<ToolResponse> {
-  const { name, content } = args;
-
-  const label = await ctx.labelService.updateLabel(name, content);
-
-  return successResponse({
-    success: true,
-    label,
-    message: `Updated label "${name}"`,
-  });
-}
-
-/**
- * Handle remove_task_label tool call
- */
-export async function handleRemoveTaskLabel(
-  ctx: TaskToolContext,
-  args: { name: string }
-): Promise<ToolResponse> {
-  const { name } = args;
-
-  await ctx.labelService.removeLabel(name);
-
-  return successResponse({
-    success: true,
-    message: `Removed label "${name}"`,
-  });
-}
-
-/**
  * Handle delete_task tool call
  */
 export function handleDeleteTask(ctx: TaskToolContext, args: { taskId: string }): ToolResponse {
@@ -831,7 +584,7 @@ export function handleDeleteTask(ctx: TaskToolContext, args: { taskId: string })
 /**
  * Handle update_task tool call
  */
-export async function handleUpdateTask(
+export function handleUpdateTask(
   ctx: TaskToolContext,
   args: {
     taskId: string;
@@ -840,35 +593,14 @@ export async function handleUpdateTask(
     acceptanceCriteria?: string[];
     contextInstructions?: string;
     estimatedMinutes?: number;
-    labels?: string[];
   }
-): Promise<ToolResponse> {
-  const {
-    taskId,
-    title,
-    description,
-    acceptanceCriteria,
-    contextInstructions,
-    estimatedMinutes,
-    labels,
-  } = args;
+): ToolResponse {
+  const { taskId, title, description, acceptanceCriteria, contextInstructions, estimatedMinutes } =
+    args;
 
   const task = ctx.taskRepository.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
-  }
-
-  // Validate labels if provided
-  if (labels !== undefined && labels.length > 0) {
-    const available = await ctx.labelService.listAvailableLabels();
-    const availableSet = new Set(available);
-    const invalidLabels = labels.filter((l) => !availableSet.has(l));
-
-    if (invalidLabels.length > 0) {
-      return errorResponse(
-        `Invalid labels: [${invalidLabels.join(", ")}]. ` + `Available: [${available.join(", ")}]`
-      );
-    }
   }
 
   // Build update object with only provided fields
@@ -878,7 +610,6 @@ export async function handleUpdateTask(
   if (acceptanceCriteria !== undefined) updates.acceptanceCriteria = acceptanceCriteria;
   if (contextInstructions !== undefined) updates.contextInstructions = contextInstructions;
   if (estimatedMinutes !== undefined) updates.estimatedMinutes = estimatedMinutes;
-  if (labels !== undefined) updates.labels = labels;
 
   const updatedTask = ctx.taskRepository.update(taskId, updates);
 

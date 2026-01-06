@@ -47,16 +47,6 @@ function createPlanToolContext(testDb: TestDatabase): PlanToolContext {
   // Use project's actual ID for repositories
   const repos = createRepositories(testDb.db, project.id);
 
-  // Mock label service
-  const mockLabelService = {
-    loadLabelsForTask: async () => [],
-    listAvailableLabels: async () => [],
-    getLabel: async () => null,
-    createLabel: async () => ({ name: "", content: "" }),
-    updateLabel: async () => ({ name: "", content: "" }),
-    removeLabel: async () => {},
-  };
-
   const versioningService = new VersioningService(
     repos.issueRepository,
     repos.snapshotRepository,
@@ -68,7 +58,6 @@ function createPlanToolContext(testDb: TestDatabase): PlanToolContext {
     repos.issueRepository,
     repos.planRepository,
     repos.taskRepository,
-    mockLabelService as any,
     versioningService
   );
 

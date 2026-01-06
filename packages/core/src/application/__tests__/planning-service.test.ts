@@ -14,7 +14,6 @@ import {
 import { createTestDatabase } from "../../__tests__/setup.js";
 import { PlanningService } from "../planning-service.js";
 import { VersioningService } from "../versioning-service.js";
-import { LabelService } from "../label-service.js";
 
 describe("PlanningService", () => {
   let testDb: ReturnType<typeof createTestDatabase>;
@@ -24,12 +23,6 @@ describe("PlanningService", () => {
   beforeEach(() => {
     testDb = createTestDatabase();
     repos = createRepositories(testDb.db);
-
-    // Create mock label service
-    const labelService = {
-      listAvailableLabels: async () => [],
-      getLabelContent: async () => null,
-    } as unknown as LabelService;
 
     // Create versioning service
     const versioningService = new VersioningService(
@@ -43,7 +36,6 @@ describe("PlanningService", () => {
       repos.issueRepository,
       repos.planRepository,
       repos.taskRepository,
-      labelService,
       versioningService
     );
   });

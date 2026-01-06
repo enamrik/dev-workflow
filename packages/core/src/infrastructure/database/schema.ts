@@ -202,11 +202,6 @@ export const tasks = sqliteTable("tasks", {
   sessionStartedAt: text("session_started_at"),
   lastSessionActivityAt: text("last_session_activity_at"),
 
-  // Task labels (references .track/labels/<label>.md files)
-  labels: text("labels", { mode: "json" })
-    .$type<string[]>()
-    .default(sql`'[]'`),
-
   // Execution context
   contextInstructions: text("context_instructions"),
 

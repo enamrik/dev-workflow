@@ -98,9 +98,6 @@ export interface Task {
   readonly sessionStartedAt?: string; // When current session began
   readonly lastSessionActivityAt?: string; // Last activity in session (for timeout detection)
 
-  // Labels (references .track/labels/<label>.md files)
-  readonly labels?: string[]; // Array of labels, each references .track/labels/<label>.md
-
   // Execution context
   readonly contextInstructions?: string; // Custom instructions for task execution (e.g., "use existing auth pattern in src/auth")
 
@@ -356,17 +353,6 @@ export interface TaskRepository {
    * @returns The updated task
    */
   clearPRInfo(taskId: string): Task;
-
-  /**
-   * Update labels for a task
-   *
-   * Allows UI to dynamically change which labels are associated with a task.
-   *
-   * @param taskId - Task UUID
-   * @param labels - Array of labels (e.g., ["db", "api", "security"])
-   * @returns The updated task
-   */
-  updateLabels(taskId: string, labels: string[]): Task;
 
   /**
    * Update a task's properties

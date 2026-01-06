@@ -64,7 +64,6 @@ export class SqliteTaskRepository implements TaskRepository {
         deletedBy: task.deletedBy,
         matchedFromTaskId: task.matchedFromTaskId,
         matchConfidence: task.matchConfidence,
-        labels: task.labels,
         contextInstructions: task.contextInstructions,
         dependsOn: task.dependsOn ?? [],
         worktreePath: task.worktreePath,
@@ -125,7 +124,6 @@ export class SqliteTaskRepository implements TaskRepository {
           deletedBy: task.deletedBy,
           matchedFromTaskId: task.matchedFromTaskId,
           matchConfidence: task.matchConfidence,
-          labels: task.labels,
           contextInstructions: task.contextInstructions,
           dependsOn: task.dependsOn ?? [],
           worktreePath: task.worktreePath,
@@ -472,26 +470,6 @@ export class SqliteTaskRepository implements TaskRepository {
     return updatedTask;
   }
 
-  updateLabels(taskId: string, labels: string[]): Task {
-    const now = new Date().toISOString();
-
-    this.db
-      .update(tasks)
-      .set({
-        labels: labels,
-        updatedAt: now,
-      })
-      .where(eq(tasks.id, taskId))
-      .run();
-
-    const updatedTask = this.findById(taskId);
-    if (!updatedTask) {
-      throw new Error(`Failed to update task labels: ${taskId}`);
-    }
-
-    return updatedTask;
-  }
-
   update(
     id: string,
     data: Partial<Omit<Task, "id" | "planId" | "order" | "createdAt" | "isDeleted">>
@@ -775,7 +753,6 @@ export class SqliteTaskRepository implements TaskRepository {
       sessionId: row.sessionId ?? undefined,
       sessionStartedAt: row.sessionStartedAt ?? undefined,
       lastSessionActivityAt: row.lastSessionActivityAt ?? undefined,
-      labels: row.labels ?? undefined,
       contextInstructions: row.contextInstructions ?? undefined,
       dependsOn: row.dependsOn ?? undefined,
       worktreePath: row.worktreePath ?? undefined,
