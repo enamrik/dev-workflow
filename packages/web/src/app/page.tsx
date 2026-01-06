@@ -1,9 +1,9 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useState, useCallback } from "react";
 import { useTasks, useUrlState } from "@/hooks";
 import { useProjectContext } from "@/contexts";
-import { KanbanBoard, WorkQueueRibbon } from "@/components/kanban";
+import { KanbanBoard, WorkQueueRibbon, IssuePreviewPanel } from "@/components/kanban";
 import {
   Card,
   CardTitle,
@@ -12,6 +12,11 @@ import {
   Dropdown,
   DropdownToggle,
 } from "@/components/ui";
+
+interface PreviewTarget {
+  projectSlug: string;
+  issueNumber: number;
+}
 
 export default function BoardPage() {
   return (
@@ -30,9 +35,18 @@ export default function BoardPage() {
 function BoardPageContent() {
   const { projectId, isLoading: projectsLoading } = useProjectContext();
   const { state, setProperty } = useUrlState();
+  const [previewTarget, setPreviewTarget] = useState<PreviewTarget | null>(null);
 
   const showBacklog = state.showBacklog ?? false;
   const showWorkQueue = state.showWorkQueue ?? false;
+
+  const handleIssueClick = useCallback((target: PreviewTarget) => {
+    setPreviewTarget(target);
+  }, []);
+
+  const handleClosePreview = useCallback(() => {
+    setPreviewTarget(null);
+  }, []);
 
   const {
     data: tasksResponse,
@@ -135,7 +149,18 @@ function BoardPageContent() {
         />
       </div>
 
-      {showWorkQueue && <WorkQueueRibbon issuesWithTasks={issuesWithTasks} />}
+      {showWorkQueue && (
+        <WorkQueueRibbon issuesWithTasks={issuesWithTasks} onIssueClick={handleIssueClick} />
+      )}
+
+      {/* Issue Preview Panel */}
+      {previewTarget && (
+        <IssuePreviewPanel
+          projectSlug={previewTarget.projectSlug}
+          issueNumber={previewTarget.issueNumber}
+          onClose={handleClosePreview}
+        />
+      )}
     </Card>
   );
 }
