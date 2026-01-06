@@ -172,6 +172,23 @@ export interface GitHubCLI {
   linkSubIssue(parentIssueNumber: number, childIssueId: number): Promise<void>;
 
   /**
+   * Search for issues by query string
+   *
+   * Uses `gh issue list --search` to find issues matching a query.
+   * Useful for finding existing GitHub issues that may need to be linked.
+   *
+   * @param query - Search query (matches title and body)
+   * @param state - Filter by state: "open", "closed", or "all" (default: "all")
+   * @param limit - Maximum number of results (default: 10)
+   * @returns Array of matching issues
+   */
+  searchIssues(
+    query: string,
+    state?: "open" | "closed" | "all",
+    limit?: number
+  ): Promise<GitHubIssueData[]>;
+
+  /**
    * Run arbitrary gh CLI command
    */
   run(args: string[]): Promise<GitHubCLIResult>;
@@ -604,6 +621,37 @@ export class NodeGitHubCLI implements GitHubCLI {
         result.stderr
       );
     }
+  }
+
+  async searchIssues(
+    query: string,
+    state: "open" | "closed" | "all" = "all",
+    limit = 10
+  ): Promise<GitHubIssueData[]> {
+    const args = [
+      "issue",
+      "list",
+      "--search",
+      query,
+      "--state",
+      state,
+      "--json",
+      "number,url,id,title,body,state,labels",
+      "--limit",
+      String(limit),
+    ];
+
+    const result = await this.run(args);
+    if (!result.success) {
+      throw new GitHubCLIError(
+        `Failed to search issues: ${result.stderr}`,
+        result.exitCode,
+        result.stderr
+      );
+    }
+
+    const issues = JSON.parse(result.stdout) as Array<Record<string, unknown>>;
+    return issues.map((data) => this.mapIssueData(data));
   }
 
   async run(args: string[]): Promise<GitHubCLIResult> {

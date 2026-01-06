@@ -50,6 +50,9 @@ export interface MockGitHubCLIConfig {
     fieldId: string;
     options: Array<{ id: string; name: string }>;
   };
+
+  /** Search results to return from searchIssues */
+  searchResults?: GitHubIssueData[];
 }
 
 /**
@@ -91,6 +94,7 @@ export class MockGitHubCLI implements GitHubCLI {
           { id: "opt_done", name: "Done" },
         ],
       },
+      searchResults: config.searchResults ?? [],
     };
   }
 
@@ -248,6 +252,25 @@ export class MockGitHubCLI implements GitHubCLI {
     this.checkError("getIssue");
 
     return this.issues.get(issueNumber) ?? null;
+  }
+
+  async searchIssues(
+    query: string,
+    state: "open" | "closed" | "all" = "all",
+    limit = 10
+  ): Promise<GitHubIssueData[]> {
+    this.recordCall("searchIssues", [query, state, limit]);
+    this.checkError("searchIssues");
+
+    // Return configured search results, filtered by state if specified
+    let results = [...this.config.searchResults];
+
+    if (state !== "all") {
+      const stateUpper = state.toUpperCase();
+      results = results.filter((issue) => issue.state === stateUpper);
+    }
+
+    return results.slice(0, limit);
   }
 
   async listLabels(): Promise<string[]> {

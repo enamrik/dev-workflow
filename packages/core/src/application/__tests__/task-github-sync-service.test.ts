@@ -629,4 +629,410 @@ describe("TaskGitHubSyncService", () => {
       expect(linkSubIssueCalls).toHaveLength(0);
     });
   });
+
+  describe("syncIssue", () => {
+    it("should verify already-synced tasks when GitHub issue exists", async () => {
+      // Arrange - create issue with synced task
+      const issue = repos.issueRepository.create({
+        title: "Test Issue",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+        createdBy: "test",
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      const task = repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Already Synced Task",
+        description: "This task is already synced",
+        status: "BACKLOG",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // Set up existing GitHub sync
+      repos.taskRepository.updateGitHubSync(task.id, {
+        githubIssueNumber: 50,
+        githubUrl: "https://github.com/test/repo/issues/50",
+        githubNodeId: "I_test_50",
+        syncStatus: "SYNCED",
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: null,
+        projectItemId: "PVTI_test_50",
+      });
+
+      // Set up mock to return the existing issue
+      mockGitHubCLI.setIssues([
+        {
+          number: 50,
+          url: "https://github.com/test/repo/issues/50",
+          nodeId: "I_test_50",
+          title: "Already Synced Task",
+          body: "Body",
+          state: "OPEN",
+          labels: [],
+        },
+      ]);
+
+      // Act
+      const result = await service.syncIssue(issue.number);
+
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.verified).toHaveLength(1);
+      expect(result.verified[0].taskNumber).toBe(task.number);
+      expect(result.verified[0].githubIssueNumber).toBe(50);
+      expect(result.created).toHaveLength(0);
+      expect(result.linked).toHaveLength(0);
+    });
+
+    it("should create missing GitHub issues for unsynced tasks", async () => {
+      // Arrange - create issue with unsynced task
+      const issue = repos.issueRepository.create({
+        title: "Test Issue",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+        createdBy: "test",
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Unsynced Task",
+        description: "This task has no GitHub issue",
+        status: "BACKLOG",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // No GitHub issues set up in mock (empty search results)
+
+      // Act
+      const result = await service.syncIssue(issue.number);
+
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.created).toHaveLength(1);
+      expect(result.verified).toHaveLength(0);
+      expect(result.linked).toHaveLength(0);
+
+      // Verify createIssue was called
+      const createCalls = mockGitHubCLI.getCallsTo("createIssue");
+      expect(createCalls).toHaveLength(1);
+    });
+
+    it("should link existing GitHub issues found by title search", async () => {
+      // Arrange - create issue with unsynced task
+      const issue = repos.issueRepository.create({
+        title: "Test Issue",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+        createdBy: "test",
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Task to Link",
+        description: "This task should find an existing GitHub issue",
+        status: "BACKLOG",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // Set up mock to return matching search results
+      mockGitHubCLI.setConfig({
+        searchResults: [
+          {
+            number: 60,
+            url: "https://github.com/test/repo/issues/60",
+            nodeId: "I_test_60",
+            title: "Task to Link",
+            body: `Some content\n\n---\nTask ${issue.number}.1: Task to Link`,
+            state: "OPEN",
+            labels: [],
+          },
+        ],
+      });
+
+      // Act
+      const result = await service.syncIssue(issue.number);
+
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.linked).toHaveLength(1);
+      expect(result.linked[0].githubIssueNumber).toBe(60);
+      expect(result.created).toHaveLength(0);
+      expect(result.verified).toHaveLength(0);
+
+      // Verify createIssue was NOT called (we linked instead)
+      const createCalls = mockGitHubCLI.getCallsTo("createIssue");
+      expect(createCalls).toHaveLength(0);
+    });
+
+    it("should be idempotent - running twice produces same result", async () => {
+      // Arrange - create issue with unsynced task
+      const issue = repos.issueRepository.create({
+        title: "Idempotent Test Issue",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+        createdBy: "test",
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Idempotent Task",
+        description: "This task should only create one GitHub issue",
+        status: "BACKLOG",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // Act - first sync
+      const result1 = await service.syncIssue(issue.number);
+
+      // Reset mock call counts but keep the issues
+      mockGitHubCLI.clearCalls();
+
+      // Act - second sync
+      const result2 = await service.syncIssue(issue.number);
+
+      // Assert
+      expect(result1.success).toBe(true);
+      expect(result1.created).toHaveLength(1);
+
+      expect(result2.success).toBe(true);
+      expect(result2.verified).toHaveLength(1); // Now verified, not created
+      expect(result2.created).toHaveLength(0);
+
+      // Verify createIssue was NOT called on second run
+      const createCalls = mockGitHubCLI.getCallsTo("createIssue");
+      expect(createCalls).toHaveLength(0);
+    });
+
+    it("should skip PLANNED, COMPLETED, and ABANDONED tasks", async () => {
+      // Arrange - create issue with tasks in various states
+      const issue = repos.issueRepository.create({
+        title: "Multi-Status Issue",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+        createdBy: "test",
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      // BACKLOG - should be synced
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Backlog Task",
+        description: "Should be synced",
+        status: "BACKLOG",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // PLANNED - should be skipped
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Planned Task",
+        description: "Should be skipped",
+        status: "PLANNED",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // COMPLETED - should be skipped
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Completed Task",
+        description: "Should be skipped",
+        status: "COMPLETED",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // ABANDONED - should be skipped
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Abandoned Task",
+        description: "Should be skipped",
+        status: "ABANDONED",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // Act
+      const result = await service.syncIssue(issue.number);
+
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.tasksProcessed).toBe(1); // Only BACKLOG task
+      expect(result.created).toHaveLength(1);
+
+      // Verify only one GitHub issue was created
+      const createCalls = mockGitHubCLI.getCallsTo("createIssue");
+      expect(createCalls).toHaveLength(1);
+    });
+
+    it("should return error when GitHub sync is disabled", async () => {
+      // Arrange - disable GitHub sync
+      repos.projectRepository.update(testProjectId, {
+        githubSync: {
+          enabled: false,
+        },
+      });
+
+      const issue = repos.issueRepository.create({
+        title: "Test Issue",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+        createdBy: "test",
+      });
+
+      // Act
+      const result = await service.syncIssue(issue.number);
+
+      // Assert
+      expect(result.success).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].error).toContain("not enabled");
+    });
+
+    it("should return error when issue not found", async () => {
+      // Act
+      const result = await service.syncIssue(9999);
+
+      // Assert
+      expect(result.success).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].error).toContain("not found");
+    });
+
+    it("should handle imported issues correctly for single task", async () => {
+      // Arrange - create imported issue with 1 task
+      const issue = repos.issueRepository.create({
+        title: "Imported Issue",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+        createdBy: "test",
+        sourceGitHubIssueNumber: 70, // Imported from GitHub
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Single Task",
+        description: "Only one task",
+        status: "BACKLOG",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // Set up parent issue in mock
+      mockGitHubCLI.setIssues([
+        {
+          number: 70,
+          url: "https://github.com/test/repo/issues/70",
+          nodeId: "I_parent_70",
+          title: "Parent Issue",
+          body: "Parent body",
+          state: "OPEN",
+          labels: [],
+        },
+      ]);
+
+      // Act
+      const result = await service.syncIssue(issue.number);
+
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.created).toHaveLength(1);
+      expect(result.created[0].githubIssueNumber).toBe(70); // Linked to parent
+
+      // Verify NO new issue was created
+      const createCalls = mockGitHubCLI.getCallsTo("createIssue");
+      expect(createCalls).toHaveLength(0);
+    });
+  });
 });
