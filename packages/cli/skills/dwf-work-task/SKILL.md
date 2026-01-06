@@ -269,21 +269,11 @@ When user confirms they want to submit for review:
 
 ### Pushing Additional Changes to a PR
 
-When the user needs to push more changes to an existing PR (e.g., addressing review feedback):
+When user needs to push more changes (e.g., review feedback):
 
-1. **Make the requested changes**
-2. **Rebase on latest main before pushing:**
-   - Run: `git fetch origin main && git rebase origin/main`
-   - If conflicts occur:
-     - Attempt to resolve them automatically based on context
-     - Use `git add <resolved-files>` and `git rebase --continue`
-     - If a conflict is ambiguous or risky, ask the user for guidance
-   - **Re-run full validation** after rebase (check CLAUDE.md, package.json scripts, or Makefile for commands)
-   - If validation fails, fix the issues before pushing
-   - **Why:** Keeps the PR up-to-date, prevents merge conflicts, ensures CI passes
-3. **Commit and push:**
-   - Stage and commit the changes
-   - Push to the PR branch: `git push` (or `git push --force-with-lease` after rebase)
+1. Make the requested changes
+2. Rebase on main and re-run validation (same as PR creation step 4)
+3. Commit and push: `git push` (or `git push --force-with-lease` after rebase)
 
 ### To Complete a Task
 
@@ -356,27 +346,7 @@ temporarily put on hold. This is useful when switching focus to another issue.
 **Note:** IN_PROGRESS, PR_REVIEW, COMPLETED, and ABANDONED tasks are not affected
 by pause. Only READY tasks are moved.
 
-## Execution Mode Details
-
-### Isolated Mode (Default)
-
-When starting with `mode: "isolated"`:
-
-- A new git branch is created: `issue-{N}/task-{N}-{slug}`
-- A worktree directory is created in the global track directory
-- Work happens in the isolated worktree, not the main repo
-- On submit: branch is pushed, PR created
-- On completion: worktree removed, branch deleted (after merge)
-- On abandonment: worktree AND branch deleted
-
-**Best for:**
-
-- Feature development that needs review
-- Working on multiple tasks in parallel
-- Changes that might conflict with other work
-- Team workflows requiring code review
-
-**CRITICAL: Always use the worktree path for ALL operations**
+## CRITICAL: Worktree Path (Isolated Mode)
 
 When a task is started in isolated mode, `load_task_session` returns a `worktreePath`. You MUST use this path for ALL file operations during the task:
 
@@ -386,46 +356,10 @@ When a task is started in isolated mode, `load_task_session` returns a `worktree
 
 **NEVER** fall back to the main repo path. The main repo may be on a different branch or have different content. All changes for the PR must be made in the worktree.
 
-Common mistake to avoid:
-
 ```
 ❌ Read("/Users/user/code/project/Makefile")           # Main repo - WRONG
 ✅ Read("/Users/user/.track/project/worktrees/issue-1-task-1/Makefile")  # Worktree - CORRECT
 ```
-
-### Branch Mode
-
-**Only use when the user explicitly requests it** (e.g., "branch mode", "no worktree").
-
-When starting with `mode: "branch"`:
-
-- A new git branch is created: `issue-{N}/task-{N}-{slug}`
-- Branch is checked out in the main repository
-- No worktree created
-- On submit: branch is pushed, PR created
-- On completion: branch deleted (after merge), checkout main
-- On abandonment: branch deleted, checkout main
-
-**Only use when user explicitly requests it for:**
-
-- Sequential work (one task at a time)
-- When user says they don't want a worktree
-
-### Main Mode
-
-**WARNING: Only use when the user explicitly requests it.** Never autonomously choose this mode.
-
-When starting with `mode: "main"`:
-
-- No branch created, work directly on main
-- No PR workflow
-- On completion: changes committed directly to main
-- On abandonment: uncommitted changes may be lost
-
-**Only use when user explicitly requests it for:**
-
-- Emergency hotfixes where user explicitly skips review
-- Cases where user says "on main", "main mode", "skip PR", "no branch"
 
 ## Example Interactions
 
@@ -433,271 +367,70 @@ When starting with `mode: "main"`:
 
 **User:** "Start working on the first task"
 
-**Response:**
-
 ```
 Starting task session in isolated mode...
 
 Task: Add OAuth2 authentication with Google provider
-
-Created isolated environment:
-- Branch: issue-5/task-1-add-oauth
-- Worktree: ~/.track/project-abc/worktrees/issue-5-task-1
-
-Description:
-Implement Google OAuth2 authentication flow including callback handling,
-token management, and error handling. Includes unit and integration tests.
+Branch: issue-5/task-1-add-oauth
+Worktree: ~/.track/project-abc/worktrees/issue-5-task-1
 
 Acceptance Criteria:
-- [ ] OAuth callback processes Google auth response correctly
-- [ ] Access tokens are securely stored
-- [ ] Refresh tokens trigger automatic renewal
-- [ ] Auth failures return appropriate error responses
+- [ ] OAuth callback processes Google auth correctly
+- [ ] Access tokens securely stored
 - [ ] Unit tests achieve 80%+ coverage
-- [ ] Integration test covers sign-in flow
 
-Task is now IN_PROGRESS.
-
-Ready to begin implementation. Where would you like to start?
+Task is now IN_PROGRESS. Ready to begin?
 ```
 
-### Starting in Branch Mode
+### Starting in Branch/Main Mode
 
-**User:** "Start task 2 in branch mode"
-
-**Response:**
-
+**Branch mode** (user says "branch mode", "no worktree"):
 ```
-Starting task session in branch mode...
-
-Task: Add session management and user profile
-
-Created branch: issue-5/task-2-add-session-management
-(checked out in main repository)
-
-Acceptance Criteria:
-- [ ] Session persists across page refreshes
-- [ ] User profile displays name and email
-- [ ] Logout clears session properly
-
-Task is now IN_PROGRESS.
-
-Ready to begin implementation. Where would you like to start?
+Task: Add session management
+Branch: issue-5/task-2-add-session (checked out in main repo)
 ```
 
-### Starting in Main Mode
-
-**User:** "Start the config update task on main"
-
-**Response:**
-
+**Main mode** (user says "on main", "skip PR"):
 ```
-Starting task session in main mode...
-
 Task: Update logging configuration
-
-Working directly on main branch. No PR will be created - changes
-will be committed directly when you complete the task.
-
-Acceptance Criteria:
-- [ ] Log level configurable via environment variable
-- [ ] Log format matches production standards
-
-Task is now IN_PROGRESS.
-
-Ready to make the changes?
+Working directly on main. No PR will be created.
 ```
 
-### Creating a PR and Submitting for Review
+### Creating PR → Submit for Review
 
-**User:** "I've finished the implementation, create a PR"
-
-**Response:**
+**User:** "Create a PR"
 
 ```
-Here's a summary of what was completed:
+Summary: Added OAuth flow, callback handler, token storage, tests (92% coverage)
 
-**Task:** Add OAuth2 authentication with Google provider
+Acceptance Criteria: ✓ All met
 
-**Changes made:**
-- Created `src/auth/google-oauth.ts` with OAuth flow
-- Added callback handler in `src/routes/auth.ts`
-- Implemented token storage in `src/services/token-store.ts`
-- Added unit tests (92% coverage)
-- Added integration test for sign-in flow
+Validation: pnpm typecheck PASSED, pnpm test PASSED
+Rebased on main: No conflicts
 
-**Acceptance Criteria:**
-- [x] OAuth callback processes Google auth response correctly
-- [x] Access tokens are securely stored
-- [x] Refresh tokens trigger automatic renewal
-- [x] Auth failures return appropriate error responses
-- [x] Unit tests achieve 80%+ coverage
-- [x] Integration test covers sign-in flow
+PR #42 created: https://github.com/owner/repo/pull/42
+Task still IN_PROGRESS (lets GitHub automation set column first).
 
-Running validation...
-  - pnpm typecheck: PASSED
-  - pnpm test: PASSED
-
-Committing changes...
-  [issue-5/task-1-add-oauth abc1234] Add OAuth2 authentication with Google
-
-Rebasing on latest main...
-  - git fetch origin main
-  - git rebase origin/main
-  - No conflicts, rebase successful
-
-Creating PR...
-
-[Calling create_pr...]
-
-PR created successfully:
-- PR #42: https://github.com/owner/repo/pull/42
-- Title: [#5] Add OAuth2 authentication with Google provider
-- Status: OPEN
-
-Task status is still IN_PROGRESS. This is intentional to let GitHub's
-automation set the project column to "In progress" first.
-
-Would you like to submit it for review now? This will transition the
-task to PR_REVIEW and set the project column to "In review".
+Submit for review now?
 ```
 
-**User:** "yes, submit for review"
+**User:** "yes" → Task transitions to PR_REVIEW
 
-**Response:**
+### Completing a Task
 
+**After PR merged:**
 ```
-Submitting for review...
-
-[Calling submit_for_review...]
-
-Task transitioned to PR_REVIEW. The GitHub project column is now set to
-"In review".
-
-PR #42 is ready for review: https://github.com/owner/repo/pull/42
-You can still push additional changes to the branch if needed.
+PR #42: MERGED
+Cleaning up worktree and branch...
+Task COMPLETED. Next task available: "Add session management"
 ```
 
-### Completing After PR Merged
+**Main mode:** Summarize → confirm → commit → COMPLETED
 
-**User:** "The PR is merged, complete the task"
+### Abandoning / Pausing
 
-**Response:**
-
-```
-Checking PR status...
-  PR #42: MERGED
-
-Completing task...
-  - Pulling latest changes to main
-  - Cleaning up worktree: ~/.track/project-abc/worktrees/issue-5-task-1
-  - Deleting branch: issue-5/task-1-add-oauth
-
-Task "Add OAuth2 authentication with Google provider" is now COMPLETED.
-
-Next available task: "Add session management and user profile"
-Would you like to start working on it?
-```
-
-### Completing in Main Mode
-
-**User:** "I've finished, mark it complete"
-
-**Response:**
-
-```
-Here's a summary of what was completed:
-
-**Task:** Update logging configuration
-
-**Changes made:**
-- Updated `src/config/logging.ts` with environment variable support
-- Updated log format to match production standards
-
-**Acceptance Criteria:**
-- [x] Log level configurable via environment variable
-- [x] Log format matches production standards
-
-Running validation...
-  - pnpm typecheck: PASSED
-  - pnpm test: PASSED
-
-Should I mark this task as complete?
-```
-
-**User:** "yes"
-
-**Response:**
-
-```
-Creating git commit...
-  [main def5678] Update logging configuration (#8)
-
-Completing task session...
-
-Task "Update logging configuration" is now COMPLETED.
-
-Next available task: "Add request tracing"
-Would you like to start working on it?
-```
-
-### Checking PR Status
-
-**User:** "What's the PR status?"
-
-**Response:**
-
-```
-PR status for task "Add OAuth2 authentication":
-
-- PR #42: https://github.com/owner/repo/pull/42
-- Status: OPEN
-- Mergeable: Yes
-- Branch: issue-5/task-1-add-oauth
-
-The PR is open and ready to be merged. Once merged, say "complete the task"
-to finish up and clean the worktree.
-```
-
-### Abandoning a Task
-
-**User:** "I need to abandon this task, the approach won't work"
-
-**Response:**
-
-```
-Are you sure you want to abandon this task?
-Reason provided: "the approach won't work"
-
-This will:
-- Mark the task as ABANDONED
-- Delete the worktree: ~/.track/project-abc/worktrees/issue-5-task-1
-- Delete the branch: issue-5/task-1-add-oauth
-
-Proceeding with abandonment...
-
-Task "Add OAuth2 authentication with Google provider" is now ABANDONED.
-
-Would you like to re-plan issue #5 with a different approach?
-```
-
-### Pausing an Issue
-
-**User:** "I need to pause issue #5, something urgent came up"
-
-**Response:**
-
-```
-Pausing issue #5...
-
-Moved 3 tasks from READY to BACKLOG:
-- Task 2: Add session management
-- Task 3: Implement user profile
-- Task 4: Add logout functionality
-
-Issue #5 is now paused. When you're ready to resume, just start
-any task and the remaining BACKLOG tasks will transition back to READY.
-```
+**Abandon:** Confirm reason → worktree/branch deleted → ABANDONED
+**Pause:** `pause_issue` moves READY tasks to BACKLOG. Resume by starting any task.
 
 ## Error Handling
 
@@ -727,64 +460,21 @@ Any manual workaround (direct database updates, `gh` CLI, etc.) creates **corrup
 
 ---
 
-**Task not found:**
+### Other Errors
 
-- Explain the error
-- Call `list_available_tasks` to show what's available
-
-**Task already in progress (by another session):**
-
-- Explain another session owns the task
-- Suggest waiting or checking if session timed out
-- If session appears stale → offer to use force mode (see Force Mode section)
-
-**No tasks available:**
-
-- Explain all tasks are completed or in progress
-- Suggest checking the plan or creating new tasks
-
-**Create PR failed - no branch:**
-
-- Task was started in main mode
-- Explain that main mode doesn't support PR workflow
-- Complete the task directly instead
-
-**Create PR failed - wrong status:**
-
-- Task is not IN_PROGRESS (e.g., already in PR_REVIEW or COMPLETED)
-- If the task state has drifted → offer to use force mode
-
-**Submit for review failed - no PR:**
-
-- Task doesn't have a PR yet
-- Explain that `create_pr` must be called first
-- If a PR was created outside the tool → offer to use force mode
-
-**Submit for review failed - wrong status:**
-
-- Task is not IN_PROGRESS (e.g., already in PR_REVIEW or COMPLETED)
-- If the task state has drifted → offer to use force mode
-
-**Complete failed - PR not merged:**
-
-- For isolated/branch modes, PR must be merged first
-- Show current PR status
-- Ask user to merge the PR on GitHub first
-
-**Complete failed - wrong status:**
-
-- Task is not in expected status (e.g., IN_PROGRESS instead of PR_REVIEW)
-- If the PR is actually merged but task status is wrong → offer force mode
-
-**Complete failed - PR not found:**
-
-- Task is in PR_REVIEW but PR was deleted
-- Suggest abandoning and re-starting the task
-
-**Close issue failed - tasks not complete:**
-
-- Some tasks are not in terminal state (COMPLETED or ABANDONED)
-- If the work is actually done but not tracked → offer force mode
+| Error | Action |
+|-------|--------|
+| Task not found | Call `list_available_tasks` to show available |
+| Task in progress (other session) | Wait, or force mode if session stale |
+| No tasks available | Check plan or create new tasks |
+| Create PR failed - no branch | Main mode; complete directly instead |
+| Create PR failed - wrong status | Force mode if state drifted |
+| Submit failed - no PR | Call `create_pr` first; force mode if PR exists externally |
+| Submit failed - wrong status | Force mode if state drifted |
+| Complete failed - PR not merged | Ask user to merge PR first |
+| Complete failed - wrong status | Force mode if PR actually merged |
+| Complete failed - PR not found | Abandon and re-start task |
+| Close issue failed - tasks open | Force mode if work actually done |
 
 ## Force Mode: Recovering from State Drift
 
@@ -832,103 +522,22 @@ Offer force mode when you detect a state machine error that suggests drift:
 5. Retry with force=true
 ```
 
-### Force Mode Examples
-
-**Example 1: Completing a task when PR was merged externally**
+### Force Mode Example
 
 ```
 User: "complete the task"
 
-[Calling complete_task...]
-
 Error: Task must be in PR_REVIEW status to complete. Current status: IN_PROGRESS.
-Use submit_for_review first to create a PR, or use force=true to bypass this check.
 
-[Checking... The PR is actually merged on GitHub]
+[Check GitHub: PR #42 is actually merged]
 
-I see that the task is still marked as IN_PROGRESS, but the PR has been merged.
-This can happen if the PR was merged outside the normal workflow.
+"The task shows IN_PROGRESS but the PR is merged. This happens when PR was
+merged outside normal flow. Force-complete the task?"
 
-Would you like me to force-complete the task? This will bypass the status check
-and mark the task as COMPLETED.
+User: "yes" → complete_task with force=true → Task COMPLETED
 ```
 
-**User:** "yes, force it"
-
-**Response:**
-
-```
-[Calling complete_task with force=true...]
-
-Task force-completed. PR #42 status: merged. Worktree cleaned up.
-
-Task "Add OAuth2 authentication" is now COMPLETED.
-```
-
-**Example 2: Abandoning an orphaned task**
-
-```
-User: "abandon the stuck task"
-
-[Calling abandon_task_session...]
-
-Error: Task is not associated with session abc123. Current session: xyz789.
-Use force=true to bypass this check if the session has drifted.
-
-[Analyzing...]
-
-The task appears to be locked by a stale session (xyz789) that is no longer active.
-This can happen when a session times out or disconnects unexpectedly.
-
-Would you like me to force-abandon the task? This will bypass the session
-ownership check and mark the task as ABANDONED.
-```
-
-**User:** "yes"
-
-**Response:**
-
-```
-[Calling abandon_task_session with force=true...]
-
-Task force-abandoned. Worktree and branch cleaned up.
-
-Task "Implement auth flow" is now ABANDONED.
-```
-
-**Example 3: Closing an issue when tasks drifted**
-
-```
-User: "close issue #5"
-
-[Calling close_issue...]
-
-Error: Cannot close issue #5. The following tasks are not complete:
-  - Task 2: Add tests (IN_PROGRESS)
-Use force=true to close anyway if the work is actually done.
-
-[Checking task 2...]
-
-Task 2 shows as IN_PROGRESS, but checking the actual git state...
-The tests were added and the PR was merged. The task status was not
-updated due to a tool failure during completion.
-
-Would you like me to force-close the issue? This will bypass the
-task completion check. The incomplete task will remain in its current state.
-```
-
-**User:** "yes, force close it"
-
-**Response:**
-
-```
-[Calling close_issue with force=true...]
-
-Issue #5 force-closed.
-Note: Task 2 is still marked as IN_PROGRESS.
-
-Issue "User Authentication" is now CLOSED.
-```
+Same pattern for other force scenarios (abandon orphaned task, close issue with drifted tasks).
 
 ## Notes
 
@@ -961,43 +570,18 @@ Log at **milestones only** - not every step. Key moments:
 3. **Completing significant chunks** - after implementing a component, fixing a bug, adding tests
 4. **Before natural break points** - if you sense the session might end
 
-### What Makes a Good Log Entry
-
-**Good entries** (meaningful milestones):
+### Good vs Bad Entries
 
 ```typescript
+// ✅ Good - meaningful milestone with context
 log_task_progress({
-  taskId: "...",
-  sessionId: "...",
-  message: "Implemented OAuth callback handler with token validation. Added unit tests.",
+  message: "Implemented OAuth callback with token validation. Added unit tests.",
   filesModified: ["src/auth/callback.ts", "src/auth/__tests__/callback.test.ts"],
 });
 
-log_task_progress({
-  taskId: "...",
-  sessionId: "...",
-  message: "Found root cause: session middleware redirects without error param. Starting fix.",
-});
-
-log_task_progress({
-  taskId: "...",
-  sessionId: "...",
-  message: "Completed: API endpoints for user profile. Next: add frontend components.",
-  filesModified: ["src/routes/user.ts", "src/services/user-service.ts"],
-});
-```
-
-**Bad entries** (too granular - don't do this):
-
-```typescript
-// ❌ Don't log every file read
+// ❌ Bad - too granular, don't log routine operations
 log_task_progress({ message: "Reading src/auth/session.ts" });
-
-// ❌ Don't log routine operations
 log_task_progress({ message: "Running pnpm test" });
-
-// ❌ Don't log trivial steps
-log_task_progress({ message: "Added import statement" });
 ```
 
 ### How Often to Log
@@ -1008,114 +592,17 @@ log_task_progress({ message: "Added import statement" });
 
 The goal is that if a new session reads the log, it understands what was done and where to continue.
 
-## Bug Investigation Workflow
+### Bug Investigation Logging
 
-When working on a **BUG** type issue, the task follows an investigation-first approach. Progress logging is especially valuable for bugs since the investigation journey informs the fix.
+For **BUG** tasks, logging is especially valuable since the investigation journey informs the fix:
 
-### Why Log During Bug Investigation?
-
-In addition to the general session continuity benefits (see "Progress Logging for Session Continuity" above), bug investigation logs are especially valuable:
-
-- **Captures the investigation journey**: Root cause discovery is not always linear
-- **Documents what was ruled out**: Knowing what you already checked saves time
-- **Informs the PR description**: Investigation summary explains the fix rationale
-
-### When to Log Progress (Bug-Specific)
-
-In addition to the general logging guidelines, call `log_task_progress` at these bug-specific moments:
-
-1. **Initial investigation findings**
-   - What areas of code you are examining
-   - Initial hypotheses about the cause
-
-2. **Root cause identified**
-   - The actual cause of the bug
-   - Why it was happening
-   - Any related issues discovered
-
-3. **Fix applied**
-   - What changes were made
-   - Files modified
-   - Why this fix addresses the root cause
-
-### Bug Investigation Example
-
-**User:** "Start the bug task"
-
-**Response:**
-
-```
-Starting task session in isolated mode...
-
-Task: Investigate and fix: Login fails silently when session expires
-
-This is a BUG investigation task. I will document findings using progress logs
-as I investigate.
-
-Symptoms (from issue):
-- Users stuck on login page with no error message
-- Happens when session has expired
-
-Reproduction steps:
-1. Log in successfully
-2. Wait for session to expire
-3. Attempt authenticated action
-4. Observe: redirected to login with no message
-
-Let me start investigating...
-```
-
-**During investigation:**
-
-```
-[Logging progress: "Examining session handling in src/auth/session.ts.
-The sessionExpired check returns early without setting an error message.
-Hypothesis: error state not propagated to UI."]
-
-Found it. The issue is in the session middleware - when a session expires,
-it redirects without passing an error code to the login page.
-
-[Logging progress: "ROOT CAUSE: SessionMiddleware.validateSession() at
-line 45 calls res.redirect(\"/login\") without query param. Login page
-checks for ?error=session_expired to show message, but it is never set."]
-
-I will fix this by adding the error parameter to the redirect.
-
-[Logging progress: "FIX: Modified SessionMiddleware.validateSession() to
-redirect to /login?error=session_expired. Added test for expired session
-redirect. Files: src/middleware/session.ts, tests/session.test.ts"]
-```
-
-**On completion:**
-
-```
-Bug investigation complete. Here is the summary:
-
-**Root Cause:**
-SessionMiddleware.validateSession() was redirecting to /login without
-the error query parameter that the login page needs to display the
-"Session expired" message.
-
-**Fix Applied:**
-- Modified redirect to include ?error=session_expired
-- Added unit test for expired session redirect behavior
-
-**Files Modified:**
-- src/middleware/session.ts
-- tests/session.test.ts
-
-Ready to submit for review?
-```
-
-### Progress Log API
+1. **Initial hypotheses** - areas examined, what you suspect
+2. **Root cause** - the actual cause and why
+3. **Fix applied** - changes made with `filesModified`
 
 ```typescript
-log_task_progress({
-  taskId: "...",
-  sessionId: "...",
-  message: "ROOT CAUSE: Description of what was found",
-  filesModified: ["src/file1.ts", "src/file2.ts"], // optional
-});
+// Bug investigation pattern
+log_task_progress({ message: "Examining session handling. Hypothesis: error not propagated." });
+log_task_progress({ message: "ROOT CAUSE: SessionMiddleware redirects without error param." });
+log_task_progress({ message: "FIX: Added ?error=session_expired to redirect.", filesModified: [...] });
 ```
-
-The `filesModified` parameter is optional but recommended when logging the fix.
