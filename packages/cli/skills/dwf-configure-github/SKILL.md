@@ -170,90 +170,26 @@ To find your GitHub Project ID:
 
 ### Enable GitHub Sync
 
-**User:** "I want to sync issues to GitHub"
+**User:** "Sync issues to GitHub"
 
-**Response:**
-
-```
-I'll help you set up GitHub sync. Let me first check if the gh CLI is authenticated.
-
-[Calls get_settings]
-
-Great, gh CLI is authenticated. What GitHub repository should issues sync to?
-Please provide in the format: owner/repo (e.g., myorg/myproject)
-```
-
-**User:** "anthropics/claude-code"
-
-**Response:**
+1. Check `get_settings` for gh CLI auth status
+2. Ask for repo: "What repository? (format: owner/repo)"
+3. Ask about Project ID and label preferences
+4. Call `enable_github` → report configuration
 
 ```
-Got it. A couple more questions:
-
-1. Do you want issues added to a GitHub Project board?
-   If yes, please provide the Project ID (looks like PVT_kwDO...)
-   If no, just say "no project"
-
-2. Should I use the default label mapping?
-   - FEATURE → "feature"
-   - BUG → "bug"
-   - ENHANCEMENT → "enhancement"
-   - TASK → "task"
-```
-
-**User:** "No project, default labels are fine"
-
-**Response:**
-
-```
-[Calls enable_github with owner/repo]
-
 GitHub sync enabled for anthropics/claude-code
-
-Configuration:
-- Issues will sync to: anthropics/claude-code
-- GitHub Project: Not configured
-- Labels: Using defaults (feature, bug, enhancement, task)
-
-Note: You may need to restart the MCP server for sync to take effect.
-When you create issues, they'll automatically appear on GitHub.
+- Project: Not configured
+- Labels: defaults (feature, bug, enhancement, task)
 ```
 
-### Check Status
-
-**User:** "Is GitHub sync enabled?"
-
-**Response:**
+### Check Status / gh Not Authenticated
 
 ```
-[Calls get_settings]
-
 GitHub Integration Status:
-- Enabled: Yes
-- Repository: anthropics/claude-code
-- Project ID: Not configured
-- Label mapping:
-  - FEATURE → feature
-  - BUG → bug
-  - ENHANCEMENT → enhancement
-  - TASK → task
+- Enabled: Yes | Repository: owner/repo
+- Project ID: PVT_xxx or "Not configured"
 - gh CLI: Authenticated
 ```
 
-### gh Not Authenticated
-
-**User:** "Enable GitHub sync for myorg/myrepo"
-
-**Response:**
-
-```
-[Calls get_settings, sees githubCLI.authenticated = false]
-
-I can't enable GitHub sync yet because the gh CLI is not authenticated.
-
-Please run this command first:
-
-  gh auth login
-
-Follow the prompts to authenticate, then try again.
-```
+If gh CLI not authenticated: "Please run `gh auth login` first."

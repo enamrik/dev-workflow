@@ -201,19 +201,6 @@ When a user wants to update a plan ("regenerate plan", "update the plan", "add a
 3. **To remove a task**: Simply omit it from the new task list (only works for PLANNED/BACKLOG/READY tasks)
 4. **No manual task management needed**: Just regenerate with the desired final state
 
-### Example: Adding a Task to Existing Plan
-
-If issue #5 has tasks ["Set up database", "Add API endpoints"] and user wants to add "Add admin dashboard":
-
-```
-Call generate_plan with tasks:
-1. "Set up database" (matches existing, preserved)
-2. "Add API endpoints" (matches existing, preserved)
-3. "Add admin dashboard" (new task, created)
-```
-
-The system matches tasks 1 and 2 to existing tasks and creates task 3 as new.
-
 ## Bug Issues: Single-Task Investigation Approach
 
 **Bugs are inherently exploratory.** You don't know the solution until you've investigated the root cause. Creating a multi-task plan for bugs is backwards - you'd be planning a solution before understanding the problem.
@@ -293,165 +280,45 @@ Task 4: "Add error handling" ← WRONG: Should be part of the feature!
 
 ## Example Plan Output
 
-### With Implementation Context from manage-issue
-
-**Context passed:** "Use passport.js, store sessions in Redis, callback at /auth/callback"
-
 **User:** "Plan issue #1 - Add user authentication with OAuth"
-
-**Response:**
 
 ```
 Analyzing issue #1: Add user authentication with OAuth
 
-Implementation context noted:
-- Library: passport.js
-- Session storage: Redis
-- Callback endpoint: /auth/callback
+Implementation context: passport.js, Redis sessions, /auth/callback
 
-This is a MEDIUM complexity feature. Based on requirements and implementation
-preferences, I recommend 2 deployable tasks:
+MEDIUM complexity - 2 deployable tasks:
 
 ## Plan Summary
 Implement OAuth authentication using passport.js with Redis session storage.
 
 ## Approach
-Using passport.js for OAuth handling (as specified), with Redis for session
-persistence. The implementation will be done in two deployable phases:
-1. Core OAuth2 authentication with passport.js
-2. Redis session persistence and user profile
+| Phase | Focus | Components |
+|-------|-------|------------|
+| 1 | Core auth | OAuth handler, token management |
+| 2 | Sessions | Redis storage, user profile API |
 
 ## Tasks
 
 ### Task 1: Implement OAuth2 authentication with passport.js (with tests)
-Add the complete OAuth2 flow using passport.js including:
-- Passport strategy configuration for Google OAuth
+- Passport strategy for Google OAuth
 - Callback handler at /auth/callback
-- Token management and refresh logic
-- Error handling for auth failures
-
-Includes unit tests for passport strategy and integration tests for OAuth flow.
-
-**Acceptance Criteria:**
-- OAuth callback at /auth/callback processes Google auth correctly
-- Access tokens are securely stored
-- Refresh tokens trigger automatic renewal
-- Auth failures return appropriate error responses
-- Unit tests achieve 80%+ coverage on auth module
-- Integration test covers sign-in flow end-to-end
+- Token management and error handling
+- Unit + integration tests
 
 ### Task 2: Add Redis session storage and user profile (with tests)
-Implement session persistence using Redis, user profile storage, and the
-"current user" API endpoint. Includes tests for session expiry and lookup.
-
-**Acceptance Criteria:**
-- Sessions stored in Redis with configurable TTL
-- Sessions persist across browser refresh
-- User profile accessible via /api/me endpoint
-- Session expiry triggers re-authentication prompt
-- Tests cover Redis connection failures gracefully
+- Session persistence with configurable TTL
+- /api/me endpoint
+- Tests for session expiry
 
 ---
-Plan generated with 2 tasks in PLANNED status.
-
-**Issue URL:** http://127.0.0.1:3456/projects/{projectId}/issues/1
+Plan generated. **Issue URL:** http://127.0.0.1:3456/projects/{projectId}/issues/1
 
 **Are you satisfied with this plan? Ready to start working on it?**
-(I'll create GitHub issues for each task when you confirm)
 ```
 
-### Without Implementation Context (standalone invocation)
-
-**User:** "Plan issue #5 - Add caching to API responses"
-
-**Response:**
-
-```
-Analyzing issue #5: Add caching to API responses
-
-No specific implementation preferences provided. Based on the codebase patterns
-(I see you're using Express with TypeScript), I'll design an approach.
-
-This is a LOW complexity feature - can be done in 1 deployable task.
-
-## Plan Summary
-Add response caching to improve API performance.
-
-## Approach
-Implement in-memory caching (can upgrade to Redis later if needed).
-Single task since caching + tests is one deployable unit.
-
-## Tasks
-
-### Task 1: Add API response caching with cache invalidation (with tests)
-Implement caching middleware for GET endpoints with:
-- Configurable TTL per route
-- Cache key generation from request params
-- Cache invalidation on mutations
-- Tests for cache hits, misses, and invalidation
-
-**Acceptance Criteria:**
-- GET requests return cached responses when available
-- Cache invalidates on POST/PUT/DELETE
-- Cache TTL is configurable per route
-- Tests verify caching behavior and edge cases
-
----
-Plan generated with 1 task in PLANNED status.
-
-**Issue URL:** http://127.0.0.1:3456/projects/{projectId}/issues/5
-
-**Are you satisfied with this plan? Ready to start working on it?**
-(I'll create a GitHub issue for the task when you confirm)
-```
-
-### Bug Issue (Single-Task Investigation)
-
-**User:** "Plan issue #7 - Login fails silently when session expires"
-
-**Response:**
-
-```
-Analyzing issue #7: Login fails silently when session expires
-
-This is a BUG issue. Using single-task investigation approach - the solution
-will be discovered during investigation, not planned upfront.
-
-## Plan Summary
-Investigate and fix the silent login failure on session expiry.
-
-## Approach
-Investigation-first: identify root cause through debugging, then implement
-fix with regression test. Findings will be documented in task progress log.
-
-## Tasks
-
-### Task 1: Investigate and fix: Login fails silently when session expires
-Investigate and resolve the reported issue. Document findings in task progress log.
-
-Symptoms: Users report being stuck on login page with no error message when
-their session has expired. Expected behavior is a clear "Session expired"
-message prompting re-authentication.
-
-Reproduction:
-1. Log in successfully
-2. Wait for session to expire (or manually invalidate)
-3. Attempt any authenticated action
-4. Observe: redirected to login with no message
-
-**Acceptance Criteria:**
-- [ ] Bug is fixed and verified with reproduction steps
-- [ ] Root cause documented in task progress log
-- [ ] Regression test added to prevent recurrence
-
----
-Plan generated with 1 task in PLANNED status.
-
-**Issue URL:** http://127.0.0.1:3456/projects/{projectId}/issues/7
-
-**Are you satisfied with this plan? Ready to start working on it?**
-(I'll create a GitHub issue for the task when you confirm)
-```
+**For single-task plans:** Same structure, just one task.
+**For bug issues:** Single task titled "Investigate and fix: [bug title]" with symptoms and reproduction steps.
 
 ## Error Handling
 

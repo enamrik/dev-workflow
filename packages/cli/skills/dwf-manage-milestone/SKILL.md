@@ -164,76 +164,23 @@ If MCP tool call fails:
 
 ## Example Interactions
 
-### Creating a Milestone
+### Creating / Assigning / Viewing
 
-**User:** "Create a milestone for our Q1 release, starting January 1st and ending March 31st"
-
-**Response:**
-
+**Create:** "Create milestone for Q1 release, Jan 1 - Mar 31"
 ```
-Created milestone M1: Q1 Release
-  Start: 2025-01-01
-  End: 2025-03-31
-  Status: PLANNED
-
-Would you like to assign any existing issues to this milestone?
+Created M1: Q1 Release (2025-01-01 to 2025-03-31, PLANNED)
 ```
 
-### Assigning Issues to a Milestone
-
-**User:** "Add issues #1, #3, and #5 to M1"
-
-**Response:**
-
+**Assign:** "Add issues #1, #3, #5 to M1"
 ```
-Assigned issues to milestone M1:
-  - #1: Add user authentication
-  - #3: Implement login page
-  - #5: Add password reset
-
-M1 Progress: 0/3 issues completed (3 open)
+Assigned to M1. Progress: 0/3 completed
 ```
 
-### Removing an Issue from a Milestone
-
-**User:** "Remove issue #3 from M1"
-
-**Response:**
-
+**View:** "Show M1"
 ```
-Removed issue #3 from milestone M1.
-
-M1 Progress: 0/2 issues completed (2 open)
-```
-
-### Viewing Milestone Status
-
-**User:** "Show me milestone M1"
-
-**Response:**
-
-```
-Milestone M1: Q1 Release
-  Status: IN_PROGRESS
-  Dates: 2025-01-01 to 2025-03-31
-
-Issues (3 total):
-  - #1: Add user authentication (IN_PROGRESS)
-  - #3: Implement login page (OPEN)
-  - #5: Add password reset (COMPLETED)
-
+M1: Q1 Release | IN_PROGRESS | 2025-01-01 to 2025-03-31
+Issues: #1 (IN_PROGRESS), #3 (OPEN), #5 (COMPLETED)
 Progress: 1/3 completed
 ```
 
-### Updating Milestone Status
-
-**User:** "Mark M1 as completed"
-
-**Response:**
-
-```
-Updated milestone M1:
-  Status: PLANNED → COMPLETED
-
-All 3 issues in this milestone are now tracked as part of the completed goal.
-```
+**Update status:** "Mark M1 completed" → Status: PLANNED → COMPLETED
