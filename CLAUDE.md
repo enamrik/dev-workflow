@@ -457,6 +457,8 @@ These guide Claude's behavior during conversations. Claude decides when to activ
 
 **Key constraint**: Claude Code does NOT support nested skill folders. Skills must be at `.claude/skills/{skill-name}/SKILL.md`, not `.claude/skills/namespace/{skill-name}/SKILL.md`.
 
+**After modifying skills**: Always review changes against `scripts/revise-skills.md` before committing. This guide ensures skills remain concise and actionable - keeping step-by-step instructions, critical warnings, and reference tables while removing redundancy and verbose prose.
+
 ## References
 
 - **Clean Code** by Robert C. Martin
