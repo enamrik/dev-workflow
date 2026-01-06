@@ -7,7 +7,12 @@
 
 import { eq } from "drizzle-orm";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { globalSettings, GlobalSettingsRow, BackupConfig } from "../database/schema.js";
+import {
+  globalSettings,
+  GlobalSettingsRow,
+  BackupConfig,
+  DatabaseConfig,
+} from "../database/schema.js";
 import * as schema from "../database/schema.js";
 
 /**
@@ -15,6 +20,7 @@ import * as schema from "../database/schema.js";
  */
 export const SettingKeys = {
   BACKUP_CONFIG: "backup_config",
+  DATABASE_CONFIG: "database_config",
 } as const;
 
 export type SettingKey = (typeof SettingKeys)[keyof typeof SettingKeys];
@@ -64,6 +70,25 @@ export interface GlobalSettingsRepository {
    * Delete backup configuration
    */
   deleteBackupConfig(): void;
+
+  /**
+   * Get database configuration
+   *
+   * @returns Database config or null if not configured (defaults to SQLite)
+   */
+  getDatabaseConfig(): DatabaseConfig | null;
+
+  /**
+   * Set database configuration
+   *
+   * @param config - Database configuration
+   */
+  setDatabaseConfig(config: DatabaseConfig): void;
+
+  /**
+   * Delete database configuration (resets to default SQLite)
+   */
+  deleteDatabaseConfig(): void;
 }
 
 /**
@@ -122,5 +147,17 @@ export class SqliteGlobalSettingsRepository implements GlobalSettingsRepository 
 
   deleteBackupConfig(): void {
     this.delete(SettingKeys.BACKUP_CONFIG);
+  }
+
+  getDatabaseConfig(): DatabaseConfig | null {
+    return this.get<DatabaseConfig>(SettingKeys.DATABASE_CONFIG);
+  }
+
+  setDatabaseConfig(config: DatabaseConfig): void {
+    this.set(SettingKeys.DATABASE_CONFIG, config);
+  }
+
+  deleteDatabaseConfig(): void {
+    this.delete(SettingKeys.DATABASE_CONFIG);
   }
 }
