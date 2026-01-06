@@ -129,33 +129,6 @@ Example: \`./track/labels/testing.md\` creates a "testing" label.
     }
   }
 
-  /**
-   * Create local config file with machine-specific settings.
-   *
-   * This file stores data that varies per machine (like gitRoot) and is NOT
-   * synced when using a shared remote database. Each developer has their own.
-   *
-   * Must be called after registerProject() since it needs the project UUID.
-   */
-  async createLocalConfig(): Promise<void> {
-    try {
-      const project = this.getProject();
-
-      // Local-only config - not synced to remote database
-      const config = {
-        projectId: project.id,
-        gitRoot: this.resolver.getGitRoot(),
-      };
-
-      await this.fileSystem.writeFile(
-        this.resolver.getConfigPath(),
-        JSON.stringify(config, null, 2)
-      );
-    } catch (error) {
-      throw new InstallError("Failed to create local config", error);
-    }
-  }
-
   async installSkills(): Promise<void> {
     try {
       const skillsTarget = path.join(this.workingDirectory, ".claude/skills");
@@ -366,32 +339,6 @@ Example: \`./track/labels/testing.md\` creates a "testing" label.
       return projectRepo.findByGitRootHash(gitRootHash);
     } finally {
       dbService.close();
-    }
-  }
-
-  /**
-   * Check if the local config needs repair (missing or has wrong gitRoot).
-   *
-   * @returns true if config is missing or stale
-   */
-  async needsConfigRepair(): Promise<boolean> {
-    const configPath = this.resolver.getConfigPath();
-    const configExists = await this.fileSystem.exists(configPath);
-
-    if (!configExists) {
-      return true;
-    }
-
-    try {
-      const content = await this.fileSystem.readFile(configPath);
-      const config = JSON.parse(content);
-      const currentGitRoot = this.resolver.getGitRoot();
-
-      // Config is stale if gitRoot doesn't match current location
-      return config.gitRoot !== currentGitRoot;
-    } catch {
-      // Invalid JSON or other error - needs repair
-      return true;
     }
   }
 

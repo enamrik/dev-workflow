@@ -49,9 +49,6 @@ export {
   getGlobalDatabasePath,
   resolveGlobalTrackDir,
 } from "./application/track-directory-resolver.js";
-// Local config types (for config.json - machine-specific settings)
-export { LocalConfigSchema } from "./infrastructure/database/schema.js";
-export type { LocalConfig } from "./infrastructure/database/schema.js";
 export { GitHubSyncService, GitHubSyncError } from "./application/github-sync-service.js";
 export {
   TaskGitHubSyncService,

@@ -40,7 +40,7 @@ describe("ProjectService", () => {
       expect(project.gitRootHash).toBe("abc123def456");
       expect(project.name).toBe("my-project"); // Derived from path
       expect(project.githubSync).toBeNull();
-      // Note: gitRoot is NOT stored in database - it's in local config.json
+      // Note: gitRoot is NOT stored in database - it's computed from cwd when needed
     });
 
     it("should return existing project for known repository", async () => {
@@ -59,7 +59,7 @@ describe("ProjectService", () => {
       const original = await service.getOrCreateProject("/original/path");
 
       // Same repo accessed from different path - should return same project
-      // (gitRoot is stored locally in config.json, not in database)
+      // (gitRoot is computed from cwd, not stored in database)
       const found = await service.getOrCreateProject("/new/path");
 
       expect(found.id).toBe(original.id);

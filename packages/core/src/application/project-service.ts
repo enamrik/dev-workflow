@@ -136,7 +136,7 @@ export class ProjectService {
    * 3. If found: returns existing project
    * 4. If not found: creates new project
    *
-   * Note: gitRoot is stored locally in config.json, not in the database.
+   * Note: gitRoot is computed from cwd when needed, not stored in the database.
    * This allows the database to be shared across developers.
    *
    * @param gitRoot - Absolute path to git repository root (used for git operations)

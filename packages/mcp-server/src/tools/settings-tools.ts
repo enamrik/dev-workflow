@@ -121,7 +121,7 @@ export const settingsToolDefinitions: ToolDefinition[] = [
  * Service context for settings handlers
  *
  * Uses project and projectRepository to store GitHub sync config
- * in the projects table instead of config.json.
+ * in the projects table.
  */
 export interface SettingsToolContext {
   project: Project;
