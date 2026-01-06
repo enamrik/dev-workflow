@@ -11,6 +11,7 @@ import { UninstallService } from "./application/uninstall.service.js";
 import { ArchiveService, ArchiveError } from "./application/archive.service.js";
 import { UIService } from "./application/ui.service.js";
 import { BackupConfigService } from "./application/backup.service.js";
+import { ClaudeWorkerService } from "./application/claude-worker.service.js";
 import { NodeFileSystem } from "./infrastructure/file-system.js";
 import {
   createTrackDirectoryResolver,
@@ -863,6 +864,22 @@ program
       await runWorkers();
     } catch (error) {
       console.error("Error listing workers:", error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("claude")
+  .description("Run as a Claude worker that polls for and executes dispatched tasks")
+  .option("--name <name>", "Worker name (auto-generates worker-1, worker-2, etc. if not provided)")
+  .action(async (options: { name?: string }) => {
+    const worker = new ClaudeWorkerService({ name: options.name });
+
+    try {
+      await worker.initialize();
+      await worker.start();
+    } catch (error) {
+      console.error("Error running Claude worker:", error);
       process.exit(1);
     }
   });

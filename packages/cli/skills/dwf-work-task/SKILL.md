@@ -1,7 +1,7 @@
 ---
 name: dwf-work-task
 description: Manage task execution lifecycle - start, complete, or abandon tasks. Supports 3 execution modes (isolated, branch, main) and PR-based workflow. Auto-invoked when user wants to "start task", "work on task", "complete task", "finish task", "abandon task", "create PR", "submit for review", "merge PR", "pause issue", etc. (project)
-allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:create_pr, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:log_task_progress, mcp:dev-workflow-tracker:get_task_execution_log
+allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:create_pr, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:log_task_progress, mcp:dev-workflow-tracker:get_task_execution_log, mcp:dev-workflow-tracker:dispatch_task
 ---
 
 # Work Task Skill
@@ -70,6 +70,11 @@ This ensures:
 
 - User mentions: "pause issue", "pause work", "put issue on hold"
 - User needs to switch focus: "I need to work on something else first"
+
+**Dispatching to a worker:**
+
+- User mentions: "in worker", "dispatch to worker", "run in worker"
+- Examples: "start task 1 in worker", "dispatch this task to a worker"
 
 ## Task Lifecycle
 
@@ -349,6 +354,31 @@ temporarily put on hold. This is useful when switching focus to another issue.
 
 **Note:** IN_PROGRESS, PR_REVIEW, COMPLETED, and ABANDONED tasks are not affected
 by pause. Only READY tasks are moved.
+
+### To Dispatch a Task to a Worker
+
+When user explicitly requests "in worker" or "dispatch to worker":
+
+1. **Identify the task:**
+   - Same as "To Start a Task" - identify task ID
+   - If task is PLANNED, call `move_issue_to_backlog` first
+
+2. **Dispatch to worker:**
+   - Call `dispatch_task` with the task ID
+   - This adds the task to the dispatch queue for workers to claim
+
+3. **Handle dispatch result:**
+   - **Success:** Report "Task dispatched. A worker will pick it up."
+   - **No workers available:** Fall back to `load_task_session` (local execution)
+   - **Task already queued:** Report it's already waiting for a worker
+
+4. **Fallback behavior:**
+   - If `dispatch_task` fails because no workers are registered, inform user:
+     "No workers available. Would you like to work on it locally instead?"
+   - If user agrees, proceed with normal `load_task_session` flow
+
+**Important:** Only dispatch when user explicitly says "in worker". The default
+is always local execution via `load_task_session`.
 
 ## CRITICAL: Worktree Path (Isolated Mode)
 
