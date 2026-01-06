@@ -36,7 +36,10 @@ import {
   GitHubSyncService,
   TaskGitHubSyncService,
   NodeGitHubCLI,
-  GitHubProjectManagementProvider,
+  // Provider abstraction
+  ProviderRegistry,
+  getProjectManagementProvider,
+  type ProviderDependencies,
   // Git worktree support
   NodeGitWorktreeService,
   // Conflict detection
@@ -457,12 +460,22 @@ async function main() {
   const typeService = new TypeService(fileSystem, typeConfig);
   const templateService = new TemplateService(fileSystem, templateConfig, typeService);
 
-  // Initialize GitHub sync services
+  // Initialize project management provider using the registry pattern
   // Services read config fresh from database on each call, so they handle
-  // the case where GitHub sync is enabled after server start
+  // the case where sync is enabled after server start
   const githubCLI = new NodeGitHubCLI();
-  // Create provider from CLI - GitHubSyncService now uses the abstracted provider interface
-  const projectManagementProvider = new GitHubProjectManagementProvider(githubCLI);
+  const providerDeps: ProviderDependencies = { githubCLI };
+
+  // Get provider registry for validation and logging
+  const providerRegistry = ProviderRegistry.getInstance();
+
+  // Create provider from project config using the registry
+  // This allows switching providers by changing config without code changes
+  const syncConfig = project.githubSync;
+  const projectManagementProvider = syncConfig?.enabled
+    ? getProjectManagementProvider(syncConfig, providerDeps)
+    : getProjectManagementProvider({ enabled: false, providerId: "github" }, providerDeps);
+
   const githubSyncService = new GitHubSyncService(
     issueRepository,
     projectManagementProvider,
@@ -482,10 +495,19 @@ async function main() {
     templateService,
     typeService
   );
-  if (project.githubSync?.enabled) {
-    console.error("GitHub issue sync enabled (repository auto-detected from git remotes)");
+  // Log provider status
+  if (syncConfig?.enabled) {
+    const providerId = projectManagementProvider.providerId;
+    const providerInfo = providerRegistry.tryGet(providerId);
+    const displayName = providerInfo?.displayName ?? providerId;
+    console.error(`External sync enabled: ${displayName} provider (repository auto-detected)`);
   } else {
-    console.error("GitHub issue sync not configured (can be enabled via update_settings)");
+    const availableProviders = providerRegistry.list(providerDeps);
+    const providerNames = availableProviders
+      .filter((p) => p.available)
+      .map((p) => p.displayName)
+      .join(", ");
+    console.error(`External sync not configured (available providers: ${providerNames})`);
   }
 
   // Initialize application services
@@ -567,13 +589,14 @@ async function main() {
     versioningService,
   };
 
-  // Create settings context - always available for configuring GitHub
-  // Uses projectRepository to store GitHub sync config in the projects table
+  // Create settings context - always available for configuring external sync
+  // Uses projectRepository to store sync config in the projects table
   settingsToolContext = {
     project,
     projectRepository,
-    githubCLI: new NodeGitHubCLI(),
+    githubCLI, // Reuse instance for validation
     gitRoot: validatedGitRoot, // From env var, not database (machine-specific)
+    providerRegistry, // For validating available providers
   };
 
   milestoneToolContext = {

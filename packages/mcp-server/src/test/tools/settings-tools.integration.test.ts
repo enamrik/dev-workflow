@@ -11,6 +11,7 @@ import {
   MockGitHubCLI,
   SqliteProjectRepository,
   DEFAULT_COLUMN_MAPPING,
+  ProviderRegistry,
   type Project,
 } from "@dev-workflow/core";
 import { handleUpdateSettings, type SettingsToolContext } from "../../tools/settings-tools.js";
@@ -47,6 +48,7 @@ function createSettingsToolContext(
     projectRepository,
     githubCLI,
     gitRoot: TEST_GIT_ROOT,
+    providerRegistry: ProviderRegistry.getInstance(),
   };
 }
 
