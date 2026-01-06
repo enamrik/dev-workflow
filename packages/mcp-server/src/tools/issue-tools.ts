@@ -18,6 +18,7 @@ import {
   type GitHubCLI,
   type GitWorktreeService,
   type Project,
+  type TypeService,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -315,6 +316,29 @@ export const issueToolDefinitions: ToolDefinition[] = [
     },
   },
   {
+    name: "change_issue_type",
+    description:
+      "Change an issue's type. Validates the type against available types " +
+      "(from ./track/types.md if present, otherwise defaults). " +
+      "Use this when auto-assigned type is incorrect.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issueNumber: {
+          type: "number",
+          description: "Issue number (e.g., 123 for #123)",
+        },
+        type: {
+          type: "string",
+          description:
+            "New issue type. Defaults: FEATURE, BUG, ENHANCEMENT, TASK. " +
+            "Custom types can be defined in ./track/types.md",
+        },
+      },
+      required: ["issueNumber", "type"],
+    },
+  },
+  {
     name: "get_project_stats",
     description:
       "Get project statistics: issue and task counts by status. Use this for a quick overview without loading all issues.",
@@ -388,6 +412,8 @@ export interface IssueToolContext {
   githubCLI: GitHubCLI;
   /** Git worktree service for cleanup operations */
   gitWorktreeService?: GitWorktreeService;
+  /** Type service for validating issue types */
+  typeService?: TypeService;
 }
 
 /**
@@ -1030,6 +1056,68 @@ export async function handleCloseIssue(
       force && nonTerminalTasks.length > 0
         ? nonTerminalTasks.map((t) => ({ number: t.number, title: t.title, status: t.status }))
         : undefined,
+  });
+}
+
+/**
+ * Handle change_issue_type tool call
+ *
+ * Changes an issue's type after validating against available types.
+ * Uses TypeService to validate against user-defined types (from ./track/types.md)
+ * or falls back to default types.
+ */
+export async function handleChangeIssueType(
+  ctx: IssueToolContext,
+  args: { issueNumber: number; type: string }
+): Promise<ToolResponse> {
+  const { issueNumber, type } = args;
+
+  // Find the issue
+  const issue = ctx.issueRepository.findByNumber(issueNumber);
+  if (!issue) {
+    return errorResponse(`Issue not found: #${issueNumber}`);
+  }
+
+  // Validate the type against available types
+  const validTypes = ["FEATURE", "BUG", "ENHANCEMENT", "TASK"];
+
+  if (ctx.typeService) {
+    // Use TypeService to get available types (user-defined or defaults)
+    const typeDefinitions = await ctx.typeService.loadTypes();
+    const availableTypes = typeDefinitions.types.map((t) => t.name);
+
+    if (!availableTypes.includes(type as IssueType)) {
+      const msg = `Invalid type: ${type}. Available types: ${availableTypes.join(", ")}`;
+      return errorResponse(msg);
+    }
+  } else {
+    // Fall back to hardcoded validation
+    if (!validTypes.includes(type)) {
+      const msg = `Invalid type: ${type}. Available types: ${validTypes.join(", ")}`;
+      return errorResponse(msg);
+    }
+  }
+
+  // Update the issue type
+  const updates = { type: type as IssueType };
+
+  // If GitHub sync is enabled and issue has a GitHub link, update GitHub FIRST
+  if (ctx.githubSyncService.isEnabled() && issue.githubSync?.githubIssueNumber) {
+    try {
+      await ctx.githubSyncService.updateGitHubIssue(issue, updates);
+    } catch (error) {
+      return errorResponse(
+        `Failed to update GitHub issue: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  // Update locally
+  const result = ctx.planningService.updateIssue(issue.id, updates, false);
+
+  return successResponse({
+    ...result,
+    message: `Issue #${issueNumber} type changed to ${type}`,
   });
 }
 

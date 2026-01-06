@@ -63,6 +63,7 @@ import {
   handleDeleteTemplate,
   handleUpdateIssue,
   handleCloseIssue,
+  handleChangeIssueType,
   handleDeleteIssue,
   handleRestoreIssue,
   handleGetProjectStats,
@@ -226,6 +227,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     }
     if (name === "close_issue") {
       return await handleCloseIssue(issueToolContext, a);
+    }
+    if (name === "change_issue_type") {
+      return await handleChangeIssueType(issueToolContext, a);
     }
     if (name === "delete_issue") {
       return await handleDeleteIssue(issueToolContext, a);
@@ -522,6 +526,7 @@ async function main() {
     githubSyncService,
     githubCLI,
     gitWorktreeService,
+    typeService,
   };
 
   planToolContext = {
