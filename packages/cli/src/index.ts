@@ -451,7 +451,7 @@ async function runUnarchive(): Promise<void> {
   }
 }
 
-async function runNuke(): Promise<void> {
+async function runNuke(options: { force?: boolean }): Promise<void> {
   const fileSystem = new NodeFileSystem();
   const workingDirectory = process.cwd();
 
@@ -462,6 +462,35 @@ async function runNuke(): Promise<void> {
   } catch (_error) {
     console.error("❌ Not a git repository. dev-workflow requires git.");
     process.exit(1);
+  }
+
+  // Check if using remote database - block unless --force is used
+  const dbService = new DatabaseConfigService();
+  try {
+    const isRemote = await dbService.isRemote();
+    if (isRemote) {
+      const status = await dbService.getStatus();
+      console.error("❌ Cannot nuke when using a remote database.\n");
+      console.error(`   Current database: ${status.provider}`);
+      console.error(
+        `   Connection: ${DatabaseConfigService.maskPassword(status.connectionString)}`
+      );
+      console.error("\n   Remote databases contain shared team data that cannot be recovered.");
+      console.error("   This protection prevents accidental destruction of collaborative work.\n");
+
+      if (!options.force) {
+        console.error("   If you really want to remove this project's LOCAL data only,");
+        console.error("   use: dev-workflow nuke --force\n");
+        console.error("   Note: --force will only remove local files and MCP registration.");
+        console.error("   Remote database data will NOT be affected.");
+        process.exit(1);
+      }
+
+      console.log("⚠️  --force flag detected. Proceeding with LOCAL cleanup only.");
+      console.log("   Remote database data will NOT be deleted.\n");
+    }
+  } finally {
+    dbService.close();
   }
 
   const archiveService = new ArchiveService(fileSystem, workingDirectory, resolver);
@@ -800,9 +829,10 @@ program
 program
   .command("nuke")
   .description("PERMANENTLY DELETE all project data (requires all issues closed)")
-  .action(async () => {
+  .option("--force", "Force local cleanup when using remote database (remote data preserved)")
+  .action(async (options: { force?: boolean }) => {
     try {
-      await runNuke();
+      await runNuke(options);
     } catch (error) {
       console.error("Error during nuke:", error);
       process.exit(1);
@@ -1518,6 +1548,64 @@ databaseCmd
         console.log(
           `\n⚠️  Note: Environment variable ${TRACK_DATABASE_URL_ENV} overrides stored configuration.`
         );
+      }
+    } catch (error) {
+      console.error(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    } finally {
+      service.close();
+    }
+  });
+
+// Pull command for team onboarding - connect to existing shared database
+program
+  .command("pull <connection-string>")
+  .description("Connect to an existing shared database (team onboarding)")
+  .action(async (connectionString: string) => {
+    const service = new DatabaseConfigService();
+
+    try {
+      console.log("🔗 Connecting to shared database...\n");
+
+      // Validate the connection string format
+      if (
+        !connectionString.startsWith("postgresql://") &&
+        !connectionString.startsWith("postgres://")
+      ) {
+        console.error("❌ Invalid connection string.");
+        console.error("   Expected format: postgresql://user:password@host/database");
+        process.exit(1);
+      }
+
+      console.log("Validating connection...");
+      const validation = await service.validateConnection(connectionString);
+
+      if (!validation.success) {
+        console.error(`\n❌ Connection failed: ${validation.error}`);
+        console.error("\nPlease check:");
+        console.error("  - The connection string is correct");
+        console.error("  - The database server is accessible");
+        console.error("  - Your network allows the connection");
+        process.exit(1);
+      }
+
+      console.log("✓ Connection validated!\n");
+
+      // Configure the remote database
+      const result = await service.configureRemote(connectionString);
+
+      if (result.success) {
+        console.log("✓ " + result.message);
+        console.log(`  URL: ${DatabaseConfigService.maskPassword(connectionString)}`);
+        console.log("\n🎉 You're now connected to the shared database!");
+        console.log("\n⚠️  IMPORTANT: Restart Claude Code to use the new configuration.");
+        console.log("\nNext steps:");
+        console.log("  1. Restart Claude Code");
+        console.log("  2. Run 'dev-workflow init' to register this project");
+        console.log("  3. Start collaborating with your team!");
+      } else {
+        console.error(`\n❌ ${result.message}`);
+        process.exit(1);
       }
     } catch (error) {
       console.error(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
