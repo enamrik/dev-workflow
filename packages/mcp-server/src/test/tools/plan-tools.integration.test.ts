@@ -10,11 +10,11 @@ import { createRepositories, createTestIssue } from "../helpers.js";
 import {
   PlanningService,
   VersioningService,
-  MockGitHubCLI,
   SqliteProjectRepository,
   TaskGitHubSyncService,
   TypeService,
   type TypeServiceConfig,
+  type ProjectManagementProvider,
   NodeFileSystem,
 } from "@dev-workflow/core";
 import {
@@ -62,12 +62,50 @@ function createPlanToolContext(testDb: TestDatabase): PlanToolContext {
   );
 
   // TaskGitHubSyncService (disabled - no GitHub sync in tests)
-  const mockGitHubCLI = new MockGitHubCLI();
+  // Create a minimal mock provider for testing
+  const mockProvider: ProjectManagementProvider = {
+    providerId: "mock",
+    displayName: "Mock Provider",
+    checkAuth: async () => ({ authenticated: true }),
+    checkRepository: async () => ({ accessible: true }),
+    createIssue: async () => ({
+      id: "1",
+      numericId: 1,
+      url: "https://example.com/1",
+      nodeId: "mock_1",
+      title: "Mock",
+      body: "",
+      state: "OPEN",
+      labels: [],
+    }),
+    updateIssue: async () => ({
+      id: "1",
+      numericId: 1,
+      url: "https://example.com/1",
+      nodeId: "mock_1",
+      title: "Mock",
+      body: "",
+      state: "OPEN",
+      labels: [],
+    }),
+    closeIssue: async () => {},
+    reopenIssue: async () => {},
+    getIssue: async () => null,
+    searchIssues: async () => [],
+    ensureLabelsExist: async () => {},
+    addToProject: async () => ({ success: true, itemId: "mock_item" }),
+    moveToColumn: async () => {},
+    checkProject: async () => true,
+    getProjectDetails: async () => null,
+    getProjectStatusField: async () => null,
+    linkParentChild: async () => {},
+    addComment: async () => {},
+  };
   const taskGitHubSyncService = new TaskGitHubSyncService(
     repos.taskRepository,
     repos.issueRepository,
     repos.planRepository,
-    mockGitHubCLI,
+    mockProvider,
     projectRepository,
     project.id
   );

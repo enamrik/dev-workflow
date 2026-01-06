@@ -4,7 +4,7 @@
  * Tests PR-related MCP tool handlers with real database operations.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
 import { createRepositories, createTestIssue, createTestPlan, createTestTask } from "../helpers.js";
@@ -15,6 +15,7 @@ import {
   TaskGitHubSyncService,
   taskExecutionLogs,
   type DatabaseService,
+  type ProjectManagementProvider,
 } from "@dev-workflow/core";
 import {
   handleCreatePR,
@@ -41,6 +42,50 @@ function createMockDbService(db: DbType) {
 }
 
 /**
+ * Create a minimal mock provider for testing
+ */
+function createMockProvider(): ProjectManagementProvider {
+  return {
+    providerId: "mock",
+    displayName: "Mock Provider",
+    checkAuth: async () => ({ authenticated: true }),
+    checkRepository: async () => ({ accessible: true }),
+    createIssue: async () => ({
+      id: "1",
+      numericId: 1,
+      url: "https://example.com/1",
+      nodeId: "mock_1",
+      title: "Mock",
+      body: "",
+      state: "OPEN",
+      labels: [],
+    }),
+    updateIssue: async () => ({
+      id: "1",
+      numericId: 1,
+      url: "https://example.com/1",
+      nodeId: "mock_1",
+      title: "Mock",
+      body: "",
+      state: "OPEN",
+      labels: [],
+    }),
+    closeIssue: async () => {},
+    reopenIssue: async () => {},
+    getIssue: async () => null,
+    searchIssues: async () => [],
+    ensureLabelsExist: async () => {},
+    addToProject: async () => ({ success: true, itemId: "mock_item" }),
+    moveToColumn: async () => {},
+    checkProject: async () => true,
+    getProjectDetails: async () => null,
+    getProjectStatusField: async () => null,
+    linkParentChild: async () => {},
+    addComment: async () => {},
+  };
+}
+
+/**
  * Create a PRToolContext for testing
  */
 function createPRToolContext(
@@ -54,12 +99,13 @@ function createPRToolContext(
 
   const githubCLI = mockGitHubCLI ?? new MockGitHubCLI();
   const gitWorktreeService = mockGitWorktreeService ?? new MockGitWorktreeService();
+  const mockProvider = createMockProvider();
 
   const taskGitHubSyncService = new TaskGitHubSyncService(
     repos.taskRepository,
     repos.issueRepository,
     repos.planRepository,
-    githubCLI,
+    mockProvider,
     projectRepository,
     TEST_PROJECT_ID
   );
@@ -518,11 +564,17 @@ describe("submit_for_review", () => {
 
       // Create repositories and services with the actual project ID
       const repos = createRepositories(testDb.db, project.id);
+      // Create a mock provider that tracks calls using vitest spies
+      const moveToColumnMock = vi.fn().mockResolvedValue(undefined);
+      const mockProvider: ProjectManagementProvider = {
+        ...createMockProvider(),
+        moveToColumn: moveToColumnMock,
+      };
       const taskGitHubSyncService = new TaskGitHubSyncService(
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
-        mockGitHubCLI,
+        mockProvider,
         projectRepository,
         project.id
       );
@@ -568,19 +620,12 @@ describe("submit_for_review", () => {
       // Assert
       expect(result.isError).toBeFalsy();
 
-      // Verify the column move was attempted
-      const runCalls = mockGitHubCLI.getCallsTo("run");
-      const updateCall = runCalls.find((call) => {
-        const args = call.args[0] as string[];
-        return args.some((arg: string) => arg.includes("updateProjectV2ItemFieldValue"));
-      });
-
-      expect(updateCall).toBeDefined();
-
-      // Verify the call includes the correct item ID and "In Review" option
-      const updateArgs = updateCall!.args[0] as string[];
-      expect(updateArgs.some((arg: string) => arg.includes("PVTI_test_item_123"))).toBe(true);
-      expect(updateArgs.some((arg: string) => arg.includes("opt_in_review"))).toBe(true);
+      // Verify the column move was attempted via the provider
+      expect(moveToColumnMock).toHaveBeenCalledWith(
+        "PVTI_test_item_123",
+        "PVT_test_project",
+        "In Review"
+      );
     });
   });
 });

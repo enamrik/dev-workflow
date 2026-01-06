@@ -11,11 +11,11 @@ import {
   TaskSessionService,
   TaskManagementService,
   ConflictDetectionService,
-  MockGitHubCLI,
   MockGitWorktreeService,
   SqliteProjectRepository,
   TaskGitHubSyncService,
   taskExecutionLogs,
+  type ProjectManagementProvider,
 } from "@dev-workflow/core";
 import {
   handleGetTask,
@@ -32,6 +32,50 @@ type DbType = BetterSQLite3Database<typeof schema>;
 const TEST_PROJECT_ID = "test-project-task";
 
 /**
+ * Create a minimal mock provider for testing
+ */
+function createMockProvider(): ProjectManagementProvider {
+  return {
+    providerId: "mock",
+    displayName: "Mock Provider",
+    checkAuth: async () => ({ authenticated: true }),
+    checkRepository: async () => ({ accessible: true }),
+    createIssue: async () => ({
+      id: "1",
+      numericId: 1,
+      url: "https://example.com/1",
+      nodeId: "mock_1",
+      title: "Mock",
+      body: "",
+      state: "OPEN",
+      labels: [],
+    }),
+    updateIssue: async () => ({
+      id: "1",
+      numericId: 1,
+      url: "https://example.com/1",
+      nodeId: "mock_1",
+      title: "Mock",
+      body: "",
+      state: "OPEN",
+      labels: [],
+    }),
+    closeIssue: async () => {},
+    reopenIssue: async () => {},
+    getIssue: async () => null,
+    searchIssues: async () => [],
+    ensureLabelsExist: async () => {},
+    addToProject: async () => ({ success: true, itemId: "mock_item" }),
+    moveToColumn: async () => {},
+    checkProject: async () => true,
+    getProjectDetails: async () => null,
+    getProjectStatusField: async () => null,
+    linkParentChild: async () => {},
+    addComment: async () => {},
+  };
+}
+
+/**
  * Create a TaskToolContext for testing
  */
 function createTaskToolContext(testDb: TestDatabase): TaskToolContext {
@@ -43,7 +87,7 @@ function createTaskToolContext(testDb: TestDatabase): TaskToolContext {
 
   // Mock services
   const mockGitWorktreeService = new MockGitWorktreeService();
-  const mockGitHubCLI = new MockGitHubCLI();
+  const mockProvider = createMockProvider();
 
   const conflictDetectionService = new ConflictDetectionService(db, repos.taskRepository);
 
@@ -66,7 +110,7 @@ function createTaskToolContext(testDb: TestDatabase): TaskToolContext {
     repos.taskRepository,
     repos.issueRepository,
     repos.planRepository,
-    mockGitHubCLI,
+    mockProvider,
     projectRepository,
     TEST_PROJECT_ID
   );
