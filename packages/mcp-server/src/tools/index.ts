@@ -107,3 +107,10 @@ export { mergeToolDefinitions, type MergeToolContext, handleMergeIssues } from "
 
 // Type tools
 export { typeToolDefinitions, type TypeToolContext, handleListTypes } from "./type-tools.js";
+
+// Dispatch tools (worker task assignment)
+export {
+  dispatchToolDefinitions,
+  type DispatchToolContext,
+  handleDispatchTask,
+} from "./dispatch-tools.js";

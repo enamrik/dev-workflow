@@ -12,7 +12,13 @@ import { ArchiveService, ArchiveError } from "./application/archive.service.js";
 import { UIService } from "./application/ui.service.js";
 import { BackupConfigService } from "./application/backup.service.js";
 import { NodeFileSystem } from "./infrastructure/file-system.js";
-import { createTrackDirectoryResolver } from "@dev-workflow/core";
+import {
+  createTrackDirectoryResolver,
+  DatabaseService,
+  SqliteWorkerRepository,
+  SqliteDispatchQueueRepository,
+  getGlobalDatabasePath,
+} from "@dev-workflow/core";
 
 /**
  * Check if the git repository has at least one commit.
@@ -637,6 +643,73 @@ async function runUIUninstall(): Promise<void> {
   }
 }
 
+async function runWorkers(): Promise<void> {
+  const dbPath = getGlobalDatabasePath();
+
+  if (!fs.existsSync(dbPath)) {
+    console.error("❌ Global database not found.");
+    console.error("   Run: dev-workflow init");
+    process.exit(1);
+  }
+
+  const dbService = await DatabaseService.create(dbPath);
+  const db = dbService.getDb();
+  const workerRepository = new SqliteWorkerRepository(db);
+  const dispatchQueueRepository = new SqliteDispatchQueueRepository(db);
+
+  try {
+    // Get workers with health info
+    const workers = workerRepository.findAllWithHealth();
+
+    // Get queue stats
+    const queueStats = dispatchQueueRepository.getQueueStats();
+
+    // Get queue entries for details
+    const queueEntries = dispatchQueueRepository.findAllWithHealth();
+
+    console.log("Workers:");
+    console.log("========\n");
+
+    if (workers.length === 0) {
+      console.log("  No workers registered.\n");
+    } else {
+      for (const worker of workers) {
+        const status = worker.isAlive ? "✓" : "✗";
+        const statusText = worker.isAlive ? "alive" : "dead";
+        const taskInfo = worker.currentTaskId
+          ? `| task: ${worker.currentTaskId.slice(0, 8)}...`
+          : "";
+
+        console.log(
+          `  ${status} ${worker.name} (${worker.status}) - ${statusText}, ${worker.heartbeatAge}s ago ${taskInfo}`
+        );
+      }
+      console.log();
+    }
+
+    console.log("Dispatch Queue:");
+    console.log("===============\n");
+
+    console.log(
+      `  Total: ${queueStats.total}, Unclaimed: ${queueStats.unclaimed}, Claimed: ${queueStats.claimed}, Stale: ${queueStats.stale}\n`
+    );
+
+    if (queueEntries.length > 0) {
+      console.log("  Entries:");
+      for (const entry of queueEntries) {
+        const staleMarker = entry.isStale ? " [STALE]" : "";
+        const workerInfo = entry.workerName ? `claimed by ${entry.workerName}` : "unclaimed";
+        console.log(`    - ${entry.taskId.slice(0, 8)}... (${workerInfo})${staleMarker}`);
+      }
+    }
+  } catch (error) {
+    console.error("Error listing workers:", error);
+    process.exit(1);
+  } finally {
+    dbService.close();
+  }
+}
+
 function runMcp(): void {
   const currentFile = fileURLToPath(import.meta.url);
   const cliRoot = path.resolve(path.dirname(currentFile), "..");
@@ -778,6 +851,18 @@ program
       await runUIUninstall();
     } catch (error) {
       console.error("Error uninstalling UI service:", error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("workers")
+  .description("List registered workers and dispatch queue (for debugging)")
+  .action(async () => {
+    try {
+      await runWorkers();
+    } catch (error) {
+      console.error("Error listing workers:", error);
       process.exit(1);
     }
   });
