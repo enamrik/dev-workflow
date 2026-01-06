@@ -13,7 +13,7 @@
  * Something is broken or not working as expected
  * ```
  *
- * The arrow syntax (-> label) specifies the GitHub label to apply when syncing.
+ * The arrow syntax (-> label) specifies the remote label to apply when syncing.
  * If omitted, the type name is lowercased (e.g., FEATURE -> feature).
  */
 
@@ -145,7 +145,7 @@ export class TypeService {
    * Get all available type definitions
    *
    * Returns the complete list of type definitions with their metadata,
-   * including name, description, keywords, and GitHub label.
+   * including name, description, keywords, and remote label.
    *
    * @returns Array of TypeDefinition objects
    */
@@ -211,11 +211,11 @@ export class TypeService {
    *
    * Format:
    * ```
-   * ## TYPE_NAME -> github-label
+   * ## TYPE_NAME -> remote-label
    * Description paragraph
    *
    * ## ANOTHER_TYPE
-   * Another description (defaults to lowercase type name for github label)
+   * Another description (defaults to lowercase type name for remote label)
    * ```
    *
    * @param content - Raw markdown content
@@ -226,7 +226,7 @@ export class TypeService {
     const lines = content.split("\n");
 
     let currentType: string | null = null;
-    let currentGithubLabel: string | null = null;
+    let currentRemoteLabel: string | null = null;
     let currentDescription: string[] = [];
 
     const saveCurrentType = () => {
@@ -240,8 +240,8 @@ export class TypeService {
             name: currentType as IssueType,
             description,
             keywords,
-            // Use explicit github label if provided, otherwise lowercase the type name
-            githubLabel: currentGithubLabel ?? currentType.toLowerCase(),
+            // Use explicit remote label if provided, otherwise lowercase the type name
+            remoteLabel: currentRemoteLabel ?? currentType.toLowerCase(),
           });
         }
       }
@@ -250,7 +250,7 @@ export class TypeService {
     for (const line of lines) {
       const trimmed = line.trim();
 
-      // Check for type header: ## TYPE_NAME or ## TYPE_NAME -> github-label
+      // Check for type header: ## TYPE_NAME or ## TYPE_NAME -> remote-label
       const headerMatch = trimmed.match(/^##\s+([A-Z_]+)(?:\s*->\s*(\S+))?\s*$/);
       if (headerMatch) {
         // Save previous type if any
@@ -258,7 +258,7 @@ export class TypeService {
 
         // Start new type
         currentType = headerMatch[1]!;
-        currentGithubLabel = headerMatch[2] ?? null;
+        currentRemoteLabel = headerMatch[2] ?? null;
         currentDescription = [];
         continue;
       }

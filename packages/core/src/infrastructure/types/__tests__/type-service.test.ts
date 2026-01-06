@@ -31,7 +31,7 @@ Improvement to existing functionality. Optimization and refactoring.
 Technical work, chores, maintenance. Setup and configuration.
 `;
 
-// Sample types.md with explicit GitHub labels using -> syntax
+// Sample types.md with explicit remote labels using -> syntax
 const TYPES_WITH_LABELS_MD = `## FEATURE -> feat
 
 New user-facing functionality.
@@ -271,8 +271,8 @@ User-facing additions, new screens, new APIs.
     });
   });
 
-  describe("GitHub label parsing (-> syntax)", () => {
-    it("should parse explicit GitHub labels from types.md", async () => {
+  describe("Remote label parsing (-> syntax)", () => {
+    it("should parse explicit remote labels from types.md", async () => {
       fileContents.set("/repo/.track/types.md", TYPES_WITH_LABELS_MD);
 
       const result = await service.loadTypes();
@@ -281,40 +281,40 @@ User-facing additions, new screens, new APIs.
       expect(result.types).toHaveLength(4);
 
       const feature = result.types.find((t) => t.name === "FEATURE");
-      expect(feature?.githubLabel).toBe("feat");
+      expect(feature?.remoteLabel).toBe("feat");
 
       const bug = result.types.find((t) => t.name === "BUG");
-      expect(bug?.githubLabel).toBe("bug");
+      expect(bug?.remoteLabel).toBe("bug");
 
       const enhancement = result.types.find((t) => t.name === "ENHANCEMENT");
-      expect(enhancement?.githubLabel).toBe("enhancement");
+      expect(enhancement?.remoteLabel).toBe("enhancement");
 
       const task = result.types.find((t) => t.name === "TASK");
-      expect(task?.githubLabel).toBe("chore");
+      expect(task?.remoteLabel).toBe("chore");
     });
 
-    it("should default githubLabel to lowercase type name when not specified", async () => {
+    it("should default remoteLabel to lowercase type name when not specified", async () => {
       fileContents.set("/repo/.track/types.md", SAMPLE_TYPES_MD);
 
       const result = await service.loadTypes();
 
       // No explicit labels, should default to lowercase type name
       const feature = result.types.find((t) => t.name === "FEATURE");
-      expect(feature?.githubLabel).toBe("feature");
+      expect(feature?.remoteLabel).toBe("feature");
 
       const bug = result.types.find((t) => t.name === "BUG");
-      expect(bug?.githubLabel).toBe("bug");
+      expect(bug?.remoteLabel).toBe("bug");
     });
 
-    it("should include githubLabel in default types", async () => {
+    it("should include remoteLabel in default types", async () => {
       const result = await service.loadTypes();
 
       expect(result.isUserDefined).toBe(false);
 
-      // Default types should have githubLabel
+      // Default types should have remoteLabel
       for (const type of result.types) {
-        expect(type.githubLabel).toBeDefined();
-        expect(typeof type.githubLabel).toBe("string");
+        expect(type.remoteLabel).toBeDefined();
+        expect(typeof type.remoteLabel).toBe("string");
       }
     });
   });
@@ -370,7 +370,7 @@ User-facing additions, new screens, new APIs.
       expect(feature?.name).toBe("FEATURE");
       expect(feature?.description).toBeDefined();
       expect(feature?.keywords).toBeDefined();
-      expect(feature?.githubLabel).toBe("feature");
+      expect(feature?.remoteLabel).toBe("feature");
     });
 
     it("should return undefined for invalid type", async () => {
@@ -379,12 +379,12 @@ User-facing additions, new screens, new APIs.
       expect(invalid).toBeUndefined();
     });
 
-    it("should return type with custom GitHub label when defined", async () => {
+    it("should return type with custom remote label when defined", async () => {
       fileContents.set("/repo/.track/types.md", TYPES_WITH_LABELS_MD);
 
       const feature = await service.getTypeByName("FEATURE");
 
-      expect(feature?.githubLabel).toBe("feat");
+      expect(feature?.remoteLabel).toBe("feat");
     });
   });
 });

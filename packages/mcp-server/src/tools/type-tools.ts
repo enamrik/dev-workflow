@@ -12,8 +12,8 @@ export const typeToolDefinitions: ToolDefinition[] = [
   {
     name: "list_types",
     description:
-      "List all available issue/task types with their GitHub label mappings. " +
-      "Returns array of types with name, description, and githubLabel. " +
+      "List all available issue/task types with their remote label mappings. " +
+      "Returns array of types with name, description, and remoteLabel. " +
       "Use this before generate_plan to know valid type values.",
     inputSchema: {
       type: "object",
@@ -32,7 +32,7 @@ export interface TypeToolContext {
 /**
  * Handle list_types tool call
  *
- * Returns all valid types with their metadata (name, description, githubLabel).
+ * Returns all valid types with their metadata (name, description, remoteLabel).
  * This allows Claude to know what types are valid before calling generate_plan.
  */
 export async function handleListTypes(ctx: TypeToolContext): Promise<ToolResponse> {
@@ -42,7 +42,7 @@ export async function handleListTypes(ctx: TypeToolContext): Promise<ToolRespons
     types: types.map((t) => ({
       name: t.name,
       description: t.description,
-      githubLabel: t.githubLabel,
+      remoteLabel: t.remoteLabel,
     })),
     message: `${types.length} type(s) available. Use these values for the 'type' field in generate_plan tasks.`,
   });
