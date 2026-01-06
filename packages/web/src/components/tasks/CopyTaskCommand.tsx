@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { clsx } from "clsx";
+import { getClaudeTaskCommand } from "@/lib/claude-command";
 
 interface CopyTaskCommandProps {
   issueNumber: number;
@@ -12,7 +13,7 @@ interface CopyTaskCommandProps {
 }
 
 /**
- * Button that copies a Claude command to start working on a task.
+ * Button that copies natural language text for pasting into Claude to start a task.
  */
 export function CopyTaskCommand({
   issueNumber,
@@ -22,7 +23,7 @@ export function CopyTaskCommand({
 }: CopyTaskCommandProps) {
   const [copied, setCopied] = useState(false);
 
-  const command = `claude "Start work on task #${issueNumber}.${taskNumber} using the dwf-work-task skill"`;
+  const command = getClaudeTaskCommand(issueNumber, taskNumber);
 
   const handleCopy = useCallback(async () => {
     try {
@@ -57,7 +58,7 @@ export function CopyTaskCommand({
       ) : (
         <>
           <CopyIcon size={size} />
-          {isSmall ? "Claude cmd" : "Copy Claude command"}
+          {isSmall ? "For Claude" : "Copy for Claude"}
         </>
       )}
     </button>
