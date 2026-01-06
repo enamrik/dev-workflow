@@ -277,6 +277,8 @@ When user needs to push more changes (e.g., review feedback):
 
 ### To Complete a Task
 
+**IMPORTANT: `complete_task` requires a `finalLogEntry` parameter** - a summary of what was accomplished. This ensures every completed task has documentation of the work done.
+
 **For Main Mode (no PR):**
 
 1. **Summarize work done:**
@@ -293,7 +295,8 @@ When user needs to push more changes (e.g., review feedback):
    - Create git commit
 
 4. **Complete the task:**
-   - Call `complete_task` with task ID and session ID
+   - Call `complete_task` with task ID, session ID, and `finalLogEntry`
+   - The `finalLogEntry` should summarize what was accomplished (files changed, features added, etc.)
    - Task transitions directly to COMPLETED
 
 **For Isolated/Branch Modes (with PR):**
@@ -304,8 +307,9 @@ When user needs to push more changes (e.g., review feedback):
    - If merged → proceed
 
 2. **Complete the task:**
-   - Call `complete_task` with task ID and session ID
-   - This atomically: verifies PR merged, pulls main, cleans up worktree/branch
+   - Call `complete_task` with task ID, session ID, and `finalLogEntry`
+   - The `finalLogEntry` should summarize what was accomplished
+   - This atomically: writes final log, verifies PR merged, pulls main, cleans up worktree/branch
    - Task transitions to COMPLETED
 
 3. **Report completion:**
@@ -385,12 +389,14 @@ Task is now IN_PROGRESS. Ready to begin?
 ### Starting in Branch/Main Mode
 
 **Branch mode** (user says "branch mode", "no worktree"):
+
 ```
 Task: Add session management
 Branch: issue-5/task-2-add-session (checked out in main repo)
 ```
 
 **Main mode** (user says "on main", "skip PR"):
+
 ```
 Task: Update logging configuration
 Working directly on main. No PR will be created.
@@ -419,13 +425,21 @@ Submit for review now?
 ### Completing a Task
 
 **After PR merged:**
+
 ```
 PR #42: MERGED
+
+complete_task({
+  taskId: "...",
+  sessionId: "...",
+  finalLogEntry: "Implemented OAuth2 authentication with Google provider. Added callback handler, token storage, and session management. Unit tests achieve 92% coverage."
+})
+
 Cleaning up worktree and branch...
 Task COMPLETED. Next task available: "Add session management"
 ```
 
-**Main mode:** Summarize → confirm → commit → COMPLETED
+**Main mode:** Summarize → confirm → commit → `complete_task` with `finalLogEntry` → COMPLETED
 
 ### Abandoning / Pausing
 
@@ -460,21 +474,32 @@ Any manual workaround (direct database updates, `gh` CLI, etc.) creates **corrup
 
 ---
 
+### Session Continuation Recovery (IMPORTANT)
+
+**Task UUIDs from summarized sessions may be hallucinated.** If you get `Task not found`:
+
+1. Use **issue/task numbers from context** (simple integers, reliable)
+2. Call `get_task(issueNumber: N, taskNumber: M)` → returns real task ID
+
+**Never** use task UUIDs from summaries - always fetch by issue/task number.
+
+---
+
 ### Other Errors
 
-| Error | Action |
-|-------|--------|
-| Task not found | Call `list_available_tasks` to show available |
-| Task in progress (other session) | Wait, or force mode if session stale |
-| No tasks available | Check plan or create new tasks |
-| Create PR failed - no branch | Main mode; complete directly instead |
-| Create PR failed - wrong status | Force mode if state drifted |
-| Submit failed - no PR | Call `create_pr` first; force mode if PR exists externally |
-| Submit failed - wrong status | Force mode if state drifted |
-| Complete failed - PR not merged | Ask user to merge PR first |
-| Complete failed - wrong status | Force mode if PR actually merged |
-| Complete failed - PR not found | Abandon and re-start task |
-| Close issue failed - tasks open | Force mode if work actually done |
+| Error                            | Action                                                     |
+| -------------------------------- | ---------------------------------------------------------- |
+| Task not found                   | Call `list_available_tasks` to show available              |
+| Task in progress (other session) | Wait, or force mode if session stale                       |
+| No tasks available               | Check plan or create new tasks                             |
+| Create PR failed - no branch     | Main mode; complete directly instead                       |
+| Create PR failed - wrong status  | Force mode if state drifted                                |
+| Submit failed - no PR            | Call `create_pr` first; force mode if PR exists externally |
+| Submit failed - wrong status     | Force mode if state drifted                                |
+| Complete failed - PR not merged  | Ask user to merge PR first                                 |
+| Complete failed - wrong status   | Force mode if PR actually merged                           |
+| Complete failed - PR not found   | Abandon and re-start task                                  |
+| Close issue failed - tasks open  | Force mode if work actually done                           |
 
 ## Force Mode: Recovering from State Drift
 

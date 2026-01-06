@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
+import { eq } from "drizzle-orm";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
 import { createRepositories, createTestIssue, createTestPlan, createTestTask } from "../helpers.js";
 import {
@@ -12,13 +13,32 @@ import {
   MockGitWorktreeService,
   SqliteProjectRepository,
   TaskGitHubSyncService,
+  taskExecutionLogs,
+  type DatabaseService,
 } from "@dev-workflow/core";
-import { handleCreatePR, handleSubmitForReview, type PRToolContext } from "../../tools/pr-tools.js";
+import {
+  handleCreatePR,
+  handleSubmitForReview,
+  handleCompleteTask,
+  type PRToolContext,
+} from "../../tools/pr-tools.js";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as schema from "@dev-workflow/core";
 
 type DbType = BetterSQLite3Database<typeof schema>;
 const TEST_PROJECT_ID = "test-project-pr";
+
+/**
+ * Create a mock DatabaseService for testing
+ * Only implements getDb() which is what PRToolContext needs
+ */
+function createMockDbService(db: DbType) {
+  return {
+    getDb: () => db,
+    // Other methods not needed for PR tools
+    close: () => {},
+  };
+}
 
 /**
  * Create a PRToolContext for testing
@@ -51,6 +71,8 @@ function createPRToolContext(
     taskRepository: repos.taskRepository,
     gitWorktreeService,
     taskGitHubSyncService,
+    dbService: createMockDbService(db) as unknown as DatabaseService,
+    taskExecutionLogsSchema: taskExecutionLogs,
   };
 }
 
@@ -512,6 +534,8 @@ describe("submit_for_review", () => {
         taskRepository: repos.taskRepository,
         gitWorktreeService: mockGitWorktreeService,
         taskGitHubSyncService,
+        dbService: createMockDbService(db) as unknown as DatabaseService,
+        taskExecutionLogsSchema: taskExecutionLogs,
       };
 
       // Create issue, plan, and task
@@ -634,5 +658,141 @@ describe("two-step PR workflow", () => {
 
     const content = JSON.parse(submitResult.content[0].text);
     expect(content.task.status).toBe("PR_REVIEW");
+  });
+});
+
+describe("complete_task", () => {
+  let testDb: TestDatabase;
+
+  beforeEach(() => {
+    testDb = createTestDatabase();
+  });
+
+  describe("finalLogEntry requirement", () => {
+    it("should fail if finalLogEntry is not provided", async () => {
+      // Arrange
+      const ctx = createPRToolContext(testDb);
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "IN_PROGRESS",
+      });
+
+      // Act - call without finalLogEntry
+      const result = await handleCompleteTask(ctx, {
+        taskId: task.id,
+        sessionId: "test-session",
+        finalLogEntry: "",
+      });
+
+      // Assert
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("finalLogEntry is required");
+    });
+
+    it("should fail if finalLogEntry is only whitespace", async () => {
+      // Arrange
+      const ctx = createPRToolContext(testDb);
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "IN_PROGRESS",
+      });
+
+      // Act - call with whitespace-only finalLogEntry
+      const result = await handleCompleteTask(ctx, {
+        taskId: task.id,
+        sessionId: "test-session",
+        finalLogEntry: "   \n\t  ",
+      });
+
+      // Assert
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("finalLogEntry is required");
+    });
+
+    it("should write finalLogEntry to execution log on successful completion (main mode)", async () => {
+      // Arrange
+      const ctx = createPRToolContext(testDb);
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "IN_PROGRESS",
+      });
+      // No branch = main mode
+
+      // Act
+      const result = await handleCompleteTask(ctx, {
+        taskId: task.id,
+        sessionId: "test-session",
+        finalLogEntry: "Implemented feature X with tests",
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.task.status).toBe("COMPLETED");
+
+      // Verify log entry was written
+      const db = testDb.db as DbType;
+      const logs = db
+        .select()
+        .from(taskExecutionLogs)
+        .where(eq(taskExecutionLogs.taskId, task.id))
+        .all();
+
+      expect(logs).toHaveLength(1);
+      expect(logs[0]?.message).toBe("Implemented feature X with tests");
+      expect(logs[0]?.sessionId).toBe("test-session");
+    });
+
+    it("should preserve existing log entries when completing task", async () => {
+      // Arrange
+      const ctx = createPRToolContext(testDb);
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "IN_PROGRESS",
+      });
+
+      // Add an existing log entry
+      const db = testDb.db as DbType;
+      db.insert(taskExecutionLogs)
+        .values({
+          id: crypto.randomUUID(),
+          taskId: task.id,
+          sessionId: "test-session",
+          message: "Started implementation",
+          filesModified: null,
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+
+      // Act
+      const result = await handleCompleteTask(ctx, {
+        taskId: task.id,
+        sessionId: "test-session",
+        finalLogEntry: "Completed all work",
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+
+      // Verify both log entries exist
+      const logs = db
+        .select()
+        .from(taskExecutionLogs)
+        .where(eq(taskExecutionLogs.taskId, task.id))
+        .all();
+
+      expect(logs).toHaveLength(2);
+      expect(logs.map((l) => l.message)).toContain("Started implementation");
+      expect(logs.map((l) => l.message)).toContain("Completed all work");
+    });
   });
 });
