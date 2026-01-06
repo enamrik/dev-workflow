@@ -21,7 +21,6 @@ export function resolveGlobalTrackDir(): string {
  *
  * Storage architecture:
  * - Single global database: ~/.track/workflow.db (all projects share one DB)
- * - Per-project config: ~/.track/<project-id>/config.json
  * - Per-project worktrees: ~/.track/<project-id>/worktrees/
  * - Local templates: ./track/templates/issues/ and ./track/templates/tasks/
  * - Local labels: ./track/labels/
@@ -140,14 +139,6 @@ export class TrackDirectoryResolver {
    */
   getDatabasePath(): string {
     return path.join(this.getGlobalTrackDirectory(), "workflow.db");
-  }
-
-  /**
-   * Get the config file path.
-   * Returns: ~/.track/<project-id>/config.json
-   */
-  getConfigPath(): string {
-    return path.join(this.getTrackDirectory(), "config.json");
   }
 
   // ============================================================

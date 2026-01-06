@@ -4,8 +4,9 @@
  * Projects are identified by their git repository's initial commit hash,
  * which is stable regardless of where the repo is cloned or moved.
  *
- * Note: gitRoot is NOT part of this entity - it's stored locally in config.json.
- * This allows the database to be shared across developers with different local paths.
+ * Note: gitRoot is NOT part of this entity - it's computed from cwd when needed
+ * via `git rev-parse --show-toplevel`. This allows the database to be shared
+ * across developers with different local paths.
  */
 
 import type { GitHubIssueSyncConfig } from "../infrastructure/database/schema.js";

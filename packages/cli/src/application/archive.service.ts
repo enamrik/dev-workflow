@@ -217,6 +217,8 @@ export class ArchiveService {
   /**
    * Get the project for the current repository.
    *
+   * Looks up the project by gitRootHash (first commit hash).
+   *
    * @returns The project if found, null otherwise
    */
   async getProject(): Promise<Project | null> {
@@ -231,20 +233,11 @@ export class ArchiveService {
 
     try {
       const projectRepository = new SqliteProjectRepository(dbService.getDb());
+      const gitOps = new NodeGitOperations();
 
-      // Look up by config's projectId
-      const configPath = this.resolver.getConfigPath();
-      const configExists = await this.fileSystem.exists(configPath);
-
-      if (configExists) {
-        const content = await this.fileSystem.readFile(configPath);
-        const config = JSON.parse(content);
-        if (config.projectId) {
-          return projectRepository.findById(config.projectId);
-        }
-      }
-
-      return null;
+      // Look up by gitRootHash (first commit hash)
+      const gitRootHash = await gitOps.getInitialCommitHash(this.workingDirectory);
+      return projectRepository.findByGitRootHash(gitRootHash);
     } finally {
       dbService.close();
     }
@@ -339,7 +332,6 @@ export class ArchiveService {
    *
    * 1. Marks project as unarchived in database
    * 2. Re-installs Claude integration (skills, MCP)
-   * 3. Recreates config.json if missing
    *
    * @param project - The project to unarchive (must be archived)
    * @returns The unarchived project
@@ -380,9 +372,6 @@ export class ArchiveService {
       if (!trackDirExists) {
         await installer.createTrackDirectory();
       }
-
-      // Recreate local config with current gitRoot
-      await installer.createLocalConfig();
 
       // Re-install skills
       await installer.installSkills();
