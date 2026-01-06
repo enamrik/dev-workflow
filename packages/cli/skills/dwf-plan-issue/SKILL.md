@@ -65,6 +65,39 @@ Incorporate these into your plan:
 
 If no context was passed, make reasonable decisions based on the codebase patterns.
 
+## Markdown Formatting for Plans
+
+The plan summary and approach fields support **GitHub Flavored Markdown**. Use rich formatting to make plans clear and scannable:
+
+**Available formatting:**
+- **Tables** for comparisons, mappings, or structured data: `| Header | Header |`
+- **Task lists** for checklists: `- [x] done` / `- [ ] pending`
+- **Strikethrough** for deprecated/removed items: `~~old approach~~`
+- **Code blocks** with syntax highlighting: ` ```typescript `
+- **Headers** for sections: `## Approach`, `### Phase 1`
+- **Bold/italic** for emphasis
+- **Bullet/numbered lists** for steps or options
+
+**Use tables when appropriate:**
+- Comparing approaches or technologies
+- Mapping components to responsibilities
+- Showing file → change summaries
+- Status/phase breakdowns
+
+**Example approach with table:**
+```markdown
+## Approach
+
+| Phase | Focus | Components |
+|-------|-------|------------|
+| 1 | Core auth | OAuth handler, session store |
+| 2 | User profile | API endpoint, UI components |
+
+We'll use passport.js for OAuth handling...
+```
+
+Don't overuse formatting—clarity beats decoration. Use visuals when they genuinely help communicate the plan structure.
+
 ## Process
 
 1. **Get Available Types (REQUIRED):**
