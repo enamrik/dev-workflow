@@ -131,7 +131,6 @@ import {
 // Get paths from environment
 const DATABASE_PATH = process.env["DATABASE_PATH"] || "./data/workflow.db";
 const PROJECT_ID = process.env["PROJECT_ID"];
-const TEMPLATES_PATH = process.env["TEMPLATES_PATH"] || "./.track/config/issues/templates/";
 const GIT_ROOT = process.env["GIT_ROOT"];
 
 // PROJECT_ID is required for the MCP server to scope data to the correct project
@@ -413,10 +412,9 @@ async function main() {
   // Initialize file system and paths
   const fileSystem = new NodeFileSystem();
   const projectRoot = validatedGitRoot;
-  // For track directory, derive from TEMPLATES_PATH (legacy) or use global track dir
-  // This is separate from the database project ID (used for file storage)
-  const trackDirectory = TEMPLATES_PATH.replace(/\/config\/issues\/templates\/?$/, "");
   const globalTrackDir = resolveGlobalTrackDir();
+  // Track directory for project-specific data (worktrees, etc.) in global location
+  const trackDirectory = path.join(globalTrackDir, projectId);
 
   // Template paths follow cascading resolution:
   // Local (./track/templates/) takes precedence over global (~/.track/config/templates/)
@@ -427,8 +425,10 @@ async function main() {
     globalTaskTemplatesPath: path.join(globalTrackDir, "config", "templates", "tasks"),
   };
 
-  // Initialize label service
-  const labelService = new LabelService(trackDirectory);
+  // Initialize label service with local ./track/ path
+  // LabelService appends "labels" to make ./track/labels/
+  const localTrackPath = path.join(projectRoot, "track");
+  const labelService = new LabelService(localTrackPath);
 
   // Initialize GitHub sync services
   // Services read config fresh from database on each call, so they handle
