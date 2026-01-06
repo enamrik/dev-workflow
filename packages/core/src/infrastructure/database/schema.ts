@@ -401,9 +401,8 @@ export interface GitHubIssueSyncConfig {
  * Centralized storage for project configuration.
  * Uses git's initial commit hash as stable identifier that survives repo moves.
  *
- * Note: gitRoot is NOT stored here - it's computed from cwd when needed via
- * `git rev-parse --show-toplevel`. This allows the database to be shared
- * across multiple developers who have the repo cloned at different paths.
+ * gitRoot is the absolute path to the git repository on this machine.
+ * Updated during `dev-workflow init` (fresh install or repair after repo move).
  */
 export const projects = sqliteTable("projects", {
   // Primary key (UUID)
@@ -412,6 +411,10 @@ export const projects = sqliteTable("projects", {
   // Stable identifier: SHA of the initial commit (git rev-list --max-parents=0 HEAD)
   // This never changes regardless of where the repo is cloned or moved
   gitRootHash: text("git_root_hash").notNull().unique(),
+
+  // Absolute path to the git repository on this machine
+  // Updated during `dev-workflow init` when the project is created or repaired
+  gitRoot: text("git_root"),
 
   // Human-readable project name (typically the folder name)
   name: text("name").notNull(),

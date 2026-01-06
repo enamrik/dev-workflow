@@ -479,6 +479,7 @@ describe("submit_for_review", () => {
       const project = projectRepository.create({
         name: "Test Project",
         gitRootHash: "test-hash-123",
+        gitRoot: "/test/repo",
         githubSync: {
           enabled: true,
           projectId: "PVT_test_project",

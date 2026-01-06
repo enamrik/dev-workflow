@@ -39,6 +39,7 @@ function createSettingsToolContext(
     projectRepository.create({
       name: "test-project",
       gitRootHash: TEST_GIT_ROOT_HASH,
+      gitRoot: TEST_GIT_ROOT,
     });
 
   return {
