@@ -23,6 +23,7 @@ import {
   type GitHubLabelsConfig,
 } from "../infrastructure/database/schema.js";
 import type { ProjectRepository } from "../domain/project.js";
+import type { TemplateService } from "../infrastructure/templates/template-service.js";
 
 /**
  * Error thrown when task GitHub sync fails
@@ -95,7 +96,8 @@ export class TaskGitHubSyncService {
     private readonly planRepository: PlanRepository,
     private readonly githubCLI: GitHubCLI,
     private readonly projectRepository: ProjectRepository,
-    private readonly projectId: string
+    private readonly projectId: string,
+    private readonly templateService?: TemplateService
   ) {}
 
   /**
@@ -388,7 +390,8 @@ export class TaskGitHubSyncService {
     const title = task.title;
 
     // Build body with task description and dev-workflow reference as footer
-    const body = this.buildTaskBody(issue, task);
+    // Uses task template if available (based on task type)
+    const body = await this.buildTaskBody(issue, task);
 
     // Build labels (include issue type label)
     const labels = this.buildLabels(config, issue.type);
@@ -862,11 +865,76 @@ export class TaskGitHubSyncService {
   /**
    * Build the GitHub issue body for a task
    *
-   * Uses clean format without "Parent Issue" linking to avoid confusing
-   * teammates not using dev-workflow. Dev-workflow reference is added
-   * as an unobtrusive footer note.
+   * If a template service is configured, attempts to use task template
+   * based on task type. Templates support placeholders:
+   * - {{description}} - Task description
+   * - {{acceptanceCriteria}} - Formatted acceptance criteria list
+   * - {{parentIssueLink}} - Dev-workflow issue reference
+   *
+   * Falls back to hardcoded format if no template is found.
+   *
+   * Dev-workflow reference is added as an unobtrusive footer note.
    */
-  private buildTaskBody(issue: Issue, task: Task): string {
+  private async buildTaskBody(issue: Issue, task: Task): Promise<string> {
+    // Try to use task template if template service is available
+    if (this.templateService) {
+      try {
+        const template = await this.templateService.getTaskTemplate(task.type);
+        if (template) {
+          const body = this.applyTaskPlaceholders(template.content, issue, task);
+          return this.appendFooter(body, issue, task);
+        }
+      } catch {
+        // Log but don't fail - fall back to default behavior
+        console.warn(
+          `Failed to load task template for type ${task.type}, falling back to default format`
+        );
+      }
+    }
+
+    // Fall back to hardcoded format
+    return this.buildDefaultTaskBody(issue, task);
+  }
+
+  /**
+   * Apply placeholders to task template content
+   *
+   * Replaces:
+   * - {{description}} with task description
+   * - {{acceptanceCriteria}} with formatted bullet list
+   * - {{parentIssueLink}} with dev-workflow issue reference
+   */
+  private applyTaskPlaceholders(content: string, issue: Issue, task: Task): string {
+    let result = content;
+
+    // Replace {{description}}
+    result = result.replace(/\{\{description\}\}/g, task.description);
+
+    // Replace {{acceptanceCriteria}}
+    const criteriaList =
+      task.acceptanceCriteria.length > 0
+        ? task.acceptanceCriteria.map((c) => `- [ ] ${c}`).join("\n")
+        : "_No acceptance criteria defined._";
+    result = result.replace(/\{\{acceptanceCriteria\}\}/g, criteriaList);
+
+    // Replace {{parentIssueLink}}
+    const parentLink = `dev-workflow issue #${issue.number}: ${issue.title}`;
+    result = result.replace(/\{\{parentIssueLink\}\}/g, parentLink);
+
+    return result;
+  }
+
+  /**
+   * Append dev-workflow footer to body
+   */
+  private appendFooter(body: string, issue: Issue, task: Task): string {
+    return `${body}\n\n---\nTask ${issue.number}.${task.number}: ${task.title}`;
+  }
+
+  /**
+   * Build default task body (fallback when no template)
+   */
+  private buildDefaultTaskBody(issue: Issue, task: Task): string {
     const sections: string[] = [task.description];
 
     if (task.acceptanceCriteria.length > 0) {

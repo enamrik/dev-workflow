@@ -10,7 +10,12 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { createTestDatabase, type TestDatabase } from "../../__tests__/setup.js";
 import { createRepositories } from "../../__tests__/helpers.js";
 import { MockGitHubCLI } from "../../__tests__/mocks/mock-github-cli.js";
+import { MockFileSystem } from "../../__tests__/mocks/mock-file-system.js";
 import { TaskGitHubSyncService } from "../task-github-sync-service.js";
+import {
+  TemplateService,
+  type TemplateServiceConfig,
+} from "../../infrastructure/templates/template-service.js";
 import type { Task } from "../../domain/task.js";
 
 describe("TaskGitHubSyncService", () => {
@@ -1049,6 +1054,237 @@ describe("TaskGitHubSyncService", () => {
       // Verify NO new issue was created
       const createCalls = mockGitHubCLI.getCallsTo("createIssue");
       expect(createCalls).toHaveLength(0);
+    });
+  });
+
+  describe("task templates", () => {
+    it("should use task template body when templateService is provided", async () => {
+      // Arrange - create a template service with a FEATURE template
+      const mockFs = new MockFileSystem();
+      mockFs.addFile(
+        "/global/templates/tasks/feature.md",
+        `---
+type: FEATURE
+priority: MEDIUM
+labels: []
+---
+
+## Description
+
+{{description}}
+
+## Acceptance Criteria
+
+{{acceptanceCriteria}}
+
+## Parent Issue
+
+{{parentIssueLink}}`
+      );
+
+      const templateConfig: TemplateServiceConfig = {
+        localIssueTemplatesPath: "/local/templates/issues",
+        localTaskTemplatesPath: "/local/templates/tasks",
+        globalIssueTemplatesPath: "/global/templates/issues",
+        globalTaskTemplatesPath: "/global/templates/tasks",
+      };
+
+      const templateService = new TemplateService(mockFs, templateConfig);
+
+      // Create service WITH template service
+      const serviceWithTemplates = new TaskGitHubSyncService(
+        repos.taskRepository,
+        repos.issueRepository,
+        repos.planRepository,
+        mockGitHubCLI,
+        repos.projectRepository,
+        testProjectId,
+        templateService
+      );
+
+      // Create issue and plan
+      const issue = repos.issueRepository.create({
+        title: "Template Test Issue",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "PLANNED",
+        acceptanceCriteria: [],
+        createdBy: "test",
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Task with Template",
+        description: "This is the task description.",
+        status: "PLANNED",
+        type: "FEATURE", // Match the template type
+        source: "generated",
+        acceptanceCriteria: ["Criterion 1", "Criterion 2"],
+        isDeleted: false,
+      });
+
+      // Act
+      const result = await serviceWithTemplates.activatePlannedTasks(issue.id);
+
+      // Assert
+      expect(result.success).toBe(true);
+
+      // Verify the body was created using the template
+      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
+      expect(createIssueCalls).toHaveLength(1);
+
+      const body = createIssueCalls[0].args[1] as string;
+
+      // Check template sections are present
+      expect(body).toContain("## Description");
+      expect(body).toContain("This is the task description.");
+      expect(body).toContain("## Acceptance Criteria");
+      expect(body).toContain("- [ ] Criterion 1");
+      expect(body).toContain("- [ ] Criterion 2");
+      expect(body).toContain("## Parent Issue");
+      expect(body).toContain("dev-workflow issue #1: Template Test Issue");
+
+      // Check footer is appended
+      expect(body).toContain("---");
+      expect(body).toContain("Task 1.1: Task with Template");
+    });
+
+    it("should fall back to default format when no template is found", async () => {
+      // Arrange - create a template service with no templates
+      const mockFs = new MockFileSystem();
+      mockFs.addDirectory("/local/templates/tasks");
+      mockFs.addDirectory("/global/templates/tasks");
+
+      const templateConfig: TemplateServiceConfig = {
+        localIssueTemplatesPath: "/local/templates/issues",
+        localTaskTemplatesPath: "/local/templates/tasks",
+        globalIssueTemplatesPath: "/global/templates/issues",
+        globalTaskTemplatesPath: "/global/templates/tasks",
+      };
+
+      const templateService = new TemplateService(mockFs, templateConfig);
+
+      // Create service WITH template service (but no matching templates)
+      const serviceWithTemplates = new TaskGitHubSyncService(
+        repos.taskRepository,
+        repos.issueRepository,
+        repos.planRepository,
+        mockGitHubCLI,
+        repos.projectRepository,
+        testProjectId,
+        templateService
+      );
+
+      // Create issue and plan
+      const issue = repos.issueRepository.create({
+        title: "No Template Test",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "PLANNED",
+        acceptanceCriteria: [],
+        createdBy: "test",
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Task without Template",
+        description: "Fallback description.",
+        status: "PLANNED",
+        type: "FEATURE",
+        source: "generated",
+        acceptanceCriteria: ["Fallback criterion"],
+        isDeleted: false,
+      });
+
+      // Act
+      const result = await serviceWithTemplates.activatePlannedTasks(issue.id);
+
+      // Assert
+      expect(result.success).toBe(true);
+
+      // Verify the body was created using fallback format
+      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
+      expect(createIssueCalls).toHaveLength(1);
+
+      const body = createIssueCalls[0].args[1] as string;
+
+      // Check fallback format
+      expect(body).toContain("Fallback description.");
+      expect(body).toContain("## Acceptance Criteria");
+      expect(body).toContain("- [ ] Fallback criterion");
+      expect(body).toContain("---");
+      expect(body).toContain("Task 1.1: Task without Template");
+    });
+
+    it("should work without templateService (backward compatible)", async () => {
+      // Arrange - use the default service without templateService
+      // Create issue and plan
+      const issue = repos.issueRepository.create({
+        title: "Backward Compatible Test",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "PLANNED",
+        acceptanceCriteria: [],
+        createdBy: "test",
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Task without Template Service",
+        description: "Works without templates.",
+        status: "PLANNED",
+        type: "FEATURE",
+        source: "generated",
+        acceptanceCriteria: ["Works correctly"],
+        isDeleted: false,
+      });
+
+      // Act - use the default service (no templateService)
+      const result = await service.activatePlannedTasks(issue.id);
+
+      // Assert
+      expect(result.success).toBe(true);
+
+      // Verify the body was created using fallback format
+      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
+      expect(createIssueCalls).toHaveLength(1);
+
+      const body = createIssueCalls[0].args[1] as string;
+
+      // Check fallback format
+      expect(body).toContain("Works without templates.");
+      expect(body).toContain("## Acceptance Criteria");
+      expect(body).toContain("- [ ] Works correctly");
     });
   });
 });

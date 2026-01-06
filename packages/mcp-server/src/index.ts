@@ -458,6 +458,10 @@ async function main() {
   const localTrackPath = path.join(projectRoot, ".track");
   const labelService = new LabelService(localTrackPath);
 
+  // Initialize type service for intelligent type assignment
+  const typeService = new TypeService(fileSystem, typeConfig);
+  const templateService = new TemplateService(fileSystem, templateConfig, typeService);
+
   // Initialize GitHub sync services
   // Services read config fresh from database on each call, so they handle
   // the case where GitHub sync is enabled after server start
@@ -469,13 +473,15 @@ async function main() {
     projectId
   );
   // TaskGitHubSyncService for task-level GitHub issue sync
+  // Includes templateService for task template support when creating GitHub issues
   const taskGitHubSyncService = new TaskGitHubSyncService(
     taskRepository,
     issueRepository,
     planRepository,
     githubCLI,
     projectRepository,
-    projectId
+    projectId,
+    templateService
   );
   if (project.githubSync?.enabled) {
     console.error("GitHub issue sync enabled (repository auto-detected from git remotes)");
@@ -504,10 +510,6 @@ async function main() {
     planRepository,
     issueRepository
   );
-
-  // Initialize type service for intelligent type assignment
-  const typeService = new TypeService(fileSystem, typeConfig);
-  const templateService = new TemplateService(fileSystem, templateConfig, typeService);
 
   // Initialize git worktree service for isolated task execution
   // projectRoot comes from GIT_ROOT environment variable (set at startup)
