@@ -107,3 +107,6 @@ export {
   handleSubmitForReview,
   handleCompleteTask,
 } from "./pr-tools.js";
+
+// Merge tools
+export { mergeToolDefinitions, type MergeToolContext, handleMergeIssues } from "./merge-tools.js";
