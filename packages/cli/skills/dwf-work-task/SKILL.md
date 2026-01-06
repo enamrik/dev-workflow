@@ -474,6 +474,21 @@ Any manual workaround (direct database updates, `gh` CLI, etc.) creates **corrup
 
 ---
 
+### Session Continuation Recovery (IMPORTANT)
+
+**Task IDs from summarized sessions may be hallucinated.** If you get `Task not found` after session continuation:
+
+1. **Verify worktree path from filesystem** (run `pwd`, don't trust memory)
+   - Path format: `.track/.../worktrees/issue-N-task-M` → issue #N, task #M
+
+2. **Fetch real task ID:**
+   - `get_issue(issueNumber: N, includePlan: true)`
+   - Find task with matching number in plan, use that ID
+
+**Never** trust task IDs from summarized sessions - always fetch fresh.
+
+---
+
 ### Other Errors
 
 | Error                            | Action                                                     |
