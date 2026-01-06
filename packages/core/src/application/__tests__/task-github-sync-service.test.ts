@@ -16,6 +16,7 @@ import {
   TemplateService,
   type TemplateServiceConfig,
 } from "../../infrastructure/templates/template-service.js";
+import { TypeService, type TypeServiceConfig } from "../../infrastructure/types/type-service.js";
 import type { Task } from "../../domain/task.js";
 
 describe("TaskGitHubSyncService", () => {
@@ -1286,6 +1287,274 @@ labels: []
       expect(body).toContain("Works without templates.");
       expect(body).toContain("## Acceptance Criteria");
       expect(body).toContain("- [ ] Works correctly");
+    });
+  });
+
+  describe("task type labels", () => {
+    it("should use task.type for GitHub label via TypeService", async () => {
+      // Arrange - create TypeService with custom GitHub labels
+      const mockFs = new MockFileSystem();
+      mockFs.addFile(
+        "/local/.track/types.md",
+        `## FEATURE -> feat
+New functionality.
+
+## BUG -> bug
+Something broken.
+
+## ENHANCEMENT -> improve
+Better existing features.
+
+## TASK -> chore
+Technical work.`
+      );
+
+      const typeConfig: TypeServiceConfig = {
+        localTypesPath: "/local/.track/types.md",
+        globalTypesPath: "/global/.track/types.md",
+      };
+      const typeService = new TypeService(mockFs, typeConfig);
+
+      // Create service WITH typeService
+      const serviceWithTypes = new TaskGitHubSyncService(
+        repos.taskRepository,
+        repos.issueRepository,
+        repos.planRepository,
+        mockGitHubCLI,
+        repos.projectRepository,
+        testProjectId,
+        undefined, // no templateService
+        typeService
+      );
+
+      // Create issue and plan
+      const issue = repos.issueRepository.create({
+        title: "Type Label Test Issue",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "PLANNED",
+        acceptanceCriteria: [],
+        createdBy: "test",
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      // Create a TASK type task (should get "chore" label from TypeService)
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Infrastructure Task",
+        description: "Technical work.",
+        status: "PLANNED",
+        type: "TASK",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // Act
+      const result = await serviceWithTypes.activatePlannedTasks(issue.id);
+
+      // Assert
+      expect(result.success).toBe(true);
+
+      // Verify the correct label was applied (chore from TypeService)
+      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
+      expect(createIssueCalls).toHaveLength(1);
+
+      const labels = createIssueCalls[0].args[2] as string[];
+      expect(labels).toContain("chore"); // From TypeService: TASK -> chore
+      expect(labels).toContain("task"); // Standard "task" label
+    });
+
+    it("should use different label for FEATURE type task", async () => {
+      // Arrange - create TypeService with custom GitHub labels
+      const mockFs = new MockFileSystem();
+      mockFs.addFile(
+        "/local/.track/types.md",
+        `## FEATURE -> feat
+New functionality.
+
+## TASK -> chore
+Technical work.`
+      );
+
+      const typeConfig: TypeServiceConfig = {
+        localTypesPath: "/local/.track/types.md",
+        globalTypesPath: "/global/.track/types.md",
+      };
+      const typeService = new TypeService(mockFs, typeConfig);
+
+      const serviceWithTypes = new TaskGitHubSyncService(
+        repos.taskRepository,
+        repos.issueRepository,
+        repos.planRepository,
+        mockGitHubCLI,
+        repos.projectRepository,
+        testProjectId,
+        undefined,
+        typeService
+      );
+
+      // Create issue and plan
+      const issue = repos.issueRepository.create({
+        title: "Feature Task Test",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "PLANNED",
+        acceptanceCriteria: [],
+        createdBy: "test",
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      // Create a FEATURE type task (should get "feat" label)
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Add new feature",
+        description: "New functionality.",
+        status: "PLANNED",
+        type: "FEATURE",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // Act
+      const result = await serviceWithTypes.activatePlannedTasks(issue.id);
+
+      // Assert
+      expect(result.success).toBe(true);
+
+      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
+      const labels = createIssueCalls[0].args[2] as string[];
+      expect(labels).toContain("feat"); // From TypeService: FEATURE -> feat
+      expect(labels).toContain("task");
+    });
+
+    it("should fall back to lowercase type name when TypeService is not provided", async () => {
+      // Use the default service (no typeService)
+      const issue = repos.issueRepository.create({
+        title: "Fallback Test Issue",
+        description: "Test description",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "PLANNED",
+        acceptanceCriteria: [],
+        createdBy: "test",
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Fallback Task",
+        description: "Tests fallback label.",
+        status: "PLANNED",
+        type: "ENHANCEMENT", // Should become "enhancement" when no TypeService
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // Act - use default service (no TypeService)
+      const result = await service.activatePlannedTasks(issue.id);
+
+      // Assert
+      expect(result.success).toBe(true);
+
+      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
+      const labels = createIssueCalls[0].args[2] as string[];
+      expect(labels).toContain("enhancement"); // Lowercase fallback
+      expect(labels).toContain("task");
+    });
+
+    it("should use default TypeService labels when no custom types.md exists", async () => {
+      // Arrange - create TypeService with no files (uses defaults)
+      const mockFs = new MockFileSystem();
+      // No types.md files added
+
+      const typeConfig: TypeServiceConfig = {
+        localTypesPath: "/local/.track/types.md",
+        globalTypesPath: "/global/.track/types.md",
+      };
+      const typeService = new TypeService(mockFs, typeConfig);
+
+      const serviceWithTypes = new TaskGitHubSyncService(
+        repos.taskRepository,
+        repos.issueRepository,
+        repos.planRepository,
+        mockGitHubCLI,
+        repos.projectRepository,
+        testProjectId,
+        undefined,
+        typeService
+      );
+
+      // Create issue and plan
+      const issue = repos.issueRepository.create({
+        title: "Default Labels Test",
+        description: "Test description",
+        type: "BUG",
+        priority: "MEDIUM",
+        status: "PLANNED",
+        acceptanceCriteria: [],
+        createdBy: "test",
+      });
+
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Fix bug",
+        description: "Bug fix.",
+        status: "PLANNED",
+        type: "BUG",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // Act
+      const result = await serviceWithTypes.activatePlannedTasks(issue.id);
+
+      // Assert
+      expect(result.success).toBe(true);
+
+      const createIssueCalls = mockGitHubCLI.getCallsTo("createIssue");
+      const labels = createIssueCalls[0].args[2] as string[];
+      // Default TypeService has: BUG -> "bug"
+      expect(labels).toContain("bug");
+      expect(labels).toContain("task");
     });
   });
 });
