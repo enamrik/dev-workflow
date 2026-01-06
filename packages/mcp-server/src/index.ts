@@ -23,6 +23,8 @@ import {
   SqliteProjectRepository,
   TemplateService,
   type TemplateServiceConfig,
+  TypeService,
+  type TypeServiceConfig,
   NodeFileSystem,
   VersioningService,
   PlanningService,
@@ -425,6 +427,13 @@ async function main() {
     globalTaskTemplatesPath: path.join(globalTrackDir, "config", "templates", "tasks"),
   };
 
+  // Type definitions path for intelligent type assignment
+  // Local ./track/types.md takes precedence over global ~/.track/config/types.md
+  const typeConfig: TypeServiceConfig = {
+    localTypesPath: path.join(projectRoot, "track", "types.md"),
+    globalTypesPath: path.join(globalTrackDir, "config", "types.md"),
+  };
+
   // Initialize label service with local ./track/ path
   // LabelService appends "labels" to make ./track/labels/
   const localTrackPath = path.join(projectRoot, "track");
@@ -477,7 +486,9 @@ async function main() {
     issueRepository
   );
 
-  const templateService = new TemplateService(fileSystem, templateConfig);
+  // Initialize type service for intelligent type assignment
+  const typeService = new TypeService(fileSystem, typeConfig);
+  const templateService = new TemplateService(fileSystem, templateConfig, typeService);
 
   // Initialize git worktree service for isolated task execution
   // projectRoot comes from GIT_ROOT environment variable (set at startup)

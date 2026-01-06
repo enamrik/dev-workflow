@@ -17,6 +17,7 @@ export * from "./domain/milestone.js";
 export * from "./domain/project.js";
 export * from "./domain/errors.js";
 export * from "./domain/backup.js";
+export * from "./domain/type-definition.js";
 
 // Application services
 export { PlanningService } from "./application/planning-service.js";
@@ -106,6 +107,13 @@ export {
   TemplateServiceError,
   type TemplateServiceConfig,
 } from "./infrastructure/templates/template-service.js";
+
+// Infrastructure - Types
+export {
+  TypeService,
+  TypeServiceError,
+  type TypeServiceConfig,
+} from "./infrastructure/types/type-service.js";
 
 // Infrastructure - GitHub
 export {
