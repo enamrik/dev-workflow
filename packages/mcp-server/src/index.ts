@@ -427,24 +427,24 @@ async function main() {
   const trackDirectory = path.join(globalTrackDir, projectId);
 
   // Template paths follow cascading resolution:
-  // Local (./track/templates/) takes precedence over global (~/.track/config/templates/)
+  // Local (./.track/templates/) takes precedence over global (~/.track/config/templates/)
   const templateConfig: TemplateServiceConfig = {
-    localIssueTemplatesPath: path.join(projectRoot, "track", "templates", "issues"),
-    localTaskTemplatesPath: path.join(projectRoot, "track", "templates", "tasks"),
+    localIssueTemplatesPath: path.join(projectRoot, ".track", "templates", "issues"),
+    localTaskTemplatesPath: path.join(projectRoot, ".track", "templates", "tasks"),
     globalIssueTemplatesPath: path.join(globalTrackDir, "config", "templates", "issues"),
     globalTaskTemplatesPath: path.join(globalTrackDir, "config", "templates", "tasks"),
   };
 
   // Type definitions path for intelligent type assignment
-  // Local ./track/types.md takes precedence over global ~/.track/config/types.md
+  // Local ./.track/types.md takes precedence over global ~/.track/config/types.md
   const typeConfig: TypeServiceConfig = {
-    localTypesPath: path.join(projectRoot, "track", "types.md"),
+    localTypesPath: path.join(projectRoot, ".track", "types.md"),
     globalTypesPath: path.join(globalTrackDir, "config", "types.md"),
   };
 
-  // Initialize label service with local ./track/ path
-  // LabelService appends "labels" to make ./track/labels/
-  const localTrackPath = path.join(projectRoot, "track");
+  // Initialize label service with local ./.track/ path
+  // LabelService appends "labels" to make ./.track/labels/
+  const localTrackPath = path.join(projectRoot, ".track");
   const labelService = new LabelService(localTrackPath);
 
   // Initialize GitHub sync services

@@ -67,7 +67,7 @@ export class InstallService {
 
   async createTrackDirectory(): Promise<void> {
     try {
-      // Create local ./track/ directory structure
+      // Create local ./.track/ directory structure
       const localIssueTemplatesDir = this.resolver.getLocalIssueTemplatesPath();
       const localTaskTemplatesDir = this.resolver.getLocalTaskTemplatesPath();
       const localLabelsDir = this.resolver.getLocalLabelsPath();
@@ -89,8 +89,8 @@ Custom templates for issues and tasks. These take precedence over global templat
 - Only all.md is supported for tasks
 
 ## Resolution Order
-1. Local per-type (e.g., ./track/templates/issues/feature.md)
-2. Local all.md (./track/templates/issues/all.md)
+1. Local per-type (e.g., ./.track/templates/issues/feature.md)
+2. Local all.md (./.track/templates/issues/all.md)
 3. Global per-type (~/.track/config/templates/issues/feature.md)
 4. Global all.md (~/.track/config/templates/issues/all.md)
 
@@ -120,7 +120,7 @@ files (\`db.md\`, \`api.md\`) are loaded and provided as context.
 Create any \`.md\` file in this directory. The filename (without extension)
 becomes the label name.
 
-Example: \`./track/labels/testing.md\` creates a "testing" label.
+Example: \`./.track/labels/testing.md\` creates a "testing" label.
 `;
 
       await this.fileSystem.writeFile(path.join(localLabelsDir, "README.md"), labelsReadme);
@@ -229,7 +229,7 @@ Example: \`./track/labels/testing.md\` creates a "testing" label.
    * Install default templates to global ~/.track/config/templates/.
    *
    * Copies bundled issue templates to the global fallback location so users
-   * always have default templates available. Local templates in ./track/templates/
+   * always have default templates available. Local templates in ./.track/templates/
    * take precedence over these global defaults.
    */
   async installGlobalTemplates(): Promise<void> {

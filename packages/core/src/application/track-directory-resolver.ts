@@ -22,8 +22,8 @@ export function resolveGlobalTrackDir(): string {
  * Storage architecture:
  * - Single global database: ~/.track/workflow.db (all projects share one DB)
  * - Per-project worktrees: ~/.track/<project-id>/worktrees/
- * - Local templates: ./track/templates/issues/ and ./track/templates/tasks/
- * - Local labels: ./track/labels/
+ * - Local templates: ./.track/templates/issues/ and ./.track/templates/tasks/
+ * - Local labels: ./.track/labels/
  * - Global fallback templates: ~/.track/config/templates/issues/ and ~/.track/config/templates/tasks/
  *
  * The base directory can be overridden by setting the TRACK_DIR environment
@@ -142,20 +142,20 @@ export class TrackDirectoryResolver {
   }
 
   // ============================================================
-  // Local ./track/ paths (primary, checked into repo)
+  // Local ./.track/ paths (primary, checked into repo)
   // ============================================================
 
   /**
    * Get the local track directory path (in the git repo).
-   * Returns: <gitRoot>/track/
+   * Returns: <gitRoot>/.track/
    */
   getLocalTrackDirectory(): string {
-    return path.join(this.gitRoot, "track");
+    return path.join(this.gitRoot, ".track");
   }
 
   /**
    * Get the local issue templates directory path.
-   * Returns: <gitRoot>/track/templates/issues/
+   * Returns: <gitRoot>/.track/templates/issues/
    */
   getLocalIssueTemplatesPath(): string {
     return path.join(this.getLocalTrackDirectory(), "templates", "issues");
@@ -163,7 +163,7 @@ export class TrackDirectoryResolver {
 
   /**
    * Get the local task templates directory path.
-   * Returns: <gitRoot>/track/templates/tasks/
+   * Returns: <gitRoot>/.track/templates/tasks/
    */
   getLocalTaskTemplatesPath(): string {
     return path.join(this.getLocalTrackDirectory(), "templates", "tasks");
@@ -171,7 +171,7 @@ export class TrackDirectoryResolver {
 
   /**
    * Get the local labels directory path.
-   * Returns: <gitRoot>/track/labels/
+   * Returns: <gitRoot>/.track/labels/
    */
   getLocalLabelsPath(): string {
     return path.join(this.getLocalTrackDirectory(), "labels");

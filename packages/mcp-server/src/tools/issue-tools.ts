@@ -319,7 +319,7 @@ export const issueToolDefinitions: ToolDefinition[] = [
     name: "change_issue_type",
     description:
       "Change an issue's type. Validates the type against available types " +
-      "(from ./track/types.md if present, otherwise defaults). " +
+      "(from ./.track/types.md if present, otherwise defaults). " +
       "Use this when auto-assigned type is incorrect.",
     inputSchema: {
       type: "object",
@@ -332,7 +332,7 @@ export const issueToolDefinitions: ToolDefinition[] = [
           type: "string",
           description:
             "New issue type. Defaults: FEATURE, BUG, ENHANCEMENT, TASK. " +
-            "Custom types can be defined in ./track/types.md",
+            "Custom types can be defined in ./.track/types.md",
         },
       },
       required: ["issueNumber", "type"],
@@ -1063,7 +1063,7 @@ export async function handleCloseIssue(
  * Handle change_issue_type tool call
  *
  * Changes an issue's type after validating against available types.
- * Uses TypeService to validate against user-defined types (from ./track/types.md)
+ * Uses TypeService to validate against user-defined types (from ./.track/types.md)
  * or falls back to default types.
  */
 export async function handleChangeIssueType(

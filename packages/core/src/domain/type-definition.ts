@@ -1,7 +1,7 @@
 /**
  * Domain types for user-defined issue types
  *
- * Allows users to customize type descriptions in ./track/types.md
+ * Allows users to customize type descriptions in ./.track/types.md
  * for more intelligent type assignment.
  */
 
@@ -10,7 +10,7 @@ import type { IssueType } from "./issue.js";
 /**
  * Type definition with description for intelligent matching
  *
- * Represents a type definition parsed from ./track/types.md.
+ * Represents a type definition parsed from ./.track/types.md.
  * The description is used to match issue descriptions to types.
  */
 export interface TypeDefinition {
@@ -26,14 +26,14 @@ export interface TypeDefinition {
  * Collection of type definitions
  */
 export interface TypeDefinitions {
-  /** User-defined types from ./track/types.md */
+  /** User-defined types from ./.track/types.md */
   readonly types: TypeDefinition[];
   /** Whether these are user-defined or defaults */
   readonly isUserDefined: boolean;
 }
 
 /**
- * Default type definitions used when ./track/types.md is not present
+ * Default type definitions used when ./.track/types.md is not present
  */
 export const DEFAULT_TYPE_DEFINITIONS: TypeDefinition[] = [
   {
