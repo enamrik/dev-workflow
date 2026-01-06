@@ -5,13 +5,13 @@
  * Follows Application Service pattern - orchestrates domain logic with infrastructure.
  *
  * Template Resolution Order (for issues):
- * 1. Local per-type: ./track/templates/issues/<type>.md
- * 2. Local all.md: ./track/templates/issues/all.md
+ * 1. Local per-type: ./.track/templates/issues/<type>.md
+ * 2. Local all.md: ./.track/templates/issues/all.md
  * 3. Global per-type: ~/.track/config/templates/issues/<type>.md
  * 4. Global all.md: ~/.track/config/templates/issues/all.md
  *
  * Template Resolution Order (for tasks):
- * 1. Local all.md: ./track/templates/tasks/all.md
+ * 1. Local all.md: ./.track/templates/tasks/all.md
  * 2. Global all.md: ~/.track/config/templates/tasks/all.md
  */
 
@@ -40,9 +40,9 @@ export class TemplateServiceError extends Error {
  * Configuration for template resolution paths
  */
 export interface TemplateServiceConfig {
-  /** Local issue templates path: ./track/templates/issues/ */
+  /** Local issue templates path: ./.track/templates/issues/ */
   localIssueTemplatesPath: string;
-  /** Local task templates path: ./track/templates/tasks/ */
+  /** Local task templates path: ./.track/templates/tasks/ */
   localTaskTemplatesPath: string;
   /** Global issue templates path (fallback): ~/.track/config/templates/issues/ */
   globalIssueTemplatesPath: string;
@@ -141,11 +141,11 @@ export class TemplateService {
    * Select template based on description keywords with cascading fallback
    *
    * If a TypeService is configured, uses intelligent type matching based on
-   * user-defined type descriptions from ./track/types.md.
+   * user-defined type descriptions from ./.track/types.md.
    *
    * Resolution order:
-   * 1. Local per-type (e.g., ./track/templates/issues/feature.md)
-   * 2. Local all.md (./track/templates/issues/all.md)
+   * 1. Local per-type (e.g., ./.track/templates/issues/feature.md)
+   * 2. Local all.md (./.track/templates/issues/all.md)
    * 3. Global per-type (e.g., ~/.track/config/templates/issues/feature.md)
    * 4. Global all.md (~/.track/config/templates/issues/all.md)
    *
@@ -295,7 +295,7 @@ export class TemplateService {
    * Get a task template with fallback
    *
    * Resolution order:
-   * 1. Local all.md: ./track/templates/tasks/all.md
+   * 1. Local all.md: ./.track/templates/tasks/all.md
    * 2. Global all.md: ~/.track/config/templates/tasks/all.md
    *
    * @returns Template if found, null otherwise

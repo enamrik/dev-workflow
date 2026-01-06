@@ -2,8 +2,8 @@
  * Template Service Tests
  *
  * Tests the cascading template resolution logic:
- * 1. Local per-type: ./track/templates/issues/<type>.md
- * 2. Local all.md: ./track/templates/issues/all.md
+ * 1. Local per-type: ./.track/templates/issues/<type>.md
+ * 2. Local all.md: ./.track/templates/issues/all.md
  * 3. Global per-type: ~/.track/config/templates/issues/<type>.md
  * 4. Global all.md: ~/.track/config/templates/issues/all.md
  */
@@ -53,8 +53,8 @@ describe("TemplateService", () => {
     directoryContents = new Map();
 
     // Initialize empty directories
-    directoryContents.set("/repo/track/templates/issues", []);
-    directoryContents.set("/repo/track/templates/tasks", []);
+    directoryContents.set("/repo/.track/templates/issues", []);
+    directoryContents.set("/repo/.track/templates/tasks", []);
     directoryContents.set("/global/config/templates/issues", []);
     directoryContents.set("/global/config/templates/tasks", []);
 
@@ -77,8 +77,8 @@ describe("TemplateService", () => {
     };
 
     config = {
-      localIssueTemplatesPath: "/repo/track/templates/issues",
-      localTaskTemplatesPath: "/repo/track/templates/tasks",
+      localIssueTemplatesPath: "/repo/.track/templates/issues",
+      localTaskTemplatesPath: "/repo/.track/templates/tasks",
       globalIssueTemplatesPath: "/global/config/templates/issues",
       globalTaskTemplatesPath: "/global/config/templates/tasks",
     };
@@ -363,7 +363,7 @@ describe("TemplateService", () => {
       expect(result.filename).toBe("custom.md");
       expect(result.isUserDefined).toBe(true);
       expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
-        "/repo/track/templates/issues/custom.md",
+        "/repo/.track/templates/issues/custom.md",
         content
       );
     });
@@ -413,7 +413,7 @@ describe("TemplateService", () => {
 
       expect(result.metadata.priority).toBe("HIGH");
       expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
-        "/repo/track/templates/issues/custom.md",
+        "/repo/.track/templates/issues/custom.md",
         newContent
       );
     });
@@ -439,7 +439,7 @@ describe("TemplateService", () => {
 
       await service.deleteTemplate("custom.md");
 
-      expect(mockFileSystem.unlink).toHaveBeenCalledWith("/repo/track/templates/issues/custom.md");
+      expect(mockFileSystem.unlink).toHaveBeenCalledWith("/repo/.track/templates/issues/custom.md");
     });
 
     it("should throw if template does not exist", async () => {
