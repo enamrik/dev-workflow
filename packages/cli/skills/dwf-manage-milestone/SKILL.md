@@ -6,6 +6,16 @@ allowed-tools: mcp:dev-workflow-tracker:create_milestone, mcp:dev-workflow-track
 
 # Manage Milestone Skill
 
+## MCP Server Connection Failures (CRITICAL)
+
+**If MCP tools return unexpected "not found" errors for data that should exist, STOP IMMEDIATELY.**
+
+This indicates the MCP server is connected to the wrong database. **Do NOT work around it** with manual database updates, `gh` CLI, or any other method - this creates corrupt, inconsistent state.
+
+**Action:** Tell the user: "The MCP server appears to be connected to the wrong database. Please restart your Claude session to reconnect, then we can resume."
+
+---
+
 ## When to Invoke
 
 **Create operations:**
