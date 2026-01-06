@@ -231,6 +231,19 @@ If you rebuild packages manually (e.g., `pnpm build`), you can restart the MCP s
 
 **Note**: CLI commands like `dev-workflow update` do NOT have stale code issues - they start fresh each invocation.
 
+### MCP Server Connection Failures (CRITICAL)
+
+**When MCP tools return unexpected "not found" errors for data that should exist, STOP IMMEDIATELY.**
+
+This indicates the MCP server is connected to the wrong database (can happen when sessions are resumed or continued). **Do NOT try to work around the issue** with manual database updates, direct `gh` CLI commands, or any other workaround. This creates **corrupt, inconsistent state** that causes more problems later.
+
+**What to do:**
+1. Stop all work immediately
+2. Tell the user: "The MCP server appears to be connected to the wrong database. Please restart your Claude session to reconnect, then we can resume where we left off."
+3. Do not continue until the user has restarted
+
+**Resuming after restart:** Skills like `dwf-work-task` know how to resume - `load_task_session` is idempotent and will pick up an IN_PROGRESS task. Worktrees and branches persist; work continues from where it stopped.
+
 ### Task Completion Cleanup
 
 After completing a task via the `dwf-work-task` skill (PR merged and worktree cleaned up), run:
