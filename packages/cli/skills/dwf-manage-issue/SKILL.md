@@ -43,6 +43,30 @@ This indicates the MCP server is connected to the wrong database. **Do NOT work 
 - User wants to consolidate: "merge #5 into #3", "fold #2 into #1"
 - User identifies duplicates: "these issues are duplicates", "combine these"
 
+## User Communication
+
+**NEVER reference skill names or slash commands to users.** Users interact in natural language - they cannot invoke skills directly. Always use conversational prompts.
+
+| ❌ Wrong                                      | ✅ Right                                     |
+| --------------------------------------------- | -------------------------------------------- |
+| "Use /dwf-plan-issue to create a plan"        | "Now creating the implementation plan..."    |
+| "Run dwf-work-task to start"                  | "Would you like to start working on task 1?" |
+| "The dwf-manage-issue skill will handle this" | "I'll update the issue with those changes."  |
+
+### Key Transition Prompts
+
+**After creating an issue:**
+
+> "Issue created: #N - [title]. Now creating the implementation plan..."
+
+**After moving to backlog (when plan is approved):**
+
+> "Issue #N is now open with X task(s) ready. Would you like to start working on task 1?"
+
+**Before closing an issue:**
+
+> "All tasks are complete. Should I close issue #N?"
+
 ## Information Levels
 
 When users describe what they want, they often mix different levels of detail. You MUST separate these:
