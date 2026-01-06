@@ -70,11 +70,9 @@ export class InstallService {
       // Create local ./.track/ directory structure
       const localIssueTemplatesDir = this.resolver.getLocalIssueTemplatesPath();
       const localTaskTemplatesDir = this.resolver.getLocalTaskTemplatesPath();
-      const localLabelsDir = this.resolver.getLocalLabelsPath();
 
       await this.fileSystem.mkdir(localIssueTemplatesDir, { recursive: true });
       await this.fileSystem.mkdir(localTaskTemplatesDir, { recursive: true });
-      await this.fileSystem.mkdir(localLabelsDir, { recursive: true });
 
       // Create README for templates
       const templatesReadme = `# Templates
@@ -114,23 +112,6 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
         path.join(this.resolver.getLocalTrackDirectory(), "templates", "README.md"),
         templatesReadme
       );
-
-      // Create README for labels
-      const labelsReadme = `# Task Labels
-
-Labels are markdown files that provide contextual guidance for tasks.
-When a task has labels (e.g., \`["db", "api"]\`), the corresponding label
-files (\`db.md\`, \`api.md\`) are loaded and provided as context.
-
-## Creating Labels
-
-Create any \`.md\` file in this directory. The filename (without extension)
-becomes the label name.
-
-Example: \`./.track/labels/testing.md\` creates a "testing" label.
-`;
-
-      await this.fileSystem.writeFile(path.join(localLabelsDir, "README.md"), labelsReadme);
     } catch (error) {
       throw new InstallError("Failed to create track directory", error);
     }

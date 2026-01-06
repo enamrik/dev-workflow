@@ -246,9 +246,6 @@ async function runUpdate(): Promise<void> {
     await updater.updateGlobalTemplates();
     console.log("✓ Updated global default templates");
 
-    await updater.updateTaskLabels();
-    console.log("✓ Updated task labels");
-
     await updater.runMigrations();
     console.log("✓ Ran database migrations");
 

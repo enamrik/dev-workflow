@@ -1,6 +1,6 @@
 import { clsx } from "clsx";
 
-type BadgeVariant = "type" | "priority" | "status" | "complexity" | "label" | "prStatus";
+type BadgeVariant = "type" | "priority" | "status" | "complexity" | "prStatus";
 
 interface BadgeProps {
   variant: BadgeVariant;
@@ -61,8 +61,6 @@ function getStyleForVariant(variant: BadgeVariant, value: string): string {
       return complexityStyles[value] ?? "bg-gray-200 text-gray-700";
     case "prStatus":
       return prStatusStyles[value] ?? "bg-gray-200 text-gray-700";
-    case "label":
-      return "bg-blue-100 text-blue-800";
     default:
       return "bg-gray-200 text-gray-700";
   }

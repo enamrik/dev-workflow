@@ -311,43 +311,6 @@ export class UpdateService {
   }
 
   /**
-   * Update task labels directory (local ./.track/labels/)
-   * (Creates README if missing)
-   */
-  async updateTaskLabels(): Promise<void> {
-    try {
-      const labelsDir = this.resolver.getLocalLabelsPath();
-      const dirExists = await this.fileSystem.exists(labelsDir);
-
-      if (!dirExists) {
-        await this.fileSystem.mkdir(labelsDir, { recursive: true });
-      }
-
-      // Create README if missing
-      const readmePath = path.join(labelsDir, "README.md");
-      const readmeExists = await this.fileSystem.exists(readmePath);
-      if (!readmeExists) {
-        const readme = `# Task Labels
-
-Labels are markdown files that provide contextual guidance for tasks.
-When a task has labels (e.g., \`["db", "api"]\`), the corresponding label
-files (\`db.md\`, \`api.md\`) are loaded and provided as context.
-
-## Creating Labels
-
-Create any \`.md\` file in this directory. The filename (without extension)
-becomes the label name.
-
-Example: \`./.track/labels/testing.md\` creates a "testing" label.
-`;
-        await this.fileSystem.writeFile(readmePath, readme);
-      }
-    } catch (error) {
-      throw new UpdateError("Failed to update task labels", error);
-    }
-  }
-
-  /**
    * Update local templates directory structure (./.track/templates/)
    * Creates issue and task template directories with README if missing.
    * Templates are resolved at runtime via cascading fallback.

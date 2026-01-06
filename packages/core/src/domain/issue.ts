@@ -55,8 +55,6 @@ export interface Issue {
 export interface IssueFilters {
   status?: IssueStatus;
   type?: IssueType;
-  /** Filter by labels (not implemented yet) */
-  labels?: string[];
   /** Filter by milestone */
   milestoneId?: string;
   /** Include soft-deleted issues in results (default: false) */

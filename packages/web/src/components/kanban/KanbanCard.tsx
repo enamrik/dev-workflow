@@ -153,13 +153,6 @@ function TaskModalContent({
               <span className="text-gray-500">Est: {task.estimatedMinutes}m</span>
             )}
           </div>
-          {task.labels.length > 0 && (
-            <div className="flex gap-1 flex-wrap">
-              {task.labels.map((label) => (
-                <Badge key={label} variant="label" value={label} />
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -321,13 +314,6 @@ function CardContent({
                 <AbandonedIcon />
               </span>
             </Tooltip>
-          )}
-          {task.labels.length > 0 && (
-            <div className="flex gap-1 flex-wrap">
-              {task.labels.slice(0, 2).map((label) => (
-                <Badge key={label} variant="label" value={label} />
-              ))}
-            </div>
           )}
           {/* Issue status indicator - only show for completed tasks whose issue isn't closed yet */}
           {task.status === "COMPLETED" && issueComputedStatus !== "CLOSED" && (
