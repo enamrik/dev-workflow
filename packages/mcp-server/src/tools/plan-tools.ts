@@ -10,6 +10,8 @@ import type {
   PlanComplexity,
   TaskGitHubSyncService,
   Project,
+  TypeService,
+  IssueType,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -52,6 +54,11 @@ export const planToolDefinitions: ToolDefinition[] = [
               },
               title: { type: "string" },
               description: { type: "string" },
+              type: {
+                type: "string",
+                description:
+                  "Task type (FEATURE, BUG, ENHANCEMENT, TASK, or custom). REQUIRED. Call list_types first to get valid values. Type determines the GitHub label applied when task is synced.",
+              },
               acceptanceCriteria: {
                 type: "array",
                 items: { type: "string" },
@@ -64,10 +71,10 @@ export const planToolDefinitions: ToolDefinition[] = [
                   "Array of placeholder IDs this task depends on. References must match 'id' values of other tasks in this plan.",
               },
             },
-            required: ["id", "title", "description"],
+            required: ["id", "title", "description", "type"],
           },
           description:
-            "Array of task definitions. Use short placeholder IDs (e.g., 'db', 'api') and reference them in 'dependsOn'. Real UUIDs are generated internally.",
+            "Array of task definitions. Use short placeholder IDs (e.g., 'db', 'api') and reference them in 'dependsOn'. Real UUIDs are generated internally. Each task MUST include a valid 'type' - call list_types first.",
         },
         estimatedComplexity: {
           type: "string",
@@ -183,6 +190,7 @@ export interface PlanToolContext {
   taskRepository: SqliteTaskRepository;
   planningService: PlanningService;
   taskGitHubSyncService?: TaskGitHubSyncService; // Optional - only present if GitHub sync is enabled
+  typeService: TypeService; // Required for type validation in generate_plan
 }
 
 /**
@@ -191,11 +199,14 @@ export interface PlanToolContext {
  * The 'id' field is a short placeholder (e.g., "db", "api") used to reference
  * this task in dependsOn arrays. Real UUIDs are generated internally by the
  * PlanningService.
+ *
+ * The 'type' field is REQUIRED and must be a valid type from list_types.
  */
 interface TaskDefinition {
   id: string; // Short placeholder ID (e.g., "db", "api", "auth")
   title: string;
   description: string;
+  type: string; // Required task type (FEATURE, BUG, ENHANCEMENT, TASK, or custom)
   acceptanceCriteria?: string[];
   estimatedMinutes?: number;
   dependsOn?: string[]; // Placeholder IDs of tasks this depends on
@@ -236,6 +247,31 @@ export async function handleGeneratePlan(
 
   const resolvedIssueId = issue.id;
 
+  // Validate task types - each task must have a valid type
+  const validTypes = await ctx.typeService.getTypes();
+  const validTypeNames = validTypes.map((t) => t.name);
+
+  for (const task of tasks) {
+    // Check type is provided
+    if (!task.type) {
+      return errorResponse(
+        `Task '${task.id}' is missing required 'type' field. ` +
+          `Valid types: ${validTypeNames.join(", ")}. ` +
+          `Call list_types first to get available types.`
+      );
+    }
+
+    // Check type is valid
+    const isValid = await ctx.typeService.isValidType(task.type);
+    if (!isValid) {
+      return errorResponse(
+        `Task '${task.id}' has invalid type '${task.type}'. ` +
+          `Valid types: ${validTypeNames.join(", ")}. ` +
+          `Call list_types first to get available types.`
+      );
+    }
+  }
+
   // Validate dependsOn references - all must reference existing task IDs
   const taskIds = new Set(tasks.map((t) => t.id));
   for (const task of tasks) {
@@ -256,6 +292,7 @@ export async function handleGeneratePlan(
     id: t.id,
     title: t.title,
     description: t.description,
+    type: t.type as IssueType, // Validated above
     acceptanceCriteria: t.acceptanceCriteria ?? [],
     estimatedMinutes: t.estimatedMinutes,
     dependsOn: t.dependsOn,
