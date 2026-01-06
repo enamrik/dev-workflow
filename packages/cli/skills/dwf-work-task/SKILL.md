@@ -688,6 +688,27 @@ any task and the remaining BACKLOG tasks will transition back to READY.
 
 ## Error Handling
 
+### MCP Server Connection Issues (CRITICAL)
+
+**When MCP tools return "not found" for data that should exist:**
+
+This is the most important error to handle correctly. If you were just working on an issue/task and suddenly get "Issue not found" or "Task not found" errors, this indicates the **MCP server is connected to the wrong database**.
+
+**STOP IMMEDIATELY. Do NOT:**
+- Manually update databases with `sqlite3` commands
+- Use `gh` CLI to create PRs directly
+- Try to work around the issue in any way
+
+**Instead:**
+1. Stop all work immediately
+2. Explain to the user: "The MCP server appears to be connected to a different database than expected. This can happen when sessions are continued or the server restarts."
+3. Ask the user to restart the MCP server: "Please run `/mcp` to restart the MCP server, then we can continue."
+4. Wait for the user to confirm the server is restarted before proceeding
+
+**Why this matters:** Manual workarounds create inconsistent state between the database and actual git/GitHub state, leading to more errors down the line. The MCP tools are designed to maintain consistency - bypassing them breaks that guarantee.
+
+---
+
 **Task not found:**
 
 - Explain the error
