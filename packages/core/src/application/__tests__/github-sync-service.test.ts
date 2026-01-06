@@ -72,6 +72,8 @@ function createMockGitHubCLI(overrides: Partial<GitHubCLI> = {}): GitHubCLI {
     findPRByBranch: vi.fn().mockResolvedValue(null),
     linkSubIssue: vi.fn().mockResolvedValue(undefined),
     searchIssues: vi.fn().mockResolvedValue([]),
+    commentOnIssue: vi.fn().mockResolvedValue(undefined),
+    closeIssueWithComment: vi.fn().mockResolvedValue(undefined),
     run: vi.fn().mockResolvedValue({ success: true, stdout: "", stderr: "", exitCode: 0 }),
     ...overrides,
   };

@@ -13,6 +13,8 @@ import type { Issue, IssueRepository } from "../domain/issue.js";
 import type { Plan, PlanRepository } from "../domain/plan.js";
 import type { Task, TaskRepository, TaskStatus } from "../domain/task.js";
 import type { VersioningService } from "./versioning-service.js";
+import type { GitHubCLI } from "../infrastructure/github/github-cli.js";
+import type { ProjectRepository } from "../domain/project.js";
 import { EventBus } from "../infrastructure/events/event-bus.js";
 
 /**
@@ -98,6 +100,7 @@ export class MergeValidationError extends Error {
  * - Merge plans and tasks while preserving state
  * - Detect and warn about in-progress work
  * - Soft-delete source issue in merge_into mode
+ * - Sync merge actions to GitHub (comments, close source in merge_into mode)
  */
 export class MergeService {
   private readonly eventBus: EventBus;
@@ -106,9 +109,20 @@ export class MergeService {
     private readonly issueRepository: IssueRepository,
     private readonly planRepository: PlanRepository,
     private readonly taskRepository: TaskRepository,
-    private readonly versioningService: VersioningService
+    private readonly versioningService: VersioningService,
+    private readonly projectRepository: ProjectRepository,
+    private readonly projectId: string,
+    private readonly githubCLI?: GitHubCLI
   ) {
     this.eventBus = EventBus.getInstance();
+  }
+
+  /**
+   * Check if GitHub sync is enabled for this project
+   */
+  private isGitHubSyncEnabled(): boolean {
+    const project = this.projectRepository.findById(this.projectId);
+    return project?.githubSync?.enabled ?? false;
   }
 
   /**
@@ -118,7 +132,7 @@ export class MergeService {
    * @returns MergeResult with the resulting issue, plan, tasks, and warnings
    * @throws MergeValidationError if validation fails
    */
-  merge(request: MergeIssuesRequest): MergeResult {
+  async merge(request: MergeIssuesRequest): Promise<MergeResult> {
     // Resolve issues from IDs or numbers
     const sourceIssue = this.resolveIssue(
       request.sourceIssueId,
@@ -152,8 +166,9 @@ export class MergeService {
     const warnings = this.detectWarnings(sourceIssue, targetIssue);
 
     // Execute merge based on mode
+    let result: MergeResult;
     if (request.mode === "create_new") {
-      return this.executeCreateNew(
+      result = this.executeCreateNew(
         sourceIssue,
         targetIssue,
         warnings,
@@ -162,8 +177,13 @@ export class MergeService {
         request.mergedBy
       );
     } else {
-      return this.executeMergeInto(sourceIssue, targetIssue, warnings, request.mergedBy);
+      result = this.executeMergeInto(sourceIssue, targetIssue, warnings, request.mergedBy);
     }
+
+    // Sync merge to GitHub (comments, close source in merge_into mode)
+    await this.syncMergeToGitHub(sourceIssue, targetIssue, result, request.mode);
+
+    return result;
   }
 
   /**
@@ -502,7 +522,7 @@ export class MergeService {
   }
 
   /**
-   * Copy tasks from one plan to another, preserving state
+   * Copy tasks from one plan to another, preserving state and GitHub links
    */
   private copyTasksToPlan(tasks: Task[], targetPlanId: string, sourceIssueNumber: number): Task[] {
     const copiedTasks: Task[] = [];
@@ -514,7 +534,7 @@ export class MergeService {
       // COMPLETED/ABANDONED → preserve
       const newStatus = this.mapTaskStatusForCopy(task.status);
 
-      // Create the copied task
+      // Create the copied task, preserving GitHub sync state
       const copiedTask = this.taskRepository.create({
         id: crypto.randomUUID(),
         planId: targetPlanId,
@@ -527,6 +547,8 @@ export class MergeService {
         isDeleted: false,
         labels: task.labels,
         contextInstructions: task.contextInstructions,
+        // Preserve GitHub sync state - the task still references the same GitHub issue
+        githubSync: task.githubSync,
         // Note: dependsOn is cleared since task IDs are different in the new plan
       });
 
@@ -637,5 +659,95 @@ export class MergeService {
     const i1 = c1 ? order.indexOf(c1) : 0;
     const i2 = c2 ? order.indexOf(c2) : 0;
     return i1 >= i2 ? (c1 ?? "MEDIUM") : (c2 ?? "MEDIUM");
+  }
+
+  /**
+   * Sync merge operation to GitHub
+   *
+   * - Adds comments to source GitHub issues about the merge
+   * - In merge_into mode, closes the source GitHub issue
+   *
+   * This is best-effort: if GitHub sync fails, the merge still succeeds
+   * (the local merge is the source of truth)
+   */
+  private async syncMergeToGitHub(
+    sourceIssue: Issue,
+    targetIssue: Issue,
+    result: MergeResult,
+    mode: MergeMode
+  ): Promise<void> {
+    // Skip if GitHub sync is not enabled or no CLI available
+    if (!this.isGitHubSyncEnabled() || !this.githubCLI) {
+      return;
+    }
+
+    const resultIssueNumber = result.resultIssue.number;
+
+    // Comment on source issue's GitHub issue (if it has one)
+    if (sourceIssue.githubSync?.githubIssueNumber) {
+      try {
+        const comment = this.buildMergeComment(sourceIssue.number, resultIssueNumber, mode);
+
+        if (mode === "merge_into") {
+          // Close with comment for merge_into mode
+          await this.githubCLI.closeIssueWithComment(
+            sourceIssue.githubSync.githubIssueNumber,
+            comment
+          );
+        } else {
+          // Just comment for create_new mode
+          await this.githubCLI.commentOnIssue(sourceIssue.githubSync.githubIssueNumber, comment);
+        }
+      } catch (error) {
+        // Log but don't fail the merge - GitHub sync is best-effort
+        console.warn(
+          `Failed to sync merge to GitHub issue #${sourceIssue.githubSync.githubIssueNumber}:`,
+          error
+        );
+      }
+    }
+
+    // Comment on target issue's GitHub issue (if it has one and mode is merge_into)
+    // Note: In create_new mode, we commented on both source issues above
+    // In merge_into mode, target issue continues, so add a note about the merge
+    if (mode === "merge_into" && targetIssue.githubSync?.githubIssueNumber) {
+      try {
+        const comment = `📥 **Merged:** Issue #${sourceIssue.number} has been merged into this issue.`;
+        await this.githubCLI.commentOnIssue(targetIssue.githubSync.githubIssueNumber, comment);
+      } catch (error) {
+        console.warn(
+          `Failed to comment on target GitHub issue #${targetIssue.githubSync.githubIssueNumber}:`,
+          error
+        );
+      }
+    }
+
+    // For create_new mode, also comment on target's GitHub issue
+    if (mode === "create_new" && targetIssue.githubSync?.githubIssueNumber) {
+      try {
+        const comment = this.buildMergeComment(targetIssue.number, resultIssueNumber, mode);
+        await this.githubCLI.commentOnIssue(targetIssue.githubSync.githubIssueNumber, comment);
+      } catch (error) {
+        console.warn(
+          `Failed to comment on GitHub issue #${targetIssue.githubSync.githubIssueNumber}:`,
+          error
+        );
+      }
+    }
+  }
+
+  /**
+   * Build a merge comment for GitHub
+   */
+  private buildMergeComment(
+    localIssueNumber: number,
+    resultIssueNumber: number,
+    mode: MergeMode
+  ): string {
+    if (mode === "merge_into") {
+      return `🔀 **Merged:** This issue (#${localIssueNumber}) has been merged into issue #${resultIssueNumber}.`;
+    } else {
+      return `🔀 **Merged:** This issue (#${localIssueNumber}) was combined with another issue to create issue #${resultIssueNumber}.`;
+    }
   }
 }
