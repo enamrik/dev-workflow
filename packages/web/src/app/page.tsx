@@ -83,8 +83,10 @@ function BoardPageContent() {
     return sum + activeCount;
   }, 0);
 
+  // Calculate height: viewport - nav (~56px) - main padding (48px)
+  // Fixed height ensures columns are constrained and content scrolls within them
   return (
-    <Card padding="none">
+    <Card padding="none" className="flex flex-col h-[calc(100vh-104px)]">
       <div className="p-6 pb-0">
         <div className="flex items-start justify-between mb-4">
           <div>
@@ -125,7 +127,7 @@ function BoardPageContent() {
         </div>
       </div>
 
-      <div className="p-6 pt-0">
+      <div className="flex-1 px-6 overflow-hidden">
         <KanbanBoard
           issuesWithTasks={issuesWithTasks}
           completedTasks={completedTasks}

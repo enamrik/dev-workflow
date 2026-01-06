@@ -170,22 +170,20 @@ export function KanbanBoard({
   }
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4">
+    <div className="flex gap-3 md:gap-4 overflow-x-auto overflow-y-hidden h-full scrollbar-auto-hide">
       {showBacklog && (
-        <div className="flex flex-col gap-2 min-w-[220px] flex-1">
+        <div className="flex flex-col gap-2 min-w-[180px] md:min-w-[220px] flex-1 h-full">
           <KanbanColumn
             title="Backlog"
             status="BACKLOG"
             tasks={backlogTasks}
             tooltip="Tasks refined and awaiting prioritization"
-            stacked
           />
           <KanbanColumn
             title="Planned"
             status="PLANNED"
             tasks={plannedTasks}
             tooltip="Tasks in planned issues not yet moved to backlog"
-            stacked
           />
         </div>
       )}
