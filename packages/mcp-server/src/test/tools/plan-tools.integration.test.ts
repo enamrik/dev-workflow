@@ -37,6 +37,7 @@ function createPlanToolContext(testDb: TestDatabase): PlanToolContext {
   const projectRepository = new SqliteProjectRepository(db);
   const project = projectRepository.create({
     gitRootHash: TEST_PROJECT_ID,
+    gitRoot: "/test/repo",
     name: "Test Project",
   });
 

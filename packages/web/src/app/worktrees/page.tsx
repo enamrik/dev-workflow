@@ -35,7 +35,13 @@ export default function WorktreesPage() {
 }
 
 function WorktreesPageContent() {
-  const { projectId } = useProjectContext();
+  const { projectId, projects } = useProjectContext();
+
+  // Create lookup map for project names
+  const projectNames = projects.reduce<Record<string, string>>((acc, p) => {
+    acc[p.id] = p.name;
+    return acc;
+  }, {});
 
   const {
     data: worktrees,
@@ -125,7 +131,7 @@ function WorktreesPageContent() {
             <Card key={projectId}>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-800">
-                  {projectId}
+                  {projectNames[projectId] || projectId}
                   <span className="ml-2 text-sm text-gray-500">
                     ({projectWorktrees.length} worktree{projectWorktrees.length !== 1 ? "s" : ""})
                   </span>

@@ -246,15 +246,12 @@ export class MultiProjectService {
       const trackDirName = `${p.name}-${hash}`;
       const trackDirectory = path.join(this.globalTrackDir, trackDirName);
 
-      // gitRoot is no longer stored in config.json - it's computed from cwd when needed
-      // For web UI, gitRoot is not available (worktree operations via web UI won't work)
-      // Worktree operations are primarily done via MCP tools which have GIT_ROOT env var
       return {
         id: p.id,
         name: p.name,
         slug: p.slug,
         trackDirectory,
-        gitRoot: "", // Empty - computed on demand in MCP server context
+        gitRoot: p.gitRoot ?? "",
         githubSync: p.githubSync ?? null,
       };
     });
@@ -279,15 +276,12 @@ export class MultiProjectService {
     const trackDirName = `${coreProject.name}-${hash}`;
     const trackDirectory = path.join(this.globalTrackDir, trackDirName);
 
-    // gitRoot is no longer stored in config.json - it's computed from cwd when needed
-    // For web UI, gitRoot is not available (worktree operations via web UI won't work)
-    // Worktree operations are primarily done via MCP tools which have GIT_ROOT env var
     return {
       id: coreProject.id,
       name: coreProject.name,
       slug: coreProject.slug,
       trackDirectory,
-      gitRoot: "", // Empty - computed on demand in MCP server context
+      gitRoot: coreProject.gitRoot ?? "",
       githubSync: coreProject.githubSync ?? null,
     };
   }

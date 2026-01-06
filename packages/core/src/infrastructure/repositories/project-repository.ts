@@ -44,6 +44,7 @@ export class SqliteProjectRepository implements ProjectRepository {
     const project: Project = {
       id,
       gitRootHash: data.gitRootHash,
+      gitRoot: data.gitRoot,
       name: data.name,
       slug,
       githubSync: data.githubSync ?? null,
@@ -59,6 +60,7 @@ export class SqliteProjectRepository implements ProjectRepository {
       .values({
         id: project.id,
         gitRootHash: project.gitRootHash,
+        gitRoot: project.gitRoot,
         name: project.name,
         slug: project.slug,
         githubSync: project.githubSync,
@@ -196,6 +198,7 @@ export class SqliteProjectRepository implements ProjectRepository {
     return {
       id: row.id,
       gitRootHash: row.gitRootHash,
+      gitRoot: row.gitRoot ?? null,
       name: row.name,
       slug: row.slug,
       githubSync: row.githubSync ?? null,
