@@ -7,7 +7,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
   DataSourceProvider,
-  DrizzleDatabase,
+  SqliteDrizzleDatabase,
   ConnectionInfo,
   ConnectionTestResult,
 } from "../../domain/data-source.js";
@@ -66,7 +66,7 @@ export class SqliteDataSource implements DataSourceProvider {
   /**
    * Get Drizzle database instance for queries
    */
-  getDb(): DrizzleDatabase {
+  getDb(): SqliteDrizzleDatabase {
     return this.db;
   }
 

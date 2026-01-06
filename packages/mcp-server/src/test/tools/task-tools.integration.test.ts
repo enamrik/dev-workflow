@@ -26,7 +26,7 @@ import {
   type TaskToolContext,
 } from "../../tools/task-tools.js";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import * as schema from "@dev-workflow/core";
+import * as schema from "@dev-workflow/core/schema";
 
 type DbType = BetterSQLite3Database<typeof schema>;
 const TEST_PROJECT_ID = "test-project-task";

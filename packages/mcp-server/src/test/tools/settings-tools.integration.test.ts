@@ -16,7 +16,7 @@ import {
 } from "@dev-workflow/core";
 import { handleUpdateSettings, type SettingsToolContext } from "../../tools/settings-tools.js";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import * as schema from "@dev-workflow/core";
+import * as schema from "@dev-workflow/core/schema";
 
 type DbType = BetterSQLite3Database<typeof schema>;
 const TEST_GIT_ROOT_HASH = "abc123def456";

@@ -15,19 +15,31 @@
  */
 
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import type * as schema from "../infrastructure/database/schema.js";
+import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
+import type * as sqliteSchema from "../infrastructure/database/schema.js";
+import type * as pgSchema from "../infrastructure/database/schema-pg.js";
 
 // =============================================================================
 // Database Types
 // =============================================================================
 
 /**
- * The Drizzle database instance type
- *
- * Currently typed for SQLite schema. When PostgreSQL is added,
- * this will be generalized to support both dialects.
+ * SQLite Drizzle database instance type
  */
-export type DrizzleDatabase = BetterSQLite3Database<typeof schema>;
+export type SqliteDrizzleDatabase = BetterSQLite3Database<typeof sqliteSchema>;
+
+/**
+ * PostgreSQL (Neon) Drizzle database instance type
+ */
+export type NeonDrizzleDatabase = NeonHttpDatabase<typeof pgSchema>;
+
+/**
+ * Union type for all supported Drizzle database instances
+ *
+ * Repositories should use dialect-agnostic query patterns when possible.
+ * For dialect-specific operations, check the provider's `providerId` property.
+ */
+export type DrizzleDatabase = SqliteDrizzleDatabase | NeonDrizzleDatabase;
 
 /**
  * Database dialect identifier
