@@ -29,16 +29,9 @@ interface KanbanColumnProps {
   status: "PLANNED" | "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED";
   tasks: KanbanTask[];
   tooltip?: string;
-  stacked?: boolean;
 }
 
-export function KanbanColumn({
-  title,
-  status,
-  tasks,
-  tooltip,
-  stacked = false,
-}: KanbanColumnProps) {
+export function KanbanColumn({ title, status, tasks, tooltip }: KanbanColumnProps) {
   const headerColor = {
     PLANNED: "bg-purple-100",
     BACKLOG: "bg-gray-100",
@@ -49,13 +42,16 @@ export function KanbanColumn({
   }[status];
 
   return (
-    <div className="flex flex-col flex-1 min-w-[220px] bg-gray-50 rounded-lg">
+    <div className="flex flex-col flex-1 h-full min-h-0 min-w-[180px] md:min-w-[220px] bg-gray-50 rounded-lg overflow-hidden">
       {/* Column header */}
       <div
-        className={clsx("flex items-center justify-between px-3 py-2 rounded-t-lg", headerColor)}
+        className={clsx(
+          "flex items-center justify-between px-2 md:px-3 py-2 rounded-t-lg",
+          headerColor
+        )}
       >
         <div className="flex items-center gap-1">
-          <h3 className="font-semibold text-gray-800">{title}</h3>
+          <h3 className="font-semibold text-sm md:text-base text-gray-800">{title}</h3>
           {tooltip && (
             <Tooltip content={tooltip}>
               <span className="text-gray-500 cursor-help">
@@ -78,13 +74,8 @@ export function KanbanColumn({
         <span className="text-sm text-gray-600 bg-white px-2 py-0.5 rounded">{tasks.length}</span>
       </div>
 
-      {/* Column content */}
-      <div
-        className={clsx(
-          "flex-1 p-2 space-y-2 overflow-y-auto scrollbar-auto-hide",
-          stacked ? "max-h-[calc((100vh-280px)/2-16px)]" : "max-h-[calc(100vh-280px)]"
-        )}
-      >
+      {/* Column content - flex-1 + min-h-0 allows proper overflow in flex container */}
+      <div className="flex-1 p-2 space-y-2 overflow-y-auto scrollbar-auto-hide min-h-0">
         <AnimatePresence mode="popLayout">
           {tasks.length > 0 ? (
             tasks.map((task) => (
