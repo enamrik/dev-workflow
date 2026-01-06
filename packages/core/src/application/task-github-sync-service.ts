@@ -60,6 +60,32 @@ export interface ActivationResult {
 }
 
 /**
+ * Result for a single task sync operation
+ */
+export interface TaskSyncResult {
+  taskId: string;
+  taskNumber: number;
+  action: "created" | "linked" | "verified" | "skipped";
+  githubIssueNumber?: number;
+  githubUrl?: string;
+  error?: string;
+}
+
+/**
+ * Result of the sync_issue operation
+ */
+export interface IssueSyncResult {
+  success: boolean;
+  issueNumber: number;
+  tasksProcessed: number;
+  created: TaskSyncResult[];
+  linked: TaskSyncResult[];
+  verified: TaskSyncResult[];
+  skipped: TaskSyncResult[];
+  errors: TaskSyncResult[];
+}
+
+/**
  * TaskGitHubSyncService - Creates and syncs GitHub issues for tasks
  */
 export class TaskGitHubSyncService {
@@ -495,6 +521,341 @@ export class TaskGitHubSyncService {
           console.warn(`Failed to close GitHub issue for abandoned task ${taskId}:`, error);
         }
       }
+    }
+  }
+
+  /**
+   * Sync GitHub issues for all tasks in an issue
+   *
+   * This tool repairs GitHub sync state by:
+   * - Creating missing GitHub issues for tasks
+   * - Linking existing GitHub issues found by title search
+   * - Verifying already-linked GitHub issues still exist
+   * - Ensuring GitHub Project state is correct
+   *
+   * Idempotent: safe to run multiple times, produces same result.
+   * Non-destructive: never deletes GitHub issues.
+   *
+   * Handles same scenarios as move_issue_to_backlog:
+   * - Imported issues (sourceGitHubIssueNumber): 1 task links to parent, N tasks create sub-issues
+   * - Non-imported issues: each task gets its own GitHub issue
+   *
+   * @param issueNumber - The dev-workflow issue number
+   * @returns Sync result with details for each task
+   */
+  async syncIssue(issueNumber: number): Promise<IssueSyncResult> {
+    const issue = this.issueRepository.findByNumber(issueNumber);
+    if (!issue) {
+      return {
+        success: false,
+        issueNumber,
+        tasksProcessed: 0,
+        created: [],
+        linked: [],
+        verified: [],
+        skipped: [],
+        errors: [
+          {
+            taskId: "",
+            taskNumber: 0,
+            action: "skipped",
+            error: `Issue #${issueNumber} not found`,
+          },
+        ],
+      };
+    }
+
+    const config = this.getConfig();
+    if (!config?.enabled) {
+      return {
+        success: false,
+        issueNumber,
+        tasksProcessed: 0,
+        created: [],
+        linked: [],
+        verified: [],
+        skipped: [],
+        errors: [
+          { taskId: "", taskNumber: 0, action: "skipped", error: "GitHub sync is not enabled" },
+        ],
+      };
+    }
+
+    const plan = this.planRepository.findByIssueId(issue.id);
+    if (!plan) {
+      return {
+        success: false,
+        issueNumber,
+        tasksProcessed: 0,
+        created: [],
+        linked: [],
+        verified: [],
+        skipped: [],
+        errors: [
+          {
+            taskId: "",
+            taskNumber: 0,
+            action: "skipped",
+            error: `No plan found for issue #${issueNumber}`,
+          },
+        ],
+      };
+    }
+
+    const allTasks = this.taskRepository.findByPlanId(plan.id);
+
+    // Only sync non-terminal tasks (exclude PLANNED, COMPLETED, ABANDONED)
+    const tasksToSync = allTasks.filter(
+      (t) =>
+        t.status === "BACKLOG" ||
+        t.status === "READY" ||
+        t.status === "IN_PROGRESS" ||
+        t.status === "PR_REVIEW"
+    );
+
+    if (tasksToSync.length === 0) {
+      return {
+        success: true,
+        issueNumber,
+        tasksProcessed: 0,
+        created: [],
+        linked: [],
+        verified: [],
+        skipped: [],
+        errors: [],
+      };
+    }
+
+    const created: TaskSyncResult[] = [];
+    const linked: TaskSyncResult[] = [];
+    const verified: TaskSyncResult[] = [];
+    const skipped: TaskSyncResult[] = [];
+    const errors: TaskSyncResult[] = [];
+
+    // Check if this is an imported issue
+    const isImportedIssue = issue.sourceGitHubIssueNumber !== undefined;
+
+    for (const task of tasksToSync) {
+      try {
+        const result = await this.syncTask(
+          issue,
+          task,
+          tasksToSync.length,
+          isImportedIssue,
+          config
+        );
+
+        switch (result.action) {
+          case "created":
+            created.push(result);
+            break;
+          case "linked":
+            linked.push(result);
+            break;
+          case "verified":
+            verified.push(result);
+            break;
+          case "skipped":
+            skipped.push(result);
+            break;
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        errors.push({
+          taskId: task.id,
+          taskNumber: task.number,
+          action: "skipped",
+          error: errorMessage,
+        });
+      }
+    }
+
+    return {
+      success: errors.length === 0,
+      issueNumber,
+      tasksProcessed: tasksToSync.length,
+      created,
+      linked,
+      verified,
+      skipped,
+      errors,
+    };
+  }
+
+  /**
+   * Sync a single task's GitHub issue state
+   *
+   * @param issue - The parent dev-workflow issue
+   * @param task - The task to sync
+   * @param totalTaskCount - Total number of tasks being synced (for imported issue logic)
+   * @param isImportedIssue - Whether the issue was imported from GitHub
+   * @param config - GitHub sync config
+   * @returns Sync result for this task
+   */
+  private async syncTask(
+    issue: Issue,
+    task: Task,
+    totalTaskCount: number,
+    isImportedIssue: boolean,
+    config: GitHubIssueSyncConfig
+  ): Promise<TaskSyncResult> {
+    // Case 1: Task already has GitHub sync - verify it exists
+    if (task.githubSync?.githubIssueNumber) {
+      const existingIssue = await this.githubCLI.getIssue(task.githubSync.githubIssueNumber);
+
+      if (existingIssue) {
+        // Issue exists - verify project state and return verified
+        await this.ensureProjectState(task, config);
+
+        return {
+          taskId: task.id,
+          taskNumber: task.number,
+          action: "verified",
+          githubIssueNumber: existingIssue.number,
+          githubUrl: existingIssue.url,
+        };
+      }
+
+      // Issue was deleted - clear sync state and proceed to create/link
+      this.taskRepository.updateGitHubSync(task.id, {
+        githubIssueNumber: null,
+        githubUrl: null,
+        githubNodeId: null,
+        syncStatus: "NOT_SYNCED",
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: "GitHub issue was deleted, re-syncing",
+        projectItemId: null,
+      });
+    }
+
+    // Case 2: No GitHub sync - search for existing issue by title pattern
+    const searchPattern = `Task ${issue.number}.${task.number}:`;
+    const searchResults = await this.githubCLI.searchIssues(searchPattern, "all", 5);
+
+    // Look for an exact match in the body (footer pattern)
+    const matchingIssue = searchResults.find((gh) =>
+      gh.body.includes(`Task ${issue.number}.${task.number}: ${task.title}`)
+    );
+
+    if (matchingIssue) {
+      // Found existing issue - link it
+      const syncState = await this.linkExistingGitHubIssue(matchingIssue, task, config);
+      this.taskRepository.updateGitHubSync(task.id, syncState);
+
+      return {
+        taskId: task.id,
+        taskNumber: task.number,
+        action: "linked",
+        githubIssueNumber: matchingIssue.number,
+        githubUrl: matchingIssue.url,
+      };
+    }
+
+    // Case 3: No existing issue found - create new one
+    let syncState: GitHubSyncState;
+
+    if (isImportedIssue) {
+      syncState = await this.handleImportedIssueTask(issue, task, totalTaskCount);
+    } else {
+      syncState = await this.createGitHubIssueForTask(issue, task);
+    }
+
+    this.taskRepository.updateGitHubSync(task.id, syncState);
+
+    // Move to correct column based on current task status
+    if (syncState.projectItemId && config.projectId) {
+      await this.moveToColumn(syncState.projectItemId, config.projectId, task.status);
+    }
+
+    return {
+      taskId: task.id,
+      taskNumber: task.number,
+      action: "created",
+      githubIssueNumber: syncState.githubIssueNumber ?? undefined,
+      githubUrl: syncState.githubUrl ?? undefined,
+    };
+  }
+
+  /**
+   * Link an existing GitHub issue to a task
+   *
+   * @param githubIssue - The existing GitHub issue data
+   * @param task - The task to link
+   * @param config - GitHub sync config
+   * @returns The GitHub sync state for the task
+   */
+  private async linkExistingGitHubIssue(
+    githubIssue: { number: number; url: string; nodeId: string },
+    task: Task,
+    config: GitHubIssueSyncConfig
+  ): Promise<GitHubSyncState> {
+    // Add to project if configured
+    let projectItemId: string | null = null;
+    if (config.projectId) {
+      try {
+        projectItemId = await this.githubCLI.addToProject(config.projectId, githubIssue.nodeId);
+
+        // Move to correct column based on task status
+        if (projectItemId) {
+          await this.moveToColumn(projectItemId, config.projectId, task.status);
+        }
+      } catch (error) {
+        // Log but don't fail - project linking is not critical
+        console.warn(
+          `Failed to add issue to project: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+
+    return {
+      githubIssueNumber: githubIssue.number,
+      githubUrl: githubIssue.url,
+      githubNodeId: githubIssue.nodeId,
+      syncStatus: "SYNCED",
+      lastSyncedAt: new Date().toISOString(),
+      lastSyncError: null,
+      projectItemId,
+    };
+  }
+
+  /**
+   * Ensure a task's GitHub issue is in the correct project state
+   *
+   * @param task - The task with existing GitHub sync
+   * @param config - GitHub sync config
+   */
+  private async ensureProjectState(task: Task, config: GitHubIssueSyncConfig): Promise<void> {
+    if (!config.projectId || !task.githubSync) {
+      return;
+    }
+
+    // If no project item ID, try to add to project
+    if (!task.githubSync.projectItemId && task.githubSync.githubNodeId) {
+      try {
+        const projectItemId = await this.githubCLI.addToProject(
+          config.projectId,
+          task.githubSync.githubNodeId
+        );
+
+        if (projectItemId) {
+          // Update task with project item ID
+          this.taskRepository.updateGitHubSync(task.id, {
+            ...task.githubSync,
+            projectItemId,
+            lastSyncedAt: new Date().toISOString(),
+          });
+
+          // Move to correct column
+          await this.moveToColumn(projectItemId, config.projectId, task.status);
+        }
+      } catch (error) {
+        console.warn(
+          `Failed to add to project: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    } else if (task.githubSync.projectItemId) {
+      // Already has project item - ensure correct column
+      await this.moveToColumn(task.githubSync.projectItemId, config.projectId, task.status);
     }
   }
 

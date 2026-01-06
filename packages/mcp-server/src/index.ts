@@ -73,6 +73,7 @@ import {
   handlePauseIssue,
   handleMoveIssueToReady,
   handleMoveIssueToBacklog,
+  handleSyncIssue,
   // Task handlers
   handleLoadTaskSession,
   handleAbandonTaskSession,
@@ -258,6 +259,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     }
     if (name === "move_issue_to_backlog") {
       return await handleMoveIssueToBacklog(planToolContext, a);
+    }
+    if (name === "sync_issue") {
+      return await handleSyncIssue(planToolContext, a);
     }
 
     // Task tools

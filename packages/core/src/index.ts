@@ -55,6 +55,8 @@ export {
   TaskGitHubSyncError,
   type TaskActivationResult,
   type ActivationResult,
+  type TaskSyncResult,
+  type IssueSyncResult,
 } from "./application/task-github-sync-service.js";
 export {
   ProjectService,

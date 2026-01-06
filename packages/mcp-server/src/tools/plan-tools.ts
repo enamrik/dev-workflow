@@ -152,6 +152,24 @@ export const planToolDefinitions: ToolDefinition[] = [
       required: ["issueNumber"],
     },
   },
+  {
+    name: "sync_issue",
+    description:
+      "Repair GitHub sync state for an issue. Creates missing GitHub issues for tasks, " +
+      "links existing GitHub issues found by title search, and verifies already-synced tasks. " +
+      "Idempotent: safe to run multiple times. Use this to recover from partial syncs or errors " +
+      "during move_issue_to_backlog. Respects imported vs non-imported issue logic.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issueNumber: {
+          type: "number",
+          description: "Issue number (e.g., 123 for #123)",
+        },
+      },
+      required: ["issueNumber"],
+    },
+  },
 ];
 
 /**
@@ -489,4 +507,85 @@ export async function handleMoveIssueToBacklog(
     githubSyncSkipped: skipGitHubSync,
     tasks: activatedTasks,
   });
+}
+
+/**
+ * Handle sync_issue tool call
+ *
+ * Repairs GitHub sync state for an issue:
+ * - Creates missing GitHub issues for tasks
+ * - Links existing GitHub issues found by title search
+ * - Verifies already-synced tasks still exist on GitHub
+ * - Ensures GitHub Project state is correct
+ *
+ * Idempotent: safe to run multiple times, produces same result.
+ */
+export async function handleSyncIssue(
+  ctx: PlanToolContext,
+  args: { issueNumber: number }
+): Promise<ToolResponse> {
+  const { issueNumber } = args;
+
+  if (!issueNumber) {
+    return errorResponse("issueNumber is required");
+  }
+
+  if (!ctx.taskGitHubSyncService) {
+    return errorResponse("GitHub sync is not enabled for this project");
+  }
+
+  try {
+    const result = await ctx.taskGitHubSyncService.syncIssue(issueNumber);
+
+    if (!result.success && result.errors.length > 0) {
+      // Partial failure - some tasks had errors
+      const errorMessages = result.errors.map((e) => e.error).join("; ");
+      return errorResponse(`Sync completed with errors: ${errorMessages}`);
+    }
+
+    // Build summary message
+    const parts: string[] = [];
+    if (result.created.length > 0) {
+      parts.push(`${result.created.length} created`);
+    }
+    if (result.linked.length > 0) {
+      parts.push(`${result.linked.length} linked`);
+    }
+    if (result.verified.length > 0) {
+      parts.push(`${result.verified.length} verified`);
+    }
+    if (result.skipped.length > 0) {
+      parts.push(`${result.skipped.length} skipped`);
+    }
+
+    const summary = parts.length > 0 ? parts.join(", ") : "no tasks to sync";
+
+    return successResponse({
+      message: `Issue #${issueNumber} sync complete: ${summary}`,
+      issueNumber: result.issueNumber,
+      tasksProcessed: result.tasksProcessed,
+      created: result.created.map((t) => ({
+        taskNumber: t.taskNumber,
+        githubIssueNumber: t.githubIssueNumber,
+        githubUrl: t.githubUrl,
+      })),
+      linked: result.linked.map((t) => ({
+        taskNumber: t.taskNumber,
+        githubIssueNumber: t.githubIssueNumber,
+        githubUrl: t.githubUrl,
+      })),
+      verified: result.verified.map((t) => ({
+        taskNumber: t.taskNumber,
+        githubIssueNumber: t.githubIssueNumber,
+        githubUrl: t.githubUrl,
+      })),
+      skipped: result.skipped.map((t) => ({
+        taskNumber: t.taskNumber,
+        reason: t.error,
+      })),
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return errorResponse(`Failed to sync issue: ${errorMessage}`);
+  }
 }
