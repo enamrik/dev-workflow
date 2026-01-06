@@ -244,3 +244,64 @@ export class ApiError extends Error {
     this.name = "ApiError";
   }
 }
+
+/**
+ * Worker status
+ */
+export type WorkerStatus = "IDLE" | "WORKING" | "DRAINING";
+
+/**
+ * Worker with health information
+ */
+export interface Worker {
+  id: string;
+  name: string;
+  status: WorkerStatus;
+  lastHeartbeat: string;
+  createdAt: string;
+  /** Whether the worker is considered alive (heartbeat within threshold) */
+  isAlive: boolean;
+  /** Seconds since last heartbeat */
+  heartbeatAge: number;
+  /** Current task ID if the worker has claimed a task */
+  currentTaskId: string | null;
+}
+
+/**
+ * Dispatch queue entry with health information
+ */
+export interface DispatchQueueEntry {
+  taskId: string;
+  workerId: string | null;
+  claimedAt: string | null;
+  createdAt: string;
+  /** Whether the claim is stale (worker is dead) */
+  isStale: boolean;
+  /** Worker name if claimed */
+  workerName: string | null;
+  /** Task number within issue */
+  taskNumber?: number;
+  /** Issue number */
+  issueNumber?: number;
+  /** Task title */
+  taskTitle?: string;
+}
+
+/**
+ * Queue statistics
+ */
+export interface QueueStats {
+  total: number;
+  unclaimed: number;
+  claimed: number;
+  stale: number;
+}
+
+/**
+ * Worker data response combining workers, queue, and stats
+ */
+export interface WorkerData {
+  workers: Worker[];
+  queue: DispatchQueueEntry[];
+  stats: QueueStats;
+}
