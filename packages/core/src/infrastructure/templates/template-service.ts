@@ -19,6 +19,7 @@ import * as path from "node:path";
 import type { Template, TemplateDiscovery } from "../../domain/template.js";
 import type { FileSystem } from "../file-system/file-system.js";
 import { TemplateParser, TemplateParseError } from "./template-parser.js";
+import type { TypeService } from "../types/type-service.js";
 
 /**
  * Template service error
@@ -74,10 +75,12 @@ export class TemplateService {
    *
    * @param fileSystem - FileSystem abstraction for reading files
    * @param config - Template paths configuration
+   * @param typeService - Optional TypeService for intelligent type selection
    */
   constructor(
     private readonly fileSystem: FileSystem,
-    private readonly config: TemplateServiceConfig
+    private readonly config: TemplateServiceConfig,
+    private readonly typeService?: TypeService
   ) {
     this.parser = new TemplateParser();
   }
@@ -137,6 +140,9 @@ export class TemplateService {
   /**
    * Select template based on description keywords with cascading fallback
    *
+   * If a TypeService is configured, uses intelligent type matching based on
+   * user-defined type descriptions from ./track/types.md.
+   *
    * Resolution order:
    * 1. Local per-type (e.g., ./track/templates/issues/feature.md)
    * 2. Local all.md (./track/templates/issues/all.md)
@@ -148,29 +154,16 @@ export class TemplateService {
    * @throws TemplateServiceError if no templates are available
    */
   async selectTemplate(description: string): Promise<Template> {
-    const lower = description.toLowerCase();
-
-    // Determine target type from keywords
+    // Determine target type - use TypeService if available, else fall back to hardcoded logic
     let targetType: string;
 
-    if (
-      lower.includes("bug") ||
-      lower.includes("error") ||
-      lower.includes("broken") ||
-      lower.includes("failing")
-    ) {
-      targetType = "bug";
-    } else if (
-      lower.includes("enhance") ||
-      lower.includes("improve") ||
-      lower.includes("optimize") ||
-      lower.includes("better")
-    ) {
-      targetType = "enhancement";
-    } else if (lower.includes("task") || lower.includes("chore") || lower.includes("setup")) {
-      targetType = "task";
+    if (this.typeService) {
+      // Use intelligent type selection from TypeService
+      const issueType = await this.typeService.selectType(description);
+      targetType = issueType.toLowerCase();
     } else {
-      targetType = "feature";
+      // Fall back to hardcoded keyword matching
+      targetType = this.selectTypeFromKeywords(description);
     }
 
     // Try cascading resolution
@@ -187,6 +180,36 @@ export class TemplateService {
     }
 
     throw new TemplateServiceError("No templates available");
+  }
+
+  /**
+   * Select type from keywords (fallback when TypeService not available)
+   *
+   * @param description - Issue description
+   * @returns Lowercase type name
+   */
+  private selectTypeFromKeywords(description: string): string {
+    const lower = description.toLowerCase();
+
+    if (
+      lower.includes("bug") ||
+      lower.includes("error") ||
+      lower.includes("broken") ||
+      lower.includes("failing")
+    ) {
+      return "bug";
+    } else if (
+      lower.includes("enhance") ||
+      lower.includes("improve") ||
+      lower.includes("optimize") ||
+      lower.includes("better")
+    ) {
+      return "enhancement";
+    } else if (lower.includes("task") || lower.includes("chore") || lower.includes("setup")) {
+      return "task";
+    } else {
+      return "feature";
+    }
   }
 
   /**
