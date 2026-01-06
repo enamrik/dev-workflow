@@ -35,6 +35,7 @@ export {
   handlePauseIssue,
   handleMoveIssueToReady,
   handleMoveIssueToBacklog,
+  handleSyncIssue,
 } from "./plan-tools.js";
 
 // Task tools
