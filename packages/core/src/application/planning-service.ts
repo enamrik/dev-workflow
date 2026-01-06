@@ -282,15 +282,34 @@ export class PlanningService {
     // Match new tasks to existing tasks
     const matchResults = this.taskMatchingService.matchTasks(newTaskDefs, existingTasks);
 
-    const tasks: Task[] = [];
+    // Collect matched task IDs first
     const matchedTaskIds = new Set<string>();
+    for (const result of matchResults) {
+      if (result.action === "PRESERVE" && result.matchedTask) {
+        matchedTaskIds.add(result.matchedTask.id);
+      }
+    }
+
+    // Soft delete unmatched tasks BEFORE creating new tasks
+    // This ensures task numbers reset properly (getNextTaskNumber excludes deleted tasks)
+    // Only PLANNED, BACKLOG, or READY tasks can be soft-deleted
+    // IN_PROGRESS, PR_REVIEW, COMPLETED, ABANDONED are preserved
+    for (const task of existingTasks) {
+      if (
+        !matchedTaskIds.has(task.id) &&
+        (task.status === "PLANNED" || task.status === "BACKLOG" || task.status === "READY")
+      ) {
+        this.taskRepository.softDelete(task.id, generatedBy);
+      }
+    }
+
+    // Now create/update tasks
+    const tasks: Task[] = [];
 
     for (const result of matchResults) {
       if (result.action === "PRESERVE" && result.matchedTask) {
         // Update matched task with new content but preserve status
         // Clear dependencies since ID mapping is not preserved
-        matchedTaskIds.add(result.matchedTask.id);
-
         const updatedTask = this.taskRepository.update(result.matchedTask.id, {
           title: result.newTask.title,
           description: result.newTask.description,
@@ -317,18 +336,6 @@ export class PlanningService {
           dependsOn: [], // Clear dependencies during matching
         });
         tasks.push(task);
-      }
-    }
-
-    // Soft delete unmatched tasks that can be deleted
-    // Only PLANNED, BACKLOG, or READY tasks can be soft-deleted
-    // IN_PROGRESS, PR_REVIEW, COMPLETED, ABANDONED are preserved
-    for (const task of existingTasks) {
-      if (
-        !matchedTaskIds.has(task.id) &&
-        (task.status === "PLANNED" || task.status === "BACKLOG" || task.status === "READY")
-      ) {
-        this.taskRepository.softDelete(task.id, generatedBy);
       }
     }
 
