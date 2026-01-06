@@ -35,6 +35,7 @@ import {
   GitHubSyncService,
   TaskGitHubSyncService,
   NodeGitHubCLI,
+  GitHubProjectManagementProvider,
   // Git worktree support
   NodeGitWorktreeService,
   // Conflict detection
@@ -447,9 +448,11 @@ async function main() {
   // Services read config fresh from database on each call, so they handle
   // the case where GitHub sync is enabled after server start
   const githubCLI = new NodeGitHubCLI();
+  // Create provider from CLI - GitHubSyncService now uses the abstracted provider interface
+  const projectManagementProvider = new GitHubProjectManagementProvider(githubCLI);
   const githubSyncService = new GitHubSyncService(
     issueRepository,
-    githubCLI,
+    projectManagementProvider,
     projectRepository,
     projectId
   );
