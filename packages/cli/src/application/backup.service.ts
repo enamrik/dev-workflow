@@ -7,7 +7,7 @@
 
 import {
   getGlobalDatabasePath,
-  DatabaseService,
+  SqliteDataSource,
   SqliteGlobalSettingsRepository,
   BackupService,
   S3BackupProvider,
@@ -43,7 +43,7 @@ export interface ListBackupsResult {
  * BackupConfigService - Manages backup configuration and operations
  */
 export class BackupConfigService {
-  private dbService: DatabaseService | null = null;
+  private dbService: SqliteDataSource | null = null;
   private settingsRepository: SqliteGlobalSettingsRepository | null = null;
   private backupService: BackupService | null = null;
 
@@ -56,7 +56,7 @@ export class BackupConfigService {
     }
 
     const databasePath = getGlobalDatabasePath();
-    this.dbService = await DatabaseService.create(databasePath);
+    this.dbService = await SqliteDataSource.create(databasePath);
     this.dbService.runMigrations();
 
     const db = this.dbService.getDb();

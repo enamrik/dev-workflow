@@ -12,7 +12,7 @@ import {
   type SqliteTaskRepository,
   type PRStatus,
   type TaskGitHubSyncService,
-  type DatabaseService,
+  type SqliteDataSource,
   taskExecutionLogs,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
@@ -153,7 +153,7 @@ export interface PRToolContext {
   gitWorktreeService?: GitWorktreeService;
   taskGitHubSyncService?: TaskGitHubSyncService;
   /** Required for writing final log entry on task completion */
-  dbService: DatabaseService;
+  dbService: SqliteDataSource;
   taskExecutionLogsSchema: typeof taskExecutionLogs;
 }
 

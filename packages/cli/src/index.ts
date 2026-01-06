@@ -15,7 +15,7 @@ import { ClaudeWorkerService } from "./application/claude-worker.service.js";
 import { NodeFileSystem } from "./infrastructure/file-system.js";
 import {
   createTrackDirectoryResolver,
-  DatabaseService,
+  SqliteDataSource,
   SqliteWorkerRepository,
   SqliteDispatchQueueRepository,
   getGlobalDatabasePath,
@@ -653,7 +653,7 @@ async function runWorkers(): Promise<void> {
     process.exit(1);
   }
 
-  const dbService = await DatabaseService.create(dbPath);
+  const dbService = await SqliteDataSource.create(dbPath);
   const db = dbService.getDb();
   const workerRepository = new SqliteWorkerRepository(db);
   const dispatchQueueRepository = new SqliteDispatchQueueRepository(db);
