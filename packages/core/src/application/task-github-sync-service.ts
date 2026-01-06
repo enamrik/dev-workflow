@@ -947,8 +947,8 @@ export class TaskGitHubSyncService {
   /**
    * Build labels array from task type
    *
-   * Uses TypeService to look up the GitHub label for the task type.
-   * Falls back to lowercase type name if no explicit githubLabel is configured.
+   * Uses TypeService to look up the remote label for the task type.
+   * Falls back to lowercase type name if no explicit remoteLabel is configured.
    *
    * @param config - GitHub sync config (for custom labels)
    * @param taskType - The task's type (e.g., "FEATURE", "BUG")
@@ -957,14 +957,14 @@ export class TaskGitHubSyncService {
   private async buildLabels(config: GitHubIssueSyncConfig, taskType: string): Promise<string[]> {
     const labels: string[] = [];
 
-    // Look up the GitHub label for this task type via TypeService
+    // Look up the remote label for this task type via TypeService
     let typeLabel: string | undefined;
 
     if (this.typeService) {
       try {
         const typeDef = await this.typeService.getTypeByName(taskType);
         if (typeDef) {
-          typeLabel = typeDef.githubLabel;
+          typeLabel = typeDef.remoteLabel;
         }
       } catch {
         // Log but don't fail - fall back to lowercase

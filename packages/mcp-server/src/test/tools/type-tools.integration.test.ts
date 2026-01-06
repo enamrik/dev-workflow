@@ -45,7 +45,7 @@ describe("Type Tools Integration", () => {
       expect(typeNames).toContain("TASK");
     });
 
-    it("should include name, description, and githubLabel for each type", async () => {
+    it("should include name, description, and remoteLabel for each type", async () => {
       const ctx = createTypeToolContext();
 
       const result = await handleListTypes(ctx);
@@ -55,17 +55,17 @@ describe("Type Tools Integration", () => {
       for (const type of content.types) {
         expect(type.name).toBeDefined();
         expect(type.description).toBeDefined();
-        expect(type.githubLabel).toBeDefined();
+        expect(type.remoteLabel).toBeDefined();
       }
 
       // Check specific type details
       const featureType = content.types.find((t: { name: string }) => t.name === "FEATURE");
       expect(featureType).toBeDefined();
-      expect(featureType.githubLabel).toBe("feature");
+      expect(featureType.remoteLabel).toBe("feature");
 
       const bugType = content.types.find((t: { name: string }) => t.name === "BUG");
       expect(bugType).toBeDefined();
-      expect(bugType.githubLabel).toBe("bug");
+      expect(bugType.remoteLabel).toBe("bug");
     });
 
     it("should include helpful message about usage", async () => {
