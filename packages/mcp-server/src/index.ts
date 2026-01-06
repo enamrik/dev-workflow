@@ -437,8 +437,11 @@ async function main() {
   const fileSystem = new NodeFileSystem();
   const projectRoot = validatedGitRoot;
   const globalTrackDir = resolveGlobalTrackDir();
+
   // Track directory for project-specific data (worktrees, etc.) in global location
-  const trackDirectory = path.join(globalTrackDir, projectId);
+  // Use project.slug for human-readable directory names (e.g., ~/.track/dev-workflow-b9bccf/)
+  // instead of UUID (e.g., ~/.track/de15066e-7af0-458e-bf9d-d383110f7d30/)
+  const trackDirectory = path.join(globalTrackDir, project.slug);
 
   // Template paths follow cascading resolution:
   // Local (./.track/templates/) takes precedence over global (~/.track/config/templates/)
