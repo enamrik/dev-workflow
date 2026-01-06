@@ -2,7 +2,6 @@ import type { Issue, IssueRepository } from "../domain/issue.js";
 import type { Plan, PlanRepository, PlanComplexity } from "../domain/plan.js";
 import type { Task, TaskRepository } from "../domain/task.js";
 import { TaskMatchingService, type TaskDefinition } from "./task-matching-service.js";
-import type { LabelService } from "./label-service.js";
 import type { VersioningService } from "./versioning-service.js";
 import { EventBus } from "../infrastructure/events/event-bus.js";
 import { DAGValidationService } from "./dag-validation-service.js";
@@ -58,52 +57,17 @@ export interface IssueUpdates {
 export class PlanningService {
   private taskMatchingService: TaskMatchingService;
   private dagValidationService: DAGValidationService;
-  private cachedLabels: string[] | null = null;
   private readonly eventBus: EventBus;
 
   constructor(
     private readonly issueRepository: IssueRepository,
     private readonly planRepository: PlanRepository,
     private readonly taskRepository: TaskRepository,
-    private readonly labelService: LabelService,
     private readonly versioningService: VersioningService
   ) {
     this.taskMatchingService = new TaskMatchingService();
     this.dagValidationService = new DAGValidationService();
     this.eventBus = EventBus.getInstance();
-  }
-
-  /**
-   * Get available labels (cached)
-   */
-  private async getAvailableLabels(): Promise<string[]> {
-    if (this.cachedLabels === null) {
-      this.cachedLabels = await this.labelService.listAvailableLabels();
-    }
-    return this.cachedLabels;
-  }
-
-  /**
-   * Assign labels to a task based on available labels
-   *
-   * Matches label names against task title and description.
-   * Only assigns labels that actually exist.
-   */
-  private assignLabelsForTask(
-    task: { title: string; description: string },
-    availableLabels: string[]
-  ): string[] {
-    const labels: string[] = [];
-    const searchText = `${task.title} ${task.description}`.toLowerCase();
-
-    for (const label of availableLabels) {
-      // Match label name in task content
-      if (searchText.includes(label.toLowerCase())) {
-        labels.push(label);
-      }
-    }
-
-    return labels;
   }
 
   /**
@@ -153,7 +117,7 @@ export class PlanningService {
    * @param request - Plan generation request
    * @returns Plan with tasks
    */
-  async generatePlan(request: GeneratePlanRequest): Promise<PlanWithTasks> {
+  generatePlan(request: GeneratePlanRequest): PlanWithTasks {
     const {
       issueId,
       summary,
@@ -215,22 +179,13 @@ export class PlanningService {
       });
     }
 
-    // Get available labels for auto-assignment
-    const availableLabels = await this.getAvailableLabels();
-
     // Match new tasks against ALL existing tasks (no manual/generated distinction)
     let tasks: Task[];
     if (existingTasks.length > 0) {
-      tasks = this.createTasksWithMatching(
-        plan,
-        newTaskDefs,
-        existingTasks,
-        generatedBy,
-        availableLabels
-      );
+      tasks = this.createTasksWithMatching(plan, newTaskDefs, existingTasks, generatedBy);
     } else {
       // No existing tasks - create all new
-      tasks = this.createNewTasks(plan, newTaskDefs, availableLabels);
+      tasks = this.createNewTasks(plan, newTaskDefs);
     }
 
     // Create snapshot after regeneration (captures new state)
@@ -322,8 +277,7 @@ export class PlanningService {
     plan: Plan,
     newTaskDefs: TaskDefinition[],
     existingTasks: Task[],
-    generatedBy: string,
-    availableLabels: string[]
+    generatedBy: string
   ): Task[] {
     // Match new tasks to existing tasks
     const matchResults = this.taskMatchingService.matchTasks(newTaskDefs, existingTasks);
@@ -336,13 +290,6 @@ export class PlanningService {
         // Update matched task with new content but preserve status
         // Clear dependencies since ID mapping is not preserved
         matchedTaskIds.add(result.matchedTask.id);
-        const taskLabels = this.assignLabelsForTask(
-          {
-            title: result.newTask.title,
-            description: result.newTask.description,
-          },
-          availableLabels
-        );
 
         const updatedTask = this.taskRepository.update(result.matchedTask.id, {
           title: result.newTask.title,
@@ -350,21 +297,12 @@ export class PlanningService {
           acceptanceCriteria: result.newTask.acceptanceCriteria,
           estimatedMinutes: result.newTask.estimatedMinutes,
           matchConfidence: result.matchConfidence,
-          labels: taskLabels,
           dependsOn: [], // Clear dependencies during matching
         });
         tasks.push(updatedTask);
       } else {
-        // Create new generated task with auto-detected labels
+        // Create new generated task
         // Clear dependencies since ID mapping is not preserved
-        const taskLabels = this.assignLabelsForTask(
-          {
-            title: result.newTask.title,
-            description: result.newTask.description,
-          },
-          availableLabels
-        );
-
         const task = this.taskRepository.create({
           id: result.newTask.id, // Use caller-provided ID
           planId: plan.id,
@@ -376,7 +314,6 @@ export class PlanningService {
           source: "generated",
           estimatedMinutes: result.newTask.estimatedMinutes,
           isDeleted: false,
-          labels: taskLabels,
           dependsOn: [], // Clear dependencies during matching
         });
         tasks.push(task);
@@ -515,36 +452,20 @@ export class PlanningService {
   /**
    * Create all new tasks without matching
    */
-  private createNewTasks(
-    plan: Plan,
-    taskDefs: TaskDefinition[],
-    availableLabels: string[]
-  ): Task[] {
-    const taskData = taskDefs.map((def) => {
-      // Auto-assign labels based on task content
-      const taskLabels = this.assignLabelsForTask(
-        {
-          title: def.title,
-          description: def.description,
-        },
-        availableLabels
-      );
-
-      return {
-        id: def.id, // Use caller-provided ID for dependency tracking
-        planId: plan.id,
-        title: def.title,
-        description: def.description,
-        acceptanceCriteria: def.acceptanceCriteria,
-        status: "PLANNED" as const,
-        type: def.type ?? "TASK",
-        source: "generated" as const,
-        isDeleted: false,
-        estimatedMinutes: def.estimatedMinutes,
-        labels: taskLabels,
-        dependsOn: def.dependsOn, // Pass through dependencies
-      };
-    });
+  private createNewTasks(plan: Plan, taskDefs: TaskDefinition[]): Task[] {
+    const taskData = taskDefs.map((def) => ({
+      id: def.id, // Use caller-provided ID for dependency tracking
+      planId: plan.id,
+      title: def.title,
+      description: def.description,
+      acceptanceCriteria: def.acceptanceCriteria,
+      status: "PLANNED" as const,
+      type: def.type ?? "TASK",
+      source: "generated" as const,
+      isDeleted: false,
+      estimatedMinutes: def.estimatedMinutes,
+      dependsOn: def.dependsOn, // Pass through dependencies
+    }));
 
     return this.taskRepository.createMany(taskData);
   }

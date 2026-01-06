@@ -184,7 +184,7 @@ BACKLOG tasks back to READY.
 
 5. **Load the task session:**
    - Call `load_task_session` with task ID, session ID, and mode
-   - This returns full context: task, issue, plan, labels, worktree info
+   - This returns full context: task, issue, plan, worktree info
    - If task is already IN_PROGRESS, it resumes the existing session
    - Review title, description, and acceptance criteria from the response
 
@@ -220,7 +220,7 @@ After implementing the task, create a PR and optionally submit for review.
    - Show which criteria are met
 
 2. **Run validation steps:**
-   - Check context (CLAUDE.md, task labels, project docs) for required validation
+   - Check context (CLAUDE.md, project docs) for required validation
    - Run any tests, linting, build, or other quality checks mentioned
    - Common validations: `make test`, `pnpm test`, `pnpm typecheck`, `pnpm lint`
    - If validation fails → fix issues before proceeding

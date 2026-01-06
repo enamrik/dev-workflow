@@ -42,15 +42,6 @@ function createTaskToolContext(testDb: TestDatabase): TaskToolContext {
   const projectRepository = new SqliteProjectRepository(db);
 
   // Mock services
-  const mockLabelService = {
-    loadLabelsForTask: async () => [],
-    listAvailableLabels: async () => [],
-    getLabel: async () => null,
-    createLabel: async () => ({ name: "", content: "" }),
-    updateLabel: async () => ({ name: "", content: "" }),
-    removeLabel: async () => {},
-  };
-
   const mockGitWorktreeService = new MockGitWorktreeService();
   const mockGitHubCLI = new MockGitHubCLI();
 
@@ -87,7 +78,6 @@ function createTaskToolContext(testDb: TestDatabase): TaskToolContext {
     taskRepository: repos.taskRepository,
     taskSessionService,
     taskManagementService,
-    labelService: mockLabelService as any,
     taskExecutionLogsSchema: taskExecutionLogs,
     conflictDetectionService,
     taskGitHubSyncService,

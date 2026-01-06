@@ -48,15 +48,6 @@ export function createRepositories(db: TestDatabase["db"], projectId: string = T
  * Create all services from repositories
  */
 export function createServices(repos: ReturnType<typeof createRepositories>) {
-  // Create a mock hook config service for testing
-  const mockHookConfigService = {
-    loadConfig: async () => ({ label: "test", hooks: {} }),
-    loadAndMergeConfigs: async () => ({ label: "merged", hooks: {} }),
-    listConfigs: async () => [],
-    validateConfig: () => true,
-    assignConfigsForTask: () => [],
-  };
-
   const versioningService = new VersioningService(
     repos.issueRepository,
     repos.snapshotRepository,
@@ -68,7 +59,6 @@ export function createServices(repos: ReturnType<typeof createRepositories>) {
     repos.issueRepository,
     repos.planRepository,
     repos.taskRepository,
-    mockHookConfigService as any,
     versioningService
   );
 

@@ -1,7 +1,7 @@
 ---
 name: dwf-plan-issue
 description: Generate implementation plans with properly-scoped tasks. Auto-invoked when user wants to "plan issue", "create implementation plan", "break down into tasks", "plan #N", etc. (project)
-allowed-tools: mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:generate_plan, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:list_available_task_labels, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:list_types
+allowed-tools: mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:generate_plan, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:list_types
 ---
 
 # Plan Issue Skill
@@ -431,18 +431,6 @@ If issue has no description/acceptance criteria:
 
 - Ask the user for more context before planning
 - Suggest updating the issue first with manage-issue
-
-## Task Labels
-
-**IMPORTANT: Task labels must exist before assignment.** Labels are markdown files in `.track/labels/` that provide contextual guidance during task execution.
-
-Before assigning labels to tasks:
-
-1. Call `list_available_task_labels` to see what labels exist
-2. Only use labels that have a corresponding file in `.track/labels/`
-3. If no matching label file exists, do NOT assign that label
-
-Only use labels from the available labels list. Do not invent labels.
 
 ## Task IDs and Dependencies
 

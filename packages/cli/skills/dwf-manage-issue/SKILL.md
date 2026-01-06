@@ -1,7 +1,7 @@
 ---
 name: dwf-manage-issue
 description: "⚠️ For NEW work requests, use 'dwf-work-request' first - it routes here automatically. This skill handles the mechanics: requirements separation, template selection, priority/milestone assignment. Only invoke directly for EDITING existing issues: 'update issue #N', 'add acceptance criteria to #5', 'change priority of #3'. (project)"
-allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:close_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_available_task_labels, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:import_github_issue, mcp:dev-workflow-tracker:merge_issues
+allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:close_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:import_github_issue, mcp:dev-workflow-tracker:merge_issues
 ---
 
 # Manage Issue Skill
@@ -140,7 +140,7 @@ When creating the issue, mention that implementation details will be captured in
    - Show current state to user
 
 2. **Determine changes:**
-   - What fields need updating? (title, description, acceptance criteria, status, priority, labels)
+   - What fields need updating? (title, description, acceptance criteria, status, priority)
    - Confirm changes with user if ambiguous
 
 3. **Update issue:**
@@ -310,16 +310,6 @@ User: "Create an issue to add user authentication for M2"
 1. Create the issue normally
 2. Call `assign_issue_to_milestone` with `issueNumber` and `milestoneNumber: 2`
 3. Report: "Created issue #5 and assigned to milestone M2"
-
-## Label Extraction
-
-**IMPORTANT: Labels must exist before assignment.** Before assigning labels:
-
-1. Call `list_available_task_labels` to see what labels exist
-2. Only use labels that have a corresponding file in `.track/labels/`
-3. If no matching label file exists, do NOT assign that label
-
-Only use labels from the available labels list. Do not invent labels.
 
 ## After Success
 
