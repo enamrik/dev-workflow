@@ -52,6 +52,7 @@ export interface SnapshotTaskState {
   title: string;
   description: string;
   status: TaskStatus;
+  type: IssueType; // Task type (FEATURE, BUG, ENHANCEMENT, TASK)
   source: TaskSource;
   acceptanceCriteria: string[];
   estimatedMinutes?: number;

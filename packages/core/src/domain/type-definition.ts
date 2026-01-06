@@ -20,6 +20,8 @@ export interface TypeDefinition {
   readonly description: string;
   /** Keywords extracted from description for matching */
   readonly keywords: string[];
+  /** GitHub label to apply when syncing issues/tasks of this type (e.g., "feature", "bug") */
+  readonly githubLabel: string;
 }
 
 /**
@@ -40,20 +42,24 @@ export const DEFAULT_TYPE_DEFINITIONS: TypeDefinition[] = [
     name: "FEATURE",
     description: "New functionality that doesn't exist yet",
     keywords: ["feature", "new", "add", "implement", "create"],
+    githubLabel: "feature",
   },
   {
     name: "BUG",
     description: "Something is broken or not working as expected",
     keywords: ["bug", "error", "broken", "failing", "fix", "issue", "problem"],
+    githubLabel: "bug",
   },
   {
     name: "ENHANCEMENT",
     description: "Improvement to existing functionality",
     keywords: ["enhance", "improve", "optimize", "better", "refactor", "update"],
+    githubLabel: "enhancement",
   },
   {
     name: "TASK",
     description: "Technical work, chores, maintenance",
     keywords: ["task", "chore", "setup", "config", "maintenance", "cleanup"],
+    githubLabel: "task",
   },
 ];

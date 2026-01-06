@@ -542,6 +542,7 @@ export class MergeService {
         description: `(From #${sourceIssueNumber}) ${task.description}`,
         acceptanceCriteria: task.acceptanceCriteria,
         status: newStatus,
+        type: task.type,
         source: task.source,
         estimatedMinutes: task.estimatedMinutes,
         isDeleted: false,

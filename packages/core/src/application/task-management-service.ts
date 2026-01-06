@@ -86,6 +86,7 @@ export class TaskManagementService {
       description,
       acceptanceCriteria: acceptanceCriteria ?? [],
       status: "BACKLOG",
+      type: "TASK", // Manual tasks default to TASK type
       source: "manual", // Key difference from generated tasks!
       estimatedMinutes,
       isDeleted: false,

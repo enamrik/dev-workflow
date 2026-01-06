@@ -212,6 +212,7 @@ export class VersioningService {
             title: taskState.title,
             description: taskState.description,
             status: taskState.status,
+            type: taskState.type ?? "TASK", // Fallback for old snapshots without type
             source: taskState.source,
             acceptanceCriteria: taskState.acceptanceCriteria,
             estimatedMinutes: taskState.estimatedMinutes,
@@ -318,6 +319,7 @@ export class VersioningService {
       title: task.title,
       description: task.description,
       status: task.status,
+      type: task.type,
       source: task.source,
       acceptanceCriteria: task.acceptanceCriteria,
       estimatedMinutes: task.estimatedMinutes,

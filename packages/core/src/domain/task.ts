@@ -3,6 +3,7 @@
  */
 
 import type { GitHubSyncState } from "./github.js";
+import type { IssueType } from "./issue.js";
 
 export type TaskStatus =
   | "PLANNED"
@@ -81,6 +82,7 @@ export interface Task {
   readonly description: string; // Detailed task description
   readonly acceptanceCriteria: string[]; // How to verify completion
   readonly status: TaskStatus;
+  readonly type: IssueType; // Task type - same vocabulary as issues (FEATURE, BUG, ENHANCEMENT, TASK)
   readonly source: TaskSource; // Whether task was generated or manually created
   readonly estimatedMinutes?: number; // Optional time estimate
   readonly matchedFromTaskId?: string; // If preserved from previous version
