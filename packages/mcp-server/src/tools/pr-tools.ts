@@ -390,7 +390,8 @@ export async function handleCreatePR(
   }
 
   // Reference the parent issue for context (without closing it)
-  if (issue.githubSync?.githubIssueNumber) {
+  // Only add "Part of" for true sub-issues (where parent was imported from GitHub)
+  if (issue.githubSync?.githubIssueNumber && issue.sourceGitHubIssueNumber) {
     footerLines.push(`Part of #${issue.githubSync.githubIssueNumber}`);
   }
 
