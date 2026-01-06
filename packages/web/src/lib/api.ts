@@ -8,6 +8,7 @@ import type {
   Task,
   TaskStatusHistory,
   TaskExecutionLog,
+  WorkerData,
 } from "./types";
 import { ApiError } from "./types";
 
@@ -138,4 +139,9 @@ export function getTaskDependencies(projectId: string, taskId: string): Promise<
   return apiClient<Task[]>(
     `/projects/${encodeURIComponent(projectId)}/tasks/${taskId}/dependencies`
   );
+}
+
+// Workers
+export function getWorkerData(): Promise<WorkerData> {
+  return apiClient<WorkerData>("/workers");
 }
