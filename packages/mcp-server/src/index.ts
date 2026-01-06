@@ -120,6 +120,9 @@ import {
   handleCreatePR,
   handleSubmitForReview,
   handleCompleteTask,
+  // Merge handlers
+  mergeToolDefinitions,
+  handleMergeIssues,
   // Types
   type IssueToolContext,
   type PlanToolContext,
@@ -129,6 +132,7 @@ import {
   type MilestoneToolContext,
   type WorktreeToolContext,
   type PRToolContext,
+  type MergeToolContext,
   errorResponse,
 } from "./tools/index.js";
 
@@ -164,6 +168,7 @@ let settingsToolContext: SettingsToolContext;
 let milestoneToolContext: MilestoneToolContext;
 let worktreeToolContext: WorktreeToolContext;
 let prToolContext: PRToolContext;
+let mergeToolContext: MergeToolContext;
 
 // Create MCP server
 const server = new Server(
@@ -189,6 +194,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     ...milestoneToolDefinitions,
     ...worktreeToolDefinitions,
     ...prToolDefinitions,
+    ...mergeToolDefinitions,
   ],
 }));
 
@@ -379,6 +385,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     }
     if (name === "complete_task") {
       return await handleCompleteTask(prToolContext, a);
+    }
+
+    // Merge tools
+    if (name === "merge_issues") {
+      return await handleMergeIssues(mergeToolContext, a);
     }
 
     return errorResponse(`Unknown tool: ${name}`);
@@ -582,6 +593,16 @@ async function main() {
     taskRepository,
     gitWorktreeService,
     taskGitHubSyncService,
+  };
+
+  mergeToolContext = {
+    issueRepository,
+    planRepository,
+    taskRepository,
+    projectRepository,
+    versioningService,
+    projectId,
+    githubCLI,
   };
 
   // Start server with stdio transport
