@@ -144,6 +144,7 @@ export function createTestTask(
     title: string;
     description: string;
     status: TaskStatus;
+    type: IssueType;
     source: TaskSource;
     acceptanceCriteria: string[];
     estimatedMinutes: number;
@@ -155,6 +156,7 @@ export function createTestTask(
     title: overrides.title ?? "Test Task",
     description: overrides.description ?? "Test task description",
     status: overrides.status ?? "BACKLOG",
+    type: overrides.type ?? "TASK",
     source: overrides.source ?? "generated",
     acceptanceCriteria: overrides.acceptanceCriteria ?? [],
     estimatedMinutes: overrides.estimatedMinutes,
