@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { clsx } from "clsx";
 import { Tooltip } from "../ui";
 import type { Task } from "@/lib/types";
+import { getClaudeTaskCommand } from "@/lib/claude-command";
 
 interface TaskActionsProps {
   task: Task;
@@ -76,8 +77,8 @@ export function TaskActions({
       {showCopyCommand && issueNumber && (
         <ActionButton
           label="Claude"
-          text={`/dwf-work-task start #${issueNumber}.${task.number}`}
-          tooltip={`Copy: /dwf-work-task start #${issueNumber}.${task.number}`}
+          text={getClaudeTaskCommand(issueNumber, task.number)}
+          tooltip={`Copy: ${getClaudeTaskCommand(issueNumber, task.number)}`}
         />
       )}
     </div>
