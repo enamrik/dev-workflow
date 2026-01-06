@@ -7,7 +7,7 @@ import { Badge, Modal, Markdown, Tooltip, GitHubLink } from "../ui";
 import { TaskTiming, TaskMetadataPanel, TaskActions } from "../tasks";
 import type { Task, ComputedIssueStatus } from "@/lib/types";
 
-type IssueType = "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK";
+type IssueType = "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK" | "SPIKE";
 
 // Issue type styles - tag background, text, and border colors
 const issueTypeConfig: Record<IssueType, { label: string; tag: string; border: string }> = {
@@ -15,6 +15,7 @@ const issueTypeConfig: Record<IssueType, { label: string; tag: string; border: s
   BUG: { label: "bug", tag: "bg-rose-50 text-rose-600", border: "border-rose-200" },
   ENHANCEMENT: { label: "enh", tag: "bg-teal-50 text-teal-600", border: "border-teal-200" },
   TASK: { label: "task", tag: "bg-gray-100 text-gray-500", border: "border-gray-200" },
+  SPIKE: { label: "spike", tag: "bg-violet-50 text-violet-600", border: "border-violet-200" },
 };
 
 interface KanbanCardProps {
