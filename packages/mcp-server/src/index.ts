@@ -123,6 +123,9 @@ import {
   // Merge handlers
   mergeToolDefinitions,
   handleMergeIssues,
+  // Type handlers
+  typeToolDefinitions,
+  handleListTypes,
   // Types
   type IssueToolContext,
   type PlanToolContext,
@@ -133,6 +136,7 @@ import {
   type WorktreeToolContext,
   type PRToolContext,
   type MergeToolContext,
+  type TypeToolContext,
   errorResponse,
 } from "./tools/index.js";
 
@@ -169,6 +173,7 @@ let milestoneToolContext: MilestoneToolContext;
 let worktreeToolContext: WorktreeToolContext;
 let prToolContext: PRToolContext;
 let mergeToolContext: MergeToolContext;
+let typeToolContext: TypeToolContext;
 
 // Create MCP server
 const server = new Server(
@@ -195,6 +200,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     ...worktreeToolDefinitions,
     ...prToolDefinitions,
     ...mergeToolDefinitions,
+    ...typeToolDefinitions,
   ],
 }));
 
@@ -392,6 +398,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
       return await handleMergeIssues(mergeToolContext, a);
     }
 
+    // Type tools
+    if (name === "list_types") {
+      return await handleListTypes(typeToolContext);
+    }
+
     return errorResponse(`Unknown tool: ${name}`);
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));
@@ -549,6 +560,7 @@ async function main() {
     taskRepository,
     planningService,
     taskGitHubSyncService,
+    typeService,
   };
 
   taskToolContext = {
@@ -605,6 +617,10 @@ async function main() {
     versioningService,
     projectId,
     githubCLI,
+  };
+
+  typeToolContext = {
+    typeService,
   };
 
   // Start server with stdio transport
