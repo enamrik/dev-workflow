@@ -76,6 +76,38 @@ This ensures:
 - User mentions: "in worker", "dispatch to worker", "run in worker"
 - Examples: "start task 1 in worker", "dispatch this task to a worker"
 
+## User Communication
+
+**NEVER reference skill names or slash commands to users.** Users interact in natural language - they cannot invoke skills directly. Always use conversational prompts.
+
+| ❌ Wrong                        | ✅ Right                                     |
+| ------------------------------- | -------------------------------------------- |
+| "Use /dwf-work-task to start"   | "Would you like to start working on task 1?" |
+| "Run dwf-manage-issue to close" | "Should I close this issue?"                 |
+| "Invoke the skill again"        | "Ready to continue?"                         |
+
+### Key Transition Prompts
+
+**After starting a task:**
+
+> "Task is now IN_PROGRESS. Ready to begin implementation?"
+
+**After creating a PR:**
+
+> "PR created: [URL]. Would you like to submit it for review?"
+
+**After task completion:**
+
+> "Task complete! Would you like to work on the next task, or should I close the issue?"
+
+**When all tasks are done:**
+
+> "All tasks are complete. Should I close issue #N?"
+
+**When offering to start work:**
+
+> "Would you like to start working on task 1?"
+
 ## Task Lifecycle
 
 **New tasks start in PLANNED status.** The issue and tasks remain in PLANNED until
