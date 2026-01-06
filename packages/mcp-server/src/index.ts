@@ -485,6 +485,7 @@ async function main() {
   );
   // TaskGitHubSyncService for task-level GitHub issue sync
   // Includes templateService for task template support when creating GitHub issues
+  // Includes typeService for looking up GitHub labels from task types
   const taskGitHubSyncService = new TaskGitHubSyncService(
     taskRepository,
     issueRepository,
@@ -492,7 +493,8 @@ async function main() {
     githubCLI,
     projectRepository,
     projectId,
-    templateService
+    templateService,
+    typeService
   );
   if (project.githubSync?.enabled) {
     console.error("GitHub issue sync enabled (repository auto-detected from git remotes)");
