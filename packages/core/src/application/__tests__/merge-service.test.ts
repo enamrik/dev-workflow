@@ -4,7 +4,7 @@
  * Tests for MergeService which handles combining two issues into one.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   createRepositories,
   createTestIssue,
@@ -20,10 +20,19 @@ describe("MergeService", () => {
   let repos: ReturnType<typeof createRepositories>;
   let mergeService: MergeService;
   let versioningService: VersioningService;
+  let testProjectId: string;
 
   beforeEach(() => {
     testDb = createTestDatabase();
     repos = createRepositories(testDb.db);
+
+    // Create a test project (GitHub sync disabled by default for most tests)
+    const project = repos.projectRepository.create({
+      name: "Test Project",
+      gitRootHash: "abc123def",
+      githubSync: null, // GitHub sync disabled
+    });
+    testProjectId = project.id;
 
     versioningService = new VersioningService(
       repos.issueRepository,
@@ -36,7 +45,10 @@ describe("MergeService", () => {
       repos.issueRepository,
       repos.planRepository,
       repos.taskRepository,
-      versioningService
+      versioningService,
+      repos.projectRepository,
+      testProjectId
+      // No githubCLI - GitHub sync disabled
     );
   });
 
@@ -45,78 +57,78 @@ describe("MergeService", () => {
   });
 
   describe("validation", () => {
-    it("should throw if source issue not found", () => {
+    it("should throw if source issue not found", async () => {
       const target = createTestIssue(repos.issueRepository);
 
-      expect(() =>
+      await expect(
         mergeService.merge({
           sourceIssueNumber: 9999,
           targetIssueNumber: target.number,
           mode: "create_new",
           mergedBy: "test",
         })
-      ).toThrow(MergeValidationError);
+      ).rejects.toThrow(MergeValidationError);
     });
 
-    it("should throw if target issue not found", () => {
+    it("should throw if target issue not found", async () => {
       const source = createTestIssue(repos.issueRepository);
 
-      expect(() =>
+      await expect(
         mergeService.merge({
           sourceIssueNumber: source.number,
           targetIssueNumber: 9999,
           mode: "create_new",
           mergedBy: "test",
         })
-      ).toThrow(MergeValidationError);
+      ).rejects.toThrow(MergeValidationError);
     });
 
-    it("should throw if trying to merge issue with itself", () => {
+    it("should throw if trying to merge issue with itself", async () => {
       const issue = createTestIssue(repos.issueRepository);
 
-      expect(() =>
+      await expect(
         mergeService.merge({
           sourceIssueNumber: issue.number,
           targetIssueNumber: issue.number,
           mode: "create_new",
           mergedBy: "test",
         })
-      ).toThrow("Cannot merge an issue with itself");
+      ).rejects.toThrow("Cannot merge an issue with itself");
     });
 
-    it("should throw if source issue is CLOSED", () => {
+    it("should throw if source issue is CLOSED", async () => {
       const source = createTestIssue(repos.issueRepository, { status: "CLOSED" });
       const target = createTestIssue(repos.issueRepository);
 
-      expect(() =>
+      await expect(
         mergeService.merge({
           sourceIssueNumber: source.number,
           targetIssueNumber: target.number,
           mode: "create_new",
           mergedBy: "test",
         })
-      ).toThrow(`Source issue #${source.number} is CLOSED and cannot be merged`);
+      ).rejects.toThrow(`Source issue #${source.number} is CLOSED and cannot be merged`);
     });
 
-    it("should throw if target issue is CLOSED", () => {
+    it("should throw if target issue is CLOSED", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository, { status: "CLOSED" });
 
-      expect(() =>
+      await expect(
         mergeService.merge({
           sourceIssueNumber: source.number,
           targetIssueNumber: target.number,
           mode: "create_new",
           mergedBy: "test",
         })
-      ).toThrow(`Target issue #${target.number} is CLOSED and cannot be merged`);
+      ).rejects.toThrow(`Target issue #${target.number} is CLOSED and cannot be merged`);
     });
 
-    it("should resolve issues by ID", () => {
+    it("should resolve issues by ID", async () => {
       const source = createTestIssue(repos.issueRepository, { title: "Source" });
       const target = createTestIssue(repos.issueRepository, { title: "Target" });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueId: source.id,
         targetIssueId: target.id,
         mode: "create_new",
@@ -130,7 +142,7 @@ describe("MergeService", () => {
   });
 
   describe("create_new mode", () => {
-    it("should create a new issue combining both sources", () => {
+    it("should create a new issue combining both sources", async () => {
       const source = createTestIssue(repos.issueRepository, {
         title: "Feature A",
         description: "Description A",
@@ -140,7 +152,7 @@ describe("MergeService", () => {
         description: "Description B",
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -155,11 +167,11 @@ describe("MergeService", () => {
       expect(result.resultIssue.status).toBe("OPEN");
     });
 
-    it("should use custom title when provided", () => {
+    it("should use custom title when provided", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -170,11 +182,11 @@ describe("MergeService", () => {
       expect(result.resultIssue.title).toBe("Custom Merged Title");
     });
 
-    it("should use custom description when provided", () => {
+    it("should use custom description when provided", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -185,7 +197,7 @@ describe("MergeService", () => {
       expect(result.resultIssue.description).toBe("Custom description");
     });
 
-    it("should combine acceptance criteria without duplicates", () => {
+    it("should combine acceptance criteria without duplicates", async () => {
       const source = createTestIssue(repos.issueRepository, {
         acceptanceCriteria: ["Criterion A", "Common criterion"],
       });
@@ -193,7 +205,7 @@ describe("MergeService", () => {
         acceptanceCriteria: ["Criterion B", "Common criterion"],
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -204,16 +216,16 @@ describe("MergeService", () => {
       expect(result.resultIssue.acceptanceCriteria).toContain("Criterion B");
       // Should not have duplicate
       const commonCount = result.resultIssue.acceptanceCriteria.filter(
-        (c) => c === "Common criterion"
+        (c: string) => c === "Common criterion"
       ).length;
       expect(commonCount).toBe(1);
     });
 
-    it("should use higher priority", () => {
+    it("should use higher priority", async () => {
       const source = createTestIssue(repos.issueRepository, { priority: "LOW" });
       const target = createTestIssue(repos.issueRepository, { priority: "HIGH" });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -223,7 +235,7 @@ describe("MergeService", () => {
       expect(result.resultIssue.priority).toBe("HIGH");
     });
 
-    it("should not modify source issues", () => {
+    it("should not modify source issues", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
 
@@ -246,7 +258,7 @@ describe("MergeService", () => {
   });
 
   describe("create_new mode with plans", () => {
-    it("should create combined plan when both issues have plans", () => {
+    it("should create combined plan when both issues have plans", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       createTestPlan(repos.planRepository, source.id, {
@@ -258,7 +270,7 @@ describe("MergeService", () => {
         approach: "Target approach",
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -272,7 +284,7 @@ describe("MergeService", () => {
       expect(result.resultPlan?.approach).toContain("Target approach");
     });
 
-    it("should copy tasks from both plans", () => {
+    it("should copy tasks from both plans", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       const sourcePlan = createTestPlan(repos.planRepository, source.id);
@@ -282,7 +294,7 @@ describe("MergeService", () => {
       createTestTask(repos.taskRepository, sourcePlan.id, { title: "Source Task 2" });
       createTestTask(repos.taskRepository, targetPlan.id, { title: "Target Task 1" });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -296,7 +308,7 @@ describe("MergeService", () => {
       expect(titles.some((t) => t.includes("Target Task 1"))).toBe(true);
     });
 
-    it("should preserve COMPLETED task status", () => {
+    it("should preserve COMPLETED task status", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       const sourcePlan = createTestPlan(repos.planRepository, source.id);
@@ -306,7 +318,7 @@ describe("MergeService", () => {
         status: "COMPLETED",
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -317,7 +329,7 @@ describe("MergeService", () => {
       expect(completedTask?.status).toBe("COMPLETED");
     });
 
-    it("should preserve IN_PROGRESS task status", () => {
+    it("should preserve IN_PROGRESS task status", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       const sourcePlan = createTestPlan(repos.planRepository, source.id);
@@ -327,7 +339,7 @@ describe("MergeService", () => {
         status: "IN_PROGRESS",
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -338,7 +350,7 @@ describe("MergeService", () => {
       expect(inProgressTask?.status).toBe("IN_PROGRESS");
     });
 
-    it("should convert READY tasks to BACKLOG", () => {
+    it("should convert READY tasks to BACKLOG", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       const sourcePlan = createTestPlan(repos.planRepository, source.id);
@@ -348,7 +360,7 @@ describe("MergeService", () => {
         status: "READY",
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -359,7 +371,7 @@ describe("MergeService", () => {
       expect(readyTask?.status).toBe("BACKLOG");
     });
 
-    it("should use higher complexity from plans", () => {
+    it("should use higher complexity from plans", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       // Create plans (assigned to variables for clarity, but only return value matters)
@@ -370,7 +382,7 @@ describe("MergeService", () => {
         estimatedComplexity: "HIGH",
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -382,11 +394,11 @@ describe("MergeService", () => {
   });
 
   describe("create_new mode without plans", () => {
-    it("should work when neither issue has a plan", () => {
+    it("should work when neither issue has a plan", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -398,13 +410,13 @@ describe("MergeService", () => {
       expect(result.resultTasks).toHaveLength(0);
     });
 
-    it("should create plan when only source has a plan", () => {
+    it("should create plan when only source has a plan", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       const sourcePlan = createTestPlan(repos.planRepository, source.id);
       createTestTask(repos.taskRepository, sourcePlan.id, { title: "Source Task" });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -415,13 +427,13 @@ describe("MergeService", () => {
       expect(result.resultTasks).toHaveLength(1);
     });
 
-    it("should create plan when only target has a plan", () => {
+    it("should create plan when only target has a plan", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       const targetPlan = createTestPlan(repos.planRepository, target.id);
       createTestTask(repos.taskRepository, targetPlan.id, { title: "Target Task" });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -434,7 +446,7 @@ describe("MergeService", () => {
   });
 
   describe("merge_into mode", () => {
-    it("should update target issue description", () => {
+    it("should update target issue description", async () => {
       const source = createTestIssue(repos.issueRepository, {
         title: "Source Feature",
         description: "Source description",
@@ -444,7 +456,7 @@ describe("MergeService", () => {
         description: "Target description",
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "merge_into",
@@ -458,7 +470,7 @@ describe("MergeService", () => {
       expect(result.resultIssue.description).toContain(`#${source.number}`);
     });
 
-    it("should soft-delete source issue", () => {
+    it("should soft-delete source issue", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
 
@@ -474,7 +486,7 @@ describe("MergeService", () => {
       expect(sourceAfter?.isDeleted).toBe(true);
     });
 
-    it("should combine acceptance criteria", () => {
+    it("should combine acceptance criteria", async () => {
       const source = createTestIssue(repos.issueRepository, {
         acceptanceCriteria: ["Source criterion"],
       });
@@ -482,7 +494,7 @@ describe("MergeService", () => {
         acceptanceCriteria: ["Target criterion"],
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "merge_into",
@@ -495,7 +507,7 @@ describe("MergeService", () => {
   });
 
   describe("merge_into mode with plans", () => {
-    it("should add source tasks to existing target plan", () => {
+    it("should add source tasks to existing target plan", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       const sourcePlan = createTestPlan(repos.planRepository, source.id);
@@ -504,7 +516,7 @@ describe("MergeService", () => {
       createTestTask(repos.taskRepository, sourcePlan.id, { title: "Source Task" });
       createTestTask(repos.taskRepository, targetPlan.id, { title: "Target Task" });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "merge_into",
@@ -517,7 +529,7 @@ describe("MergeService", () => {
       expect(result.resultTasks.some((t) => t.title.includes("Source Task"))).toBe(true);
     });
 
-    it("should create new plan on target when only source has plan", () => {
+    it("should create new plan on target when only source has plan", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       const sourcePlan = createTestPlan(repos.planRepository, source.id, {
@@ -526,7 +538,7 @@ describe("MergeService", () => {
       });
       createTestTask(repos.taskRepository, sourcePlan.id, { title: "Source Task" });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "merge_into",
@@ -539,7 +551,7 @@ describe("MergeService", () => {
       expect(result.resultTasks).toHaveLength(1);
     });
 
-    it("should update target plan approach with source approach", () => {
+    it("should update target plan approach with source approach", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       createTestPlan(repos.planRepository, source.id, {
@@ -549,7 +561,7 @@ describe("MergeService", () => {
         approach: "Target approach details",
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "merge_into",
@@ -561,13 +573,13 @@ describe("MergeService", () => {
       expect(result.resultPlan?.approach).toContain(`#${source.number}`);
     });
 
-    it("should work when only target has plan", () => {
+    it("should work when only target has plan", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       const targetPlan = createTestPlan(repos.planRepository, target.id);
       createTestTask(repos.taskRepository, targetPlan.id, { title: "Target Task" });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "merge_into",
@@ -581,7 +593,7 @@ describe("MergeService", () => {
   });
 
   describe("warnings", () => {
-    it("should warn about IN_PROGRESS tasks in source", () => {
+    it("should warn about IN_PROGRESS tasks in source", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       const sourcePlan = createTestPlan(repos.planRepository, source.id);
@@ -590,7 +602,7 @@ describe("MergeService", () => {
         status: "IN_PROGRESS",
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -603,7 +615,7 @@ describe("MergeService", () => {
       expect(result.warnings[0]?.issueNumber).toBe(source.number);
     });
 
-    it("should warn about IN_PROGRESS tasks in target", () => {
+    it("should warn about IN_PROGRESS tasks in target", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       const targetPlan = createTestPlan(repos.planRepository, target.id);
@@ -612,7 +624,7 @@ describe("MergeService", () => {
         status: "IN_PROGRESS",
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -623,7 +635,7 @@ describe("MergeService", () => {
       expect(result.warnings[0]?.issueNumber).toBe(target.number);
     });
 
-    it("should warn about PR_REVIEW tasks", () => {
+    it("should warn about PR_REVIEW tasks", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       const sourcePlan = createTestPlan(repos.planRepository, source.id);
@@ -632,7 +644,7 @@ describe("MergeService", () => {
         status: "PR_REVIEW",
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -643,7 +655,7 @@ describe("MergeService", () => {
       expect(result.warnings[0]?.type).toBe("pr_review_task");
     });
 
-    it("should collect warnings from both issues", () => {
+    it("should collect warnings from both issues", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       const sourcePlan = createTestPlan(repos.planRepository, source.id);
@@ -658,7 +670,7 @@ describe("MergeService", () => {
         status: "IN_PROGRESS",
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -668,7 +680,7 @@ describe("MergeService", () => {
       expect(result.warnings).toHaveLength(2);
     });
 
-    it("should not warn about COMPLETED tasks", () => {
+    it("should not warn about COMPLETED tasks", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       const sourcePlan = createTestPlan(repos.planRepository, source.id);
@@ -677,7 +689,7 @@ describe("MergeService", () => {
         status: "COMPLETED",
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -687,7 +699,7 @@ describe("MergeService", () => {
       expect(result.warnings).toHaveLength(0);
     });
 
-    it("should not warn about BACKLOG tasks", () => {
+    it("should not warn about BACKLOG tasks", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       const sourcePlan = createTestPlan(repos.planRepository, source.id);
@@ -696,7 +708,7 @@ describe("MergeService", () => {
         status: "BACKLOG",
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -708,7 +720,7 @@ describe("MergeService", () => {
   });
 
   describe("task description annotation", () => {
-    it("should annotate copied task descriptions with source issue number", () => {
+    it("should annotate copied task descriptions with source issue number", async () => {
       const source = createTestIssue(repos.issueRepository);
       const target = createTestIssue(repos.issueRepository);
       const sourcePlan = createTestPlan(repos.planRepository, source.id);
@@ -717,7 +729,7 @@ describe("MergeService", () => {
         description: "Original description",
       });
 
-      const result = mergeService.merge({
+      const result = await mergeService.merge({
         sourceIssueNumber: source.number,
         targetIssueNumber: target.number,
         mode: "create_new",
@@ -727,6 +739,274 @@ describe("MergeService", () => {
       const copiedTask = result.resultTasks.find((t) => t.title === "Test Task");
       expect(copiedTask?.description).toContain(`#${source.number}`);
       expect(copiedTask?.description).toContain("Original description");
+    });
+  });
+
+  describe("GitHub sync integration", () => {
+    let mockGitHubCLI: {
+      commentOnIssue: ReturnType<typeof vi.fn>;
+      closeIssueWithComment: ReturnType<typeof vi.fn>;
+      closeIssue: ReturnType<typeof vi.fn>;
+    };
+    let mergeServiceWithGitHub: MergeService;
+
+    beforeEach(() => {
+      // Update the project to enable GitHub sync
+      repos.projectRepository.update(testProjectId, {
+        githubSync: {
+          enabled: true,
+          projectId: "PVT_test",
+          labels: undefined,
+          columnMapping: undefined,
+        },
+      });
+
+      // Create mock GitHub CLI
+      mockGitHubCLI = {
+        commentOnIssue: vi.fn().mockResolvedValue(undefined),
+        closeIssueWithComment: vi.fn().mockResolvedValue(undefined),
+        closeIssue: vi.fn().mockResolvedValue(undefined),
+      };
+
+      // Create MergeService with GitHub CLI
+      mergeServiceWithGitHub = new MergeService(
+        repos.issueRepository,
+        repos.planRepository,
+        repos.taskRepository,
+        versioningService,
+        repos.projectRepository,
+        testProjectId,
+        mockGitHubCLI as unknown as import("../../infrastructure/github/github-cli.js").GitHubCLI
+      );
+    });
+
+    it("should comment on source GitHub issue in create_new mode", async () => {
+      const source = createTestIssue(repos.issueRepository, { title: "Source Issue" });
+      const target = createTestIssue(repos.issueRepository, { title: "Target Issue" });
+
+      // Add GitHub sync state to source
+      repos.issueRepository.update(source.id, {
+        githubSync: {
+          githubIssueNumber: 10,
+          githubUrl: "https://github.com/test/repo/issues/10",
+          githubNodeId: "I_test_10",
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          projectItemId: null,
+        },
+      });
+
+      const result = await mergeServiceWithGitHub.merge({
+        sourceIssueNumber: source.number,
+        targetIssueNumber: target.number,
+        mode: "create_new",
+        mergedBy: "test",
+      });
+
+      expect(mockGitHubCLI.commentOnIssue).toHaveBeenCalledWith(
+        10,
+        expect.stringContaining("combined with another issue")
+      );
+      expect(result.resultIssue).toBeDefined();
+    });
+
+    it("should close source GitHub issue with comment in merge_into mode", async () => {
+      const source = createTestIssue(repos.issueRepository, { title: "Source Issue" });
+      const target = createTestIssue(repos.issueRepository, { title: "Target Issue" });
+
+      // Add GitHub sync state to source
+      repos.issueRepository.update(source.id, {
+        githubSync: {
+          githubIssueNumber: 20,
+          githubUrl: "https://github.com/test/repo/issues/20",
+          githubNodeId: "I_test_20",
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          projectItemId: null,
+        },
+      });
+
+      await mergeServiceWithGitHub.merge({
+        sourceIssueNumber: source.number,
+        targetIssueNumber: target.number,
+        mode: "merge_into",
+        mergedBy: "test",
+      });
+
+      expect(mockGitHubCLI.closeIssueWithComment).toHaveBeenCalledWith(
+        20,
+        expect.stringContaining("merged into")
+      );
+    });
+
+    it("should comment on target GitHub issue in merge_into mode", async () => {
+      const source = createTestIssue(repos.issueRepository);
+      const target = createTestIssue(repos.issueRepository);
+
+      // Add GitHub sync state to target
+      repos.issueRepository.update(target.id, {
+        githubSync: {
+          githubIssueNumber: 30,
+          githubUrl: "https://github.com/test/repo/issues/30",
+          githubNodeId: "I_test_30",
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          projectItemId: null,
+        },
+      });
+
+      await mergeServiceWithGitHub.merge({
+        sourceIssueNumber: source.number,
+        targetIssueNumber: target.number,
+        mode: "merge_into",
+        mergedBy: "test",
+      });
+
+      expect(mockGitHubCLI.commentOnIssue).toHaveBeenCalledWith(
+        30,
+        expect.stringContaining("Merged:")
+      );
+    });
+
+    it("should handle mixed sync states gracefully", async () => {
+      const source = createTestIssue(repos.issueRepository, { title: "Synced Source" });
+      const target = createTestIssue(repos.issueRepository, { title: "Not Synced Target" });
+
+      // Only source has GitHub sync
+      repos.issueRepository.update(source.id, {
+        githubSync: {
+          githubIssueNumber: 40,
+          githubUrl: "https://github.com/test/repo/issues/40",
+          githubNodeId: "I_test_40",
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          projectItemId: null,
+        },
+      });
+      // Target has no githubSync - should proceed without error
+
+      const result = await mergeServiceWithGitHub.merge({
+        sourceIssueNumber: source.number,
+        targetIssueNumber: target.number,
+        mode: "create_new",
+        mergedBy: "test",
+      });
+
+      // Source gets commented on
+      expect(mockGitHubCLI.commentOnIssue).toHaveBeenCalledWith(
+        40,
+        expect.stringContaining("combined")
+      );
+      // Target is not synced, so no call for target
+      expect(mockGitHubCLI.commentOnIssue).toHaveBeenCalledTimes(1);
+      expect(result.resultIssue).toBeDefined();
+    });
+
+    it("should preserve task GitHub links when copying", async () => {
+      const source = createTestIssue(repos.issueRepository);
+      const target = createTestIssue(repos.issueRepository);
+      const sourcePlan = createTestPlan(repos.planRepository, source.id);
+
+      // Create a task with GitHub sync state
+      const taskWithGitHub = createTestTask(repos.taskRepository, sourcePlan.id, {
+        title: "Task with GitHub",
+      });
+      repos.taskRepository.updateGitHubSync(taskWithGitHub.id, {
+        githubIssueNumber: 100,
+        githubUrl: "https://github.com/test/repo/issues/100",
+        githubNodeId: "I_test_100",
+        syncStatus: "SYNCED",
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: null,
+        projectItemId: null,
+      });
+
+      const result = await mergeServiceWithGitHub.merge({
+        sourceIssueNumber: source.number,
+        targetIssueNumber: target.number,
+        mode: "create_new",
+        mergedBy: "test",
+      });
+
+      // Find the copied task
+      const copiedTask = result.resultTasks.find((t) => t.title.includes("Task with GitHub"));
+      expect(copiedTask?.githubSync?.githubIssueNumber).toBe(100);
+      expect(copiedTask?.githubSync?.githubUrl).toBe("https://github.com/test/repo/issues/100");
+    });
+
+    it("should not fail if GitHub API calls fail", async () => {
+      const source = createTestIssue(repos.issueRepository);
+      const target = createTestIssue(repos.issueRepository);
+
+      // Add GitHub sync state to source
+      repos.issueRepository.update(source.id, {
+        githubSync: {
+          githubIssueNumber: 50,
+          githubUrl: "https://github.com/test/repo/issues/50",
+          githubNodeId: "I_test_50",
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          projectItemId: null,
+        },
+      });
+
+      // Make GitHub API call fail
+      mockGitHubCLI.commentOnIssue.mockRejectedValue(new Error("GitHub API error"));
+
+      // Should NOT throw - GitHub sync is best-effort
+      const result = await mergeServiceWithGitHub.merge({
+        sourceIssueNumber: source.number,
+        targetIssueNumber: target.number,
+        mode: "create_new",
+        mergedBy: "test",
+      });
+
+      expect(result.resultIssue).toBeDefined();
+      expect(mockGitHubCLI.commentOnIssue).toHaveBeenCalled();
+    });
+
+    it("should not call GitHub when sync is disabled", async () => {
+      // Disable GitHub sync
+      repos.projectRepository.update(testProjectId, {
+        githubSync: {
+          enabled: false,
+          projectId: undefined,
+          labels: undefined,
+          columnMapping: undefined,
+        },
+      });
+
+      const source = createTestIssue(repos.issueRepository);
+      const target = createTestIssue(repos.issueRepository);
+
+      // Add GitHub sync state to source
+      repos.issueRepository.update(source.id, {
+        githubSync: {
+          githubIssueNumber: 60,
+          githubUrl: "https://github.com/test/repo/issues/60",
+          githubNodeId: "I_test_60",
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          projectItemId: null,
+        },
+      });
+
+      await mergeServiceWithGitHub.merge({
+        sourceIssueNumber: source.number,
+        targetIssueNumber: target.number,
+        mode: "create_new",
+        mergedBy: "test",
+      });
+
+      // No GitHub calls when sync is disabled
+      expect(mockGitHubCLI.commentOnIssue).not.toHaveBeenCalled();
+      expect(mockGitHubCLI.closeIssueWithComment).not.toHaveBeenCalled();
     });
   });
 });

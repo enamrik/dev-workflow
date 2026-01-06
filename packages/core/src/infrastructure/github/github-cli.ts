@@ -189,6 +189,22 @@ export interface GitHubCLI {
   ): Promise<GitHubIssueData[]>;
 
   /**
+   * Add a comment to an existing GitHub issue
+   *
+   * @param issueNumber - The issue number to comment on
+   * @param comment - The comment text (supports markdown)
+   */
+  commentOnIssue(issueNumber: number, comment: string): Promise<void>;
+
+  /**
+   * Close a GitHub issue with an optional comment
+   *
+   * @param issueNumber - The issue number to close
+   * @param comment - Optional comment to add when closing
+   */
+  closeIssueWithComment(issueNumber: number, comment?: string): Promise<void>;
+
+  /**
    * Run arbitrary gh CLI command
    */
   run(args: string[]): Promise<GitHubCLIResult>;
@@ -652,6 +668,28 @@ export class NodeGitHubCLI implements GitHubCLI {
 
     const issues = JSON.parse(result.stdout) as Array<Record<string, unknown>>;
     return issues.map((data) => this.mapIssueData(data));
+  }
+
+  async commentOnIssue(issueNumber: number, comment: string): Promise<void> {
+    const result = await this.run(["issue", "comment", String(issueNumber), "-b", comment]);
+
+    if (!result.success) {
+      throw new GitHubCLIError(
+        `Failed to comment on issue: ${result.stderr}`,
+        result.exitCode,
+        result.stderr
+      );
+    }
+  }
+
+  async closeIssueWithComment(issueNumber: number, comment?: string): Promise<void> {
+    // If a comment is provided, add it first
+    if (comment) {
+      await this.commentOnIssue(issueNumber, comment);
+    }
+
+    // Then close the issue
+    await this.closeIssue(issueNumber);
   }
 
   async run(args: string[]): Promise<GitHubCLIResult> {
