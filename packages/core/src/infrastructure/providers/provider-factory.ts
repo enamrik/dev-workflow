@@ -7,7 +7,7 @@
  */
 
 import type { ProjectManagementProvider } from "../../domain/project-management-provider.js";
-import type { ProjectManagementConfig } from "../../domain/project-management-config.js";
+import type { Project } from "../../domain/project.js";
 import { GitHubProjectManagementProvider } from "./github-project-management-provider.js";
 
 /**
@@ -50,15 +50,12 @@ export interface ProviderFactory {
   /**
    * Create a new provider instance
    *
-   * @param config - Project management configuration
+   * @param project - The project containing provider configuration
    * @param deps - Dependencies for the provider
    * @returns A configured provider instance
    * @throws Error if required dependencies are missing
    */
-  createProvider(
-    config: ProjectManagementConfig,
-    deps: ProviderDependencies
-  ): ProjectManagementProvider;
+  createProvider(project: Project, deps: ProviderDependencies): ProjectManagementProvider;
 
   /**
    * Check if all required dependencies are available
@@ -84,14 +81,13 @@ export class GitHubProviderFactory implements ProviderFactory {
   readonly providerId = "github";
   readonly displayName = "GitHub";
 
-  createProvider(
-    _config: ProjectManagementConfig,
-    deps: ProviderDependencies
-  ): ProjectManagementProvider {
+  createProvider(_project: Project, deps: ProviderDependencies): ProjectManagementProvider {
     if (!deps.githubCLI) {
       throw new Error("GitHubProviderFactory requires githubCLI dependency");
     }
 
+    // Factory extracts project.githubSync internally - callers don't need to know
+    // which field contains the provider config
     return new GitHubProjectManagementProvider(deps.githubCLI);
   }
 

@@ -489,12 +489,10 @@ async function main() {
   // Get provider registry for validation and logging
   const providerRegistry = ProviderRegistry.getInstance();
 
-  // Create provider from project config using the registry
+  // Create provider from project using the registry
   // This allows switching providers by changing config without code changes
-  const syncConfig = project.githubSync;
-  const projectManagementProvider = syncConfig?.enabled
-    ? getProjectManagementProvider(syncConfig, providerDeps)
-    : getProjectManagementProvider({ enabled: false, providerId: "github" }, providerDeps);
+  // The registry extracts provider config from project.githubSync internally
+  const projectManagementProvider = getProjectManagementProvider(project, providerDeps);
 
   const githubSyncService = new GitHubSyncService(
     issueRepository,
@@ -516,7 +514,7 @@ async function main() {
     typeService
   );
   // Log provider status
-  if (syncConfig?.enabled) {
+  if (project.githubSync?.enabled) {
     const providerId = projectManagementProvider.providerId;
     const providerInfo = providerRegistry.tryGet(providerId);
     const displayName = providerInfo?.displayName ?? providerId;

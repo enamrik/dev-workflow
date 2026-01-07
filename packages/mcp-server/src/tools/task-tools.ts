@@ -45,7 +45,7 @@ async function validateLabels(
   }
 
   // Get available labels from provider
-  const provider = ctx.providerRegistry.createProvider(project.githubSync, {
+  const provider = ctx.providerRegistry.createProvider(project, {
     githubCLI: ctx.githubCLI,
   });
 

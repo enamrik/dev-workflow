@@ -11,8 +11,28 @@ import {
 } from "../provider-registry.js";
 import { GitHubProviderFactory, type ProviderFactory } from "../provider-factory.js";
 import type { ProjectManagementProvider } from "../../../domain/project-management-provider.js";
-import type { ProjectManagementConfig } from "../../../domain/project-management-config.js";
+import type { Project } from "../../../domain/project.js";
 import { MockGitHubCLI } from "../../../__tests__/mocks/mock-github-cli.js";
+
+/**
+ * Helper to create a mock Project for testing
+ *
+ * Note: GitHubIssueSyncConfig doesn't have a providerId field - the provider
+ * is determined by the getProviderId() function which defaults to "github".
+ */
+function createMockProject(githubSyncConfig: Project["githubSync"] = { enabled: true }): Project {
+  return {
+    id: "test-project-id",
+    gitRootHash: "abc123",
+    name: "test-project",
+    slug: "test-project-abc123",
+    githubSync: githubSyncConfig,
+    isArchived: false,
+    archivedAt: null,
+    createdAt: "2024-01-01T00:00:00.000Z",
+    updatedAt: "2024-01-01T00:00:00.000Z",
+  };
+}
 
 describe("ProviderRegistry", () => {
   beforeEach(() => {
@@ -158,52 +178,41 @@ describe("ProviderRegistry", () => {
   });
 
   describe("createProvider", () => {
-    it("should create provider from config", () => {
+    it("should create provider from project", () => {
       const registry = ProviderRegistry.getInstance();
       const mockGitHubCLI = new MockGitHubCLI();
-      const config: ProjectManagementConfig = {
-        enabled: true,
-        providerId: "github",
-      };
+      const project = createMockProject({ enabled: true });
 
-      const provider = registry.createProvider(config, { githubCLI: mockGitHubCLI });
+      const provider = registry.createProvider(project, { githubCLI: mockGitHubCLI });
 
       expect(provider).toBeDefined();
       expect(provider.providerId).toBe("github");
     });
 
-    it("should use default providerId when not specified", () => {
+    it("should default to github provider when no explicit provider configured", () => {
       const registry = ProviderRegistry.getInstance();
       const mockGitHubCLI = new MockGitHubCLI();
-      const config: ProjectManagementConfig = {
-        enabled: true,
-        // No providerId - should default to "github"
-      };
+      // githubSync config doesn't have providerId - defaults to "github" via getProviderId()
+      const project = createMockProject({ enabled: true });
 
-      const provider = registry.createProvider(config, { githubCLI: mockGitHubCLI });
+      const provider = registry.createProvider(project, { githubCLI: mockGitHubCLI });
 
       expect(provider.providerId).toBe("github");
     });
 
     it("should throw ProviderDependencyError when dependencies missing", () => {
       const registry = ProviderRegistry.getInstance();
-      const config: ProjectManagementConfig = {
-        enabled: true,
-        providerId: "github",
-      };
+      const project = createMockProject({ enabled: true });
 
-      expect(() => registry.createProvider(config, {})).toThrow(ProviderDependencyError);
+      expect(() => registry.createProvider(project, {})).toThrow(ProviderDependencyError);
     });
 
     it("should include missing dependencies in error", () => {
       const registry = ProviderRegistry.getInstance();
-      const config: ProjectManagementConfig = {
-        enabled: true,
-        providerId: "github",
-      };
+      const project = createMockProject({ enabled: true });
 
       try {
-        registry.createProvider(config, {});
+        registry.createProvider(project, {});
         expect.fail("Should have thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(ProviderDependencyError);
@@ -225,24 +234,21 @@ describe("getProjectManagementProvider", () => {
 
   it("should create provider using registry singleton", () => {
     const mockGitHubCLI = new MockGitHubCLI();
-    const config: ProjectManagementConfig = {
-      enabled: true,
-      providerId: "github",
-    };
+    const project = createMockProject({ enabled: true });
 
-    const provider = getProjectManagementProvider(config, { githubCLI: mockGitHubCLI });
+    const provider = getProjectManagementProvider(project, { githubCLI: mockGitHubCLI });
 
     expect(provider).toBeDefined();
     expect(provider.providerId).toBe("github");
   });
 
-  it("should throw for unknown provider", () => {
-    const config: ProjectManagementConfig = {
-      enabled: true,
-      providerId: "unknown",
-    };
+  it("should throw ProviderNotFoundError for unknown provider", () => {
+    // Test that registry.get() throws for unknown provider
+    // (since GitHubIssueSyncConfig doesn't support custom providerId,
+    // we test via the registry directly)
+    const registry = ProviderRegistry.getInstance();
 
-    expect(() => getProjectManagementProvider(config, {})).toThrow(ProviderNotFoundError);
+    expect(() => registry.get("unknown")).toThrow(ProviderNotFoundError);
   });
 });
 
@@ -294,9 +300,9 @@ describe("GitHubProviderFactory", () => {
     it("should create GitHubProjectManagementProvider", () => {
       const factory = new GitHubProviderFactory();
       const mockGitHubCLI = new MockGitHubCLI();
-      const config: ProjectManagementConfig = { enabled: true };
+      const project = createMockProject({ enabled: true });
 
-      const provider = factory.createProvider(config, { githubCLI: mockGitHubCLI });
+      const provider = factory.createProvider(project, { githubCLI: mockGitHubCLI });
 
       expect(provider).toBeDefined();
       expect(provider.providerId).toBe("github");
@@ -304,9 +310,9 @@ describe("GitHubProviderFactory", () => {
 
     it("should throw when githubCLI is missing", () => {
       const factory = new GitHubProviderFactory();
-      const config: ProjectManagementConfig = { enabled: true };
+      const project = createMockProject({ enabled: true });
 
-      expect(() => factory.createProvider(config, {})).toThrow("requires githubCLI");
+      expect(() => factory.createProvider(project, {})).toThrow("requires githubCLI");
     });
   });
 });

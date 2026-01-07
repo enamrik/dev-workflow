@@ -6,14 +6,13 @@
  *
  * Usage:
  *   const registry = ProviderRegistry.getInstance();
- *   const factory = registry.get('github');
- *   const provider = factory.createProvider(config, deps);
+ *   const provider = registry.createProvider(project, { githubCLI });
  */
 
 import type { ProviderFactory, ProviderDependencies } from "./provider-factory.js";
 import { GitHubProviderFactory } from "./provider-factory.js";
 import type { ProjectManagementProvider } from "../../domain/project-management-provider.js";
-import type { ProjectManagementConfig } from "../../domain/project-management-config.js";
+import type { Project } from "../../domain/project.js";
 import { getProviderId } from "../../domain/project-management-config.js";
 
 /**
@@ -168,21 +167,20 @@ export class ProviderRegistry {
   }
 
   /**
-   * Create a provider instance from configuration
+   * Create a provider instance for a project
    *
    * Convenience method that combines get() and createProvider().
+   * The factory internally extracts the provider configuration from the project.
    *
-   * @param config - Project management configuration
+   * @param project - The project containing provider configuration
    * @param deps - Provider dependencies
    * @returns A configured provider instance
    * @throws ProviderNotFoundError if provider not registered
    * @throws ProviderDependencyError if required dependencies missing
    */
-  createProvider(
-    config: ProjectManagementConfig,
-    deps: ProviderDependencies
-  ): ProjectManagementProvider {
-    const providerId = getProviderId(config);
+  createProvider(project: Project, deps: ProviderDependencies): ProjectManagementProvider {
+    // Extract provider ID from project's sync config - factory abstracts this detail
+    const providerId = getProviderId(project.githubSync);
     const factory = this.get(providerId);
 
     const missing = factory.getMissingDependencies(deps);
@@ -190,24 +188,24 @@ export class ProviderRegistry {
       throw new ProviderDependencyError(providerId, missing);
     }
 
-    return factory.createProvider(config, deps);
+    return factory.createProvider(project, deps);
   }
 }
 
 /**
- * Convenience function to get a ProjectManagementProvider from configuration
+ * Convenience function to get a ProjectManagementProvider for a project
  *
  * Uses the singleton ProviderRegistry instance.
  *
- * @param config - Project management configuration
+ * @param project - The project containing provider configuration
  * @param deps - Provider dependencies
  * @returns A configured provider instance
  * @throws ProviderNotFoundError if provider not registered
  * @throws ProviderDependencyError if required dependencies missing
  */
 export function getProjectManagementProvider(
-  config: ProjectManagementConfig,
+  project: Project,
   deps: ProviderDependencies
 ): ProjectManagementProvider {
-  return ProviderRegistry.getInstance().createProvider(config, deps);
+  return ProviderRegistry.getInstance().createProvider(project, deps);
 }

@@ -619,11 +619,11 @@ async function handleListAvailableLabels(ctx: SettingsToolContext): Promise<Tool
     }
 
     // Create provider to query available labels
-    const provider = ctx.providerRegistry.createProvider(currentSync, {
+    const provider = ctx.providerRegistry.createProvider(project, {
       githubCLI: ctx.githubCLI,
     });
 
-    const result = await provider.getAvailableLabels(currentSync.projectId);
+    const result = await provider.getAvailableLabels(project.githubSync?.projectId);
 
     if (!result.supported) {
       return successResponse({
