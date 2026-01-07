@@ -13,6 +13,7 @@ import {
   type ProjectRepository,
   type StatusColumnMapping,
   type ProviderRegistry,
+  type LabelFieldMapping,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -50,13 +51,17 @@ export const settingsToolDefinitions: ToolDefinition[] = [
             "disable_github",
             "configure_github",
             "configure_column_mapping",
+            "list_project_fields",
+            "configure_label_mapping",
           ],
           description:
             "The settings action to perform: get_settings returns current config, " +
             "enable_github enables GitHub issue sync with validation, " +
             "disable_github disables issue sync, " +
             "configure_github updates labels/projectId config, " +
-            "configure_column_mapping updates status-to-column mapping for GitHub Projects",
+            "configure_column_mapping updates status-to-column mapping for GitHub Projects, " +
+            "list_project_fields returns available custom fields from GitHub Project, " +
+            "configure_label_mapping maps task label keys to GitHub Project field IDs",
         },
         github: {
           type: "object",
@@ -118,6 +123,20 @@ export const settingsToolDefinitions: ToolDefinition[] = [
             "For configure_column_mapping action: reset column mapping to defaults. " +
             "If true, ignores columnMapping parameter and resets to default values.",
         },
+        labelFieldMapping: {
+          type: "object",
+          additionalProperties: { type: "string" },
+          description:
+            "For configure_label_mapping action: maps task label keys to GitHub Project field IDs. " +
+            'Example: { "product": "PVTF_abc123", "team": "PVTF_def456" }. ' +
+            "Only mapped labels are synced to GitHub Project fields.",
+        },
+        resetLabelFieldMapping: {
+          type: "boolean",
+          description:
+            "For configure_label_mapping action: clear all label field mappings. " +
+            "If true, ignores labelFieldMapping parameter and removes the mapping.",
+        },
       },
       required: ["action"],
     },
@@ -147,7 +166,9 @@ interface UpdateSettingsArgs {
     | "enable_github"
     | "disable_github"
     | "configure_github"
-    | "configure_column_mapping";
+    | "configure_column_mapping"
+    | "list_project_fields"
+    | "configure_label_mapping";
   github?: {
     projectId?: string;
     assignee?: string;
@@ -155,6 +176,8 @@ interface UpdateSettingsArgs {
     columnMapping?: Partial<StatusColumnMapping>;
   };
   resetColumnMapping?: boolean;
+  labelFieldMapping?: LabelFieldMapping;
+  resetLabelFieldMapping?: boolean;
 }
 
 /**
@@ -196,7 +219,7 @@ export async function handleUpdateSettings(
   ctx: SettingsToolContext,
   args: UpdateSettingsArgs
 ): Promise<ToolResponse> {
-  const { action, github, resetColumnMapping } = args;
+  const { action, github, resetColumnMapping, labelFieldMapping, resetLabelFieldMapping } = args;
 
   switch (action) {
     case "get_settings":
@@ -213,6 +236,12 @@ export async function handleUpdateSettings(
 
     case "configure_column_mapping":
       return handleConfigureColumnMapping(ctx, github?.columnMapping, resetColumnMapping);
+
+    case "list_project_fields":
+      return handleListProjectFields(ctx);
+
+    case "configure_label_mapping":
+      return handleConfigureLabelMapping(ctx, labelFieldMapping, resetLabelFieldMapping);
 
     default:
       return errorResponse(`Unknown action: ${action}`);
@@ -581,6 +610,131 @@ async function handleConfigureColumnMapping(
       columnMapping: effectiveMapping,
       customMapping: mergedMapping,
       isDefault: false,
+    });
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * List available project fields from GitHub Project
+ *
+ * Returns all custom fields configured in the GitHub Project,
+ * including their IDs, names, types, and available options for single-select fields.
+ * Use this to discover field IDs for configure_label_mapping.
+ */
+async function handleListProjectFields(ctx: SettingsToolContext): Promise<ToolResponse> {
+  try {
+    // Re-fetch project from database to get latest config
+    const project = ctx.projectRepository.findById(ctx.project.id);
+    if (!project) {
+      return errorResponse(`Project not found: ${ctx.project.id}`);
+    }
+
+    const currentSync = project.githubSync;
+
+    if (!currentSync?.enabled) {
+      return errorResponse("GitHub issue sync is not enabled. Use enable_github action first.");
+    }
+
+    if (!currentSync.projectId) {
+      return errorResponse(
+        "No GitHub Project configured. Use configure_github action to set projectId first."
+      );
+    }
+
+    // Create provider to query project fields
+    const provider = ctx.providerRegistry.createProvider(currentSync, {
+      githubCLI: ctx.githubCLI,
+    });
+
+    const fields = await provider.getProjectFields(currentSync.projectId);
+
+    return successResponse({
+      success: true,
+      projectId: currentSync.projectId,
+      projectUrl: currentSync.projectUrl,
+      fields: fields.map((field) => ({
+        id: field.id,
+        name: field.name,
+        type: field.type,
+        options: field.options,
+      })),
+      message: `Found ${fields.length} field(s) in GitHub Project`,
+    });
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Configure label-to-field mapping for GitHub Project sync
+ *
+ * Maps task label keys to GitHub Project field IDs.
+ * When tasks are synced to GitHub, labels with mapped keys
+ * will be set as project item field values.
+ */
+async function handleConfigureLabelMapping(
+  ctx: SettingsToolContext,
+  labelFieldMapping?: LabelFieldMapping,
+  resetLabelFieldMapping?: boolean
+): Promise<ToolResponse> {
+  try {
+    // Re-fetch project from database to get latest config
+    const project = ctx.projectRepository.findById(ctx.project.id);
+    if (!project) {
+      return errorResponse(`Project not found: ${ctx.project.id}`);
+    }
+
+    const currentSync = project.githubSync;
+
+    if (!currentSync?.enabled) {
+      return errorResponse("GitHub issue sync is not enabled. Use enable_github action first.");
+    }
+
+    // Handle reset
+    if (resetLabelFieldMapping) {
+      const updatedConfig: GitHubIssueSyncConfig = {
+        ...currentSync,
+        labelFieldMapping: undefined,
+      };
+
+      ctx.projectRepository.update(project.id, { githubSync: updatedConfig });
+
+      return successResponse({
+        success: true,
+        message: "Label field mapping cleared",
+        labelFieldMapping: null,
+      });
+    }
+
+    // If no mapping provided, return current mapping
+    if (!labelFieldMapping || Object.keys(labelFieldMapping).length === 0) {
+      return successResponse({
+        success: true,
+        message: "Current label field mapping",
+        labelFieldMapping: currentSync.labelFieldMapping ?? null,
+        hasMapping: !!currentSync.labelFieldMapping,
+      });
+    }
+
+    // Merge with existing mapping (new values override)
+    const mergedMapping: LabelFieldMapping = {
+      ...(currentSync.labelFieldMapping ?? {}),
+      ...labelFieldMapping,
+    };
+
+    const updatedConfig: GitHubIssueSyncConfig = {
+      ...currentSync,
+      labelFieldMapping: mergedMapping,
+    };
+
+    ctx.projectRepository.update(project.id, { githubSync: updatedConfig });
+
+    return successResponse({
+      success: true,
+      message: "Label field mapping updated",
+      labelFieldMapping: mergedMapping,
     });
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));

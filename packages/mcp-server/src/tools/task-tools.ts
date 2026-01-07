@@ -138,7 +138,10 @@ export const taskToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "update_task",
-    description: "Update a task's properties. Use for tuning task details before execution.",
+    description:
+      "Update a task's properties. Use for tuning task details before execution. " +
+      "Labels support both simple tags (empty string value) and key-value pairs. " +
+      'Example: { "urgent": "", "product": "Case Workflow" }',
     inputSchema: {
       type: "object",
       properties: {
@@ -167,6 +170,14 @@ export const taskToolDefinitions: ToolDefinition[] = [
         estimatedMinutes: {
           type: "number",
           description: "Estimated time in minutes",
+        },
+        labels: {
+          type: "object",
+          additionalProperties: { type: "string" },
+          description:
+            "Task labels as key-value pairs. Empty string = simple tag, non-empty = value. " +
+            "To remove a label, set its value to null. " +
+            'Example: { "urgent": "", "product": "Case Workflow" }',
         },
       },
       required: ["taskId"],
@@ -507,10 +518,12 @@ export function handleGetTask(
     title: task.title,
     description: task.description,
     status: task.status,
+    type: task.type,
     source: task.source,
     acceptanceCriteria: task.acceptanceCriteria,
     estimatedMinutes: task.estimatedMinutes,
     dependsOn: task.dependsOn,
+    labels: task.labels,
     startedAt: task.startedAt,
     completedAt: task.completedAt,
     createdAt: task.createdAt,
@@ -591,6 +604,9 @@ export function handleDeleteTask(ctx: TaskToolContext, args: { taskId: string })
 
 /**
  * Handle update_task tool call
+ *
+ * Supports updating task properties including labels.
+ * Labels are merged with existing labels - to remove a label, set its value to null.
  */
 export function handleUpdateTask(
   ctx: TaskToolContext,
@@ -601,10 +617,18 @@ export function handleUpdateTask(
     acceptanceCriteria?: string[];
     contextInstructions?: string;
     estimatedMinutes?: number;
+    labels?: Record<string, string | null>;
   }
 ): ToolResponse {
-  const { taskId, title, description, acceptanceCriteria, contextInstructions, estimatedMinutes } =
-    args;
+  const {
+    taskId,
+    title,
+    description,
+    acceptanceCriteria,
+    contextInstructions,
+    estimatedMinutes,
+    labels,
+  } = args;
 
   const task = ctx.taskRepository.findById(taskId);
   if (!task) {
@@ -618,6 +642,25 @@ export function handleUpdateTask(
   if (acceptanceCriteria !== undefined) updates.acceptanceCriteria = acceptanceCriteria;
   if (contextInstructions !== undefined) updates.contextInstructions = contextInstructions;
   if (estimatedMinutes !== undefined) updates.estimatedMinutes = estimatedMinutes;
+
+  // Handle labels - merge with existing, null values remove labels
+  if (labels !== undefined) {
+    const currentLabels = task.labels ?? {};
+    const mergedLabels: Record<string, string> = { ...currentLabels };
+
+    for (const [key, value] of Object.entries(labels)) {
+      if (value === null) {
+        // Remove the label
+        delete mergedLabels[key];
+      } else {
+        // Add or update the label
+        mergedLabels[key] = value;
+      }
+    }
+
+    // Use null to clear the field (undefined is ignored by Drizzle spread)
+    updates.labels = Object.keys(mergedLabels).length > 0 ? mergedLabels : null;
+  }
 
   const updatedTask = ctx.taskRepository.update(taskId, updates);
 
