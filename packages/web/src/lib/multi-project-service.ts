@@ -13,6 +13,7 @@ import {
   resolveGlobalTrackDir,
   NodeGitWorktreeService,
   computeMilestoneStatus,
+  resolveConfig,
   type Issue,
   type Plan,
   type Task,
@@ -28,13 +29,17 @@ import {
 
 /**
  * Represents a project with its ID, name, slug, and track directory
+ *
+ * Note: gitRoot (local path to repo) is now stored in config.json, not in the
+ * database. See project-config-resolver.ts for loading gitRoot from config.
  */
 export interface Project {
   readonly id: string;
   readonly name: string;
   readonly slug: string;
   readonly trackDirectory: string;
-  readonly gitRoot: string;
+  /** Local path to git repository root (loaded from config.json, may be undefined if not configured) */
+  readonly gitRoot?: string;
   /** GitHub sync configuration (optional - only present if configured) */
   readonly githubSync?: GitHubIssueSyncConfig | null;
 }
@@ -266,22 +271,33 @@ export class MultiProjectService {
     const { projectRepository } = await this.ensureConnection();
     const coreProjects = projectRepository.findAll();
 
-    // Map core projects to UI projects with track directory
-    const projects: Project[] = coreProjects.map((p) => {
-      // Compute track directory from project name and git root hash
-      const hash = p.gitRootHash.slice(0, 6);
-      const trackDirName = `${p.name}-${hash}`;
-      const trackDirectory = path.join(this.globalTrackDir, trackDirName);
+    // Map core projects to UI projects with track directory and gitRoot
+    const projects: Project[] = await Promise.all(
+      coreProjects.map(async (p) => {
+        // Compute track directory from project name and git root hash
+        const hash = p.gitRootHash.slice(0, 6);
+        const trackDirName = `${p.name}-${hash}`;
+        const trackDirectory = path.join(this.globalTrackDir, trackDirName);
 
-      return {
-        id: p.id,
-        name: p.name,
-        slug: p.slug,
-        trackDirectory,
-        gitRoot: p.gitRoot ?? "",
-        githubSync: p.githubSync ?? null,
-      };
-    });
+        // Try to load gitRoot from config.json
+        let gitRoot: string | undefined;
+        try {
+          const config = await resolveConfig(p.slug);
+          gitRoot = config.gitRoot;
+        } catch {
+          // Config doesn't exist yet, gitRoot will be undefined
+        }
+
+        return {
+          id: p.id,
+          name: p.name,
+          slug: p.slug,
+          trackDirectory,
+          gitRoot,
+          githubSync: p.githubSync ?? null,
+        };
+      })
+    );
 
     return projects.sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -303,12 +319,21 @@ export class MultiProjectService {
     const trackDirName = `${coreProject.name}-${hash}`;
     const trackDirectory = path.join(this.globalTrackDir, trackDirName);
 
+    // Try to load gitRoot from config.json
+    let gitRoot: string | undefined;
+    try {
+      const config = await resolveConfig(coreProject.slug);
+      gitRoot = config.gitRoot;
+    } catch {
+      // Config doesn't exist yet, gitRoot will be undefined
+    }
+
     return {
       id: coreProject.id,
       name: coreProject.name,
       slug: coreProject.slug,
       trackDirectory,
-      gitRoot: coreProject.gitRoot ?? "",
+      gitRoot,
       githubSync: coreProject.githubSync ?? null,
     };
   }
@@ -668,10 +693,8 @@ export class MultiProjectService {
     const allWorktrees: ProjectWorktree[] = [];
 
     for (const project of filteredProjects) {
-      // gitRoot is no longer stored in config.json - it's computed from cwd when needed
-      // For web UI, gitRoot is not available (worktree operations require git commands)
-      // Worktree operations are primarily done via MCP tools which have GIT_ROOT env var
-      // Skip projects without gitRoot
+      // gitRoot is loaded from config.json in listProjects
+      // Skip projects without gitRoot (config.json not set up yet)
       if (!project.gitRoot) continue;
 
       // Get worktrees from git
@@ -731,9 +754,6 @@ export class MultiProjectService {
 
   /**
    * Prune stale worktrees for a project
-   *
-   * Note: This operation requires gitRoot which is no longer stored in config.json.
-   * Worktree operations via web UI are not supported - use MCP tools instead.
    */
   async pruneWorktrees(projectId: string): Promise<{ pruned: number }> {
     const projects = await this.listProjects();
@@ -742,12 +762,10 @@ export class MultiProjectService {
       throw new Error(`Project not found: ${projectId}`);
     }
 
-    // gitRoot is no longer stored in config.json - it's computed from cwd when needed
-    // For web UI, gitRoot is not available (worktree operations require git commands)
-    // Worktree operations are primarily done via MCP tools which have GIT_ROOT env var
+    // gitRoot is loaded from config.json in listProjects
     if (!project.gitRoot) {
       throw new Error(
-        "Worktree operations via web UI are not supported. Use MCP tools (prune_stale_worktrees) instead."
+        "Project config.json not found. Run 'dev-workflow init' in the project directory first."
       );
     }
 

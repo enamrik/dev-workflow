@@ -407,9 +407,8 @@ export const projects = sqliteTable("projects", {
   // This never changes regardless of where the repo is cloned or moved
   gitRootHash: text("git_root_hash").notNull().unique(),
 
-  // Absolute path to the git repository on this machine
-  // Updated during `dev-workflow init` when the project is created or repaired
-  gitRoot: text("git_root"),
+  // NOTE: gitRoot was removed - it's machine-specific and now lives in
+  // ~/.track/<slug>/config.json. See project-config-resolver.ts.
 
   // Human-readable project name (typically the folder name)
   name: text("name").notNull(),

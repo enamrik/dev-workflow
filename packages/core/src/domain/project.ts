@@ -4,8 +4,8 @@
  * Projects are identified by their git repository's initial commit hash,
  * which is stable regardless of where the repo is cloned or moved.
  *
- * gitRoot is the absolute path to the git repository on this machine.
- * It's updated during `dev-workflow init` (fresh install or repair after move).
+ * NOTE: gitRoot was removed from the database - it's machine-specific and
+ * now lives in ~/.track/<slug>/config.json. See project-config-resolver.ts.
  */
 
 import type { GitHubIssueSyncConfig } from "../infrastructure/database/schema.js";
@@ -19,7 +19,6 @@ import type { GitHubIssueSyncConfig } from "../infrastructure/database/schema.js
 export interface Project {
   readonly id: string; // UUID
   readonly gitRootHash: string; // SHA of initial commit (stable identifier)
-  readonly gitRoot: string | null; // Absolute path to git repo on this machine
   readonly name: string; // Human-readable name (typically folder name)
   readonly slug: string; // URL-safe unique slug: {name}-{gitRootHash.slice(0,6)}
   readonly githubSync: GitHubIssueSyncConfig | null; // GitHub sync configuration
@@ -34,7 +33,6 @@ export interface Project {
  */
 export interface CreateProjectData {
   gitRootHash: string;
-  gitRoot: string;
   name: string;
   githubSync?: GitHubIssueSyncConfig | null;
 }
@@ -44,7 +42,6 @@ export interface CreateProjectData {
  */
 export interface UpdateProjectData {
   name?: string;
-  gitRoot?: string;
   githubSync?: GitHubIssueSyncConfig | null;
 }
 

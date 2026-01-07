@@ -25,7 +25,6 @@ describe("SqliteProjectRepository", () => {
     it("should create a project with all fields", () => {
       const project = repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "test-project",
       });
 
@@ -43,7 +42,6 @@ describe("SqliteProjectRepository", () => {
     it("should generate a URL-safe slug from name and hash", () => {
       const project = repos.projectRepository.create({
         gitRootHash: "b9bccf123456",
-        gitRoot: "/test/repo",
         name: "Dev Workflow",
       });
 
@@ -54,7 +52,6 @@ describe("SqliteProjectRepository", () => {
     it("should handle special characters in project name for slug", () => {
       const project = repos.projectRepository.create({
         gitRootHash: "xyz789abc123",
-        gitRoot: "/test/repo",
         name: "My.Project_Name",
       });
 
@@ -78,7 +75,6 @@ describe("SqliteProjectRepository", () => {
 
       const project = repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "test-project",
         githubSync,
       });
@@ -89,14 +85,12 @@ describe("SqliteProjectRepository", () => {
     it("should enforce unique gitRootHash", () => {
       repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "project-1",
       });
 
       expect(() =>
         repos.projectRepository.create({
           gitRootHash: "abc123def456", // Same hash
-          gitRoot: "/test/repo2",
           name: "project-2",
         })
       ).toThrow();
@@ -107,7 +101,6 @@ describe("SqliteProjectRepository", () => {
     it("should find a project by ID", () => {
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "test-project",
       });
 
@@ -128,7 +121,6 @@ describe("SqliteProjectRepository", () => {
     it("should find a project by git root hash", () => {
       repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "test-project",
       });
 
@@ -148,7 +140,6 @@ describe("SqliteProjectRepository", () => {
     it("should find a project by slug", () => {
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "test-project",
       });
 
@@ -174,13 +165,11 @@ describe("SqliteProjectRepository", () => {
     it("should return all non-archived projects by default", () => {
       repos.projectRepository.create({
         gitRootHash: "hash1",
-        gitRoot: "/test/repo1",
         name: "project-1",
       });
 
       const project2 = repos.projectRepository.create({
         gitRootHash: "hash2",
-        gitRoot: "/test/repo2",
         name: "project-2",
       });
 
@@ -196,13 +185,11 @@ describe("SqliteProjectRepository", () => {
     it("should return all projects including archived when includeArchived=true", () => {
       repos.projectRepository.create({
         gitRootHash: "hash1",
-        gitRoot: "/test/repo1",
         name: "project-1",
       });
 
       const project2 = repos.projectRepository.create({
         gitRootHash: "hash2",
-        gitRoot: "/test/repo2",
         name: "project-2",
       });
 
@@ -219,7 +206,6 @@ describe("SqliteProjectRepository", () => {
     it("should update project name", () => {
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "old-name",
       });
 
@@ -234,7 +220,6 @@ describe("SqliteProjectRepository", () => {
     it("should update GitHub sync config", () => {
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "test-project",
       });
 
@@ -270,7 +255,6 @@ describe("SqliteProjectRepository", () => {
 
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "test-project",
         githubSync,
       });
@@ -295,7 +279,6 @@ describe("SqliteProjectRepository", () => {
 
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "test-project",
         githubSync,
       });
@@ -312,7 +295,6 @@ describe("SqliteProjectRepository", () => {
     it("should delete a project", () => {
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "test-project",
       });
 
@@ -327,7 +309,6 @@ describe("SqliteProjectRepository", () => {
     it("should archive a project", () => {
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "test-project",
       });
 
@@ -343,7 +324,6 @@ describe("SqliteProjectRepository", () => {
     it("should update updatedAt when archiving", () => {
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "test-project",
       });
 
@@ -361,7 +341,6 @@ describe("SqliteProjectRepository", () => {
     it("should unarchive a project", () => {
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "test-project",
       });
 
@@ -377,7 +356,6 @@ describe("SqliteProjectRepository", () => {
     it("should update updatedAt when unarchiving", () => {
       const created = repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "test-project",
       });
 
@@ -397,7 +375,6 @@ describe("SqliteProjectRepository", () => {
       // Create a project first
       const project = repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "test-project",
       });
 
@@ -441,7 +418,6 @@ describe("SqliteProjectRepository", () => {
       // Create a project first
       const project = repos.projectRepository.create({
         gitRootHash: "abc123def456",
-        gitRoot: "/test/repo",
         name: "test-project",
       });
 
