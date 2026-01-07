@@ -127,6 +127,13 @@
       "when": 1767757689452,
       "tag": "0017_rare_celestials",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1767758533346,
+      "tag": "0018_previous_phil_sheldon",
+      "breakpoints": true
     }
   ]
 }
