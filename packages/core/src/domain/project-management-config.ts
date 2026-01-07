@@ -150,6 +150,13 @@ export interface ProjectManagementConfig {
    * Status-to-column mapping for project boards
    */
   columnMapping?: ColumnMapping;
+
+  /**
+   * Username to auto-assign issues when task enters IN_PROGRESS
+   *
+   * For GitHub: GitHub username (without @ prefix)
+   */
+  assignee?: string;
 }
 
 /**

@@ -65,6 +65,12 @@ export const settingsToolDefinitions: ToolDefinition[] = [
               type: "string",
               description: "GitHub Project ID for Projects integration (optional, format: PVT_...)",
             },
+            assignee: {
+              type: "string",
+              description:
+                "GitHub username to auto-assign issues when task enters IN_PROGRESS. " +
+                "Do not include @ prefix. Pass empty string to clear.",
+            },
             labels: {
               type: "object",
               properties: {
@@ -104,7 +110,7 @@ export const settingsToolDefinitions: ToolDefinition[] = [
                 "PR_REVIEW→In Review, COMPLETED→Done, ABANDONED→Done",
             },
           },
-          description: "GitHub configuration options (projectId, labels, columnMapping)",
+          description: "GitHub configuration options (projectId, assignee, labels, columnMapping)",
         },
         resetColumnMapping: {
           type: "boolean",
@@ -144,10 +150,41 @@ interface UpdateSettingsArgs {
     | "configure_column_mapping";
   github?: {
     projectId?: string;
+    assignee?: string;
     labels?: Partial<GitHubLabels>;
     columnMapping?: Partial<StatusColumnMapping>;
   };
   resetColumnMapping?: boolean;
+}
+
+/**
+ * Validate GitHub username format
+ *
+ * GitHub usernames:
+ * - Can contain alphanumeric characters and hyphens
+ * - Cannot start with a hyphen
+ * - Cannot have consecutive hyphens
+ * - Max 39 characters
+ * - Should not include @ prefix (common user error)
+ *
+ * Returns null if valid, error message if invalid.
+ */
+function validateGitHubUsername(username: string): string | null {
+  if (username.startsWith("@")) {
+    return "GitHub username should not include @ prefix. Use 'username' not '@username'.";
+  }
+
+  if (username.length > 39) {
+    return "GitHub username cannot exceed 39 characters.";
+  }
+
+  // GitHub username regex: alphanumeric and hyphens, no consecutive hyphens, no leading/trailing hyphens
+  const validPattern = /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9]))*$/;
+  if (!validPattern.test(username)) {
+    return "Invalid GitHub username format. Use only letters, numbers, and single hyphens (not at start/end).";
+  }
+
+  return null;
 }
 
 /**
@@ -228,6 +265,7 @@ async function handleGetSettings(ctx: SettingsToolContext): Promise<ToolResponse
       github: project.githubSync
         ? {
             syncIssues: project.githubSync,
+            assignee: project.githubSync.assignee ?? null,
             columnMapping: {
               effective: effectiveColumnMapping,
               custom: project.githubSync.columnMapping,
@@ -285,11 +323,20 @@ async function handleEnableGitHub(
     projectUrl = projectDetails.url;
   }
 
-  // Step 4: Build and save config with defaults for missing label config
+  // Step 4: Validate assignee if provided
+  if (github?.assignee && github.assignee.length > 0) {
+    const validationError = validateGitHubUsername(github.assignee);
+    if (validationError) {
+      return errorResponse(validationError);
+    }
+  }
+
+  // Step 5: Build and save config with defaults for missing label config
   const syncConfig: GitHubIssueSyncConfig = {
     enabled: true,
     projectId: github?.projectId,
     projectUrl,
+    assignee: github?.assignee || undefined, // Empty string clears assignee
     labels: github?.labels
       ? {
           typeLabels: {
@@ -392,11 +439,31 @@ async function handleConfigureGitHub(
       projectUrl = projectDetails.url;
     }
 
+    // Validate assignee if provided (non-empty string)
+    if (github.assignee !== undefined && github.assignee.length > 0) {
+      const validationError = validateGitHubUsername(github.assignee);
+      if (validationError) {
+        return errorResponse(validationError);
+      }
+    }
+
+    // Determine assignee value:
+    // - undefined in github.assignee means "keep current"
+    // - empty string means "clear assignee"
+    // - non-empty string means "set assignee"
+    const assignee =
+      github.assignee === undefined
+        ? currentSync.assignee
+        : github.assignee === ""
+          ? undefined
+          : github.assignee;
+
     // Merge with existing config (don't allow changing enabled via configure)
     const updatedConfig: GitHubIssueSyncConfig = {
       ...currentSync,
       projectId: github.projectId ?? currentSync.projectId,
       projectUrl: github.projectId ? projectUrl : currentSync.projectUrl,
+      assignee,
       labels: github.labels
         ? {
             typeLabels: {
