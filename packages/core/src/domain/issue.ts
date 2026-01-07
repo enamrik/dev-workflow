@@ -43,6 +43,13 @@ export interface Issue {
    */
   sourceGitHubIssueNumber?: number;
 
+  /**
+   * Labels - unified metadata for issues and tasks.
+   * Supports both simple labels (empty value) and key-value pairs.
+   * Example: { "bug": "", "product": "Case Workflow", "Product Area": "HR Portal" }
+   */
+  labels?: Record<string, string>;
+
   /** Soft delete fields */
   isDeleted?: boolean;
   deletedAt?: string;

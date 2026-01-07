@@ -120,6 +120,13 @@
       "when": 1767754068607,
       "tag": "0016_amused_killraven",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1767757689452,
+      "tag": "0017_rare_celestials",
+      "breakpoints": true
     }
   ]
 }

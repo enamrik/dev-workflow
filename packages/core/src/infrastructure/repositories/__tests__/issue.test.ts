@@ -298,4 +298,108 @@ describe("SqliteIssueRepository", () => {
       expect(issue.sourceGitHubIssueNumber).toBeUndefined();
     });
   });
+
+  describe("labels", () => {
+    it("should create an issue with labels", () => {
+      const issue = repos.issueRepository.create({
+        title: "Labeled Issue",
+        description: "Has labels",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+        labels: { bug: "", product: "Case Workflow" },
+      });
+
+      expect(issue.labels).toEqual({ bug: "", product: "Case Workflow" });
+    });
+
+    it("should persist and retrieve labels", () => {
+      const created = repos.issueRepository.create({
+        title: "Labeled Issue",
+        description: "Has labels",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+        labels: { urgent: "", "Product Area": "HR Portal" },
+      });
+
+      const found = repos.issueRepository.findById(created.id);
+      expect(found?.labels).toEqual({ urgent: "", "Product Area": "HR Portal" });
+    });
+
+    it("should update labels", () => {
+      const created = createTestIssue(repos.issueRepository);
+      expect(created.labels).toBeUndefined();
+
+      const updated = repos.issueRepository.update(created.id, {
+        labels: { feature: "", priority: "high" },
+      });
+
+      expect(updated.labels).toEqual({ feature: "", priority: "high" });
+    });
+
+    it("should allow labels to be cleared", () => {
+      const created = repos.issueRepository.create({
+        title: "Labeled Issue",
+        description: "Has labels",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+        labels: { bug: "" },
+      });
+
+      const updated = repos.issueRepository.update(created.id, {
+        labels: undefined,
+      });
+
+      expect(updated.labels).toBeUndefined();
+    });
+
+    it("should allow labels to be undefined", () => {
+      const issue = repos.issueRepository.create({
+        title: "Regular Issue",
+        description: "No labels",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+      });
+
+      expect(issue.labels).toBeUndefined();
+    });
+
+    it("should handle empty labels object", () => {
+      const issue = repos.issueRepository.create({
+        title: "Empty Labels Issue",
+        description: "Has empty labels object",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+        labels: {},
+      });
+
+      expect(issue.labels).toEqual({});
+    });
+
+    it("should handle labels with special characters in keys and values", () => {
+      const issue = repos.issueRepository.create({
+        title: "Special Labels Issue",
+        description: "Has special characters",
+        type: "FEATURE",
+        priority: "MEDIUM",
+        status: "OPEN",
+        acceptanceCriteria: [],
+        labels: { "Product Area": "HR Portal / Admin", "env:prod": "" },
+      });
+
+      expect(issue.labels).toEqual({
+        "Product Area": "HR Portal / Admin",
+        "env:prod": "",
+      });
+    });
+  });
 });
