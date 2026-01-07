@@ -47,7 +47,10 @@ export class GitHubProjectManagementProvider implements ProjectManagementProvide
   private readonly fieldCache = new Map<string, { fields: ProjectField[]; fetchedAt: number }>();
   private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-  constructor(private readonly githubCLI: GitHubCLI) {}
+  constructor(
+    private readonly githubCLI: GitHubCLI,
+    private readonly configuredProjectId?: string
+  ) {}
 
   // ===========================================================================
   // Authentication & Validation
@@ -584,8 +587,9 @@ export class GitHubProjectManagementProvider implements ProjectManagementProvide
   // Labels
   // ===========================================================================
 
-  async getAvailableLabels(projectId?: string): Promise<AvailableLabelsResult> {
-    // If no projectId provided, labels are not supported
+  async getAvailableLabels(): Promise<AvailableLabelsResult> {
+    // Use internally configured projectId
+    const projectId = this.configuredProjectId;
     if (!projectId) {
       return {
         supported: false,

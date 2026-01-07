@@ -522,12 +522,12 @@ export interface ProjectManagementProvider {
    * For Jira: Returns custom fields configured for the project.
    *
    * The provider handles field ID resolution internally - callers only
-   * work with human-readable label names and values.
+   * work with human-readable label names and values. The provider uses
+   * its internally configured project/board identifier.
    *
-   * @param projectId - Project/board identifier (optional if not applicable)
    * @returns Available labels with their valid values
    */
-  getAvailableLabels(projectId?: string): Promise<AvailableLabelsResult>;
+  getAvailableLabels(): Promise<AvailableLabelsResult>;
 
   // ===========================================================================
   // Hierarchical Issues (Parent-Child Linking)

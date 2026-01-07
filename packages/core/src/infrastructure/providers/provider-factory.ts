@@ -81,14 +81,15 @@ export class GitHubProviderFactory implements ProviderFactory {
   readonly providerId = "github";
   readonly displayName = "GitHub";
 
-  createProvider(_project: Project, deps: ProviderDependencies): ProjectManagementProvider {
+  createProvider(project: Project, deps: ProviderDependencies): ProjectManagementProvider {
     if (!deps.githubCLI) {
       throw new Error("GitHubProviderFactory requires githubCLI dependency");
     }
 
     // Factory extracts project.githubSync internally - callers don't need to know
     // which field contains the provider config
-    return new GitHubProjectManagementProvider(deps.githubCLI);
+    const projectId = project.githubSync?.projectId;
+    return new GitHubProjectManagementProvider(deps.githubCLI, projectId);
   }
 
   canCreate(deps: ProviderDependencies): boolean {

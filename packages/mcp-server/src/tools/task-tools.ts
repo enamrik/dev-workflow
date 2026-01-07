@@ -40,14 +40,14 @@ async function validateLabels(
 
   // Re-fetch project to get latest config
   const project = ctx.projectRepository.findById(ctx.project.id);
-  if (!project?.githubSync?.enabled) {
-    return null; // No provider configured - no validation needed
+  if (!project) {
+    return null; // Project not found - graceful degradation
   }
 
   // Get available labels from provider
   const provider = ctx.providerRegistry.createProvider(project, ctx);
 
-  const result = await provider.getAvailableLabels(project.githubSync.projectId);
+  const result = await provider.getAvailableLabels();
 
   if (!result.supported || result.error) {
     return null; // Provider doesn't support labels or errored - no validation
