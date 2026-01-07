@@ -30,14 +30,16 @@ import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
 export class SqliteTaskRepository implements TaskRepository {
   constructor(private readonly db: SqliteDrizzleDatabase) {}
 
-  create(data: Omit<Task, "number" | "order" | "createdAt" | "updatedAt">): Task {
+  create(data: Omit<Task, "number" | "index" | "order" | "createdAt" | "updatedAt">): Task {
     const number = this.getNextTaskNumber(data.planId);
     const order = this.getNextOrder(data.planId);
+    const index = order; // Initial index equals order; will be renumbered by reindexTasks()
     const now = new Date().toISOString();
 
     const task: Task = {
       ...data,
       number,
+      index,
       order,
       createdAt: now,
       updatedAt: now,
@@ -50,6 +52,7 @@ export class SqliteTaskRepository implements TaskRepository {
         id: task.id,
         planId: task.planId,
         number: task.number,
+        index: task.index,
         order: task.order,
         title: task.title,
         description: task.description,
@@ -79,7 +82,9 @@ export class SqliteTaskRepository implements TaskRepository {
     return task;
   }
 
-  createMany(tasksData: Omit<Task, "number" | "order" | "createdAt" | "updatedAt">[]): Task[] {
+  createMany(
+    tasksData: Omit<Task, "number" | "index" | "order" | "createdAt" | "updatedAt">[]
+  ): Task[] {
     if (tasksData.length === 0) {
       return [];
     }
@@ -95,11 +100,13 @@ export class SqliteTaskRepository implements TaskRepository {
 
     let nextNumber = this.getNextTaskNumber(planId);
     let nextOrder = this.getNextOrder(planId);
+    let nextIndex = nextOrder; // Initial index equals order; will be renumbered by reindexTasks()
 
     for (const data of tasksData) {
       const task: Task = {
         ...data,
         number: nextNumber++,
+        index: nextIndex++,
         order: nextOrder++,
         createdAt: now,
         updatedAt: now,
@@ -111,6 +118,7 @@ export class SqliteTaskRepository implements TaskRepository {
           id: task.id,
           planId: task.planId,
           number: task.number,
+          index: task.index,
           order: task.order,
           title: task.title,
           description: task.description,
@@ -298,10 +306,12 @@ export class SqliteTaskRepository implements TaskRepository {
   }
 
   getNextTaskNumber(planId: string): number {
+    // Include ALL tasks (even soft-deleted) because task numbers are IMMUTABLE
+    // and must remain unique across the entire plan history
     const result = this.db
       .select({ maxNumber: max(tasks.number) })
       .from(tasks)
-      .where(and(eq(tasks.planId, planId), isNull(tasks.deletedAt)))
+      .where(eq(tasks.planId, planId))
       .get();
 
     return (result?.maxNumber ?? 0) + 1;
@@ -473,7 +483,7 @@ export class SqliteTaskRepository implements TaskRepository {
 
   update(
     id: string,
-    data: Partial<Omit<Task, "id" | "planId" | "order" | "createdAt" | "isDeleted">>
+    data: Partial<Omit<Task, "id" | "planId" | "number" | "order" | "createdAt" | "isDeleted">>
   ): Task {
     const now = new Date().toISOString();
 
@@ -738,6 +748,7 @@ export class SqliteTaskRepository implements TaskRepository {
       id: row.id,
       planId: row.planId,
       number: row.number,
+      index: row.index,
       order: row.order,
       title: row.title,
       description: row.description,

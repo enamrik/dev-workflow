@@ -457,7 +457,7 @@ describe("SqliteTaskRepository", () => {
       expect(nextNumber).toBe(3);
     });
 
-    it("should exclude soft-deleted tasks when calculating next number", () => {
+    it("should include soft-deleted tasks when calculating next number (numbers are immutable)", () => {
       // Create 3 tasks (numbers 1, 2, 3)
       const task1 = createTestTask(repos.taskRepository, planId, { title: "Task 1" });
       const task2 = createTestTask(repos.taskRepository, planId, { title: "Task 2" });
@@ -468,13 +468,13 @@ describe("SqliteTaskRepository", () => {
       repos.taskRepository.softDelete(task2.id);
       repos.taskRepository.softDelete(task3.id);
 
-      // Next number should be 1 (not 4) since all tasks are soft-deleted
+      // Next number should be 4 (includes soft-deleted tasks since numbers are immutable)
       const nextNumber = repos.taskRepository.getNextTaskNumber(planId);
 
-      expect(nextNumber).toBe(1);
+      expect(nextNumber).toBe(4);
     });
 
-    it("should return max of non-deleted + 1 when some tasks are deleted", () => {
+    it("should return max of all tasks + 1 including deleted ones (numbers are immutable)", () => {
       // Create 3 tasks (numbers 1, 2, 3)
       createTestTask(repos.taskRepository, planId, { title: "Task 1" });
       const task2 = createTestTask(repos.taskRepository, planId, { title: "Task 2" });
@@ -483,7 +483,7 @@ describe("SqliteTaskRepository", () => {
       // Soft delete task 2 only
       repos.taskRepository.softDelete(task2.id);
 
-      // Next number should be 4 (max of non-deleted is 3)
+      // Next number should be 4 (max of ALL tasks including deleted is 3)
       const nextNumber = repos.taskRepository.getNextTaskNumber(planId);
 
       expect(nextNumber).toBe(4);

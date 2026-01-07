@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { clsx } from "clsx";
-import { Badge, Markdown } from "../ui";
+import { Badge, Markdown, Tooltip } from "../ui";
 import { TaskTiming } from "./TaskTiming";
 import { TaskMetadataPanel } from "./TaskMetadataPanel";
 import { TaskActions } from "./TaskActions";
@@ -12,6 +12,7 @@ interface TaskItemProps {
   task: Task;
   projectId?: string;
   issueNumber?: number;
+  totalTasks?: number; // Total tasks in the issue for display formatting
 }
 
 function getStatusIcon(status: Task["status"]): string {
@@ -29,7 +30,7 @@ function getStatusIcon(status: Task["status"]): string {
   }
 }
 
-export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
+export function TaskItem({ task, projectId, issueNumber, totalTasks }: TaskItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const isCompleted = task.status === "COMPLETED";
@@ -37,6 +38,12 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
   const isPRReview = task.status === "PR_REVIEW";
   const isAbandoned = task.status === "ABANDONED";
   const canExpand = !!projectId && issueNumber !== undefined;
+
+  // Format task display: "Task [index/total]:" or fall back to "Task index:"
+  const taskDisplayLabel = totalTasks
+    ? `Task [${task.index}/${totalTasks}]:`
+    : `Task ${task.index}:`;
+  const taskNumberTooltip = `Immutable task number: #${task.number}`;
 
   return (
     <li
@@ -70,7 +77,9 @@ export function TaskItem({ task, projectId, issueNumber }: TaskItemProps) {
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-gray-500 font-medium">Task {task.number}:</span>
+            <Tooltip content={taskNumberTooltip} side="top">
+              <span className="text-gray-500 font-medium cursor-help">{taskDisplayLabel}</span>
+            </Tooltip>
             <span className="font-medium text-gray-800">{task.title}</span>
           </div>
 

@@ -76,7 +76,8 @@ export type PRStatus = "DRAFT" | "OPEN" | "MERGED" | "CLOSED";
 export interface Task {
   readonly id: string; // UUID
   readonly planId: string; // Foreign key to Plan
-  readonly number: number; // Task number within plan (1, 2, 3) - stable identifier displayed as issueNumber.taskNumber
+  readonly number: number; // IMMUTABLE task identifier - never changes after creation, used for URLs and permanent references
+  readonly index: number; // Display position (1, 2, 3...) - renumbered when plan changes, used for UI as #issue.[index/total]
   readonly order: number; // Display order (1, 2, 3, ...) - can differ from number after reordering
   readonly title: string; // Short task title
   readonly description: string; // Detailed task description
@@ -183,25 +184,25 @@ export interface TaskRepository {
   /**
    * Create a new task
    *
-   * Automatically assigns number and order based on existing tasks for the plan.
+   * Automatically assigns number, index, and order based on existing tasks for the plan.
    * Caller must provide task id (for dependency tracking).
    *
-   * @param task - Task data (without number, order, createdAt, updatedAt which are generated)
-   * @returns The created task with number, order and timestamps assigned
+   * @param task - Task data (without number, index, order, createdAt, updatedAt which are generated)
+   * @returns The created task with number, index, order and timestamps assigned
    */
-  create(task: Omit<Task, "number" | "order" | "createdAt" | "updatedAt">): Task;
+  create(task: Omit<Task, "number" | "index" | "order" | "createdAt" | "updatedAt">): Task;
 
   /**
    * Create multiple tasks for a plan (batch operation)
    *
    * More efficient than creating tasks one by one.
-   * Automatically assigns sequential number and order values.
+   * Automatically assigns sequential number, index, and order values.
    * Caller must provide task ids (for dependency tracking).
    *
    * @param tasks - Array of task data with ids
-   * @returns Array of created tasks with numbers, orders and timestamps assigned
+   * @returns Array of created tasks with numbers, indexes, orders and timestamps assigned
    */
-  createMany(tasks: Omit<Task, "number" | "order" | "createdAt" | "updatedAt">[]): Task[];
+  createMany(tasks: Omit<Task, "number" | "index" | "order" | "createdAt" | "updatedAt">[]): Task[];
 
   /**
    * Find a task by its UUID
@@ -365,6 +366,7 @@ export interface TaskRepository {
    * Update a task's properties
    *
    * General purpose update method for task fields.
+   * Note: `number` is immutable and cannot be updated.
    *
    * @param id - Task UUID
    * @param data - Partial task data to update
@@ -372,7 +374,7 @@ export interface TaskRepository {
    */
   update(
     id: string,
-    data: Partial<Omit<Task, "id" | "planId" | "order" | "createdAt" | "isDeleted">>
+    data: Partial<Omit<Task, "id" | "planId" | "number" | "order" | "createdAt" | "isDeleted">>
   ): Task;
 
   /**

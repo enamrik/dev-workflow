@@ -134,6 +134,13 @@
       "when": 1767758533346,
       "tag": "0018_previous_phil_sheldon",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1767813600000,
+      "tag": "0019_friendly_firebird",
+      "breakpoints": true
     }
   ]
 }
