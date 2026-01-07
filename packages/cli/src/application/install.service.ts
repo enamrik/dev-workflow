@@ -30,10 +30,9 @@ export class InstallService {
     private readonly workingDirectory: string,
     private readonly packageRoot: string,
     private readonly resolver: TrackDirectoryResolver,
-    databaseConnectionString?: string
+    databaseConnectionString: string
   ) {
-    // Default to global database if not specified
-    this.databaseConnectionString = databaseConnectionString ?? "file:///~/.track/workflow.db";
+    this.databaseConnectionString = databaseConnectionString;
   }
 
   /**
