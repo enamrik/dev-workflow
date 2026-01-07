@@ -30,7 +30,6 @@ describe("MergeService", () => {
     const project = repos.projectRepository.create({
       name: "Test Project",
       gitRootHash: "abc123def",
-      gitRoot: "/test/repo",
       githubSync: null, // GitHub sync disabled
     });
     testProjectId = project.id;

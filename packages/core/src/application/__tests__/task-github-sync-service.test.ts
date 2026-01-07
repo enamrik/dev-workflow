@@ -96,7 +96,6 @@ describe("TaskGitHubSyncService", () => {
     const project = repos.projectRepository.create({
       name: "Test Project",
       gitRootHash: "abc123",
-      gitRoot: "/test/repo",
       githubSync: {
         enabled: true,
         projectId: "PVT_test_project_456",
