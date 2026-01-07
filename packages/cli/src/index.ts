@@ -20,6 +20,12 @@ import {
   SqliteWorkerRepository,
   SqliteDispatchQueueRepository,
   getGlobalDatabasePath,
+  isWorktree,
+  writeSlugToGitConfig,
+  writeConfig,
+  findGitRoot,
+  readSlugFromGitConfig,
+  resolveConfig,
 } from "@dev-workflow/core";
 
 /**
@@ -43,7 +49,12 @@ function getPackageRoot(): string {
   return path.dirname(distDir); // Go up from dist/ to package root
 }
 
-async function runInit(): Promise<void> {
+interface InitOptions {
+  local?: boolean;
+  url?: string;
+}
+
+async function runInit(options: InitOptions = {}): Promise<void> {
   const fileSystem = new NodeFileSystem();
   const workingDirectory = process.cwd();
   const packageRoot = getPackageRoot();
@@ -67,9 +78,72 @@ async function runInit(): Promise<void> {
     }
   }
 
+  // Check if running from a worktree
+  if (isWorktree(workingDirectory)) {
+    console.error("❌ Cannot run init from a git worktree.");
+    console.error("   Run this command from the main repository, not a worktree.");
+    console.error("\n   To find your main repo:");
+    console.error("   git worktree list | head -1 | cut -d' ' -f1");
+    process.exit(1);
+  }
+
+  // Validate mutually exclusive options
+  if (options.local && options.url) {
+    console.error("❌ Cannot use --local and --url together.");
+    console.error("   Use --local for local SQLite database.");
+    console.error("   Use --url for remote PostgreSQL database.");
+    process.exit(1);
+  }
+
+  // Validate --url format
+  if (options.url) {
+    if (!options.url.startsWith("postgresql://") && !options.url.startsWith("postgres://")) {
+      console.error("❌ Invalid connection string format.");
+      console.error("   Expected: postgresql://user:password@host/database");
+      process.exit(1);
+    }
+  }
+
   // Create resolver to get global track directory path
   const resolver = createTrackDirectoryResolver(workingDirectory);
-  const installer = new InstallService(fileSystem, workingDirectory, packageRoot, resolver);
+  const gitRoot = findGitRoot(workingDirectory);
+  const slug = resolver.getProjectId(); // e.g., "dev-workflow-b9bccf"
+
+  // Determine database connection string based on options
+  let databaseConnectionString: string;
+  if (options.url) {
+    databaseConnectionString = options.url;
+  } else if (options.local) {
+    databaseConnectionString = "file:./.track/workflow.db";
+  } else {
+    // Default: global SQLite database
+    databaseConnectionString = "file:///~/.track/workflow.db";
+  }
+
+  // Check if this project was previously initialized (slug exists in .git/config)
+  const existingSlug = readSlugFromGitConfig(gitRoot);
+  let existingConfig: Awaited<ReturnType<typeof resolveConfig>> | null = null;
+
+  if (existingSlug) {
+    try {
+      existingConfig = await resolveConfig(existingSlug);
+      // If options change the database, use the new one
+      // Otherwise preserve the existing configuration
+      if (!options.url && !options.local) {
+        databaseConnectionString = existingConfig.database;
+      }
+    } catch {
+      // Config doesn't exist or is invalid - will be recreated
+    }
+  }
+
+  const installer = new InstallService(
+    fileSystem,
+    workingDirectory,
+    packageRoot,
+    resolver,
+    databaseConnectionString
+  );
 
   // Check if this project already exists in the database (by gitRootHash)
   const existingProject = await installer.findExistingProject();
@@ -119,6 +193,18 @@ async function runInit(): Promise<void> {
       // Ensure database is up to date
       await installer.initializeDatabase();
 
+      // Update slug in .git/config (in case repo moved)
+      writeSlugToGitConfig(gitRoot, slug);
+      console.log(`✓ Updated project slug in .git/config`);
+
+      // Update config.json with current gitRoot (handles repo move scenario)
+      await writeConfig(slug, {
+        database: databaseConnectionString,
+        gitRoot,
+        projectId: existingProject.id,
+      });
+      console.log(`✓ Updated config.json`);
+
       // Ensure track directory exists (includes templates and labels)
       if (!trackDirExists) {
         await installer.createTrackDirectory();
@@ -164,6 +250,14 @@ async function runInit(): Promise<void> {
   // Fresh install mode
   try {
     console.log("🚀 Initializing dev-workflow...");
+    if (options.local) {
+      console.log("   Mode: local database (./.track/workflow.db)");
+    } else if (options.url) {
+      console.log(`   Mode: remote database (${DatabaseConfigService.maskPassword(options.url)})`);
+    } else {
+      console.log("   Mode: global database (~/.track/workflow.db)");
+    }
+    console.log();
 
     // Initialize database first (needed for project registration)
     await installer.initializeDatabase();
@@ -172,6 +266,18 @@ async function runInit(): Promise<void> {
     // Register project in database (uses git initial commit hash as stable ID)
     const project = await installer.registerProject();
     console.log(`✓ Registered project: ${project.name} (${project.id.slice(0, 8)}...)`);
+
+    // Write slug to .git/config for future lookups
+    writeSlugToGitConfig(gitRoot, slug);
+    console.log(`✓ Wrote project slug to .git/config (${slug})`);
+
+    // Write config.json to ~/.track/<slug>/
+    await writeConfig(slug, {
+      database: databaseConnectionString,
+      gitRoot,
+      projectId: project.id,
+    });
+    console.log(`✓ Created config.json`);
 
     await installer.createTrackDirectory();
     console.log(`✓ Created ${trackDir}`);
@@ -769,9 +875,11 @@ program.name("dev-workflow").description("AI-driven development workflow system"
 program
   .command("init")
   .description("Initialize dev-workflow in current repository")
-  .action(async () => {
+  .option("--local", "Use local database (./.track/workflow.db) instead of global")
+  .option("--url <connection-string>", "Use remote PostgreSQL database")
+  .action(async (opts: { local?: boolean; url?: string }) => {
     try {
-      await runInit();
+      await runInit({ local: opts.local, url: opts.url });
     } catch (error) {
       console.error("Error during initialization:", error);
       process.exit(1);
@@ -1557,62 +1665,25 @@ databaseCmd
     }
   });
 
-// Pull command for team onboarding - connect to existing shared database
+// Pull command - deprecated, replaced by init --url
 program
-  .command("pull <connection-string>")
-  .description("Connect to an existing shared database (team onboarding)")
-  .action(async (connectionString: string) => {
-    const service = new DatabaseConfigService();
-
-    try {
-      console.log("🔗 Connecting to shared database...\n");
-
-      // Validate the connection string format
-      if (
-        !connectionString.startsWith("postgresql://") &&
-        !connectionString.startsWith("postgres://")
-      ) {
-        console.error("❌ Invalid connection string.");
-        console.error("   Expected format: postgresql://user:password@host/database");
-        process.exit(1);
-      }
-
-      console.log("Validating connection...");
-      const validation = await service.validateConnection(connectionString);
-
-      if (!validation.success) {
-        console.error(`\n❌ Connection failed: ${validation.error}`);
-        console.error("\nPlease check:");
-        console.error("  - The connection string is correct");
-        console.error("  - The database server is accessible");
-        console.error("  - Your network allows the connection");
-        process.exit(1);
-      }
-
-      console.log("✓ Connection validated!\n");
-
-      // Configure the remote database
-      const result = await service.configureRemote(connectionString);
-
-      if (result.success) {
-        console.log("✓ " + result.message);
-        console.log(`  URL: ${DatabaseConfigService.maskPassword(connectionString)}`);
-        console.log("\n🎉 You're now connected to the shared database!");
-        console.log("\n⚠️  IMPORTANT: Restart Claude Code to use the new configuration.");
-        console.log("\nNext steps:");
-        console.log("  1. Restart Claude Code");
-        console.log("  2. Run 'dev-workflow init' to register this project");
-        console.log("  3. Start collaborating with your team!");
-      } else {
-        console.error(`\n❌ ${result.message}`);
-        process.exit(1);
-      }
-    } catch (error) {
-      console.error(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
-      process.exit(1);
-    } finally {
-      service.close();
+  .command("pull [connection-string]")
+  .description("[DEPRECATED] Use 'dev-workflow init --url <connection-string>' instead")
+  .action(async (connectionString?: string) => {
+    console.error("❌ The 'pull' command is deprecated.");
+    console.error("");
+    console.error("Use 'dev-workflow init --url' instead:");
+    if (connectionString) {
+      console.error(`  dev-workflow init --url "${connectionString}"`);
+    } else {
+      console.error("  dev-workflow init --url postgresql://user:password@host/database");
     }
+    console.error("");
+    console.error("The init command now supports three modes:");
+    console.error("  dev-workflow init              # Global database (~/.track/workflow.db)");
+    console.error("  dev-workflow init --local      # Local database (./.track/workflow.db)");
+    console.error("  dev-workflow init --url <url>  # Remote PostgreSQL database");
+    process.exit(1);
   });
 
 program.parse(process.argv);

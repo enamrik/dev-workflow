@@ -6,6 +6,7 @@ import {
   SqliteIssueRepository,
   NodeGitWorktreeService,
   NodeGitOperations,
+  resolveConfig,
   type Project,
 } from "@dev-workflow/core";
 import { UninstallService } from "./uninstall.service.js";
@@ -346,6 +347,19 @@ export class ArchiveService {
       throw new ArchiveError("Package root not provided. Cannot reinstall skills.");
     }
 
+    // Get database connection string from config - must exist for unarchive
+    const slug = this.resolver.getProjectId();
+    let databaseConnectionString: string;
+    try {
+      const config = await resolveConfig(slug);
+      databaseConnectionString = config.database;
+    } catch {
+      throw new ArchiveError(
+        `Config not found for project "${slug}". ` +
+          `Run 'dev-workflow init' to recreate the configuration.`
+      );
+    }
+
     const dbPath = this.resolver.getDatabasePath();
     const dbService = await SqliteDataSource.create(dbPath);
 
@@ -360,7 +374,8 @@ export class ArchiveService {
         this.fileSystem,
         this.workingDirectory,
         this.packageRoot,
-        this.resolver
+        this.resolver,
+        databaseConnectionString
       );
 
       // Set the project so installer can use it
