@@ -63,6 +63,8 @@ export class SqliteIssueRepository implements IssueRepository {
         milestoneId: issue.milestoneId ?? null,
         // Source GitHub issue for imports
         sourceGitHubIssueNumber: issue.sourceGitHubIssueNumber ?? null,
+        // Labels
+        labels: issue.labels ?? null,
       })
       .run();
 
@@ -136,7 +138,7 @@ export class SqliteIssueRepository implements IssueRepository {
     const now = new Date().toISOString();
 
     // Build the update object, mapping githubSync to flat columns
-    const { githubSync, milestoneId, sourceGitHubIssueNumber, ...restData } = data;
+    const { githubSync, milestoneId, sourceGitHubIssueNumber, labels, ...restData } = data;
     const updateData: Record<string, unknown> = {
       ...restData,
       updatedAt: now,
@@ -150,6 +152,11 @@ export class SqliteIssueRepository implements IssueRepository {
     // Handle sourceGitHubIssueNumber explicitly
     if ("sourceGitHubIssueNumber" in data) {
       updateData["sourceGitHubIssueNumber"] = sourceGitHubIssueNumber ?? null;
+    }
+
+    // Handle labels explicitly (null means clear labels)
+    if ("labels" in data) {
+      updateData["labels"] = labels ?? null;
     }
 
     // Map githubSync fields if provided
@@ -361,6 +368,7 @@ export class SqliteIssueRepository implements IssueRepository {
       githubSync,
       milestoneId: row.milestoneId ?? undefined,
       sourceGitHubIssueNumber: row.sourceGitHubIssueNumber ?? undefined,
+      labels: row.labels ?? undefined,
       // Soft delete fields
       isDeleted: row.isDeleted,
       deletedAt: row.deletedAt ?? undefined,

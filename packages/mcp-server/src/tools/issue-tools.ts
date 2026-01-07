@@ -110,6 +110,13 @@ export const issueToolDefinitions: ToolDefinition[] = [
           type: "boolean",
           description: "Auto-select template based on description",
         },
+        labels: {
+          type: "object",
+          description:
+            "Labels for this issue. Supports simple labels (empty value) and key-value pairs. " +
+            'Example: {"bug": "", "product": "Case Workflow", "Product Area": "HR Portal"}',
+          additionalProperties: { type: "string" },
+        },
       },
       required: ["title", "description"],
     },
@@ -281,6 +288,13 @@ export const issueToolDefinitions: ToolDefinition[] = [
               type: "string",
               enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
             },
+            labels: {
+              type: "object",
+              description:
+                "Update labels. Supports simple labels (empty value) and key-value pairs. " +
+                "Pass null to clear all labels.",
+              additionalProperties: { type: "string" },
+            },
           },
           description: "Fields to update on the issue (use close_issue to change status)",
         },
@@ -426,6 +440,7 @@ interface CreateIssueArgs {
   type?: IssueType;
   priority?: IssuePriority;
   useTemplate?: boolean;
+  labels?: Record<string, string>;
 }
 
 /**
@@ -445,6 +460,7 @@ export async function handleCreateIssue(
     type,
     priority = "MEDIUM",
     useTemplate = true,
+    labels,
   } = args;
 
   // Select template if requested and use metadata
@@ -484,6 +500,7 @@ export async function handleCreateIssue(
     status: "PLANNED",
     templateUsed,
     createdBy: "claude-code",
+    labels,
   });
 
   // Emit issue:created event for real-time UI updates
@@ -914,6 +931,7 @@ export async function handleUpdateIssue(
       acceptanceCriteria: string[];
       type: IssueType;
       priority: IssuePriority;
+      labels: Record<string, string>;
     }>;
     regeneratePlan?: boolean;
   }
