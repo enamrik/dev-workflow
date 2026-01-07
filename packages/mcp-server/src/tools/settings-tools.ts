@@ -50,13 +50,15 @@ export const settingsToolDefinitions: ToolDefinition[] = [
             "disable_github",
             "configure_github",
             "configure_column_mapping",
+            "list_available_labels",
           ],
           description:
             "The settings action to perform: get_settings returns current config, " +
             "enable_github enables GitHub issue sync with validation, " +
             "disable_github disables issue sync, " +
             "configure_github updates labels/projectId config, " +
-            "configure_column_mapping updates status-to-column mapping for GitHub Projects",
+            "configure_column_mapping updates status-to-column mapping for project boards, " +
+            "list_available_labels returns available label fields from the project management provider",
         },
         github: {
           type: "object",
@@ -104,7 +106,7 @@ export const settingsToolDefinitions: ToolDefinition[] = [
                 ABANDONED: { type: "string" },
               },
               description:
-                "Maps task statuses to GitHub Project column names. " +
+                "Maps task statuses to project board column names. " +
                 "Only specify the statuses you want to override. " +
                 "Default: BACKLOG→Backlog, READY→Ready, IN_PROGRESS→In Progress, " +
                 "PR_REVIEW→In Review, COMPLETED→Done, ABANDONED→Done",
@@ -147,7 +149,8 @@ interface UpdateSettingsArgs {
     | "enable_github"
     | "disable_github"
     | "configure_github"
-    | "configure_column_mapping";
+    | "configure_column_mapping"
+    | "list_available_labels";
   github?: {
     projectId?: string;
     assignee?: string;
@@ -214,6 +217,9 @@ export async function handleUpdateSettings(
     case "configure_column_mapping":
       return handleConfigureColumnMapping(ctx, github?.columnMapping, resetColumnMapping);
 
+    case "list_available_labels":
+      return handleListAvailableLabels(ctx);
+
     default:
       return errorResponse(`Unknown action: ${action}`);
   }
@@ -244,7 +250,7 @@ async function handleGetSettings(ctx: SettingsToolContext): Promise<ToolResponse
       : null;
 
     // Get available providers from registry
-    const availableProviders = ctx.providerRegistry.list({ githubCLI: ctx.githubCLI }).map((p) => ({
+    const availableProviders = ctx.providerRegistry.list(ctx).map((p) => ({
       id: p.providerId,
       name: p.displayName,
       available: p.available,
@@ -498,9 +504,9 @@ async function handleConfigureGitHub(
 }
 
 /**
- * Configure status-to-column mapping for GitHub Projects
+ * Configure status-to-column mapping for project boards
  *
- * Allows teams to customize which GitHub Project columns correspond to each
+ * Allows teams to customize which project board columns correspond to each
  * task status. For example, teams might use different column names than
  * our defaults ("In Review" vs "PR Review", "Backlog" vs "To Do", etc.)
  */
@@ -581,6 +587,64 @@ async function handleConfigureColumnMapping(
       columnMapping: effectiveMapping,
       customMapping: mergedMapping,
       isDefault: false,
+    });
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * List available labels from the project management provider
+ *
+ * Returns the available label fields that can be set on issues and tasks.
+ * The available labels depend on the configured project management provider
+ * (e.g., custom fields for GitHub Projects, excluding Status).
+ * Each label includes its name and valid values (if constrained).
+ *
+ * Use this to discover what labels are available before setting them
+ * on issues or tasks. The returned label names can be used as keys
+ * in the labels parameter of create_issue, update_issue, or update_task.
+ */
+async function handleListAvailableLabels(ctx: SettingsToolContext): Promise<ToolResponse> {
+  try {
+    // Re-fetch project from database to get latest config
+    const project = ctx.projectRepository.findById(ctx.project.id);
+    if (!project) {
+      return errorResponse(`Project not found: ${ctx.project.id}`);
+    }
+
+    const currentSync = project.githubSync;
+
+    if (!currentSync?.enabled) {
+      return errorResponse("GitHub issue sync is not enabled. Use enable_github action first.");
+    }
+
+    // Create provider to query available labels
+    const provider = ctx.providerRegistry.createProvider(project, ctx);
+
+    const result = await provider.getAvailableLabels();
+
+    if (!result.supported) {
+      return successResponse({
+        success: true,
+        supported: false,
+        labels: [],
+        message: result.error ?? "Labels not supported by this provider",
+      });
+    }
+
+    if (result.error) {
+      return errorResponse(result.error);
+    }
+
+    return successResponse({
+      success: true,
+      supported: true,
+      labels: result.labels.map((label) => ({
+        name: label.name,
+        validValues: label.validValues,
+      })),
+      message: `Found ${result.labels.length} available label(s)`,
     });
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));

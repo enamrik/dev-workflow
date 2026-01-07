@@ -77,6 +77,7 @@ function createMockProvider(
     getProjectFields: vi.fn().mockResolvedValue([]),
     setProjectItemField: vi.fn().mockResolvedValue({ success: true }),
     clearProjectItemField: vi.fn().mockResolvedValue({ success: true }),
+    getAvailableLabels: vi.fn().mockResolvedValue({ supported: true, labels: [] }),
     linkParentChild: vi.fn().mockResolvedValue(undefined),
     addComment: vi.fn().mockResolvedValue(undefined),
     assignIssue: vi.fn().mockResolvedValue(undefined),

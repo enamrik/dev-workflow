@@ -40,7 +40,6 @@ import {
   // Provider abstraction
   ProviderRegistry,
   getProjectManagementProvider,
-  type ProviderDependencies,
   // Git worktree support
   NodeGitWorktreeService,
   // Conflict detection
@@ -296,7 +295,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
       return handleDeleteTask(taskToolContext, a);
     }
     if (name === "update_task") {
-      return handleUpdateTask(taskToolContext, a);
+      return await handleUpdateTask(taskToolContext, a);
     }
     if (name === "get_task_execution_prompt") {
       return handleGetTaskExecutionPrompt(taskToolContext, a);
@@ -484,17 +483,16 @@ async function main() {
   // Services read config fresh from database on each call, so they handle
   // the case where sync is enabled after server start
   const githubCLI = new NodeGitHubCLI();
-  const providerDeps: ProviderDependencies = { githubCLI };
 
   // Get provider registry for validation and logging
   const providerRegistry = ProviderRegistry.getInstance();
 
-  // Create provider from project config using the registry
-  // This allows switching providers by changing config without code changes
-  const syncConfig = project.githubSync;
-  const projectManagementProvider = syncConfig?.enabled
-    ? getProjectManagementProvider(syncConfig, providerDeps)
-    : getProjectManagementProvider({ enabled: false, providerId: "github" }, providerDeps);
+  // Provider dependencies - passed to factory which extracts what it needs
+  // This is the composition root, so it's appropriate to know about concrete deps here
+  const providerDeps = { githubCLI };
+
+  // Create provider from project using the registry
+  const projectManagementProvider = getProjectManagementProvider(project, providerDeps);
 
   const githubSyncService = new GitHubSyncService(
     issueRepository,
@@ -516,7 +514,7 @@ async function main() {
     typeService
   );
   // Log provider status
-  if (syncConfig?.enabled) {
+  if (project.githubSync?.enabled) {
     const providerId = projectManagementProvider.providerId;
     const providerInfo = providerRegistry.tryGet(providerId);
     const displayName = providerInfo?.displayName ?? providerId;
@@ -602,6 +600,11 @@ async function main() {
     taskExecutionLogsSchema: taskExecutionLogs,
     conflictDetectionService,
     taskGitHubSyncService,
+    // For label validation
+    providerRegistry,
+    project,
+    projectRepository,
+    githubCLI,
   };
 
   snapshotToolContext = {

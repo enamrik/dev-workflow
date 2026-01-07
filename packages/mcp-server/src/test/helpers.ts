@@ -137,6 +137,7 @@ export function createTestTask(
     source: TaskSource;
     acceptanceCriteria: string[];
     estimatedMinutes: number;
+    labels: Record<string, string>;
   }> = {}
 ): Task {
   return repo.create({
@@ -149,6 +150,7 @@ export function createTestTask(
     source: overrides.source ?? "generated",
     acceptanceCriteria: overrides.acceptanceCriteria ?? [],
     estimatedMinutes: overrides.estimatedMinutes,
+    labels: overrides.labels,
     isDeleted: false,
   });
 }
