@@ -7,6 +7,7 @@ import {
   SqliteProjectRepository,
   ProjectService,
   NodeGitOperations,
+  resolveConnectionString,
   type Project,
 } from "@dev-workflow/core";
 
@@ -22,13 +23,45 @@ export class InstallError extends Error {
 
 export class InstallService {
   private project: Project | null = null;
+  private databaseConnectionString: string;
 
   constructor(
     private readonly fileSystem: FileSystem,
     private readonly workingDirectory: string,
     private readonly packageRoot: string,
-    private readonly resolver: TrackDirectoryResolver
-  ) {}
+    private readonly resolver: TrackDirectoryResolver,
+    databaseConnectionString?: string
+  ) {
+    // Default to global database if not specified
+    this.databaseConnectionString = databaseConnectionString ?? "file:///~/.track/workflow.db";
+  }
+
+  /**
+   * Set the database connection string.
+   * Use this when re-initializing and the connection string changes.
+   */
+  setDatabaseConnectionString(connectionString: string): void {
+    this.databaseConnectionString = connectionString;
+  }
+
+  /**
+   * Get the resolved database path for SQLite connections.
+   * For PostgreSQL connections, returns the connection string unchanged.
+   */
+  private getResolvedDatabasePath(): string {
+    const gitRoot = this.resolver.getGitRoot();
+    return resolveConnectionString(this.databaseConnectionString, gitRoot);
+  }
+
+  /**
+   * Check if this is a PostgreSQL connection.
+   */
+  private isPostgresConnection(): boolean {
+    return (
+      this.databaseConnectionString.startsWith("postgresql://") ||
+      this.databaseConnectionString.startsWith("postgres://")
+    );
+  }
 
   /**
    * Register the project in the database.
@@ -39,7 +72,7 @@ export class InstallService {
    * @returns The registered project
    */
   async registerProject(): Promise<Project> {
-    const dbPath = this.resolver.getDatabasePath();
+    const dbPath = this.getResolvedDatabasePath();
     const dbService = await SqliteDataSource.create(dbPath);
 
     try {
@@ -133,11 +166,10 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
 
   async registerMCPServer(): Promise<void> {
     try {
-      // Project must be registered first
-      const project = this.getProject();
+      // Project must be registered first (to validate it exists)
+      this.getProject();
 
-      const dbPath = this.resolver.getDatabasePath();
-      const gitRoot = this.resolver.getGitRoot();
+      const slug = this.resolver.getProjectId();
       const cliPath = path.join(this.packageRoot, "dist/index.js");
 
       // Remove existing registration if it exists (from both scopes for migration)
@@ -163,6 +195,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
       // Build the command args for local scope only
       // Local scope stores config in ~/.claude.json, not in the project's .mcp.json
       // This allows dev-workflow to work in projects where .mcp.json is committed
+      // MCP server loads config from ~/.track/<slug>/config.json at startup
       const args = [
         "mcp",
         "add",
@@ -172,11 +205,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
         "stdio",
         "dev-workflow-tracker",
         "--env",
-        `DATABASE_PATH=${dbPath}`,
-        "--env",
-        `PROJECT_ID=${project.id}`,
-        "--env",
-        `GIT_ROOT=${gitRoot}`,
+        `TRACK_SLUG=${slug}`,
         "--",
         "node",
         cliPath,
@@ -197,12 +226,19 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
 
   async initializeDatabase(): Promise<void> {
     try {
-      const dbPath = this.resolver.getDatabasePath();
-      const globalTrackDir = this.resolver.getGlobalTrackDirectory();
-      await this.fileSystem.mkdir(globalTrackDir, { recursive: true });
+      // For PostgreSQL connections, skip local database creation
+      // The remote database is managed externally
+      if (this.isPostgresConnection()) {
+        // TODO: Validate connection and run migrations on remote database
+        // For now, we assume the remote database is already set up
+        return;
+      }
 
-      // Import SqliteDataSource from core package
-      const { SqliteDataSource } = await import("@dev-workflow/core");
+      const dbPath = this.getResolvedDatabasePath();
+
+      // Ensure parent directory exists
+      const dbDir = path.dirname(dbPath);
+      await this.fileSystem.mkdir(dbDir, { recursive: true });
 
       // Create database with automatic native/WASM detection and run migrations
       const dbService = await SqliteDataSource.create(dbPath);
@@ -316,7 +352,14 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
    * @returns The existing project if found, null otherwise
    */
   async findExistingProject(): Promise<Project | null> {
-    const dbPath = this.resolver.getDatabasePath();
+    // For PostgreSQL connections, we can't easily check if project exists locally
+    // The project check will happen during registerProject
+    if (this.isPostgresConnection()) {
+      // TODO: Query PostgreSQL for existing project
+      return null;
+    }
+
+    const dbPath = this.getResolvedDatabasePath();
 
     // Database might not exist yet
     const dbExists = await this.fileSystem.exists(dbPath);
