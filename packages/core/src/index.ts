@@ -53,6 +53,23 @@ export {
   getGlobalDatabasePath,
   resolveGlobalTrackDir,
 } from "./application/track-directory-resolver.js";
+export {
+  resolveConfig,
+  resolveConfigFromGit,
+  resolveConnectionString,
+  writeConfig,
+  readSlugFromGitConfig,
+  writeSlugToGitConfig,
+  findGitRoot,
+  isWorktree,
+  getConfigPath,
+  listConfiguredProjects,
+  loadAllConfigs,
+  ProjectConfigError,
+  type ProjectConfig,
+  type ResolvedConfig,
+  type ProjectConfigErrorCode,
+} from "./application/project-config-resolver.js";
 export { GitHubSyncService, GitHubSyncError } from "./application/github-sync-service.js";
 export {
   TaskGitHubSyncService,
