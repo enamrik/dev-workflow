@@ -22,6 +22,9 @@ import type {
   ProjectDetails,
   ProjectStatusField,
   ProjectColumn,
+  ProjectField,
+  ProjectFieldType,
+  SetFieldResult,
 } from "../../domain/project-management-provider.js";
 import { ProjectManagementProviderError } from "../../domain/project-management-provider.js";
 import type { GitHubCLI } from "../github/github-cli.js";
@@ -36,6 +39,11 @@ import type { GitHubIssueData } from "../../domain/github.js";
 export class GitHubProjectManagementProvider implements ProjectManagementProvider {
   readonly providerId = "github";
   readonly displayName = "GitHub";
+
+  // Cache for project fields to minimize API calls
+  // Key: projectId, Value: { fields, fetchedAt }
+  private readonly fieldCache = new Map<string, { fields: ProjectField[]; fetchedAt: number }>();
+  private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   constructor(private readonly githubCLI: GitHubCLI) {}
 
@@ -364,6 +372,212 @@ export class GitHubProjectManagementProvider implements ProjectManagementProvide
     }
   }
 
+  async getProjectFields(projectId: string): Promise<ProjectField[]> {
+    // Check cache first
+    const cached = this.fieldCache.get(projectId);
+    if (cached && Date.now() - cached.fetchedAt < this.CACHE_TTL_MS) {
+      return cached.fields;
+    }
+
+    // GraphQL query to get all project fields
+    const query = `
+      query($projectId: ID!) {
+        node(id: $projectId) {
+          ... on ProjectV2 {
+            fields(first: 50) {
+              nodes {
+                ... on ProjectV2Field {
+                  id
+                  name
+                  dataType
+                }
+                ... on ProjectV2SingleSelectField {
+                  id
+                  name
+                  dataType
+                  options {
+                    id
+                    name
+                  }
+                }
+                ... on ProjectV2IterationField {
+                  id
+                  name
+                  dataType
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      const result = await this.githubCLI.run([
+        "api",
+        "graphql",
+        "-f",
+        `query=${query}`,
+        "-f",
+        `projectId=${projectId}`,
+      ]);
+
+      if (!result.success) {
+        throw new ProjectManagementProviderError(
+          result.stderr || "Failed to fetch project fields",
+          this.providerId,
+          "getProjectFields"
+        );
+      }
+
+      const data = JSON.parse(result.stdout) as {
+        data?: {
+          node?: {
+            fields?: {
+              nodes?: Array<{
+                id?: string;
+                name?: string;
+                dataType?: string;
+                options?: Array<{ id: string; name: string }>;
+              }>;
+            };
+          };
+        };
+      };
+
+      const rawFields = data.data?.node?.fields?.nodes ?? [];
+      const fields: ProjectField[] = rawFields
+        .filter((f) => f.id && f.name)
+        .map((f) => ({
+          id: f.id!,
+          name: f.name!,
+          type: this.mapDataTypeToFieldType(f.dataType),
+          options: f.options?.map((o) => ({ id: o.id, name: o.name })),
+        }));
+
+      // Update cache
+      this.fieldCache.set(projectId, { fields, fetchedAt: Date.now() });
+
+      return fields;
+    } catch (error) {
+      if (error instanceof ProjectManagementProviderError) {
+        throw error;
+      }
+      throw new ProjectManagementProviderError(
+        error instanceof Error ? error.message : String(error),
+        this.providerId,
+        "getProjectFields",
+        error instanceof Error ? error : undefined
+      );
+    }
+  }
+
+  async setProjectItemField(
+    projectId: string,
+    itemId: string,
+    fieldId: string,
+    value: string
+  ): Promise<SetFieldResult> {
+    try {
+      // Get field metadata to determine type and resolve options
+      const fields = await this.getProjectFields(projectId);
+      const field = fields.find((f) => f.id === fieldId);
+
+      if (!field) {
+        return {
+          success: false,
+          error: `Field ${fieldId} not found in project ${projectId}`,
+        };
+      }
+
+      if (field.type === "SINGLE_SELECT") {
+        // Resolve value to option ID (case-insensitive)
+        const option = field.options?.find((o) => o.name.toLowerCase() === value.toLowerCase());
+
+        if (!option) {
+          return {
+            success: false,
+            error: `Option "${value}" not found for field "${field.name}". Available options: ${field.options?.map((o) => o.name).join(", ")}`,
+          };
+        }
+
+        await this.updateProjectItemSingleSelectField(projectId, itemId, fieldId, option.id);
+      } else if (field.type === "TEXT") {
+        await this.updateProjectItemTextField(projectId, itemId, fieldId, value);
+      } else if (field.type === "NUMBER") {
+        const numValue = parseFloat(value);
+        if (isNaN(numValue)) {
+          return {
+            success: false,
+            error: `Invalid number value "${value}" for field "${field.name}"`,
+          };
+        }
+        await this.updateProjectItemNumberField(projectId, itemId, fieldId, numValue);
+      } else {
+        return {
+          success: false,
+          error: `Unsupported field type "${field.type}" for field "${field.name}"`,
+        };
+      }
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  async clearProjectItemField(
+    projectId: string,
+    itemId: string,
+    fieldId: string
+  ): Promise<SetFieldResult> {
+    const mutation = `
+      mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!) {
+        clearProjectV2ItemFieldValue(input: {
+          projectId: $projectId
+          itemId: $itemId
+          fieldId: $fieldId
+        }) {
+          projectV2Item {
+            id
+          }
+        }
+      }
+    `;
+
+    try {
+      const result = await this.githubCLI.run([
+        "api",
+        "graphql",
+        "-f",
+        `query=${mutation}`,
+        "-f",
+        `projectId=${projectId}`,
+        "-f",
+        `itemId=${itemId}`,
+        "-f",
+        `fieldId=${fieldId}`,
+      ]);
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.stderr || "Failed to clear field",
+        };
+      }
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   // ===========================================================================
   // Hierarchical Issues (Parent-Child Linking)
   // ===========================================================================
@@ -509,11 +723,23 @@ export class GitHubProjectManagementProvider implements ProjectManagementProvide
   }
 
   /**
-   * Update a project item's field value using GraphQL
+   * Update a project item's field value using GraphQL (single-select)
    *
    * Moved from TaskGitHubSyncService to centralize GitHub Projects V2 operations
    */
   private async updateProjectItemField(
+    projectId: string,
+    itemId: string,
+    fieldId: string,
+    optionId: string
+  ): Promise<void> {
+    await this.updateProjectItemSingleSelectField(projectId, itemId, fieldId, optionId);
+  }
+
+  /**
+   * Update a single-select field value
+   */
+  private async updateProjectItemSingleSelectField(
     projectId: string,
     itemId: string,
     fieldId: string,
@@ -551,6 +777,114 @@ export class GitHubProjectManagementProvider implements ProjectManagementProvide
 
     if (!result.success) {
       throw new Error(`Failed to update project item field: ${result.stderr}`);
+    }
+  }
+
+  /**
+   * Update a text field value
+   */
+  private async updateProjectItemTextField(
+    projectId: string,
+    itemId: string,
+    fieldId: string,
+    text: string
+  ): Promise<void> {
+    const mutation = `
+      mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $text: String!) {
+        updateProjectV2ItemFieldValue(input: {
+          projectId: $projectId
+          itemId: $itemId
+          fieldId: $fieldId
+          value: { text: $text }
+        }) {
+          projectV2Item {
+            id
+          }
+        }
+      }
+    `;
+
+    const result = await this.githubCLI.run([
+      "api",
+      "graphql",
+      "-f",
+      `query=${mutation}`,
+      "-f",
+      `projectId=${projectId}`,
+      "-f",
+      `itemId=${itemId}`,
+      "-f",
+      `fieldId=${fieldId}`,
+      "-f",
+      `text=${text}`,
+    ]);
+
+    if (!result.success) {
+      throw new Error(`Failed to update project item text field: ${result.stderr}`);
+    }
+  }
+
+  /**
+   * Update a number field value
+   */
+  private async updateProjectItemNumberField(
+    projectId: string,
+    itemId: string,
+    fieldId: string,
+    num: number
+  ): Promise<void> {
+    const mutation = `
+      mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $num: Float!) {
+        updateProjectV2ItemFieldValue(input: {
+          projectId: $projectId
+          itemId: $itemId
+          fieldId: $fieldId
+          value: { number: $num }
+        }) {
+          projectV2Item {
+            id
+          }
+        }
+      }
+    `;
+
+    const result = await this.githubCLI.run([
+      "api",
+      "graphql",
+      "-f",
+      `query=${mutation}`,
+      "-f",
+      `projectId=${projectId}`,
+      "-f",
+      `itemId=${itemId}`,
+      "-f",
+      `fieldId=${fieldId}`,
+      "-F",
+      `num=${num}`,
+    ]);
+
+    if (!result.success) {
+      throw new Error(`Failed to update project item number field: ${result.stderr}`);
+    }
+  }
+
+  /**
+   * Map GitHub GraphQL dataType to ProjectFieldType
+   */
+  private mapDataTypeToFieldType(dataType?: string): ProjectFieldType {
+    switch (dataType) {
+      case "TEXT":
+        return "TEXT";
+      case "NUMBER":
+        return "NUMBER";
+      case "DATE":
+        return "DATE";
+      case "SINGLE_SELECT":
+        return "SINGLE_SELECT";
+      case "ITERATION":
+        return "ITERATION";
+      default:
+        return "OTHER";
     }
   }
 }
