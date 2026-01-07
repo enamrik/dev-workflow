@@ -65,6 +65,11 @@ export const issues = sqliteTable(
     // which is the GitHub issue created BY dev-workflow for syncing.
     sourceGitHubIssueNumber: integer("source_github_issue_number"),
 
+    // Labels - unified metadata for issues and tasks
+    // Supports both simple labels (empty value) and key-value pairs
+    // Example: { "bug": "", "product": "Case Workflow", "Product Area": "HR Portal" }
+    labels: text("labels", { mode: "json" }).$type<Record<string, string>>(),
+
     // Soft delete support
     isDeleted: integer("is_deleted", { mode: "boolean" }).notNull().default(false),
     deletedAt: text("deleted_at"),
