@@ -179,13 +179,22 @@ export class PlanningService {
       });
     }
 
+    // Get labels from parent issue for inheritance to new tasks
+    const issueLabels = issue.labels;
+
     // Match new tasks against ALL existing tasks (no manual/generated distinction)
     let tasks: Task[];
     if (existingTasks.length > 0) {
-      tasks = this.createTasksWithMatching(plan, newTaskDefs, existingTasks, generatedBy);
+      tasks = this.createTasksWithMatching(
+        plan,
+        newTaskDefs,
+        existingTasks,
+        generatedBy,
+        issueLabels
+      );
     } else {
       // No existing tasks - create all new
-      tasks = this.createNewTasks(plan, newTaskDefs);
+      tasks = this.createNewTasks(plan, newTaskDefs, issueLabels);
     }
 
     // Create snapshot after regeneration (captures new state)
@@ -269,6 +278,7 @@ export class PlanningService {
    * Matches against ALL existing tasks to prevent duplicates.
    * Soft deletes unmatched tasks that can be deleted (PLANNED/BACKLOG/READY).
    * Preserves IN_PROGRESS and COMPLETED tasks even if unmatched.
+   * New tasks inherit labels from parent issue; matched tasks keep their existing labels.
    *
    * Note: Dependencies are cleared during matching because the ID mapping
    * between old and new tasks is not preserved.
@@ -277,7 +287,8 @@ export class PlanningService {
     plan: Plan,
     newTaskDefs: TaskDefinition[],
     existingTasks: Task[],
-    generatedBy: string
+    generatedBy: string,
+    issueLabels?: Record<string, string>
   ): Task[] {
     // Match new tasks to existing tasks
     const matchResults = this.taskMatchingService.matchTasks(newTaskDefs, existingTasks);
@@ -322,6 +333,7 @@ export class PlanningService {
       } else {
         // Create new generated task
         // Clear dependencies since ID mapping is not preserved
+        // Inherit labels from parent issue
         const task = this.taskRepository.create({
           id: result.newTask.id, // Use caller-provided ID
           planId: plan.id,
@@ -334,6 +346,7 @@ export class PlanningService {
           estimatedMinutes: result.newTask.estimatedMinutes,
           isDeleted: false,
           dependsOn: [], // Clear dependencies during matching
+          labels: issueLabels, // Inherit labels from parent issue
         });
         tasks.push(task);
       }
@@ -458,8 +471,14 @@ export class PlanningService {
 
   /**
    * Create all new tasks without matching
+   *
+   * Tasks inherit labels from parent issue.
    */
-  private createNewTasks(plan: Plan, taskDefs: TaskDefinition[]): Task[] {
+  private createNewTasks(
+    plan: Plan,
+    taskDefs: TaskDefinition[],
+    issueLabels?: Record<string, string>
+  ): Task[] {
     const taskData = taskDefs.map((def) => ({
       id: def.id, // Use caller-provided ID for dependency tracking
       planId: plan.id,
@@ -472,6 +491,7 @@ export class PlanningService {
       isDeleted: false,
       estimatedMinutes: def.estimatedMinutes,
       dependsOn: def.dependsOn, // Pass through dependencies
+      labels: issueLabels, // Inherit labels from parent issue
     }));
 
     return this.taskRepository.createMany(taskData);

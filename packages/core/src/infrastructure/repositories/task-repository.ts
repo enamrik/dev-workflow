@@ -71,6 +71,7 @@ export class SqliteTaskRepository implements TaskRepository {
         startedAt: task.startedAt,
         completedAt: task.completedAt,
         abandonedAt: task.abandonedAt,
+        labels: task.labels ?? null,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
       })
@@ -131,6 +132,7 @@ export class SqliteTaskRepository implements TaskRepository {
           startedAt: task.startedAt,
           completedAt: task.completedAt,
           abandonedAt: task.abandonedAt,
+          labels: task.labels ?? null,
           createdAt: task.createdAt,
           updatedAt: task.updatedAt,
         })
@@ -761,6 +763,7 @@ export class SqliteTaskRepository implements TaskRepository {
       prNumber: row.prNumber ?? undefined,
       prStatus: (row.prStatus as Task["prStatus"]) ?? undefined,
       githubSync: this.mapRowToGitHubSync(row),
+      labels: row.labels ?? undefined,
       startedAt: row.startedAt ?? undefined,
       submittedForReviewAt: row.submittedForReviewAt ?? undefined,
       completedAt: row.completedAt ?? undefined,

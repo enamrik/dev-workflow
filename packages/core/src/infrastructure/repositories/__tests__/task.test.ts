@@ -489,4 +489,128 @@ describe("SqliteTaskRepository", () => {
       expect(nextNumber).toBe(4);
     });
   });
+
+  describe("labels", () => {
+    it("should create a task with labels", () => {
+      const task = repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId,
+        title: "Labeled Task",
+        description: "Has labels",
+        status: "BACKLOG",
+        type: "FEATURE",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+        labels: { bug: "", product: "Case Workflow" },
+      });
+
+      expect(task.labels).toEqual({ bug: "", product: "Case Workflow" });
+    });
+
+    it("should persist and retrieve labels", () => {
+      const created = repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId,
+        title: "Labeled Task",
+        description: "Has labels",
+        status: "BACKLOG",
+        type: "FEATURE",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+        labels: { urgent: "", "Product Area": "HR Portal" },
+      });
+
+      const found = repos.taskRepository.findById(created.id);
+      expect(found?.labels).toEqual({ urgent: "", "Product Area": "HR Portal" });
+    });
+
+    it("should update labels via update method", () => {
+      const created = createTestTask(repos.taskRepository, planId);
+      expect(created.labels).toBeUndefined();
+
+      const updated = repos.taskRepository.update(created.id, {
+        labels: { feature: "", priority: "high" },
+      });
+
+      expect(updated.labels).toEqual({ feature: "", priority: "high" });
+    });
+
+    it("should allow labels to be undefined", () => {
+      const task = createTestTask(repos.taskRepository, planId);
+
+      expect(task.labels).toBeUndefined();
+    });
+
+    it("should handle empty labels object", () => {
+      const task = repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId,
+        title: "Empty Labels Task",
+        description: "Has empty labels object",
+        status: "BACKLOG",
+        type: "FEATURE",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+        labels: {},
+      });
+
+      expect(task.labels).toEqual({});
+    });
+
+    it("should handle labels with special characters", () => {
+      const task = repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId,
+        title: "Special Labels Task",
+        description: "Has special characters",
+        status: "BACKLOG",
+        type: "FEATURE",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+        labels: { "Product Area": "HR Portal / Admin", "env:prod": "" },
+      });
+
+      expect(task.labels).toEqual({
+        "Product Area": "HR Portal / Admin",
+        "env:prod": "",
+      });
+    });
+
+    it("should create multiple tasks with labels via createMany", () => {
+      const tasks = repos.taskRepository.createMany([
+        {
+          id: crypto.randomUUID(),
+          planId,
+          title: "Task 1",
+          description: "First task",
+          status: "PLANNED",
+          type: "FEATURE",
+          source: "generated",
+          acceptanceCriteria: [],
+          isDeleted: false,
+          labels: { bug: "", product: "Case Workflow" },
+        },
+        {
+          id: crypto.randomUUID(),
+          planId,
+          title: "Task 2",
+          description: "Second task",
+          status: "PLANNED",
+          type: "ENHANCEMENT",
+          source: "generated",
+          acceptanceCriteria: [],
+          isDeleted: false,
+          labels: { urgent: "" },
+        },
+      ]);
+
+      expect(tasks).toHaveLength(2);
+      expect(tasks[0]?.labels).toEqual({ bug: "", product: "Case Workflow" });
+      expect(tasks[1]?.labels).toEqual({ urgent: "" });
+    });
+  });
 });
