@@ -64,6 +64,8 @@ export interface Task {
   prUrl: string | null;
   prNumber: number | null;
   prStatus: "DRAFT" | "OPEN" | "MERGED" | "CLOSED" | null;
+  /** GitHub sync state (optional - only present if synced to GitHub) */
+  githubSync?: GitHubSyncState;
   startedAt?: string;
   submittedForReviewAt?: string;
   completedAt?: string;
