@@ -133,10 +133,13 @@ export class ProjectService {
    * This is the main entry point for project registration. It:
    * 1. Gets the initial commit hash (stable identifier)
    * 2. Looks up existing project by that hash
-   * 3. If found: updates gitRoot if changed (repair after repo move) and returns
-   * 4. If not found: creates new project with gitRoot
+   * 3. If found: returns existing project
+   * 4. If not found: creates new project
    *
-   * @param gitRoot - Absolute path to git repository root
+   * Note: gitRoot (the local path to the repo) is stored in config.json,
+   * not in the database. See project-config-resolver.ts.
+   *
+   * @param gitRoot - Absolute path to git repository root (used to derive name for new projects)
    * @returns The project (existing or newly created)
    * @throws ProjectError if not a git repository or git operations fail
    */
@@ -154,10 +157,6 @@ export class ProjectService {
     const existing = this.projectRepository.findByGitRootHash(gitRootHash);
 
     if (existing) {
-      // Update gitRoot if it has changed (repair after repo move)
-      if (existing.gitRoot !== gitRoot) {
-        return this.projectRepository.update(existing.id, { gitRoot });
-      }
       return existing;
     }
 
@@ -165,7 +164,6 @@ export class ProjectService {
     const name = path.basename(gitRoot);
     return this.projectRepository.create({
       gitRootHash,
-      gitRoot,
       name,
       githubSync: null,
     });
