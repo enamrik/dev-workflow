@@ -1,5 +1,4 @@
 import { eq, lte, like } from "drizzle-orm";
-import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { workers, dispatchQueue, WorkerRow } from "../database/schema.js";
 import type {
   Worker,
@@ -12,7 +11,7 @@ import {
   isWorkerAlive,
   getHeartbeatAge,
 } from "../../domain/worker.js";
-import * as schema from "../database/schema.js";
+import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
 
 /**
  * SQLite implementation of WorkerRepository
@@ -21,7 +20,7 @@ import * as schema from "../database/schema.js";
  * Workers are global (not project-scoped).
  */
 export class SqliteWorkerRepository implements WorkerRepository {
-  constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
+  constructor(private readonly db: SqliteDrizzleDatabase) {}
 
   register(id: string, name: string): Worker {
     const now = new Date().toISOString();

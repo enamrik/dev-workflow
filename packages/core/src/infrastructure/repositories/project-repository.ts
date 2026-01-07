@@ -1,5 +1,4 @@
 import { eq } from "drizzle-orm";
-import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { projects, issues, milestones, snapshots, ProjectRow } from "../database/schema.js";
 import type {
   Project,
@@ -7,7 +6,7 @@ import type {
   CreateProjectData,
   UpdateProjectData,
 } from "../../domain/project.js";
-import * as schema from "../database/schema.js";
+import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
 
 /**
  * Generate a URL-safe slug from project name and git root hash
@@ -34,7 +33,7 @@ function generateSlug(name: string, gitRootHash: string): string {
  * since it manages projects themselves.
  */
 export class SqliteProjectRepository implements ProjectRepository {
-  constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
+  constructor(private readonly db: SqliteDrizzleDatabase) {}
 
   create(data: CreateProjectData): Project {
     const id = crypto.randomUUID();
