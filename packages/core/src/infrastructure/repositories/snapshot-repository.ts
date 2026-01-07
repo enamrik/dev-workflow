@@ -1,8 +1,7 @@
 import { eq, max, and, desc } from "drizzle-orm";
-import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { snapshots, SnapshotRow } from "../database/schema.js";
 import type { Snapshot, SnapshotRepository } from "../../domain/snapshot.js";
-import * as schema from "../database/schema.js";
+import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
 
 /**
  * SQLite implementation of SnapshotRepository
@@ -15,7 +14,7 @@ import * as schema from "../database/schema.js";
  */
 export class SqliteSnapshotRepository implements SnapshotRepository {
   constructor(
-    private readonly db: BetterSQLite3Database<typeof schema>,
+    private readonly db: SqliteDrizzleDatabase,
     private readonly projectId: string
   ) {}
 

@@ -1,8 +1,7 @@
 import { eq, max, and, asc } from "drizzle-orm";
-import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { milestones, MilestoneRow } from "../database/schema.js";
 import type { Milestone, MilestoneRepository, MilestoneFilters } from "../../domain/milestone.js";
-import * as schema from "../database/schema.js";
+import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
 
 /**
  * SQLite implementation of MilestoneRepository
@@ -15,7 +14,7 @@ import * as schema from "../database/schema.js";
  */
 export class SqliteMilestoneRepository implements MilestoneRepository {
   constructor(
-    private readonly db: BetterSQLite3Database<typeof schema>,
+    private readonly db: SqliteDrizzleDatabase,
     private readonly projectId: string
   ) {}
 

@@ -6,14 +6,13 @@
  */
 
 import { eq } from "drizzle-orm";
-import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import {
   globalSettings,
   GlobalSettingsRow,
   BackupConfig,
   DatabaseConfig,
 } from "../database/schema.js";
-import * as schema from "../database/schema.js";
+import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
 
 /**
  * Well-known setting keys
@@ -95,7 +94,7 @@ export interface GlobalSettingsRepository {
  * SQLite implementation of GlobalSettingsRepository
  */
 export class SqliteGlobalSettingsRepository implements GlobalSettingsRepository {
-  constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
+  constructor(private readonly db: SqliteDrizzleDatabase) {}
 
   get<T>(key: SettingKey): T | null {
     const result = this.db.select().from(globalSettings).where(eq(globalSettings.key, key)).get();

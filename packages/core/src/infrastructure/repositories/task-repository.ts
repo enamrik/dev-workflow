@@ -1,5 +1,4 @@
 import { eq, max, and, asc, inArray, desc, sql, isNull } from "drizzle-orm";
-import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import {
   tasks,
   taskStatusHistory,
@@ -19,7 +18,7 @@ import type {
 import { isValidStatusTransition, getAllowedTransitions } from "../../domain/task.js";
 import type { GitHubSyncState } from "../../domain/github.js";
 import { InvalidStatusTransitionError } from "../../domain/errors.js";
-import * as schema from "../database/schema.js";
+import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
 
 /**
  * SQLite implementation of TaskRepository
@@ -29,7 +28,7 @@ import * as schema from "../database/schema.js";
  * Tracks status changes in task_status_history table.
  */
 export class SqliteTaskRepository implements TaskRepository {
-  constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
+  constructor(private readonly db: SqliteDrizzleDatabase) {}
 
   create(data: Omit<Task, "number" | "order" | "createdAt" | "updatedAt">): Task {
     const number = this.getNextTaskNumber(data.planId);

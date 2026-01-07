@@ -1,8 +1,7 @@
 import { eq } from "drizzle-orm";
-import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { plans, PlanRow } from "../database/schema.js";
 import type { Plan, PlanRepository } from "../../domain/plan.js";
-import * as schema from "../database/schema.js";
+import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
 
 /**
  * SQLite implementation of PlanRepository
@@ -11,7 +10,7 @@ import * as schema from "../database/schema.js";
  * Follows Repository pattern from DDD.
  */
 export class SqlitePlanRepository implements PlanRepository {
-  constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
+  constructor(private readonly db: SqliteDrizzleDatabase) {}
 
   create(data: Omit<Plan, "id" | "createdAt" | "updatedAt">): Plan {
     const id = crypto.randomUUID();
