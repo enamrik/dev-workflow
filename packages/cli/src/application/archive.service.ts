@@ -347,15 +347,17 @@ export class ArchiveService {
       throw new ArchiveError("Package root not provided. Cannot reinstall skills.");
     }
 
-    // Get database connection string from config
+    // Get database connection string from config - must exist for unarchive
     const slug = this.resolver.getProjectId();
     let databaseConnectionString: string;
     try {
       const config = await resolveConfig(slug);
       databaseConnectionString = config.database;
     } catch {
-      // Fallback to global database if config doesn't exist
-      databaseConnectionString = "file:///~/.track/workflow.db";
+      throw new ArchiveError(
+        `Config not found for project "${slug}". ` +
+          `Run 'dev-workflow init' to recreate the configuration.`
+      );
     }
 
     const dbPath = this.resolver.getDatabasePath();
