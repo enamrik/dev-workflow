@@ -48,6 +48,8 @@ import {
   type Project,
   // Track directory resolution
   resolveGlobalTrackDir,
+  // Config resolution (new: TRACK_SLUG → config.json → connection)
+  resolveConfig,
 } from "@dev-workflow/core";
 
 // Import tools
@@ -142,27 +144,17 @@ import {
   errorResponse,
 } from "./tools/index.js";
 
-// Get paths from environment
-const DATABASE_PATH = process.env["DATABASE_PATH"] || "./data/workflow.db";
-const PROJECT_ID = process.env["PROJECT_ID"];
-const GIT_ROOT = process.env["GIT_ROOT"];
+// =============================================================================
+// Environment Variable Configuration
+// =============================================================================
+//
+// PROJECT_SLUG is required. The MCP server reads it, loads
+// ~/.track/<slug>/config.json, and gets database, gitRoot, projectId from there.
+//
+// The actual resolution happens in main() since resolveConfig is async.
+// =============================================================================
 
-// PROJECT_ID is required for the MCP server to scope data to the correct project
-if (!PROJECT_ID) {
-  console.error("Error: PROJECT_ID environment variable is required");
-  console.error("This should be set by 'dev-workflow init' when registering the MCP server");
-  process.exit(1);
-}
-
-// GIT_ROOT is required for worktree operations
-if (!GIT_ROOT) {
-  console.error("Error: GIT_ROOT environment variable is required");
-  console.error("This should be set by 'dev-workflow init' when registering the MCP server");
-  process.exit(1);
-}
-
-// After validation, we know these are strings
-const validatedGitRoot: string = GIT_ROOT;
+const PROJECT_SLUG = process.env["PROJECT_SLUG"];
 
 // Service instances (initialized in main)
 let dbService: SqliteDataSource;
@@ -404,14 +396,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
  * Initialize all services and start the server
  */
 async function main() {
+  // =============================================================================
+  // Resolve configuration from PROJECT_SLUG
+  // =============================================================================
+  if (!PROJECT_SLUG) {
+    console.error("Error: PROJECT_SLUG environment variable is required.");
+    console.error("Run 'dev-workflow init' to set up the project correctly.");
+    process.exit(1);
+  }
+
+  console.error(`Loading config from slug: ${PROJECT_SLUG}`);
+  let databasePath: string;
+  let projectId: string;
+  let gitRoot: string;
+
+  try {
+    const config = await resolveConfig(PROJECT_SLUG);
+    databasePath = config.resolvedDatabase;
+    projectId = config.projectId;
+    gitRoot = config.gitRoot;
+  } catch (error) {
+    console.error(`Error: Failed to load config for slug "${PROJECT_SLUG}"`);
+    console.error(error instanceof Error ? error.message : String(error));
+    console.error("Run 'dev-workflow init' to create the config file.");
+    process.exit(1);
+  }
+
   // Initialize database with automatic native/WASM detection
   // Migrations are run during `dev-workflow init` and `dev-workflow update`, not on server startup
-  dbService = await SqliteDataSource.create(DATABASE_PATH);
+  dbService = await SqliteDataSource.create(databasePath);
 
   // Initialize repositories with project scoping
-  // PROJECT_ID is validated at startup so it's guaranteed to be defined here
   const db = dbService.getDb();
-  const projectId = PROJECT_ID as string;
 
   // Load project from database
   const projectRepository = new SqliteProjectRepository(db);
@@ -435,7 +451,7 @@ async function main() {
 
   // Initialize file system and paths
   const fileSystem = new NodeFileSystem();
-  const projectRoot = validatedGitRoot;
+  const projectRoot = gitRoot;
   const globalTrackDir = resolveGlobalTrackDir();
 
   // Track directory for project-specific data (worktrees, etc.) in global location
@@ -598,7 +614,7 @@ async function main() {
     project,
     projectRepository,
     githubCLI, // Reuse instance for validation
-    gitRoot: validatedGitRoot, // From env var, not database (machine-specific)
+    gitRoot, // From config.json or legacy env var (machine-specific)
     providerRegistry, // For validating available providers
   };
 
@@ -646,7 +662,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("dev-workflow MCP server running on stdio");
-  console.error(`Database: ${DATABASE_PATH}`);
+  console.error(`Database: ${databasePath}`);
   console.error(
     `Templates: local=${templateConfig.localIssueTemplatesPath}, global=${templateConfig.globalIssueTemplatesPath}`
   );

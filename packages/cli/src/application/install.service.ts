@@ -205,7 +205,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
         "stdio",
         "dev-workflow-tracker",
         "--env",
-        `TRACK_SLUG=${slug}`,
+        `PROJECT_SLUG=${slug}`,
         "--",
         "node",
         cliPath,
