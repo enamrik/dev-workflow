@@ -205,6 +205,14 @@ export interface GitHubCLI {
   closeIssueWithComment(issueNumber: number, comment?: string): Promise<void>;
 
   /**
+   * Assign a GitHub issue to a user
+   *
+   * @param issueNumber - The issue number to assign
+   * @param assignee - The GitHub username to assign (without @ prefix)
+   */
+  assignIssue(issueNumber: number, assignee: string): Promise<void>;
+
+  /**
    * Run arbitrary gh CLI command
    */
   run(args: string[]): Promise<GitHubCLIResult>;
@@ -690,6 +698,24 @@ export class NodeGitHubCLI implements GitHubCLI {
 
     // Then close the issue
     await this.closeIssue(issueNumber);
+  }
+
+  async assignIssue(issueNumber: number, assignee: string): Promise<void> {
+    const result = await this.run([
+      "issue",
+      "edit",
+      String(issueNumber),
+      "--add-assignee",
+      assignee,
+    ]);
+
+    if (!result.success) {
+      throw new GitHubCLIError(
+        `Failed to assign issue: ${result.stderr}`,
+        result.exitCode,
+        result.stderr
+      );
+    }
   }
 
   async run(args: string[]): Promise<GitHubCLIResult> {

@@ -414,6 +414,12 @@ export class MockGitHubCLI implements GitHubCLI {
     // No-op for mock - just record the call
   }
 
+  async assignIssue(issueNumber: number, assignee: string): Promise<void> {
+    this.recordCall("assignIssue", [issueNumber, assignee]);
+    this.checkError("assignIssue");
+    // No-op for mock - just record the call
+  }
+
   async run(args: string[]): Promise<GitHubCLIResult> {
     this.recordCall("run", [args]);
     this.checkError("run");

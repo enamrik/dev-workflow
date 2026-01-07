@@ -418,6 +418,18 @@ export interface ProjectManagementProvider {
    * @param body - Comment text (supports markdown)
    */
   addComment(issueRef: string, body: string): Promise<void>;
+
+  // ===========================================================================
+  // Assignment
+  // ===========================================================================
+
+  /**
+   * Assign an issue to a user
+   *
+   * @param issueRef - External issue identifier
+   * @param assignee - Username to assign (provider-specific format)
+   */
+  assignIssue(issueRef: string, assignee: string): Promise<void>;
 }
 
 /**
