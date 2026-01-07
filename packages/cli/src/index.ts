@@ -15,6 +15,7 @@ import { DatabaseConfigService, TRACK_DATABASE_URL_ENV } from "./application/dat
 import { ClaudeWorkerService } from "./application/claude-worker.service.js";
 import { NodeFileSystem } from "./infrastructure/file-system.js";
 import {
+  TrackDirectoryResolver,
   createTrackDirectoryResolver,
   SqliteDataSource,
   SqliteWorkerRepository,
@@ -26,6 +27,8 @@ import {
   findGitRoot,
   readSlugFromGitConfig,
   resolveConfig,
+  resolveConfigFromGit,
+  ProjectConfigError,
 } from "@dev-workflow/core";
 
 /**
@@ -321,26 +324,35 @@ async function runUpdate(): Promise<void> {
   const workingDirectory = process.cwd();
   const packageRoot = getPackageRoot();
 
-  // Create resolver
-  let resolver;
+  // Resolve config from .git/config → ~/.track/<slug>/config.json
+  let config;
   try {
-    resolver = createTrackDirectoryResolver(workingDirectory);
-  } catch (_error) {
-    console.error("❌ Not a git repository. dev-workflow requires git.");
-    process.exit(1);
+    config = await resolveConfigFromGit(workingDirectory);
+  } catch (error) {
+    if (error instanceof ProjectConfigError) {
+      if (error.code === "NOT_GIT_REPO") {
+        console.error("❌ Not a git repository. dev-workflow requires git.");
+      } else if (error.code === "SLUG_NOT_FOUND" || error.code === "CONFIG_NOT_FOUND") {
+        console.error("❌ dev-workflow is not initialized for this repository.");
+        console.error("\nRun: dev-workflow init");
+      } else if (error.code === "WORKTREE_DETECTED") {
+        console.error("❌ Cannot run update from a git worktree.");
+        console.error("   Run this command from the main repository.");
+      } else {
+        console.error(`❌ ${error.message}`);
+      }
+      process.exit(1);
+    }
+    throw error;
   }
+
+  // Create a resolver from the config (gitRoot + slug)
+  const resolver = new TrackDirectoryResolver(config.gitRoot, config.slug);
 
   const updater = new UpdateService(fileSystem, workingDirectory, packageRoot, resolver);
 
   try {
-    // Check if initialized
-    const isInitialized = await updater.isInitialized();
-    if (!isInitialized) {
-      console.error("❌ dev-workflow is not initialized for this repository.");
-      console.error(`   Project: ${resolver.getProjectId()}`);
-      console.error("\nRun: dev-workflow init");
-      process.exit(1);
-    }
+    // Config exists, so project is initialized - proceed with update
 
     console.log("🔄 Updating dev-workflow...");
 
@@ -402,25 +414,30 @@ async function runUninit(): Promise<void> {
   const fileSystem = new NodeFileSystem();
   const workingDirectory = process.cwd();
 
-  // Create resolver
-  let resolver;
+  // Resolve config from .git/config → ~/.track/<slug>/config.json
+  let config;
   try {
-    resolver = createTrackDirectoryResolver(workingDirectory);
-  } catch (_error) {
-    console.error("❌ Not a git repository. dev-workflow requires git.");
-    process.exit(1);
+    config = await resolveConfigFromGit(workingDirectory);
+  } catch (error) {
+    if (error instanceof ProjectConfigError) {
+      if (error.code === "NOT_GIT_REPO") {
+        console.error("❌ Not a git repository. dev-workflow requires git.");
+      } else if (error.code === "SLUG_NOT_FOUND" || error.code === "CONFIG_NOT_FOUND") {
+        console.error("❌ dev-workflow is not initialized for this repository.");
+        console.error("\nNothing to remove.");
+      } else if (error.code === "WORKTREE_DETECTED") {
+        console.error("❌ Cannot run uninit from a git worktree.");
+        console.error("   Run this command from the main repository.");
+      } else {
+        console.error(`❌ ${error.message}`);
+      }
+      process.exit(1);
+    }
+    throw error;
   }
 
-  // Check if initialized (skills exist or MCP is registered)
-  const skillsDir = path.join(workingDirectory, ".claude/skills");
-  const hasDwfSkills =
-    fs.existsSync(skillsDir) && fs.readdirSync(skillsDir).some((name) => name.startsWith("dwf-"));
-
-  if (!hasDwfSkills) {
-    console.error("❌ dev-workflow is not initialized for this repository.");
-    console.error("\nNothing to remove.");
-    process.exit(1);
-  }
+  // Create a resolver from the config (gitRoot + slug)
+  const resolver = new TrackDirectoryResolver(config.gitRoot, config.slug);
 
   const uninstaller = new UninstallService(fileSystem, workingDirectory, resolver);
 
@@ -449,14 +466,30 @@ async function runArchive(): Promise<void> {
   const fileSystem = new NodeFileSystem();
   const workingDirectory = process.cwd();
 
-  // Create resolver
-  let resolver;
+  // Resolve config from .git/config → ~/.track/<slug>/config.json
+  let config;
   try {
-    resolver = createTrackDirectoryResolver(workingDirectory);
-  } catch (_error) {
-    console.error("❌ Not a git repository. dev-workflow requires git.");
-    process.exit(1);
+    config = await resolveConfigFromGit(workingDirectory);
+  } catch (error) {
+    if (error instanceof ProjectConfigError) {
+      if (error.code === "NOT_GIT_REPO") {
+        console.error("❌ Not a git repository. dev-workflow requires git.");
+      } else if (error.code === "SLUG_NOT_FOUND" || error.code === "CONFIG_NOT_FOUND") {
+        console.error("❌ dev-workflow is not initialized for this repository.");
+        console.error("\nRun: dev-workflow init");
+      } else if (error.code === "WORKTREE_DETECTED") {
+        console.error("❌ Cannot run archive from a git worktree.");
+        console.error("   Run this command from the main repository.");
+      } else {
+        console.error(`❌ ${error.message}`);
+      }
+      process.exit(1);
+    }
+    throw error;
   }
+
+  // Create a resolver from the config (gitRoot + slug)
+  const resolver = new TrackDirectoryResolver(config.gitRoot, config.slug);
 
   const archiveService = new ArchiveService(fileSystem, workingDirectory, resolver);
 
@@ -505,12 +538,20 @@ async function runUnarchive(): Promise<void> {
   const workingDirectory = process.cwd();
   const packageRoot = getPackageRoot();
 
-  // Create resolver
+  // For unarchive, config.json might not exist yet (that's the point of unarchiving)
+  // So we use the resolver to compute the slug, then check for archived project
   let resolver;
   try {
     resolver = createTrackDirectoryResolver(workingDirectory);
   } catch (_error) {
     console.error("❌ Not a git repository. dev-workflow requires git.");
+    process.exit(1);
+  }
+
+  // Check for worktree
+  if (isWorktree(workingDirectory)) {
+    console.error("❌ Cannot run unarchive from a git worktree.");
+    console.error("   Run this command from the main repository.");
     process.exit(1);
   }
 
@@ -561,14 +602,30 @@ async function runNuke(options: { force?: boolean }): Promise<void> {
   const fileSystem = new NodeFileSystem();
   const workingDirectory = process.cwd();
 
-  // Create resolver
-  let resolver;
+  // Resolve config from .git/config → ~/.track/<slug>/config.json
+  let config;
   try {
-    resolver = createTrackDirectoryResolver(workingDirectory);
-  } catch (_error) {
-    console.error("❌ Not a git repository. dev-workflow requires git.");
-    process.exit(1);
+    config = await resolveConfigFromGit(workingDirectory);
+  } catch (error) {
+    if (error instanceof ProjectConfigError) {
+      if (error.code === "NOT_GIT_REPO") {
+        console.error("❌ Not a git repository. dev-workflow requires git.");
+      } else if (error.code === "SLUG_NOT_FOUND" || error.code === "CONFIG_NOT_FOUND") {
+        console.error("❌ dev-workflow is not initialized for this repository.");
+        console.error("\nNothing to delete.");
+      } else if (error.code === "WORKTREE_DETECTED") {
+        console.error("❌ Cannot run nuke from a git worktree.");
+        console.error("   Run this command from the main repository.");
+      } else {
+        console.error(`❌ ${error.message}`);
+      }
+      process.exit(1);
+    }
+    throw error;
   }
+
+  // Create a resolver from the config (gitRoot + slug)
+  const resolver = new TrackDirectoryResolver(config.gitRoot, config.slug);
 
   // Check if using remote database - block unless --force is used
   const dbService = new DatabaseConfigService();
