@@ -7,6 +7,9 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
  * URL state shape. Add new properties here as needed.
  */
 export interface UrlState {
+  /** Selected data source ID */
+  source?: string;
+  /** Selected project ID */
   project?: string;
   showBacklog?: boolean;
   showWorkQueue?: boolean;

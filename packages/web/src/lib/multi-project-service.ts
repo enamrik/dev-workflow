@@ -14,6 +14,7 @@ import {
   NodeGitWorktreeService,
   computeMilestoneStatus,
   resolveConfig,
+  loadAllConfigs,
   type Issue,
   type Plan,
   type Task,
@@ -25,7 +26,28 @@ import {
   type GitHubIssueSyncConfig,
   type WorkerWithHealth,
   type DispatchQueueEntryWithHealth,
+  type ResolvedConfig,
 } from "@dev-workflow/core";
+
+/**
+ * Represents a data source (database connection).
+ *
+ * Projects are grouped by data source to allow the UI to:
+ * 1. Show a source dropdown (Local, Global, Team DB, etc.)
+ * 2. Connect to different databases dynamically
+ */
+export interface DataSource {
+  /** Unique identifier for this source (hash of connection string) */
+  readonly id: string;
+  /** Display name for the source */
+  readonly name: string;
+  /** Database connection string (file:// or postgresql://) */
+  readonly connectionString: string;
+  /** Resolved database path (for SQLite) */
+  readonly resolvedPath: string;
+  /** Source type for categorization */
+  readonly type: "local" | "global" | "remote";
+}
 
 /**
  * Represents a project with its ID, name, slug, and track directory
@@ -42,6 +64,16 @@ export interface Project {
   readonly gitRoot?: string;
   /** GitHub sync configuration (optional - only present if configured) */
   readonly githubSync?: GitHubIssueSyncConfig | null;
+  /** Data source ID this project belongs to */
+  readonly sourceId: string;
+}
+
+/**
+ * Projects grouped by data source for the UI.
+ */
+export interface ProjectsBySource {
+  readonly sources: DataSource[];
+  readonly projects: Project[];
 }
 
 /**
@@ -188,61 +220,183 @@ export interface WorkerData {
 }
 
 /**
- * MultiProjectService manages access to the global database
+ * Cached database connection with its repositories
+ */
+interface DatabaseConnection {
+  dbService: SqliteDataSource;
+  planRepository: SqlitePlanRepository;
+  taskRepository: SqliteTaskRepository;
+  projectRepository: SqliteProjectRepository;
+}
+
+/**
+ * Create a source ID from a connection string
+ */
+function createSourceId(connectionString: string): string {
+  // Use a simple hash of the connection string
+  let hash = 0;
+  for (let i = 0; i < connectionString.length; i++) {
+    const char = connectionString.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString(36);
+}
+
+/**
+ * Get the source type from a connection string
+ */
+function getSourceType(connectionString: string): "local" | "global" | "remote" {
+  if (connectionString.startsWith("postgresql://") || connectionString.startsWith("postgres://")) {
+    return "remote";
+  }
+  if (connectionString.startsWith("file:./") || connectionString.includes(".track/workflow.db")) {
+    return "local";
+  }
+  if (connectionString.startsWith("file:///")) {
+    return "global";
+  }
+  return "local";
+}
+
+/**
+ * Get a display name for a data source
+ */
+function getSourceName(connectionString: string, resolvedPath: string): string {
+  if (connectionString.startsWith("postgresql://") || connectionString.startsWith("postgres://")) {
+    // Extract host from URL
+    try {
+      const url = new URL(connectionString);
+      return `Remote: ${url.host}`;
+    } catch {
+      return "Remote Database";
+    }
+  }
+  if (connectionString.startsWith("file:./")) {
+    return "Local Database";
+  }
+  if (resolvedPath.includes("/.track/workflow.db")) {
+    return "Global Database";
+  }
+  return path.basename(resolvedPath);
+}
+
+/**
+ * MultiProjectService manages access to multiple databases
  * and provides aggregated views of issues and tasks across all projects.
+ *
+ * Key capabilities:
+ * - Scans config.json files in ~/.track/<slug>/ directories
+ * - Groups projects by database connection string
+ * - Connects to databases on demand (lazy connection)
+ * - Caches database connections for reuse
  */
 export class MultiProjectService {
+  /** Cache of database connections by resolved path */
+  private connections: Map<string, DatabaseConnection> = new Map();
+
+  /** Reference to global database service (for backwards compatibility) */
   private dbService: SqliteDataSource | null = null;
-  private planRepository: SqlitePlanRepository | null = null;
-  private taskRepository: SqliteTaskRepository | null = null;
-  private projectRepository: SqliteProjectRepository | null = null;
 
   constructor(private readonly globalTrackDir: string = resolveGlobalTrackDir()) {}
 
   /**
-   * Get the global database path
+   * Get the global database path (for backwards compatibility)
    */
   private getDatabasePath(): string {
     return getGlobalDatabasePath();
   }
 
   /**
-   * Initialize the database connection (lazy)
+   * Scan all config.json files and build data sources.
+   * This is the primary discovery mechanism.
+   */
+  async scanDataSources(): Promise<{ sources: DataSource[]; configs: ResolvedConfig[] }> {
+    const configs = await loadAllConfigs();
+
+    // Group by resolved database path
+    const sourcesByPath = new Map<string, { config: ResolvedConfig; connectionString: string }>();
+    for (const config of configs) {
+      if (!sourcesByPath.has(config.resolvedDatabase)) {
+        sourcesByPath.set(config.resolvedDatabase, {
+          config,
+          connectionString: config.database,
+        });
+      }
+    }
+
+    // Build data sources
+    const sources: DataSource[] = [];
+    for (const [resolvedPath, { connectionString }] of sourcesByPath) {
+      sources.push({
+        id: createSourceId(connectionString),
+        name: getSourceName(connectionString, resolvedPath),
+        connectionString,
+        resolvedPath,
+        type: getSourceType(connectionString),
+      });
+    }
+
+    // Sort: global first, then local, then remote
+    sources.sort((a, b) => {
+      const order = { global: 0, local: 1, remote: 2 };
+      return order[a.type] - order[b.type];
+    });
+
+    return { sources, configs };
+  }
+
+  /**
+   * Get a database connection for a specific path.
+   * Creates and caches the connection if it doesn't exist.
+   */
+  private async getConnection(dbPath: string): Promise<DatabaseConnection> {
+    // Check cache
+    const existing = this.connections.get(dbPath);
+    if (existing) {
+      return existing;
+    }
+
+    // Check if database exists
+    try {
+      await fs.access(dbPath);
+    } catch {
+      throw new Error(`Database not found at ${dbPath}. Run 'dev-workflow init' first.`);
+    }
+
+    // Create new connection
+    const dbService = await SqliteDataSource.create(dbPath);
+    dbService.runMigrations();
+    const db = dbService.getDb();
+
+    const connection: DatabaseConnection = {
+      dbService,
+      planRepository: new SqlitePlanRepository(db),
+      taskRepository: new SqliteTaskRepository(db),
+      projectRepository: new SqliteProjectRepository(db),
+    };
+
+    this.connections.set(dbPath, connection);
+    return connection;
+  }
+
+  /**
+   * Initialize the database connection (lazy) - for backwards compatibility.
+   * Uses the global database path.
    */
   private async ensureConnection(): Promise<{
     planRepository: SqlitePlanRepository;
     taskRepository: SqliteTaskRepository;
     projectRepository: SqliteProjectRepository;
   }> {
-    if (this.dbService && this.planRepository && this.taskRepository && this.projectRepository) {
-      return {
-        planRepository: this.planRepository,
-        taskRepository: this.taskRepository,
-        projectRepository: this.projectRepository,
-      };
-    }
-
     const dbPath = this.getDatabasePath();
-
-    // Check if database exists
-    try {
-      await fs.access(dbPath);
-    } catch {
-      throw new Error(`Global database not found at ${dbPath}. Run 'dev-workflow init' first.`);
-    }
-
-    this.dbService = await SqliteDataSource.create(dbPath);
-    // Run migrations to ensure schema is up to date
-    this.dbService.runMigrations();
-    const db = this.dbService.getDb();
-    this.planRepository = new SqlitePlanRepository(db);
-    this.taskRepository = new SqliteTaskRepository(db);
-    this.projectRepository = new SqliteProjectRepository(db);
-
+    const connection = await this.getConnection(dbPath);
+    // Keep reference to dbService for backwards compatibility
+    this.dbService = connection.dbService;
     return {
-      planRepository: this.planRepository,
-      taskRepository: this.taskRepository,
-      projectRepository: this.projectRepository,
+      planRepository: connection.planRepository,
+      taskRepository: connection.taskRepository,
+      projectRepository: connection.projectRepository,
     };
   }
 
@@ -265,11 +419,68 @@ export class MultiProjectService {
   }
 
   /**
-   * List all projects from the database
+   * List all projects grouped by data source.
+   *
+   * This is the primary method for the UI - scans config.json files to discover
+   * all projects and groups them by database connection.
+   */
+  async listProjectsBySource(): Promise<ProjectsBySource> {
+    const { sources, configs } = await this.scanDataSources();
+
+    // For each config, load project from its database
+    const projects: Project[] = [];
+
+    for (const config of configs) {
+      try {
+        const connection = await this.getConnection(config.resolvedDatabase);
+        const coreProject = connection.projectRepository.findBySlug(config.slug);
+
+        if (!coreProject) {
+          // Project exists in config but not in database - skip
+          continue;
+        }
+
+        // Compute track directory
+        const hash = coreProject.gitRootHash.slice(0, 6);
+        const trackDirName = `${coreProject.name}-${hash}`;
+        const trackDirectory = path.join(this.globalTrackDir, trackDirName);
+
+        // Find the source for this project
+        const sourceId = createSourceId(config.database);
+
+        projects.push({
+          id: coreProject.id,
+          name: coreProject.name,
+          slug: coreProject.slug,
+          trackDirectory,
+          gitRoot: config.gitRoot,
+          githubSync: coreProject.githubSync ?? null,
+          sourceId,
+        });
+      } catch {
+        // Database not accessible or project not found - skip
+      }
+    }
+
+    // Sort by name
+    projects.sort((a, b) => a.name.localeCompare(b.name));
+
+    return { sources, projects };
+  }
+
+  /**
+   * List all projects from the database (backwards compatible).
+   *
+   * Note: This uses the global database only. For multi-source support,
+   * use listProjectsBySource() instead.
    */
   async listProjects(): Promise<Project[]> {
     const { projectRepository } = await this.ensureConnection();
     const coreProjects = projectRepository.findAll();
+
+    // Get global source ID
+    const globalDbPath = this.getDatabasePath();
+    const globalSourceId = createSourceId(`file:///${globalDbPath}`);
 
     // Map core projects to UI projects with track directory and gitRoot
     const projects: Project[] = await Promise.all(
@@ -295,6 +506,7 @@ export class MultiProjectService {
           trackDirectory,
           gitRoot,
           githubSync: p.githubSync ?? null,
+          sourceId: globalSourceId,
         };
       })
     );
@@ -307,35 +519,54 @@ export class MultiProjectService {
    * Returns the project if found, null otherwise.
    */
   async findProject(slug: string): Promise<Project | null> {
-    const { projectRepository } = await this.ensureConnection();
-
-    const coreProject = projectRepository.findBySlug(slug);
-    if (!coreProject) {
-      return null;
-    }
-
-    // Build the full Project with trackDirectory and gitRoot
-    const hash = coreProject.gitRootHash.slice(0, 6);
-    const trackDirName = `${coreProject.name}-${hash}`;
-    const trackDirectory = path.join(this.globalTrackDir, trackDirName);
-
-    // Try to load gitRoot from config.json
-    let gitRoot: string | undefined;
+    // First try to find config for this slug
     try {
-      const config = await resolveConfig(coreProject.slug);
-      gitRoot = config.gitRoot;
-    } catch {
-      // Config doesn't exist yet, gitRoot will be undefined
-    }
+      const config = await resolveConfig(slug);
+      const connection = await this.getConnection(config.resolvedDatabase);
+      const coreProject = connection.projectRepository.findBySlug(slug);
 
-    return {
-      id: coreProject.id,
-      name: coreProject.name,
-      slug: coreProject.slug,
-      trackDirectory,
-      gitRoot,
-      githubSync: coreProject.githubSync ?? null,
-    };
+      if (!coreProject) {
+        return null;
+      }
+
+      // Build the full Project with trackDirectory and gitRoot
+      const hash = coreProject.gitRootHash.slice(0, 6);
+      const trackDirName = `${coreProject.name}-${hash}`;
+      const trackDirectory = path.join(this.globalTrackDir, trackDirName);
+
+      return {
+        id: coreProject.id,
+        name: coreProject.name,
+        slug: coreProject.slug,
+        trackDirectory,
+        gitRoot: config.gitRoot,
+        githubSync: coreProject.githubSync ?? null,
+        sourceId: createSourceId(config.database),
+      };
+    } catch {
+      // Config not found, try global database for backwards compatibility
+      const { projectRepository } = await this.ensureConnection();
+      const coreProject = projectRepository.findBySlug(slug);
+
+      if (!coreProject) {
+        return null;
+      }
+
+      const hash = coreProject.gitRootHash.slice(0, 6);
+      const trackDirName = `${coreProject.name}-${hash}`;
+      const trackDirectory = path.join(this.globalTrackDir, trackDirName);
+      const globalDbPath = this.getDatabasePath();
+
+      return {
+        id: coreProject.id,
+        name: coreProject.name,
+        slug: coreProject.slug,
+        trackDirectory,
+        gitRoot: undefined,
+        githubSync: coreProject.githubSync ?? null,
+        sourceId: createSourceId(`file:///${globalDbPath}`),
+      };
+    }
   }
 
   /**
@@ -901,15 +1132,15 @@ export class MultiProjectService {
   }
 
   /**
-   * Close the database connection
+   * Close all database connections
    */
   async close(): Promise<void> {
-    if (this.dbService) {
-      this.dbService.close();
-      this.dbService = null;
-      this.planRepository = null;
-      this.taskRepository = null;
+    // Close all cached connections
+    for (const connection of this.connections.values()) {
+      connection.dbService.close();
     }
+    this.connections.clear();
+    this.dbService = null;
   }
 }
 
