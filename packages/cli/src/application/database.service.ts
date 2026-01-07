@@ -7,10 +7,10 @@
 
 import {
   getGlobalDatabasePath,
-  SqliteDataSource,
+  DataSourceFactory,
   SqliteGlobalSettingsRepository,
-  NeonDataSource,
   type DatabaseConfig,
+  type SqliteDataSource,
 } from "@dev-workflow/core";
 
 /**
@@ -61,7 +61,7 @@ export class DatabaseConfigService {
     }
 
     const databasePath = getGlobalDatabasePath();
-    this.dbService = await SqliteDataSource.create(databasePath);
+    this.dbService = await DataSourceFactory.createSqlite(databasePath);
     this.dbService.runMigrations();
 
     const db = this.dbService.getDb();
@@ -190,13 +190,13 @@ export class DatabaseConfigService {
     try {
       if (detectedProvider === "neon") {
         // Test Neon connection
-        const neonDs = await NeonDataSource.create(connectionString);
+        const neonDs = await DataSourceFactory.createNeon(connectionString);
         // Neon's create method validates the connection by running a simple query
         neonDs.close();
         return { success: true, provider: "neon" };
       } else {
         // For SQLite, just check file accessibility
-        const sqliteDs = await SqliteDataSource.create(connectionString);
+        const sqliteDs = await DataSourceFactory.createSqlite(connectionString);
         sqliteDs.close();
         return { success: true, provider: "sqlite" };
       }

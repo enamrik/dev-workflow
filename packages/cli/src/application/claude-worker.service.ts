@@ -8,13 +8,14 @@
 import { spawn, ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
-  SqliteDataSource,
+  DataSourceFactory,
   SqliteWorkerRepository,
   SqliteDispatchQueueRepository,
   SqliteTaskRepository,
   SqlitePlanRepository,
   getGlobalDatabasePath,
   type WorkerStatus,
+  type SqliteDataSource,
   issues,
   sql,
 } from "@dev-workflow/core";
@@ -98,7 +99,7 @@ export class ClaudeWorkerService {
    */
   async initialize(): Promise<void> {
     const dbPath = getGlobalDatabasePath();
-    this.dbService = await SqliteDataSource.create(dbPath);
+    this.dbService = await DataSourceFactory.createSqlite(dbPath);
     const db = this.dbService.getDb();
 
     this.workerRepository = new SqliteWorkerRepository(db);

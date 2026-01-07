@@ -17,7 +17,7 @@ import { NodeFileSystem } from "./infrastructure/file-system.js";
 import {
   TrackDirectoryResolver,
   createTrackDirectoryResolver,
-  SqliteDataSource,
+  DataSourceFactory,
   SqliteWorkerRepository,
   SqliteDispatchQueueRepository,
   getGlobalDatabasePath,
@@ -846,7 +846,7 @@ async function runWorkers(): Promise<void> {
     process.exit(1);
   }
 
-  const dbService = await SqliteDataSource.create(dbPath);
+  const dbService = await DataSourceFactory.createSqlite(dbPath);
   const db = dbService.getDb();
   const workerRepository = new SqliteWorkerRepository(db);
   const dispatchQueueRepository = new SqliteDispatchQueueRepository(db);
