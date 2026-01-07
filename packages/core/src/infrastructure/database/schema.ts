@@ -393,6 +393,7 @@ export interface GitHubIssueSyncConfig {
   projectUrl?: string; // GitHub Project URL for linking (e.g., https://github.com/orgs/org/projects/1)
   labels?: GitHubLabelsConfig;
   columnMapping?: StatusColumnMapping; // Custom status-to-column mapping
+  assignee?: string; // GitHub username to auto-assign issues when task enters IN_PROGRESS
 }
 
 /**

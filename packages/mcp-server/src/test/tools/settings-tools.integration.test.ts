@@ -284,4 +284,197 @@ describe("update_settings - get_settings", () => {
     expect(content.github.columnMapping.custom).toBeUndefined();
     expect(content.github.columnMapping.isDefault).toBe(true);
   });
+
+  it("should include assignee in get_settings response when configured", async () => {
+    // Arrange
+    const ctx = createSettingsToolContext(testDb);
+    await handleUpdateSettings(ctx, {
+      action: "enable_github",
+      github: { assignee: "testuser" },
+    });
+
+    // Act
+    const result = await handleUpdateSettings(ctx, {
+      action: "get_settings",
+    });
+
+    // Assert
+    expect(result.isError).toBeFalsy();
+    const content = JSON.parse(result.content[0].text);
+    expect(content.github.assignee).toBe("testuser");
+    expect(content.github.syncIssues.assignee).toBe("testuser");
+  });
+
+  it("should show null assignee when not configured", async () => {
+    // Arrange
+    const ctx = createSettingsToolContext(testDb);
+    await handleUpdateSettings(ctx, { action: "enable_github" });
+
+    // Act
+    const result = await handleUpdateSettings(ctx, {
+      action: "get_settings",
+    });
+
+    // Assert
+    expect(result.isError).toBeFalsy();
+    const content = JSON.parse(result.content[0].text);
+    expect(content.github.assignee).toBeNull();
+  });
+});
+
+describe("update_settings - assignee configuration", () => {
+  let testDb: TestDatabase;
+
+  beforeEach(() => {
+    testDb = createTestDatabase();
+  });
+
+  describe("enable_github with assignee", () => {
+    it("should store assignee when provided with enable_github", async () => {
+      // Arrange
+      const ctx = createSettingsToolContext(testDb);
+
+      // Act
+      const result = await handleUpdateSettings(ctx, {
+        action: "enable_github",
+        github: { assignee: "octocat" },
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.config.syncIssues.assignee).toBe("octocat");
+
+      // Verify persisted in database
+      const project = ctx.projectRepository.findById(ctx.project.id);
+      expect(project?.githubSync?.assignee).toBe("octocat");
+    });
+
+    it("should reject assignee with @ prefix", async () => {
+      // Arrange
+      const ctx = createSettingsToolContext(testDb);
+
+      // Act
+      const result = await handleUpdateSettings(ctx, {
+        action: "enable_github",
+        github: { assignee: "@octocat" },
+      });
+
+      // Assert
+      expect(result.isError).toBe(true);
+      const content = JSON.parse(result.content[0].text);
+      expect(content.error).toContain("should not include @ prefix");
+    });
+
+    it("should reject invalid username format", async () => {
+      // Arrange
+      const ctx = createSettingsToolContext(testDb);
+
+      // Act
+      const result = await handleUpdateSettings(ctx, {
+        action: "enable_github",
+        github: { assignee: "user--name" }, // consecutive hyphens
+      });
+
+      // Assert
+      expect(result.isError).toBe(true);
+      const content = JSON.parse(result.content[0].text);
+      expect(content.error).toContain("Invalid GitHub username format");
+    });
+
+    it("should accept valid usernames with hyphens", async () => {
+      // Arrange
+      const ctx = createSettingsToolContext(testDb);
+
+      // Act
+      const result = await handleUpdateSettings(ctx, {
+        action: "enable_github",
+        github: { assignee: "my-username-123" },
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.config.syncIssues.assignee).toBe("my-username-123");
+    });
+  });
+
+  describe("configure_github with assignee", () => {
+    let ctx: SettingsToolContext;
+
+    beforeEach(async () => {
+      ctx = createSettingsToolContext(testDb);
+      // Enable GitHub sync first
+      await handleUpdateSettings(ctx, { action: "enable_github" });
+    });
+
+    it("should update assignee via configure_github", async () => {
+      // Act
+      const result = await handleUpdateSettings(ctx, {
+        action: "configure_github",
+        github: { assignee: "newuser" },
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.config.syncIssues.assignee).toBe("newuser");
+    });
+
+    it("should clear assignee when empty string provided", async () => {
+      // Arrange - first set an assignee
+      await handleUpdateSettings(ctx, {
+        action: "configure_github",
+        github: { assignee: "existinguser" },
+      });
+
+      // Act - clear with empty string
+      const result = await handleUpdateSettings(ctx, {
+        action: "configure_github",
+        github: { assignee: "" },
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.config.syncIssues.assignee).toBeUndefined();
+
+      // Verify in database
+      const project = ctx.projectRepository.findById(ctx.project.id);
+      expect(project?.githubSync?.assignee).toBeUndefined();
+    });
+
+    it("should preserve assignee when not provided in configure_github", async () => {
+      // Arrange - first set an assignee
+      await handleUpdateSettings(ctx, {
+        action: "configure_github",
+        github: { assignee: "existinguser" },
+      });
+
+      // Act - update something else, don't provide assignee
+      await handleUpdateSettings(ctx, {
+        action: "configure_column_mapping",
+        github: { columnMapping: { PR_REVIEW: "Review" } },
+      });
+
+      // Assert - assignee should still be there
+      const project = ctx.projectRepository.findById(ctx.project.id);
+      expect(project?.githubSync?.assignee).toBe("existinguser");
+    });
+
+    it("should reject assignee with @ prefix via configure_github", async () => {
+      // Act
+      const result = await handleUpdateSettings(ctx, {
+        action: "configure_github",
+        github: { assignee: "@baduser" },
+      });
+
+      // Assert
+      expect(result.isError).toBe(true);
+      const content = JSON.parse(result.content[0].text);
+      expect(content.error).toContain("should not include @ prefix");
+    });
+  });
 });
