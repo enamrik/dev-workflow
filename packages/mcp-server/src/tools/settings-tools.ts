@@ -57,7 +57,7 @@ export const settingsToolDefinitions: ToolDefinition[] = [
             "enable_github enables GitHub issue sync with validation, " +
             "disable_github disables issue sync, " +
             "configure_github updates labels/projectId config, " +
-            "configure_column_mapping updates status-to-column mapping for GitHub Projects, " +
+            "configure_column_mapping updates status-to-column mapping for project boards, " +
             "list_available_labels returns available label fields from the project management provider",
         },
         github: {
@@ -106,7 +106,7 @@ export const settingsToolDefinitions: ToolDefinition[] = [
                 ABANDONED: { type: "string" },
               },
               description:
-                "Maps task statuses to GitHub Project column names. " +
+                "Maps task statuses to project board column names. " +
                 "Only specify the statuses you want to override. " +
                 "Default: BACKLOG→Backlog, READY→Ready, IN_PROGRESS→In Progress, " +
                 "PR_REVIEW→In Review, COMPLETED→Done, ABANDONED→Done",
@@ -504,9 +504,9 @@ async function handleConfigureGitHub(
 }
 
 /**
- * Configure status-to-column mapping for GitHub Projects
+ * Configure status-to-column mapping for project boards
  *
- * Allows teams to customize which GitHub Project columns correspond to each
+ * Allows teams to customize which project board columns correspond to each
  * task status. For example, teams might use different column names than
  * our defaults ("In Review" vs "PR Review", "Backlog" vs "To Do", etc.)
  */
@@ -597,7 +597,8 @@ async function handleConfigureColumnMapping(
  * List available labels from the project management provider
  *
  * Returns the available label fields that can be set on issues and tasks.
- * For GitHub Projects, this returns custom fields (excluding Status).
+ * The available labels depend on the configured project management provider
+ * (e.g., custom fields for GitHub Projects, excluding Status).
  * Each label includes its name and valid values (if constrained).
  *
  * Use this to discover what labels are available before setting them
