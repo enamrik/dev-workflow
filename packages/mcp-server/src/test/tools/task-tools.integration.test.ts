@@ -80,6 +80,7 @@ function createMockProvider(calls?: MockProviderCalls): ProjectManagementProvide
     getProjectFields: async () => [],
     setProjectItemField: async () => ({ success: true }),
     clearProjectItemField: async () => ({ success: true }),
+    getAvailableLabels: async () => ({ supported: true, labels: [] }),
     linkParentChild: async () => {},
     addComment: async () => {},
     assignIssue: async (issueRef: string, assignee: string) => {

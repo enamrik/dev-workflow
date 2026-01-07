@@ -479,7 +479,7 @@ describe("update_settings - assignee configuration", () => {
   });
 });
 
-describe("update_settings - list_project_fields", () => {
+describe("update_settings - list_available_labels", () => {
   let testDb: TestDatabase;
 
   beforeEach(() => {
@@ -492,7 +492,7 @@ describe("update_settings - list_project_fields", () => {
 
     // Act
     const result = await handleUpdateSettings(ctx, {
-      action: "list_project_fields",
+      action: "list_available_labels",
     });
 
     // Assert
@@ -501,23 +501,7 @@ describe("update_settings - list_project_fields", () => {
     expect(content.error).toContain("GitHub issue sync is not enabled");
   });
 
-  it("should return error when no projectId is configured", async () => {
-    // Arrange
-    const ctx = createSettingsToolContext(testDb);
-    await handleUpdateSettings(ctx, { action: "enable_github" });
-
-    // Act
-    const result = await handleUpdateSettings(ctx, {
-      action: "list_project_fields",
-    });
-
-    // Assert
-    expect(result.isError).toBe(true);
-    const content = JSON.parse(result.content[0].text);
-    expect(content.error).toContain("No GitHub Project configured");
-  });
-
-  it("should return fields from GitHub Project", async () => {
+  it("should return labels from GitHub Project (excluding Status)", async () => {
     // Arrange
     const mockGitHubCLI = new MockGitHubCLI({
       projectFields: [
@@ -531,7 +515,10 @@ describe("update_settings - list_project_fields", () => {
           id: "PVTF_2",
           name: "Product",
           type: "SINGLE_SELECT" as const,
-          options: [{ id: "opt2", name: "Case Workflow" }],
+          options: [
+            { id: "opt2", name: "Case Workflow" },
+            { id: "opt3", name: "Web Platform" },
+          ],
         },
         { id: "PVTF_3", name: "Notes", type: "TEXT" as const },
       ],
@@ -546,166 +533,44 @@ describe("update_settings - list_project_fields", () => {
 
     // Act
     const result = await handleUpdateSettings(ctx, {
-      action: "list_project_fields",
+      action: "list_available_labels",
     });
 
     // Assert
     expect(result.isError).toBeFalsy();
     const content = JSON.parse(result.content[0].text);
     expect(content.success).toBe(true);
-    expect(content.projectId).toBe("PVT_test123");
-    expect(content.fields).toHaveLength(3);
-    expect(content.fields[0]).toEqual({
-      id: "PVTF_1",
-      name: "Status",
-      type: "SINGLE_SELECT",
-      options: [{ id: "opt1", name: "Done" }],
+    expect(content.supported).toBe(true);
+    // Status field should be excluded
+    expect(content.labels).toHaveLength(2);
+    // Product should have constrained values
+    expect(content.labels[0]).toEqual({
+      name: "Product",
+      validValues: ["Case Workflow", "Web Platform"],
     });
-    expect(content.fields[2]).toEqual({
-      id: "PVTF_3",
+    // Notes (TEXT field) should allow any value
+    expect(content.labels[1]).toEqual({
       name: "Notes",
-      type: "TEXT",
-      options: undefined,
+      validValues: null,
     });
   });
-});
 
-describe("update_settings - configure_label_mapping", () => {
-  let testDb: TestDatabase;
-
-  beforeEach(() => {
-    testDb = createTestDatabase();
-  });
-
-  it("should return error when GitHub sync is not enabled", async () => {
+  it("should return not supported when no projectId is configured", async () => {
     // Arrange
     const ctx = createSettingsToolContext(testDb);
+    await handleUpdateSettings(ctx, { action: "enable_github" });
 
     // Act
     const result = await handleUpdateSettings(ctx, {
-      action: "configure_label_mapping",
-      labelFieldMapping: { product: "PVTF_abc" },
+      action: "list_available_labels",
     });
 
     // Assert
-    expect(result.isError).toBe(true);
+    expect(result.isError).toBeFalsy();
     const content = JSON.parse(result.content[0].text);
-    expect(content.error).toContain("GitHub issue sync is not enabled");
-  });
-
-  describe("when GitHub sync is enabled", () => {
-    let ctx: SettingsToolContext;
-
-    beforeEach(async () => {
-      ctx = createSettingsToolContext(testDb);
-      await handleUpdateSettings(ctx, { action: "enable_github" });
-    });
-
-    it("should return null when no mapping exists", async () => {
-      // Act
-      const result = await handleUpdateSettings(ctx, {
-        action: "configure_label_mapping",
-      });
-
-      // Assert
-      expect(result.isError).toBeFalsy();
-      const content = JSON.parse(result.content[0].text);
-      expect(content.success).toBe(true);
-      expect(content.message).toBe("Current label field mapping");
-      expect(content.labelFieldMapping).toBeNull();
-      expect(content.hasMapping).toBe(false);
-    });
-
-    it("should set label field mapping", async () => {
-      // Act
-      const result = await handleUpdateSettings(ctx, {
-        action: "configure_label_mapping",
-        labelFieldMapping: { product: "PVTF_product", team: "PVTF_team" },
-      });
-
-      // Assert
-      expect(result.isError).toBeFalsy();
-      const content = JSON.parse(result.content[0].text);
-      expect(content.success).toBe(true);
-      expect(content.message).toBe("Label field mapping updated");
-      expect(content.labelFieldMapping).toEqual({
-        product: "PVTF_product",
-        team: "PVTF_team",
-      });
-    });
-
-    it("should merge with existing mapping", async () => {
-      // Arrange - set initial mapping
-      await handleUpdateSettings(ctx, {
-        action: "configure_label_mapping",
-        labelFieldMapping: { product: "PVTF_product" },
-      });
-
-      // Act - add another mapping
-      const result = await handleUpdateSettings(ctx, {
-        action: "configure_label_mapping",
-        labelFieldMapping: { team: "PVTF_team" },
-      });
-
-      // Assert - both mappings should exist
-      expect(result.isError).toBeFalsy();
-      const content = JSON.parse(result.content[0].text);
-      expect(content.labelFieldMapping).toEqual({
-        product: "PVTF_product",
-        team: "PVTF_team",
-      });
-    });
-
-    it("should override existing mapping for same key", async () => {
-      // Arrange - set initial mapping
-      await handleUpdateSettings(ctx, {
-        action: "configure_label_mapping",
-        labelFieldMapping: { product: "PVTF_old" },
-      });
-
-      // Act - override the mapping
-      const result = await handleUpdateSettings(ctx, {
-        action: "configure_label_mapping",
-        labelFieldMapping: { product: "PVTF_new" },
-      });
-
-      // Assert
-      expect(result.isError).toBeFalsy();
-      const content = JSON.parse(result.content[0].text);
-      expect(content.labelFieldMapping).toEqual({ product: "PVTF_new" });
-    });
-
-    it("should reset label field mapping", async () => {
-      // Arrange - set some mappings
-      await handleUpdateSettings(ctx, {
-        action: "configure_label_mapping",
-        labelFieldMapping: { product: "PVTF_product", team: "PVTF_team" },
-      });
-
-      // Act - reset
-      const result = await handleUpdateSettings(ctx, {
-        action: "configure_label_mapping",
-        resetLabelFieldMapping: true,
-      });
-
-      // Assert
-      expect(result.isError).toBeFalsy();
-      const content = JSON.parse(result.content[0].text);
-      expect(content.success).toBe(true);
-      expect(content.message).toBe("Label field mapping cleared");
-      expect(content.labelFieldMapping).toBeNull();
-    });
-
-    it("should persist label field mapping in database", async () => {
-      // Act
-      await handleUpdateSettings(ctx, {
-        action: "configure_label_mapping",
-        labelFieldMapping: { product: "PVTF_product" },
-      });
-
-      // Assert - verify persisted in database
-      const project = ctx.projectRepository.findById(ctx.project.id);
-      expect(project?.githubSync?.labelFieldMapping).toEqual({ product: "PVTF_product" });
-    });
+    expect(content.success).toBe(true);
+    expect(content.supported).toBe(false);
+    expect(content.labels).toEqual([]);
+    expect(content.message).toContain("No project configured");
   });
 });

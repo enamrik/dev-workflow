@@ -25,6 +25,8 @@ import type {
   ProjectField,
   ProjectFieldType,
   SetFieldResult,
+  AvailableLabel,
+  AvailableLabelsResult,
 } from "../../domain/project-management-provider.js";
 import { ProjectManagementProviderError } from "../../domain/project-management-provider.js";
 import type { GitHubCLI } from "../github/github-cli.js";
@@ -573,6 +575,48 @@ export class GitHubProjectManagementProvider implements ProjectManagementProvide
     } catch (error) {
       return {
         success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  // ===========================================================================
+  // Labels
+  // ===========================================================================
+
+  async getAvailableLabels(projectId?: string): Promise<AvailableLabelsResult> {
+    // If no projectId provided, labels are not supported
+    if (!projectId) {
+      return {
+        supported: false,
+        labels: [],
+        error: "No project configured - labels require a GitHub Project",
+      };
+    }
+
+    try {
+      const fields = await this.getProjectFields(projectId);
+
+      // Convert project fields to available labels
+      // Exclude Status field (handled specially for column mapping)
+      const labels: AvailableLabel[] = fields
+        .filter((field) => field.name.toLowerCase() !== "status")
+        .map((field) => ({
+          name: field.name,
+          validValues:
+            field.type === "SINGLE_SELECT" && field.options
+              ? field.options.map((o) => o.name)
+              : null, // null means any value is allowed (TEXT, NUMBER, etc.)
+        }));
+
+      return {
+        supported: true,
+        labels,
+      };
+    } catch (error) {
+      return {
+        supported: true, // GitHub Projects does support labels
+        labels: [],
         error: error instanceof Error ? error.message : String(error),
       };
     }

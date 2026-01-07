@@ -15,8 +15,78 @@ import {
   type ConflictDetectionService,
   type ConflictWarning,
   type TaskGitHubSyncService,
+  type ProviderRegistry,
+  type Project,
+  type ProjectRepository,
+  type GitHubCLI,
+  type AvailableLabel,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
+
+/**
+ * Validate labels against available labels from the project management provider.
+ *
+ * Returns an error message if validation fails, or null if valid.
+ * Gracefully degrades if provider is not available (returns null = valid).
+ */
+async function validateLabels(
+  labels: Record<string, string | null>,
+  ctx: TaskToolContext
+): Promise<string | null> {
+  // Skip validation if provider context is not available
+  if (!ctx.providerRegistry || !ctx.project || !ctx.projectRepository || !ctx.githubCLI) {
+    return null; // Graceful degradation - no validation
+  }
+
+  // Re-fetch project to get latest config
+  const project = ctx.projectRepository.findById(ctx.project.id);
+  if (!project?.githubSync?.enabled) {
+    return null; // No provider configured - no validation needed
+  }
+
+  // Get available labels from provider
+  const provider = ctx.providerRegistry.createProvider(project.githubSync, {
+    githubCLI: ctx.githubCLI,
+  });
+
+  const result = await provider.getAvailableLabels(project.githubSync.projectId);
+
+  if (!result.supported || result.error) {
+    return null; // Provider doesn't support labels or errored - no validation
+  }
+
+  // Build lookup map for efficient validation
+  const availableLabelsMap = new Map<string, AvailableLabel>();
+  for (const label of result.labels) {
+    availableLabelsMap.set(label.name.toLowerCase(), label);
+  }
+
+  // Validate each label being set (ignore null values - those are removals)
+  const errors: string[] = [];
+  for (const [name, value] of Object.entries(labels)) {
+    if (value === null) continue; // Removal - no validation needed
+
+    const availableLabel = availableLabelsMap.get(name.toLowerCase());
+
+    if (!availableLabel) {
+      const availableNames = result.labels.map((l) => l.name).join(", ");
+      errors.push(`Unknown label "${name}". Available labels: ${availableNames}`);
+      continue;
+    }
+
+    // Check if value is valid (if label has constrained values)
+    if (availableLabel.validValues !== null && value !== "") {
+      const validValuesLower = availableLabel.validValues.map((v) => v.toLowerCase());
+      if (!validValuesLower.includes(value.toLowerCase())) {
+        errors.push(
+          `Invalid value "${value}" for label "${name}". Valid values: ${availableLabel.validValues.join(", ")}`
+        );
+      }
+    }
+  }
+
+  return errors.length > 0 ? errors.join("; ") : null;
+}
 
 /**
  * Tool definitions for task operations
@@ -272,6 +342,11 @@ export interface TaskToolContext {
   conflictDetectionService?: ConflictDetectionService;
   /** Optional - for syncing task status changes to GitHub */
   taskGitHubSyncService?: TaskGitHubSyncService;
+  /** Optional - for label validation against project management provider */
+  providerRegistry?: ProviderRegistry;
+  project?: Project;
+  projectRepository?: ProjectRepository;
+  githubCLI?: GitHubCLI;
 }
 
 /**
@@ -607,8 +682,9 @@ export function handleDeleteTask(ctx: TaskToolContext, args: { taskId: string })
  *
  * Supports updating task properties including labels.
  * Labels are merged with existing labels - to remove a label, set its value to null.
+ * Labels are validated against the available labels from the project management provider.
  */
-export function handleUpdateTask(
+export async function handleUpdateTask(
   ctx: TaskToolContext,
   args: {
     taskId: string;
@@ -619,7 +695,7 @@ export function handleUpdateTask(
     estimatedMinutes?: number;
     labels?: Record<string, string | null>;
   }
-): ToolResponse {
+): Promise<ToolResponse> {
   const {
     taskId,
     title,
@@ -643,8 +719,14 @@ export function handleUpdateTask(
   if (contextInstructions !== undefined) updates.contextInstructions = contextInstructions;
   if (estimatedMinutes !== undefined) updates.estimatedMinutes = estimatedMinutes;
 
-  // Handle labels - merge with existing, null values remove labels
+  // Handle labels - validate and merge with existing, null values remove labels
   if (labels !== undefined) {
+    // Validate labels against available labels from provider
+    const validationError = await validateLabels(labels, ctx);
+    if (validationError) {
+      return errorResponse(`Label validation failed: ${validationError}`);
+    }
+
     const currentLabels = task.labels ?? {};
     const mergedLabels: Record<string, string> = { ...currentLabels };
 

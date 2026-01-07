@@ -237,6 +237,37 @@ export interface ProjectStatusField {
 export type ProjectFieldType = "TEXT" | "NUMBER" | "DATE" | "SINGLE_SELECT" | "ITERATION" | "OTHER";
 
 /**
+ * Available label definition
+ *
+ * Describes a label that can be applied to issues/tasks.
+ */
+export interface AvailableLabel {
+  /** Label name (e.g., "product", "team", "urgent") */
+  readonly name: string;
+
+  /**
+   * Valid values for this label.
+   * - null: Any string value is allowed (free-form text)
+   * - string[]: Only these specific values are valid (single-select)
+   */
+  readonly validValues: string[] | null;
+}
+
+/**
+ * Result of getting available labels
+ */
+export interface AvailableLabelsResult {
+  /** Whether the provider supports labels */
+  readonly supported: boolean;
+
+  /** Available labels (empty if not supported or not configured) */
+  readonly labels: AvailableLabel[];
+
+  /** Error message if labels could not be retrieved */
+  readonly error?: string;
+}
+
+/**
  * Option for single-select fields
  */
 export interface ProjectFieldOption {
@@ -478,6 +509,25 @@ export interface ProjectManagementProvider {
     itemId: string,
     fieldId: string
   ): Promise<SetFieldResult>;
+
+  // ===========================================================================
+  // Labels
+  // ===========================================================================
+
+  /**
+   * Get available labels for issues and tasks
+   *
+   * Returns labels that can be applied to issues/tasks in this provider.
+   * For GitHub: Returns project custom fields (excluding Status).
+   * For Jira: Returns custom fields configured for the project.
+   *
+   * The provider handles field ID resolution internally - callers only
+   * work with human-readable label names and values.
+   *
+   * @param projectId - Project/board identifier (optional if not applicable)
+   * @returns Available labels with their valid values
+   */
+  getAvailableLabels(projectId?: string): Promise<AvailableLabelsResult>;
 
   // ===========================================================================
   // Hierarchical Issues (Parent-Child Linking)

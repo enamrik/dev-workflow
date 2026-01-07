@@ -296,7 +296,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
       return handleDeleteTask(taskToolContext, a);
     }
     if (name === "update_task") {
-      return handleUpdateTask(taskToolContext, a);
+      return await handleUpdateTask(taskToolContext, a);
     }
     if (name === "get_task_execution_prompt") {
       return handleGetTaskExecutionPrompt(taskToolContext, a);
@@ -602,6 +602,11 @@ async function main() {
     taskExecutionLogsSchema: taskExecutionLogs,
     conflictDetectionService,
     taskGitHubSyncService,
+    // For label validation
+    providerRegistry,
+    project,
+    projectRepository,
+    githubCLI,
   };
 
   snapshotToolContext = {
