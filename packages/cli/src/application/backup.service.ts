@@ -7,7 +7,7 @@
 
 import {
   getGlobalDatabasePath,
-  SqliteDataSource,
+  DataSourceFactory,
   SqliteGlobalSettingsRepository,
   BackupService,
   S3BackupProvider,
@@ -18,6 +18,7 @@ import {
   type RestoreResult,
   type ValidationResult,
   type CreateBucketResult,
+  type SqliteDataSource,
 } from "@dev-workflow/core";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -56,7 +57,7 @@ export class BackupConfigService {
     }
 
     const databasePath = getGlobalDatabasePath();
-    this.dbService = await SqliteDataSource.create(databasePath);
+    this.dbService = await DataSourceFactory.createSqlite(databasePath);
     this.dbService.runMigrations();
 
     const db = this.dbService.getDb();

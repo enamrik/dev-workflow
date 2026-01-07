@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
   TrackDirectoryResolver,
-  SqliteDataSource,
+  DataSourceFactory,
   SqliteProjectRepository,
   ProjectService,
   NodeGitOperations,
@@ -55,7 +55,7 @@ export class UpdateService {
    */
   async registerProject(): Promise<Project> {
     const dbPath = this.resolver.getDatabasePath();
-    const dbService = await SqliteDataSource.create(dbPath);
+    const dbService = await DataSourceFactory.createSqlite(dbPath);
 
     try {
       const projectRepo = new SqliteProjectRepository(dbService.getDb());
@@ -100,7 +100,7 @@ export class UpdateService {
       return { migrated: 0, oldProjectId };
     }
 
-    const dbService = await SqliteDataSource.create(dbPath);
+    const dbService = await DataSourceFactory.createSqlite(dbPath);
 
     try {
       const db = dbService.getDb();
@@ -298,10 +298,8 @@ export class UpdateService {
         throw new UpdateError("Database not found. Run 'dev-workflow init' first.");
       }
 
-      // Import and run migrations with automatic native/WASM detection
-      const { SqliteDataSource } = await import("@dev-workflow/core");
-
-      const dbService = await SqliteDataSource.create(dbPath);
+      // Run migrations with automatic native/WASM detection
+      const dbService = await DataSourceFactory.createSqlite(dbPath);
       dbService.runMigrations();
       dbService.close();
     } catch (error) {

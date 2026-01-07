@@ -14,7 +14,8 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 
 // Import everything from core
 import {
-  SqliteDataSource,
+  DataSourceFactory,
+  type SqliteDataSource,
   SqliteIssueRepository,
   SqliteSnapshotRepository,
   SqlitePlanRepository,
@@ -424,7 +425,7 @@ async function main() {
 
   // Initialize database with automatic native/WASM detection
   // Migrations are run during `dev-workflow init` and `dev-workflow update`, not on server startup
-  dbService = await SqliteDataSource.create(databasePath);
+  dbService = await DataSourceFactory.createSqlite(databasePath);
 
   // Initialize repositories with project scoping
   const db = dbService.getDb();

@@ -4,7 +4,6 @@ import { FileSystem } from "../infrastructure/file-system.js";
 import {
   TrackDirectoryResolver,
   DataSourceFactory,
-  SqliteDataSource,
   SqliteProjectRepository,
   ProjectService,
   NodeGitOperations,
@@ -65,7 +64,6 @@ export class InstallService {
   async registerProject(): Promise<Project> {
     const connectionString = this.getResolvedConnectionString();
 
-    // TODO: Support PostgreSQL when repository abstraction is complete
     if (DataSourceFactory.isRemote(connectionString)) {
       throw new InstallError(
         "Remote database support for project registration is not yet implemented. " +
@@ -73,7 +71,7 @@ export class InstallService {
       );
     }
 
-    const dbService = await SqliteDataSource.create(connectionString);
+    const dbService = await DataSourceFactory.createSqlite(connectionString);
 
     try {
       const projectRepo = new SqliteProjectRepository(dbService.getDb());
@@ -228,7 +226,6 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
     try {
       const connectionString = this.getResolvedConnectionString();
 
-      // TODO: Support PostgreSQL when repository abstraction is complete
       if (DataSourceFactory.isRemote(connectionString)) {
         throw new InstallError(
           "Remote database initialization is not yet implemented. " +
@@ -241,7 +238,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
       await this.fileSystem.mkdir(dbDir, { recursive: true });
 
       // Create database and run migrations
-      const dbService = await SqliteDataSource.create(connectionString);
+      const dbService = await DataSourceFactory.createSqlite(connectionString);
       dbService.runMigrations();
       dbService.close();
     } catch (error) {
@@ -355,9 +352,8 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
   async findExistingProject(): Promise<Project | null> {
     const connectionString = this.getResolvedConnectionString();
 
-    // TODO: Support PostgreSQL when repository abstraction is complete
     if (DataSourceFactory.isRemote(connectionString)) {
-      // Can't check remote database yet
+      // Remote database check not yet implemented
       return null;
     }
 
@@ -367,7 +363,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
       return null;
     }
 
-    const dbService = await SqliteDataSource.create(connectionString);
+    const dbService = await DataSourceFactory.createSqlite(connectionString);
 
     try {
       // Run migrations first to ensure schema is up to date

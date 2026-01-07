@@ -1,7 +1,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
-  SqliteDataSource,
+  DataSourceFactory,
+  type SqliteDataSource,
   SqliteIssueRepository,
   SqlitePlanRepository,
   SqliteTaskRepository,
@@ -365,7 +366,7 @@ export class MultiProjectService {
     }
 
     // Create new connection
-    const dbService = await SqliteDataSource.create(dbPath);
+    const dbService = await DataSourceFactory.createSqlite(dbPath);
     dbService.runMigrations();
     const db = dbService.getDb();
 
