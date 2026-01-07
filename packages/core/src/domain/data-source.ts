@@ -18,6 +18,12 @@ import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import type * as sqliteSchema from "../infrastructure/database/schema.js";
 import type * as pgSchema from "../infrastructure/database/schema-pg.js";
+import type { ProjectRepository } from "./project.js";
+import type { IssueRepository } from "./issue.js";
+import type { PlanRepository } from "./plan.js";
+import type { TaskRepository } from "./task.js";
+import type { MilestoneRepository } from "./milestone.js";
+import type { SnapshotRepository } from "./snapshot.js";
 
 // =============================================================================
 // Database Types
@@ -191,6 +197,53 @@ export interface DataSourceProvider {
    * Sensitive information (passwords) should be masked.
    */
   getConnectionInfo(): ConnectionInfo;
+
+  // ===========================================================================
+  // Repository Factory Methods
+  // ===========================================================================
+
+  /**
+   * Get the ProjectRepository instance for this data source.
+   *
+   * ProjectRepository is NOT scoped to a project since it manages projects themselves.
+   * The instance is cached and reused across calls.
+   */
+  getProjectRepository(): ProjectRepository;
+
+  /**
+   * Create an IssueRepository scoped to a specific project.
+   *
+   * @param projectId - Project UUID to scope the repository to
+   */
+  createIssueRepository(projectId: string): IssueRepository;
+
+  /**
+   * Create a PlanRepository scoped to a specific project.
+   *
+   * @param projectId - Project UUID to scope the repository to
+   */
+  createPlanRepository(projectId: string): PlanRepository;
+
+  /**
+   * Create a TaskRepository scoped to a specific project.
+   *
+   * @param projectId - Project UUID to scope the repository to
+   */
+  createTaskRepository(projectId: string): TaskRepository;
+
+  /**
+   * Create a MilestoneRepository scoped to a specific project.
+   *
+   * @param projectId - Project UUID to scope the repository to
+   */
+  createMilestoneRepository(projectId: string): MilestoneRepository;
+
+  /**
+   * Create a SnapshotRepository scoped to a specific project.
+   *
+   * @param projectId - Project UUID to scope the repository to
+   */
+  createSnapshotRepository(projectId: string): SnapshotRepository;
 }
 
 // =============================================================================

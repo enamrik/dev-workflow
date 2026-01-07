@@ -22,8 +22,8 @@ describe("SqliteProjectRepository", () => {
   });
 
   describe("create", () => {
-    it("should create a project with all fields", () => {
-      const project = repos.projectRepository.create({
+    it("should create a project with all fields", async () => {
+      const project = await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
       });
@@ -39,8 +39,8 @@ describe("SqliteProjectRepository", () => {
       expect(project.updatedAt).toBeDefined();
     });
 
-    it("should generate a URL-safe slug from name and hash", () => {
-      const project = repos.projectRepository.create({
+    it("should generate a URL-safe slug from name and hash", async () => {
+      const project = await repos.projectRepository.create({
         gitRootHash: "b9bccf123456",
         name: "Dev Workflow",
       });
@@ -49,8 +49,8 @@ describe("SqliteProjectRepository", () => {
       expect(project.slug).toBe("dev-workflow-b9bccf");
     });
 
-    it("should handle special characters in project name for slug", () => {
-      const project = repos.projectRepository.create({
+    it("should handle special characters in project name for slug", async () => {
+      const project = await repos.projectRepository.create({
         gitRootHash: "xyz789abc123",
         name: "My.Project_Name",
       });
@@ -59,7 +59,7 @@ describe("SqliteProjectRepository", () => {
       expect(project.slug).toBe("my-project-name-xyz789");
     });
 
-    it("should create a project with GitHub sync config", () => {
+    it("should create a project with GitHub sync config", async () => {
       const githubSync: GitHubIssueSyncConfig = {
         enabled: true,
         projectId: "PVT_kwDO123",
@@ -73,7 +73,7 @@ describe("SqliteProjectRepository", () => {
         },
       };
 
-      const project = repos.projectRepository.create({
+      const project = await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
         githubSync,
@@ -82,134 +82,134 @@ describe("SqliteProjectRepository", () => {
       expect(project.githubSync).toEqual(githubSync);
     });
 
-    it("should enforce unique gitRootHash", () => {
-      repos.projectRepository.create({
+    it("should enforce unique gitRootHash", async () => {
+      await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "project-1",
       });
 
-      expect(() =>
+      await expect(
         repos.projectRepository.create({
           gitRootHash: "abc123def456", // Same hash
           name: "project-2",
         })
-      ).toThrow();
+      ).rejects.toThrow();
     });
   });
 
   describe("findById", () => {
-    it("should find a project by ID", () => {
-      const created = repos.projectRepository.create({
+    it("should find a project by ID", async () => {
+      const created = await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
       });
 
-      const found = repos.projectRepository.findById(created.id);
+      const found = await repos.projectRepository.findById(created.id);
 
       expect(found).toBeDefined();
       expect(found?.id).toBe(created.id);
       expect(found?.name).toBe(created.name);
     });
 
-    it("should return null for non-existent ID", () => {
-      const found = repos.projectRepository.findById("non-existent-id");
+    it("should return null for non-existent ID", async () => {
+      const found = await repos.projectRepository.findById("non-existent-id");
       expect(found).toBeNull();
     });
   });
 
   describe("findByGitRootHash", () => {
-    it("should find a project by git root hash", () => {
-      repos.projectRepository.create({
+    it("should find a project by git root hash", async () => {
+      await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
       });
 
-      const found = repos.projectRepository.findByGitRootHash("abc123def456");
+      const found = await repos.projectRepository.findByGitRootHash("abc123def456");
 
       expect(found).toBeDefined();
       expect(found?.gitRootHash).toBe("abc123def456");
     });
 
-    it("should return null for non-existent hash", () => {
-      const found = repos.projectRepository.findByGitRootHash("non-existent-hash");
+    it("should return null for non-existent hash", async () => {
+      const found = await repos.projectRepository.findByGitRootHash("non-existent-hash");
       expect(found).toBeNull();
     });
   });
 
   describe("findBySlug", () => {
-    it("should find a project by slug", () => {
-      const created = repos.projectRepository.create({
+    it("should find a project by slug", async () => {
+      const created = await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
       });
 
-      const found = repos.projectRepository.findBySlug("test-project-abc123");
+      const found = await repos.projectRepository.findBySlug("test-project-abc123");
 
       expect(found).toBeDefined();
       expect(found?.id).toBe(created.id);
       expect(found?.slug).toBe("test-project-abc123");
     });
 
-    it("should return null for non-existent slug", () => {
-      const found = repos.projectRepository.findBySlug("non-existent-slug");
+    it("should return null for non-existent slug", async () => {
+      const found = await repos.projectRepository.findBySlug("non-existent-slug");
       expect(found).toBeNull();
     });
   });
 
   describe("findAll", () => {
-    it("should return empty array when no projects exist", () => {
-      const projects = repos.projectRepository.findAll();
+    it("should return empty array when no projects exist", async () => {
+      const projects = await repos.projectRepository.findAll();
       expect(projects).toHaveLength(0);
     });
 
-    it("should return all non-archived projects by default", () => {
-      repos.projectRepository.create({
+    it("should return all non-archived projects by default", async () => {
+      await repos.projectRepository.create({
         gitRootHash: "hash1",
         name: "project-1",
       });
 
-      const project2 = repos.projectRepository.create({
+      const project2 = await repos.projectRepository.create({
         gitRootHash: "hash2",
         name: "project-2",
       });
 
       // Archive one project
-      repos.projectRepository.archive(project2.id);
+      await repos.projectRepository.archive(project2.id);
 
       // Default: excludes archived
-      const projects = repos.projectRepository.findAll();
+      const projects = await repos.projectRepository.findAll();
       expect(projects).toHaveLength(1);
       expect(projects[0]?.name).toBe("project-1");
     });
 
-    it("should return all projects including archived when includeArchived=true", () => {
-      repos.projectRepository.create({
+    it("should return all projects including archived when includeArchived=true", async () => {
+      await repos.projectRepository.create({
         gitRootHash: "hash1",
         name: "project-1",
       });
 
-      const project2 = repos.projectRepository.create({
+      const project2 = await repos.projectRepository.create({
         gitRootHash: "hash2",
         name: "project-2",
       });
 
       // Archive one project
-      repos.projectRepository.archive(project2.id);
+      await repos.projectRepository.archive(project2.id);
 
       // includeArchived=true: includes all
-      const projects = repos.projectRepository.findAll(true);
+      const projects = await repos.projectRepository.findAll(true);
       expect(projects).toHaveLength(2);
     });
   });
 
   describe("update", () => {
-    it("should update project name", () => {
-      const created = repos.projectRepository.create({
+    it("should update project name", async () => {
+      const created = await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "old-name",
       });
 
-      const updated = repos.projectRepository.update(created.id, {
+      const updated = await repos.projectRepository.update(created.id, {
         name: "new-name",
       });
 
@@ -217,8 +217,8 @@ describe("SqliteProjectRepository", () => {
       expect(updated.gitRootHash).toBe("abc123def456"); // Should not change
     });
 
-    it("should update GitHub sync config", () => {
-      const created = repos.projectRepository.create({
+    it("should update GitHub sync config", async () => {
+      const created = await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
       });
@@ -235,12 +235,12 @@ describe("SqliteProjectRepository", () => {
         },
       };
 
-      const updated = repos.projectRepository.update(created.id, { githubSync });
+      const updated = await repos.projectRepository.update(created.id, { githubSync });
 
       expect(updated.githubSync).toEqual(githubSync);
     });
 
-    it("should clear GitHub sync config", () => {
+    it("should clear GitHub sync config", async () => {
       const githubSync: GitHubIssueSyncConfig = {
         enabled: true,
         labels: {
@@ -253,18 +253,18 @@ describe("SqliteProjectRepository", () => {
         },
       };
 
-      const created = repos.projectRepository.create({
+      const created = await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
         githubSync,
       });
 
-      const updated = repos.projectRepository.update(created.id, { githubSync: null });
+      const updated = await repos.projectRepository.update(created.id, { githubSync: null });
 
       expect(updated.githubSync).toBeNull();
     });
 
-    it("should preserve unchanged fields", () => {
+    it("should preserve unchanged fields", async () => {
       const githubSync: GitHubIssueSyncConfig = {
         enabled: true,
         labels: {
@@ -277,13 +277,13 @@ describe("SqliteProjectRepository", () => {
         },
       };
 
-      const created = repos.projectRepository.create({
+      const created = await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
         githubSync,
       });
 
-      const updated = repos.projectRepository.update(created.id, {
+      const updated = await repos.projectRepository.update(created.id, {
         name: "new-name",
       });
 
@@ -292,42 +292,42 @@ describe("SqliteProjectRepository", () => {
   });
 
   describe("delete", () => {
-    it("should delete a project", () => {
-      const created = repos.projectRepository.create({
+    it("should delete a project", async () => {
+      const created = await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
       });
 
-      repos.projectRepository.delete(created.id);
+      await repos.projectRepository.delete(created.id);
 
-      const found = repos.projectRepository.findById(created.id);
+      const found = await repos.projectRepository.findById(created.id);
       expect(found).toBeNull();
     });
   });
 
   describe("archive", () => {
-    it("should archive a project", () => {
-      const created = repos.projectRepository.create({
+    it("should archive a project", async () => {
+      const created = await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
       });
 
       expect(created.isArchived).toBe(false);
 
-      const archived = repos.projectRepository.archive(created.id);
+      const archived = await repos.projectRepository.archive(created.id);
 
       expect(archived.isArchived).toBe(true);
       expect(archived.archivedAt).toBeDefined();
       expect(archived.id).toBe(created.id);
     });
 
-    it("should update updatedAt when archiving", () => {
-      const created = repos.projectRepository.create({
+    it("should update updatedAt when archiving", async () => {
+      const created = await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
       });
 
-      const archived = repos.projectRepository.archive(created.id);
+      const archived = await repos.projectRepository.archive(created.id);
 
       // Verify updatedAt is set and is >= createdAt (may be same millisecond)
       expect(archived.updatedAt).toBeDefined();
@@ -338,29 +338,29 @@ describe("SqliteProjectRepository", () => {
   });
 
   describe("unarchive", () => {
-    it("should unarchive a project", () => {
-      const created = repos.projectRepository.create({
+    it("should unarchive a project", async () => {
+      const created = await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
       });
 
-      const archived = repos.projectRepository.archive(created.id);
+      const archived = await repos.projectRepository.archive(created.id);
       expect(archived.isArchived).toBe(true);
 
-      const unarchived = repos.projectRepository.unarchive(created.id);
+      const unarchived = await repos.projectRepository.unarchive(created.id);
 
       expect(unarchived.isArchived).toBe(false);
       expect(unarchived.archivedAt).toBeNull();
     });
 
-    it("should update updatedAt when unarchiving", () => {
-      const created = repos.projectRepository.create({
+    it("should update updatedAt when unarchiving", async () => {
+      const created = await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
       });
 
-      const archived = repos.projectRepository.archive(created.id);
-      const unarchived = repos.projectRepository.unarchive(created.id);
+      const archived = await repos.projectRepository.archive(created.id);
+      const unarchived = await repos.projectRepository.unarchive(created.id);
 
       // Verify updatedAt is set and is >= archivedAt (may be same millisecond)
       expect(unarchived.updatedAt).toBeDefined();
@@ -371,9 +371,9 @@ describe("SqliteProjectRepository", () => {
   });
 
   describe("hardDelete", () => {
-    it("should delete a project and all its data", () => {
+    it("should delete a project and all its data", async () => {
       // Create a project first
-      const project = repos.projectRepository.create({
+      const project = await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
       });
@@ -405,18 +405,18 @@ describe("SqliteProjectRepository", () => {
       expect(projectRepos.planRepository.findByIssueId(issue.id)).not.toBeNull();
 
       // Hard delete the project
-      repos.projectRepository.hardDelete(project.id);
+      await repos.projectRepository.hardDelete(project.id);
 
       // Verify project is gone
-      expect(repos.projectRepository.findById(project.id)).toBeNull();
+      expect(await repos.projectRepository.findById(project.id)).toBeNull();
 
       // Verify issues are gone (and by cascade, plans and tasks)
       expect(projectRepos.issueRepository.findById(issue.id)).toBeNull();
     });
 
-    it("should delete milestones associated with the project", () => {
+    it("should delete milestones associated with the project", async () => {
       // Create a project first
-      const project = repos.projectRepository.create({
+      const project = await repos.projectRepository.create({
         gitRootHash: "abc123def456",
         name: "test-project",
       });
@@ -434,7 +434,7 @@ describe("SqliteProjectRepository", () => {
       });
 
       // Hard delete the project
-      repos.projectRepository.hardDelete(project.id);
+      await repos.projectRepository.hardDelete(project.id);
 
       // Verify milestone is gone
       expect(projectRepos.milestoneRepository.findById(milestone.id)).toBeNull();

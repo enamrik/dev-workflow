@@ -67,13 +67,13 @@ describe("GitHubSyncService", () => {
   let service: GitHubSyncService;
   let testProjectId: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     testDb = createTestDatabase();
     repos = createRepositories(testDb.db);
     mockProvider = createMockProvider();
 
     // Create a project with GitHub sync enabled
-    const project = repos.projectRepository.create({
+    const project = await repos.projectRepository.create({
       name: "Test Project",
       gitRootHash: "abc123",
       githubSync: {
@@ -193,7 +193,7 @@ describe("GitHubSyncService", () => {
 
     it("should succeed when no projectId is configured", async () => {
       // Update project to have no projectId
-      repos.projectRepository.update(testProjectId, {
+      await repos.projectRepository.update(testProjectId, {
         githubSync: {
           enabled: true,
           // No projectId
@@ -214,7 +214,7 @@ describe("GitHubSyncService", () => {
 
     it("should throw when GitHub sync is not enabled", async () => {
       // Disable GitHub sync
-      repos.projectRepository.update(testProjectId, {
+      await repos.projectRepository.update(testProjectId, {
         githubSync: {
           enabled: false,
         },
@@ -252,26 +252,26 @@ describe("GitHubSyncService", () => {
   });
 
   describe("isEnabled", () => {
-    it("should return true when sync is enabled", () => {
-      expect(service.isEnabled()).toBe(true);
+    it("should return true when sync is enabled", async () => {
+      expect(await service.isEnabled()).toBe(true);
     });
 
-    it("should return false when sync is disabled", () => {
-      repos.projectRepository.update(testProjectId, {
+    it("should return false when sync is disabled", async () => {
+      await repos.projectRepository.update(testProjectId, {
         githubSync: {
           enabled: false,
         },
       });
 
-      expect(service.isEnabled()).toBe(false);
+      expect(await service.isEnabled()).toBe(false);
     });
 
-    it("should return false when no config exists", () => {
-      repos.projectRepository.update(testProjectId, {
+    it("should return false when no config exists", async () => {
+      await repos.projectRepository.update(testProjectId, {
         githubSync: null,
       });
 
-      expect(service.isEnabled()).toBe(false);
+      expect(await service.isEnabled()).toBe(false);
     });
   });
 });

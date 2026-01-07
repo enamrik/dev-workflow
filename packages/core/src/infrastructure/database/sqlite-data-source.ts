@@ -12,6 +12,18 @@ import type {
   ConnectionTestResult,
 } from "../../domain/data-source.js";
 import { ConnectionError, MigrationError } from "../../domain/data-source.js";
+import type { ProjectRepository } from "../../domain/project.js";
+import type { IssueRepository } from "../../domain/issue.js";
+import type { PlanRepository } from "../../domain/plan.js";
+import type { TaskRepository } from "../../domain/task.js";
+import type { MilestoneRepository } from "../../domain/milestone.js";
+import type { SnapshotRepository } from "../../domain/snapshot.js";
+import { SqliteProjectRepository } from "../repositories/project-repository.js";
+import { SqliteIssueRepository } from "../repositories/issue-repository.js";
+import { SqlitePlanRepository } from "../repositories/plan-repository.js";
+import { SqliteTaskRepository } from "../repositories/task-repository.js";
+import { SqliteMilestoneRepository } from "../repositories/milestone-repository.js";
+import { SqliteSnapshotRepository } from "../repositories/snapshot-repository.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,6 +44,9 @@ export class SqliteDataSource implements DataSourceProvider {
   private db: BetterSQLite3Database<typeof schema>;
   private adapter: DatabaseAdapter;
   private databasePath: string;
+
+  /** Cached ProjectRepository instance */
+  private projectRepository: ProjectRepository | null = null;
 
   private constructor(adapter: DatabaseAdapter, databasePath: string) {
     this.adapter = adapter;
@@ -162,5 +177,60 @@ export class SqliteDataSource implements DataSourceProvider {
    */
   getAdapterType(): "native" | "wasm" {
     return this.adapter.type;
+  }
+
+  // ===========================================================================
+  // Repository Factory Methods
+  // ===========================================================================
+
+  /**
+   * Get the ProjectRepository instance for this data source.
+   *
+   * The instance is cached and reused across calls.
+   */
+  getProjectRepository(): ProjectRepository {
+    if (!this.projectRepository) {
+      this.projectRepository = new SqliteProjectRepository(this.db);
+    }
+    return this.projectRepository;
+  }
+
+  /**
+   * Create an IssueRepository scoped to a specific project.
+   */
+  createIssueRepository(projectId: string): IssueRepository {
+    return new SqliteIssueRepository(this.db, projectId);
+  }
+
+  /**
+   * Create a PlanRepository.
+   *
+   * Note: PlanRepository is not scoped to a project directly - plans belong to issues.
+   */
+  createPlanRepository(_projectId: string): PlanRepository {
+    return new SqlitePlanRepository(this.db);
+  }
+
+  /**
+   * Create a TaskRepository.
+   *
+   * Note: TaskRepository is not scoped to a project directly - tasks belong to plans.
+   */
+  createTaskRepository(_projectId: string): TaskRepository {
+    return new SqliteTaskRepository(this.db);
+  }
+
+  /**
+   * Create a MilestoneRepository scoped to a specific project.
+   */
+  createMilestoneRepository(projectId: string): MilestoneRepository {
+    return new SqliteMilestoneRepository(this.db, projectId);
+  }
+
+  /**
+   * Create a SnapshotRepository scoped to a specific project.
+   */
+  createSnapshotRepository(projectId: string): SnapshotRepository {
+    return new SqliteSnapshotRepository(this.db, projectId);
   }
 }

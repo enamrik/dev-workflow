@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMultiProjectService } from "@/lib/multi-project-service";
+import { DataSourceRegistry } from "@/server";
 
 interface RouteParams {
   params: Promise<{
@@ -16,8 +16,8 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
     const { project: projectSlug } = await params;
 
-    const service = getMultiProjectService();
-    const project = await service.findProject(projectSlug);
+    const registry = new DataSourceRegistry();
+    const project = await registry.findProjectBySlug(projectSlug);
 
     if (!project) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });

@@ -193,6 +193,12 @@ export class MockGitHubCLI implements GitHubCLI {
     return this.config.isInRepository;
   }
 
+  async getRepoUrl(): Promise<string | null> {
+    this.recordCall("getRepoUrl", []);
+    this.checkError("getRepoUrl");
+    return this.config.isInRepository ? "https://github.com/test-owner/test-repo" : null;
+  }
+
   async createIssue(title: string, body: string, labels: string[]): Promise<GitHubIssueData> {
     this.recordCall("createIssue", [title, body, labels]);
     this.checkError("createIssue");

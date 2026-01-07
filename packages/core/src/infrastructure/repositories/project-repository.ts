@@ -35,7 +35,7 @@ function generateSlug(name: string, gitRootHash: string): string {
 export class SqliteProjectRepository implements ProjectRepository {
   constructor(private readonly db: SqliteDrizzleDatabase) {}
 
-  create(data: CreateProjectData): Project {
+  async create(data: CreateProjectData): Promise<Project> {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const slug = generateSlug(data.name, data.gitRootHash);
@@ -53,70 +53,59 @@ export class SqliteProjectRepository implements ProjectRepository {
     };
 
     // Insert into database
-    this.db
-      .insert(projects)
-      .values({
-        id: project.id,
-        gitRootHash: project.gitRootHash,
-        name: project.name,
-        slug: project.slug,
-        githubSync: project.githubSync,
-        isArchived: project.isArchived,
-        archivedAt: project.archivedAt,
-        createdAt: project.createdAt,
-        updatedAt: project.updatedAt,
-      })
-      .run();
+    await this.db.insert(projects).values({
+      id: project.id,
+      gitRootHash: project.gitRootHash,
+      name: project.name,
+      slug: project.slug,
+      githubSync: project.githubSync,
+      isArchived: project.isArchived,
+      archivedAt: project.archivedAt,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+    });
 
     return project;
   }
 
-  findById(id: string): Project | null {
-    const result = this.db.select().from(projects).where(eq(projects.id, id)).get();
-
+  async findById(id: string): Promise<Project | null> {
+    const [result] = await this.db.select().from(projects).where(eq(projects.id, id)).limit(1);
     return result ? this.mapRowToProject(result) : null;
   }
 
-  findByGitRootHash(gitRootHash: string): Project | null {
-    const result = this.db
+  async findByGitRootHash(gitRootHash: string): Promise<Project | null> {
+    const [result] = await this.db
       .select()
       .from(projects)
       .where(eq(projects.gitRootHash, gitRootHash))
-      .get();
-
+      .limit(1);
     return result ? this.mapRowToProject(result) : null;
   }
 
-  findBySlug(slug: string): Project | null {
-    const result = this.db.select().from(projects).where(eq(projects.slug, slug)).get();
-
+  async findBySlug(slug: string): Promise<Project | null> {
+    const [result] = await this.db.select().from(projects).where(eq(projects.slug, slug)).limit(1);
     return result ? this.mapRowToProject(result) : null;
   }
 
-  findAll(includeArchived: boolean = false): Project[] {
-    let query = this.db.select().from(projects);
-
-    if (!includeArchived) {
-      query = query.where(eq(projects.isArchived, false)) as typeof query;
-    }
-
-    const results = query.all();
+  async findAll(includeArchived: boolean = false): Promise<Project[]> {
+    const results = includeArchived
+      ? await this.db.select().from(projects)
+      : await this.db.select().from(projects).where(eq(projects.isArchived, false));
     return results.map((row) => this.mapRowToProject(row));
   }
 
-  update(id: string, data: UpdateProjectData): Project {
+  async update(id: string, data: UpdateProjectData): Promise<Project> {
     const now = new Date().toISOString();
 
-    this.db
+    await this.db
       .update(projects)
       .set({
         ...data,
         updatedAt: now,
       })
-      .where(eq(projects.id, id))
-      .run();
+      .where(eq(projects.id, id));
 
-    const updated = this.findById(id);
+    const updated = await this.findById(id);
     if (!updated) {
       throw new Error(`Failed to update project: ${id}`);
     }
@@ -124,24 +113,23 @@ export class SqliteProjectRepository implements ProjectRepository {
     return updated;
   }
 
-  delete(id: string): void {
-    this.db.delete(projects).where(eq(projects.id, id)).run();
+  async delete(id: string): Promise<void> {
+    await this.db.delete(projects).where(eq(projects.id, id));
   }
 
-  archive(id: string): Project {
+  async archive(id: string): Promise<Project> {
     const now = new Date().toISOString();
 
-    this.db
+    await this.db
       .update(projects)
       .set({
         isArchived: true,
         archivedAt: now,
         updatedAt: now,
       })
-      .where(eq(projects.id, id))
-      .run();
+      .where(eq(projects.id, id));
 
-    const archived = this.findById(id);
+    const archived = await this.findById(id);
     if (!archived) {
       throw new Error(`Failed to archive project: ${id}`);
     }
@@ -149,20 +137,19 @@ export class SqliteProjectRepository implements ProjectRepository {
     return archived;
   }
 
-  unarchive(id: string): Project {
+  async unarchive(id: string): Promise<Project> {
     const now = new Date().toISOString();
 
-    this.db
+    await this.db
       .update(projects)
       .set({
         isArchived: false,
         archivedAt: null,
         updatedAt: now,
       })
-      .where(eq(projects.id, id))
-      .run();
+      .where(eq(projects.id, id));
 
-    const unarchived = this.findById(id);
+    const unarchived = await this.findById(id);
     if (!unarchived) {
       throw new Error(`Failed to unarchive project: ${id}`);
     }
@@ -170,22 +157,22 @@ export class SqliteProjectRepository implements ProjectRepository {
     return unarchived;
   }
 
-  hardDelete(id: string): void {
+  async hardDelete(id: string): Promise<void> {
     // Delete in order to respect foreign key constraints
     // Note: plans and tasks cascade from issues, task_status_history and
     // task_execution_logs cascade from tasks
 
     // 1. Delete snapshots for this project
-    this.db.delete(snapshots).where(eq(snapshots.projectId, id)).run();
+    await this.db.delete(snapshots).where(eq(snapshots.projectId, id));
 
     // 2. Delete milestones for this project
-    this.db.delete(milestones).where(eq(milestones.projectId, id)).run();
+    await this.db.delete(milestones).where(eq(milestones.projectId, id));
 
     // 3. Delete issues for this project (cascades to plans, tasks, etc.)
-    this.db.delete(issues).where(eq(issues.projectId, id)).run();
+    await this.db.delete(issues).where(eq(issues.projectId, id));
 
     // 4. Finally delete the project itself
-    this.db.delete(projects).where(eq(projects.id, id)).run();
+    await this.db.delete(projects).where(eq(projects.id, id));
   }
 
   /**

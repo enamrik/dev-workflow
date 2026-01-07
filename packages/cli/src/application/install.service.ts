@@ -377,7 +377,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
       const gitRootHash = await gitOps.getInitialCommitHash(this.workingDirectory);
 
       // Look up by gitRootHash
-      return projectRepo.findByGitRootHash(gitRootHash);
+      return await projectRepo.findByGitRootHash(gitRootHash);
     } finally {
       dbService.close();
     }

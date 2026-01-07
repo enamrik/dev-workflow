@@ -94,6 +94,26 @@ export {
   type MergeWarning,
   type MergeResult,
 } from "./application/merge-service.js";
+export {
+  SourceRegistry,
+  getSourceRegistry,
+  type Source,
+  type SourceProject,
+  type SourcesWithProjects,
+} from "./application/source-registry.js";
+export {
+  DataSourceRegistry,
+  type SourceType,
+  type SourceInfo,
+  type ProjectInfo,
+} from "./application/data-source-registry.js";
+export {
+  IssueStatusService,
+  computeIssueStatus,
+  type ComputedIssueStatus,
+  type TaskCounts,
+  type ComputedStatusResult,
+} from "./application/issue-status-service.js";
 
 // Infrastructure - Database
 export * from "./infrastructure/database/schema.js";

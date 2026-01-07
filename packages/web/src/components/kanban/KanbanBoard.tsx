@@ -10,7 +10,7 @@ import type {
 
 /**
  * Compute issue status based on issue state and task progress.
- * Mirrors the server-side logic in multi-project-service.ts.
+ * Mirrors the server-side logic in IssueStatusService.
  */
 function computeIssueStatus(issue: Issue, tasks: Task[]): ComputedIssueStatus {
   if (issue.status === "PLANNED") {

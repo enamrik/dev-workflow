@@ -11,6 +11,12 @@ import type {
   ConnectionTestResult,
 } from "../../domain/data-source.js";
 import { ConnectionError, MigrationError } from "../../domain/data-source.js";
+import type { ProjectRepository } from "../../domain/project.js";
+import type { IssueRepository } from "../../domain/issue.js";
+import type { PlanRepository } from "../../domain/plan.js";
+import type { TaskRepository } from "../../domain/task.js";
+import type { MilestoneRepository } from "../../domain/milestone.js";
+import type { SnapshotRepository } from "../../domain/snapshot.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -168,5 +174,36 @@ export class NeonDataSource implements DataSourceProvider {
       // If parsing fails, mask everything after the protocol
       return connectionString.replace(/(:\/\/[^:]+:)[^@]+(@)/, "$1***$2");
     }
+  }
+
+  // ===========================================================================
+  // Repository Factory Methods
+  //
+  // Note: PostgreSQL repository implementations don't exist yet.
+  // These methods throw NotImplementedError until PG repos are created.
+  // ===========================================================================
+
+  getProjectRepository(): ProjectRepository {
+    throw new Error("NeonDataSource: PostgreSQL repositories not yet implemented");
+  }
+
+  createIssueRepository(_projectId: string): IssueRepository {
+    throw new Error("NeonDataSource: PostgreSQL repositories not yet implemented");
+  }
+
+  createPlanRepository(_projectId: string): PlanRepository {
+    throw new Error("NeonDataSource: PostgreSQL repositories not yet implemented");
+  }
+
+  createTaskRepository(_projectId: string): TaskRepository {
+    throw new Error("NeonDataSource: PostgreSQL repositories not yet implemented");
+  }
+
+  createMilestoneRepository(_projectId: string): MilestoneRepository {
+    throw new Error("NeonDataSource: PostgreSQL repositories not yet implemented");
+  }
+
+  createSnapshotRepository(_projectId: string): SnapshotRepository {
+    throw new Error("NeonDataSource: PostgreSQL repositories not yet implemented");
   }
 }

@@ -410,6 +410,7 @@ export type LabelFieldMapping = Record<string, string>;
  */
 export interface GitHubIssueSyncConfig {
   enabled: boolean;
+  repoUrl?: string; // GitHub repository URL (e.g., https://github.com/owner/repo)
   projectId?: string; // GitHub Project ID (e.g., PVT_kwDO...)
   projectUrl?: string; // GitHub Project URL for linking (e.g., https://github.com/orgs/org/projects/1)
   labels?: GitHubLabelsConfig;

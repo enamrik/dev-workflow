@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useCallback, useMemo } from "react";
+import { createContext, useContext, useCallback, useMemo, useEffect } from "react";
 import { useProjects, useUrlState } from "@/hooks";
 import type { Project, DataSource } from "@/lib/types";
 
@@ -49,13 +49,43 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     [setProperty]
   );
 
+  // Auto-select first source when none is selected, or clear invalid source IDs
+  useEffect(() => {
+    if (sources.length === 0) return; // Still loading
+
+    // Check if current sourceId is valid
+    const isValidSource = sourceId && sources.some((s) => s.id === sourceId);
+
+    if (!isValidSource && sources[0]) {
+      // Either no source selected, or selected source doesn't exist - select first
+      setProperty("source", sources[0].id);
+    }
+  }, [sourceId, sources, setProperty]);
+
   // Filter projects by selected source
   const projects = useMemo(() => {
     if (!sourceId) {
-      return allProjects;
+      // While waiting for auto-select to kick in, return empty array
+      // This prevents showing wrong data momentarily
+      return [];
     }
     return allProjects.filter((p) => p.sourceId === sourceId);
   }, [allProjects, sourceId]);
+
+  // Find current source to check its type
+  const currentSource = sources.find((s) => s.id === sourceId);
+  const isLocalSource = currentSource?.type === "local";
+
+  // Auto-select project for local sources (single project by design)
+  useEffect(() => {
+    if (!isLocalSource) return;
+    if (projects.length !== 1) return;
+
+    const singleProject = projects[0];
+    if (singleProject && projectId !== singleProject.id) {
+      setProperty("project", singleProject.id);
+    }
+  }, [isLocalSource, projects, projectId, setProperty]);
 
   const value = useMemo(
     () => ({

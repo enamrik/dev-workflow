@@ -52,11 +52,13 @@ export function getProjects(): Promise<ProjectsBySource> {
 // Issues
 export interface IssuesFilters {
   project?: string;
+  source?: string;
 }
 
 export function getIssues(filters?: IssuesFilters): Promise<ProjectIssueWithPlanInfo[]> {
   const query = buildQueryString({
     project: filters?.project,
+    source: filters?.source,
   });
 
   return apiClient<ProjectIssueWithPlanInfo[]>(`/issues${query}`);
@@ -69,11 +71,13 @@ export function getIssue(projectId: string, issueNumber: number): Promise<IssueD
 // Tasks
 export interface TasksFilters {
   project?: string;
+  source?: string;
 }
 
 export function getTasks(filters?: TasksFilters): Promise<TasksResponse> {
   const query = buildQueryString({
     project: filters?.project,
+    source: filters?.source,
   });
 
   return apiClient<TasksResponse>(`/tasks${query}`);
@@ -82,11 +86,13 @@ export function getTasks(filters?: TasksFilters): Promise<TasksResponse> {
 // Milestones
 export interface MilestonesFilters {
   project?: string;
+  source?: string;
 }
 
 export function getMilestones(filters?: MilestonesFilters): Promise<MilestoneWithIssues[]> {
   const query = buildQueryString({
     project: filters?.project,
+    source: filters?.source,
   });
 
   return apiClient<MilestoneWithIssues[]>(`/milestones${query}`);

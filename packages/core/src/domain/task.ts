@@ -420,4 +420,24 @@ export interface TaskRepository {
    * @returns The updated task
    */
   clearGitHubSync(taskId: string): Task;
+
+  /**
+   * Get status change history for a task
+   *
+   * Returns all status transitions recorded for this task.
+   *
+   * @param taskId - Task UUID
+   * @returns Array of status history entries
+   */
+  getStatusHistory(taskId: string): TaskStatusHistory[];
+
+  /**
+   * Get execution logs for a task
+   *
+   * Returns all execution log entries recorded during task execution.
+   *
+   * @param taskId - Task UUID
+   * @returns Array of execution log entries
+   */
+  getExecutionLogs(taskId: string): TaskExecutionLog[];
 }

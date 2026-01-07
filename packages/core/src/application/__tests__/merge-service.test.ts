@@ -22,12 +22,12 @@ describe("MergeService", () => {
   let versioningService: VersioningService;
   let testProjectId: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     testDb = createTestDatabase();
     repos = createRepositories(testDb.db);
 
     // Create a test project (GitHub sync disabled by default for most tests)
-    const project = repos.projectRepository.create({
+    const project = await repos.projectRepository.create({
       name: "Test Project",
       gitRootHash: "abc123def",
       githubSync: null, // GitHub sync disabled
@@ -750,9 +750,9 @@ describe("MergeService", () => {
     };
     let mergeServiceWithGitHub: MergeService;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       // Update the project to enable GitHub sync
-      repos.projectRepository.update(testProjectId, {
+      await repos.projectRepository.update(testProjectId, {
         githubSync: {
           enabled: true,
           projectId: "PVT_test",
@@ -972,7 +972,7 @@ describe("MergeService", () => {
 
     it("should not call GitHub when sync is disabled", async () => {
       // Disable GitHub sync
-      repos.projectRepository.update(testProjectId, {
+      await repos.projectRepository.update(testProjectId, {
         githubSync: {
           enabled: false,
           projectId: undefined,

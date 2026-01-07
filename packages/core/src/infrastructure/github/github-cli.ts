@@ -55,6 +55,12 @@ export interface GitHubCLI {
   checkCurrentRepository(): Promise<boolean>;
 
   /**
+   * Get the GitHub repository URL for the current directory
+   * @returns The repo URL (e.g., "https://github.com/owner/repo") or null if not in a GitHub repo
+   */
+  getRepoUrl(): Promise<string | null>;
+
+  /**
    * Create a new GitHub issue
    */
   createIssue(title: string, body: string, labels: string[]): Promise<GitHubIssueData>;
@@ -234,6 +240,21 @@ export class NodeGitHubCLI implements GitHubCLI {
     // gh repo view without -R will use the current repo from git remotes
     const result = await this.run(["repo", "view", "--json", "name"]);
     return result.success;
+  }
+
+  async getRepoUrl(): Promise<string | null> {
+    // gh repo view --json url returns { "url": "https://github.com/owner/repo" }
+    const result = await this.run(["repo", "view", "--json", "url"]);
+    if (!result.success) {
+      return null;
+    }
+
+    try {
+      const data = JSON.parse(result.stdout) as { url?: string };
+      return data.url ?? null;
+    } catch {
+      return null;
+    }
   }
 
   async createIssue(title: string, body: string, labels: string[]): Promise<GitHubIssueData> {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMultiProjectService } from "@/lib/multi-project-service";
+import { DataSourceRegistry, WebDIContext } from "@/server";
 
 interface RouteParams {
   params: Promise<{
@@ -17,17 +17,28 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
     const { taskId } = await params;
 
-    const service = getMultiProjectService();
+    // Search for task across all projects
+    const registry = new DataSourceRegistry();
+    const { projects } = await registry.getSourcesWithProjects();
 
-    // First verify the task exists
-    const task = await service.getTask(taskId);
-    if (!task) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    for (const project of projects) {
+      try {
+        const context = await WebDIContext.createFromProjectInfo(project, registry);
+        const task = context.taskRepository.findById(taskId);
+
+        if (task) {
+          if (!task.dependsOn || task.dependsOn.length === 0) {
+            return NextResponse.json([]);
+          }
+          const dependencies = context.taskRepository.findByIds(task.dependsOn);
+          return NextResponse.json(dependencies);
+        }
+      } catch {
+        // Continue searching
+      }
     }
 
-    const dependencies = await service.getTaskDependencies(taskId);
-
-    return NextResponse.json(dependencies);
+    return NextResponse.json({ error: "Task not found" }, { status: 404 });
   } catch (error) {
     console.error("Error fetching task dependencies:", error);
     return NextResponse.json({ error: "Failed to fetch task dependencies" }, { status: 500 });

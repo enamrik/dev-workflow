@@ -418,6 +418,120 @@ Our `tsconfig.json` enforces maximum type safety:
 ❌ **Primitive Obsession** - use value objects
 ❌ **Feature Envy** - method uses another class more than its own
 ❌ **Shotgun Surgery** - one change requires many file edits
+❌ **Global Mutable State** - singletons, module-level `let instance = null` patterns
+❌ **Wrapper Modules** - modules with many unrelated exported functions (god modules)
+
+## Dependency Injection Patterns
+
+### God Classes and Global State
+
+❌ **Never create wrapper classes/modules with many unrelated methods:**
+
+```typescript
+// BAD - God class / god module
+class DataService {
+  listIssues() {}
+  listTasks() {}
+  getWorkers() {}
+  pruneWorktrees() {}
+}
+
+// Also BAD - God module with exported functions
+export function listIssues() {}
+export function listTasks() {}
+export function getWorkers() {}
+```
+
+✅ **Use focused repository/service classes with constructor injection:**
+
+```typescript
+// GOOD - Single responsibility
+class IssueRepository {
+  constructor(private readonly db: DrizzleDatabase) {}
+  findMany() {}
+}
+
+class TaskRepository {
+  constructor(private readonly db: DrizzleDatabase) {}
+  findByPlanId(planId: string) {}
+}
+```
+
+❌ **Never use global mutable state for dependencies:**
+
+```typescript
+// BAD - Global singleton with mutable state
+let instance: Service | null = null;
+export function getInstance() {
+  if (!instance) instance = new Service();
+  return instance;
+}
+
+// Also BAD - Module-level connection caching
+let registry: DataSourceRegistry | null = null;
+```
+
+### Per-Package DIContext Pattern
+
+For long-running servers (web, mcp-server), use a DIContext class per package:
+
+```typescript
+// packages/web/src/lib/di-context.ts
+export class WebDIContext {
+  readonly issueRepository: IssueRepository;
+  readonly planRepository: PlanRepository;
+  readonly issueStatusService: IssueStatusService;
+
+  private constructor(db: DrizzleDatabase, projectId: string) {
+    this.issueRepository = new SqliteIssueRepository(db, projectId);
+    this.planRepository = new SqlitePlanRepository(db);
+    this.issueStatusService = new IssueStatusService(
+      this.planRepository,
+      new SqliteTaskRepository(db)
+    );
+  }
+
+  static async create(projectSlug: string): Promise<WebDIContext> {
+    const registry = new DataSourceRegistry();
+    const dataSource = await registry.getDataSource(projectSlug);
+    // ... resolve projectId, create instance
+  }
+}
+```
+
+Usage in route handlers:
+
+```typescript
+// Each request creates its own context (no shared state)
+export async function GET(request: NextRequest) {
+  const registry = new DataSourceRegistry();
+  const { projects } = await registry.getSourcesWithProjects();
+
+  for (const project of projects) {
+    const context = await WebDIContext.createFromProjectInfo(project, registry);
+    const issues = context.issueRepository.findMany({});
+  }
+}
+```
+
+For CLI commands, create dependencies locally within each command function:
+
+```typescript
+// CLI commands are short-lived - no DIContext needed
+async function runInit(options: InitOptions): Promise<void> {
+  const fileSystem = new NodeFileSystem();
+  const resolver = createTrackDirectoryResolver(workingDirectory);
+  const installer = new InstallService(fileSystem, workingDirectory, resolver);
+  // ... use installer
+}
+```
+
+### Repository Pattern
+
+- Repositories take `DrizzleDatabase` via constructor injection
+- Repositories are stateless (no caching of query results)
+- Each request/command creates its own repository instances
+- Same repository classes used across web, MCP, and CLI
 
 ## Code Review Checklist
 

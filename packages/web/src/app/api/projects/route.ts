@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getMultiProjectService } from "@/lib/multi-project-service";
+import { DataSourceRegistry } from "@/server";
 
 export const dynamic = "force-dynamic";
 
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
  * GET /api/projects
  *
  * Returns all projects grouped by data source.
- * Response format: { sources: DataSource[], projects: Project[] }
+ * Response format: { sources: SourceInfo[], projects: ProjectInfo[] }
  *
  * The UI uses this to:
  * 1. Show a source dropdown (which database to view)
@@ -15,8 +15,8 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   try {
-    const service = getMultiProjectService();
-    const result = await service.listProjectsBySource();
+    const registry = new DataSourceRegistry();
+    const result = await registry.getSourcesWithProjects();
     return NextResponse.json(result);
   } catch (error) {
     console.error("Error fetching projects:", error);

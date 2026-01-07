@@ -22,15 +22,15 @@ const TEST_PROJECT_ID = "test-project-merge-integration";
 /**
  * Create a MergeToolContext for testing
  */
-function createMergeToolContext(testDb: TestDatabase): {
+async function createMergeToolContext(testDb: TestDatabase): Promise<{
   ctx: MergeToolContext;
   projectId: string;
-} {
+}> {
   const db = testDb.db as DbType;
 
   // Create project first to get the generated ID
   const projectRepository = new SqliteProjectRepository(db);
-  const project = projectRepository.create({
+  const project = await projectRepository.create({
     gitRootHash: TEST_PROJECT_ID,
     name: "Test Project",
   });
@@ -67,9 +67,9 @@ describe("Merge Tools Integration", () => {
   let testDb: TestDatabase;
   let ctx: MergeToolContext;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     testDb = createTestDatabase();
-    const result = createMergeToolContext(testDb);
+    const result = await createMergeToolContext(testDb);
     ctx = result.ctx;
   });
 

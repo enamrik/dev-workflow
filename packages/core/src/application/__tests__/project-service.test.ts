@@ -112,14 +112,14 @@ describe("ProjectService", () => {
     it("should find a project by ID", async () => {
       const created = await service.getOrCreateProject("/path/to/project");
 
-      const found = service.findById(created.id);
+      const found = await service.findById(created.id);
 
       expect(found).toBeDefined();
       expect(found?.id).toBe(created.id);
     });
 
-    it("should return null for non-existent ID", () => {
-      const found = service.findById("non-existent-id");
+    it("should return null for non-existent ID", async () => {
+      const found = await service.findById("non-existent-id");
       expect(found).toBeNull();
     });
   });
@@ -128,14 +128,14 @@ describe("ProjectService", () => {
     it("should find a project by git root hash", async () => {
       await service.getOrCreateProject("/path/to/project");
 
-      const found = service.findByGitRootHash("abc123def456");
+      const found = await service.findByGitRootHash("abc123def456");
 
       expect(found).toBeDefined();
       expect(found?.gitRootHash).toBe("abc123def456");
     });
 
-    it("should return null for non-existent hash", () => {
-      const found = service.findByGitRootHash("non-existent-hash");
+    it("should return null for non-existent hash", async () => {
+      const found = await service.findByGitRootHash("non-existent-hash");
       expect(found).toBeNull();
     });
   });
@@ -156,7 +156,7 @@ describe("ProjectService", () => {
       service = new ProjectService(repos.projectRepository, mockGitOps);
       await service.getOrCreateProject("/path/to/project2");
 
-      const projects = service.findAll();
+      const projects = await service.findAll();
       expect(projects).toHaveLength(2);
     });
   });
@@ -177,7 +177,7 @@ describe("ProjectService", () => {
         },
       };
 
-      const updated = service.updateGitHubSync(project.id, githubSync);
+      const updated = await service.updateGitHubSync(project.id, githubSync);
 
       expect(updated.githubSync).toEqual(githubSync);
     });
@@ -186,7 +186,7 @@ describe("ProjectService", () => {
       const project = await service.getOrCreateProject("/path/to/project");
 
       // Enable first
-      service.updateGitHubSync(project.id, {
+      await service.updateGitHubSync(project.id, {
         enabled: true,
         labels: {
           typeLabels: {
@@ -199,13 +199,13 @@ describe("ProjectService", () => {
       });
 
       // Then disable
-      const updated = service.updateGitHubSync(project.id, null);
+      const updated = await service.updateGitHubSync(project.id, null);
 
       expect(updated.githubSync).toBeNull();
     });
 
-    it("should throw ProjectError for non-existent project", () => {
-      expect(() => service.updateGitHubSync("non-existent", { enabled: true })).toThrow(
+    it("should throw ProjectError for non-existent project", async () => {
+      await expect(service.updateGitHubSync("non-existent", { enabled: true })).rejects.toThrow(
         ProjectError
       );
     });
@@ -220,21 +220,21 @@ describe("ProjectService", () => {
         projectId: "PVT_123",
       };
 
-      service.updateGitHubSync(project.id, githubSync);
+      await service.updateGitHubSync(project.id, githubSync);
 
-      const config = service.getGitHubSync(project.id);
+      const config = await service.getGitHubSync(project.id);
       expect(config).toEqual(githubSync);
     });
 
     it("should return null when not configured", async () => {
       const project = await service.getOrCreateProject("/path/to/project");
 
-      const config = service.getGitHubSync(project.id);
+      const config = await service.getGitHubSync(project.id);
       expect(config).toBeNull();
     });
 
-    it("should throw ProjectError for non-existent project", () => {
-      expect(() => service.getGitHubSync("non-existent")).toThrow(ProjectError);
+    it("should throw ProjectError for non-existent project", async () => {
+      await expect(service.getGitHubSync("non-existent")).rejects.toThrow(ProjectError);
     });
   });
 
@@ -242,23 +242,23 @@ describe("ProjectService", () => {
     it("should return true when enabled", async () => {
       const project = await service.getOrCreateProject("/path/to/project");
 
-      service.updateGitHubSync(project.id, { enabled: true });
+      await service.updateGitHubSync(project.id, { enabled: true });
 
-      expect(service.isGitHubSyncEnabled(project.id)).toBe(true);
+      expect(await service.isGitHubSyncEnabled(project.id)).toBe(true);
     });
 
     it("should return false when disabled", async () => {
       const project = await service.getOrCreateProject("/path/to/project");
 
-      service.updateGitHubSync(project.id, { enabled: false });
+      await service.updateGitHubSync(project.id, { enabled: false });
 
-      expect(service.isGitHubSyncEnabled(project.id)).toBe(false);
+      expect(await service.isGitHubSyncEnabled(project.id)).toBe(false);
     });
 
     it("should return false when not configured", async () => {
       const project = await service.getOrCreateProject("/path/to/project");
 
-      expect(service.isGitHubSyncEnabled(project.id)).toBe(false);
+      expect(await service.isGitHubSyncEnabled(project.id)).toBe(false);
     });
   });
 
@@ -266,15 +266,17 @@ describe("ProjectService", () => {
     it("should update project properties", async () => {
       const project = await service.getOrCreateProject("/path/to/project");
 
-      const updated = service.update(project.id, {
+      const updated = await service.update(project.id, {
         name: "new-name",
       });
 
       expect(updated.name).toBe("new-name");
     });
 
-    it("should throw ProjectError for non-existent project", () => {
-      expect(() => service.update("non-existent", { name: "new-name" })).toThrow(ProjectError);
+    it("should throw ProjectError for non-existent project", async () => {
+      await expect(service.update("non-existent", { name: "new-name" })).rejects.toThrow(
+        ProjectError
+      );
     });
   });
 });

@@ -39,7 +39,7 @@ async function validateLabels(
   }
 
   // Re-fetch project to get latest config
-  const project = ctx.projectRepository.findById(ctx.project.id);
+  const project = await ctx.projectRepository.findById(ctx.project.id);
   if (!project) {
     return null; // Project not found - graceful degradation
   }

@@ -672,7 +672,7 @@ export async function handleDeleteIssue(
     }
 
     // Close GitHub issues if sync is enabled
-    if (ctx.githubSyncService.isEnabled()) {
+    if (await ctx.githubSyncService.isEnabled()) {
       // Close task GitHub issues first
       for (const task of tasks) {
         if (task.githubSync?.githubIssueNumber) {
@@ -959,7 +959,7 @@ export async function handleUpdateIssue(
   // This ensures atomicity: if GitHub fails, no local update is made
   let updatedGithubSync: GitHubSyncState | undefined;
 
-  if (ctx.githubSyncService.isEnabled() && issue.githubSync?.githubIssueNumber) {
+  if ((await ctx.githubSyncService.isEnabled()) && issue.githubSync?.githubIssueNumber) {
     try {
       updatedGithubSync = await ctx.githubSyncService.updateGitHubIssue(issue, updates);
     } catch (error) {
@@ -1031,7 +1031,7 @@ export async function handleCloseIssue(
   }
 
   // Close the GitHub issue first if synced
-  if (ctx.githubSyncService.isEnabled() && issue.githubSync?.githubIssueNumber) {
+  if ((await ctx.githubSyncService.isEnabled()) && issue.githubSync?.githubIssueNumber) {
     try {
       await ctx.githubSyncService.updateGitHubIssue(issue, { status: "CLOSED" });
     } catch (error) {
@@ -1043,7 +1043,7 @@ export async function handleCloseIssue(
 
   // For imported issues, also close the parent GitHub issue
   let parentIssueClosed = false;
-  if (ctx.githubSyncService.isEnabled() && issue.sourceGitHubIssueNumber) {
+  if ((await ctx.githubSyncService.isEnabled()) && issue.sourceGitHubIssueNumber) {
     try {
       await ctx.githubCLI.closeIssue(issue.sourceGitHubIssueNumber);
       parentIssueClosed = true;
@@ -1120,7 +1120,7 @@ export async function handleChangeIssueType(
   const updates = { type: type as IssueType };
 
   // If GitHub sync is enabled and issue has a GitHub link, update GitHub FIRST
-  if (ctx.githubSyncService.isEnabled() && issue.githubSync?.githubIssueNumber) {
+  if ((await ctx.githubSyncService.isEnabled()) && issue.githubSync?.githubIssueNumber) {
     try {
       await ctx.githubSyncService.updateGitHubIssue(issue, updates);
     } catch (error) {

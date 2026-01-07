@@ -50,6 +50,8 @@ export interface UpdateProjectData {
  *
  * Unlike other repositories, this is NOT scoped to a project
  * since it manages projects themselves.
+ *
+ * All methods are async to support both sync (SQLite) and async (PostgreSQL) backends.
  */
 export interface ProjectRepository {
   /**
@@ -58,7 +60,7 @@ export interface ProjectRepository {
    * @param data - Project data
    * @returns The created project with id and timestamps assigned
    */
-  create(data: CreateProjectData): Project;
+  create(data: CreateProjectData): Promise<Project>;
 
   /**
    * Find a project by its UUID
@@ -66,7 +68,7 @@ export interface ProjectRepository {
    * @param id - Project UUID
    * @returns The project if found, null otherwise
    */
-  findById(id: string): Project | null;
+  findById(id: string): Promise<Project | null>;
 
   /**
    * Find a project by its git root hash (initial commit SHA)
@@ -76,7 +78,7 @@ export interface ProjectRepository {
    * @param gitRootHash - SHA of the initial commit
    * @returns The project if found, null otherwise
    */
-  findByGitRootHash(gitRootHash: string): Project | null;
+  findByGitRootHash(gitRootHash: string): Promise<Project | null>;
 
   /**
    * Find a project by its URL slug
@@ -86,7 +88,7 @@ export interface ProjectRepository {
    * @param slug - The project's URL slug ({name}-{hash})
    * @returns The project if found, null otherwise
    */
-  findBySlug(slug: string): Project | null;
+  findBySlug(slug: string): Promise<Project | null>;
 
   /**
    * Find all projects
@@ -94,7 +96,7 @@ export interface ProjectRepository {
    * @param includeArchived - If true, include archived projects (default: false)
    * @returns Array of projects
    */
-  findAll(includeArchived?: boolean): Project[];
+  findAll(includeArchived?: boolean): Promise<Project[]>;
 
   /**
    * Update a project's properties
@@ -103,7 +105,7 @@ export interface ProjectRepository {
    * @param data - Partial project data to update
    * @returns The updated project
    */
-  update(id: string, data: UpdateProjectData): Project;
+  update(id: string, data: UpdateProjectData): Promise<Project>;
 
   /**
    * Archive a project (soft delete - hides from UI but preserves data)
@@ -111,7 +113,7 @@ export interface ProjectRepository {
    * @param id - Project UUID
    * @returns The archived project
    */
-  archive(id: string): Project;
+  archive(id: string): Promise<Project>;
 
   /**
    * Unarchive a project (restore from archived state)
@@ -119,7 +121,7 @@ export interface ProjectRepository {
    * @param id - Project UUID
    * @returns The unarchived project
    */
-  unarchive(id: string): Project;
+  unarchive(id: string): Promise<Project>;
 
   /**
    * Hard delete a project and ALL associated data
@@ -136,7 +138,7 @@ export interface ProjectRepository {
    *
    * @param id - Project UUID
    */
-  hardDelete(id: string): void;
+  hardDelete(id: string): Promise<void>;
 
   /**
    * Delete a project (soft delete via archive is preferred)
@@ -147,5 +149,5 @@ export interface ProjectRepository {
    * @param id - Project UUID
    * @deprecated Use archive() or hardDelete() instead
    */
-  delete(id: string): void;
+  delete(id: string): Promise<void>;
 }
