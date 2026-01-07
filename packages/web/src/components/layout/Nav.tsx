@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
 import { useProjectContext } from "@/contexts";
-import { ProjectFilter } from "@/components/issues";
+import { SourceProjectFilter } from "@/components/issues";
 
 const coreNavItems = [
   { href: "/", label: "Board" },
@@ -37,7 +37,7 @@ function setPinnedItems(items: string[]): void {
 
 export function Nav() {
   const pathname = usePathname();
-  const { projectId, setProjectId, projects } = useProjectContext();
+  const { projectId, setProjectId, sourceId, setSourceId, sources, projects } = useProjectContext();
   const [pinnedHrefs, setPinnedHrefs] = useState<string[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -78,7 +78,14 @@ export function Nav() {
           >
             Dev Workflow
           </Link>
-          <ProjectFilter projects={projects} value={projectId} onChange={setProjectId} />
+          <SourceProjectFilter
+            sources={sources}
+            projects={projects}
+            sourceId={sourceId}
+            projectId={projectId}
+            onSourceChange={setSourceId}
+            onProjectChange={setProjectId}
+          />
         </div>
         <nav className="flex items-center gap-1">
           {/* Core nav items */}

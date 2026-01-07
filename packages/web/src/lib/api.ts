@@ -1,5 +1,5 @@
 import type {
-  Project,
+  ProjectsBySource,
   ProjectIssueWithPlanInfo,
   IssueDetail,
   TasksResponse,
@@ -45,8 +45,8 @@ function buildQueryString(params: Record<string, string | number | undefined>): 
 }
 
 // Projects
-export function getProjects(): Promise<Project[]> {
-  return apiClient<Project[]>("/projects");
+export function getProjects(): Promise<ProjectsBySource> {
+  return apiClient<ProjectsBySource>("/projects");
 }
 
 // Issues

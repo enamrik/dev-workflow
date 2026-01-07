@@ -19,13 +19,25 @@ vi.mock("next/navigation", () => ({
 
 // Mock useProjects hook
 const mockProjects = [
-  { id: "proj-1", name: "Project 1", trackDirectory: "/path/1", gitRoot: "/git/1" },
-  { id: "proj-2", name: "Project 2", trackDirectory: "/path/2", gitRoot: "/git/2" },
+  {
+    id: "proj-1",
+    name: "Project 1",
+    trackDirectory: "/path/1",
+    gitRoot: "/git/1",
+    sourceId: "src-1",
+  },
+  {
+    id: "proj-2",
+    name: "Project 2",
+    trackDirectory: "/path/2",
+    gitRoot: "/git/2",
+    sourceId: "src-1",
+  },
 ];
 
 vi.mock("../hooks", () => ({
   useProjects: () => ({
-    data: mockProjects,
+    data: { sources: [], projects: mockProjects },
     isLoading: false,
   }),
   useUrlState: () => {
