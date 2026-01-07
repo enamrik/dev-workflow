@@ -197,6 +197,9 @@ export class PlanningService {
       tasks = this.createNewTasks(plan, newTaskDefs, issueLabels);
     }
 
+    // Reindex tasks to ensure sequential 1, 2, 3... for display
+    tasks = this.reindexTasks(plan.id);
+
     // Create snapshot after regeneration (captures new state)
     this.versioningService.createSnapshot(
       issue.number,
@@ -495,5 +498,40 @@ export class PlanningService {
     }));
 
     return this.taskRepository.createMany(taskData);
+  }
+
+  /**
+   * Reindex tasks for a plan to ensure sequential display indexes
+   *
+   * Updates the `index` field (1, 2, 3...) for all non-deleted tasks
+   * ordered by their `order` field. This is called after task creation
+   * or plan regeneration to maintain clean display numbers.
+   *
+   * The `number` field is IMMUTABLE and used for URLs/permanent references.
+   * The `index` field is for display (e.g., #issue.[index/total]).
+   *
+   * @param planId - Plan UUID
+   * @returns Updated tasks with sequential indexes
+   */
+  private reindexTasks(planId: string): Task[] {
+    // Get all non-deleted tasks ordered by order
+    const tasks = this.taskRepository.findByPlanId(planId, false);
+
+    // Update each task's index to be sequential
+    const updatedTasks: Task[] = [];
+    for (let i = 0; i < tasks.length; i++) {
+      const task = tasks[i]!;
+      const newIndex = i + 1; // 1-based index
+
+      // Only update if index has changed
+      if (task.index !== newIndex) {
+        const updated = this.taskRepository.update(task.id, { index: newIndex });
+        updatedTasks.push(updated);
+      } else {
+        updatedTasks.push(task);
+      }
+    }
+
+    return updatedTasks;
   }
 }
