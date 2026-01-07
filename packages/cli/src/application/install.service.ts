@@ -3,6 +3,7 @@ import { execSync, spawnSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
   TrackDirectoryResolver,
+  DataSourceFactory,
   SqliteDataSource,
   SqliteProjectRepository,
   ProjectService,
@@ -44,22 +45,13 @@ export class InstallService {
   }
 
   /**
-   * Get the resolved database path for SQLite connections.
-   * For PostgreSQL connections, returns the connection string unchanged.
+   * Get the resolved database connection string.
+   * For file: URLs, resolves relative paths against gitRoot.
+   * For postgresql: URLs, returns unchanged.
    */
-  private getResolvedDatabasePath(): string {
+  private getResolvedConnectionString(): string {
     const gitRoot = this.resolver.getGitRoot();
     return resolveConnectionString(this.databaseConnectionString, gitRoot);
-  }
-
-  /**
-   * Check if this is a PostgreSQL connection.
-   */
-  private isPostgresConnection(): boolean {
-    return (
-      this.databaseConnectionString.startsWith("postgresql://") ||
-      this.databaseConnectionString.startsWith("postgres://")
-    );
   }
 
   /**
@@ -71,8 +63,17 @@ export class InstallService {
    * @returns The registered project
    */
   async registerProject(): Promise<Project> {
-    const dbPath = this.getResolvedDatabasePath();
-    const dbService = await SqliteDataSource.create(dbPath);
+    const connectionString = this.getResolvedConnectionString();
+
+    // TODO: Support PostgreSQL when repository abstraction is complete
+    if (DataSourceFactory.isRemote(connectionString)) {
+      throw new InstallError(
+        "Remote database support for project registration is not yet implemented. " +
+          "Use a local SQLite database for now."
+      );
+    }
+
+    const dbService = await SqliteDataSource.create(connectionString);
 
     try {
       const projectRepo = new SqliteProjectRepository(dbService.getDb());
@@ -225,25 +226,26 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
 
   async initializeDatabase(): Promise<void> {
     try {
-      // For PostgreSQL connections, skip local database creation
-      // The remote database is managed externally
-      if (this.isPostgresConnection()) {
-        // TODO: Validate connection and run migrations on remote database
-        // For now, we assume the remote database is already set up
-        return;
+      const connectionString = this.getResolvedConnectionString();
+
+      // TODO: Support PostgreSQL when repository abstraction is complete
+      if (DataSourceFactory.isRemote(connectionString)) {
+        throw new InstallError(
+          "Remote database initialization is not yet implemented. " +
+            "Use a local SQLite database for now."
+        );
       }
 
-      const dbPath = this.getResolvedDatabasePath();
-
-      // Ensure parent directory exists
-      const dbDir = path.dirname(dbPath);
+      // Ensure parent directory exists for SQLite
+      const dbDir = path.dirname(connectionString);
       await this.fileSystem.mkdir(dbDir, { recursive: true });
 
-      // Create database with automatic native/WASM detection and run migrations
-      const dbService = await SqliteDataSource.create(dbPath);
+      // Create database and run migrations
+      const dbService = await SqliteDataSource.create(connectionString);
       dbService.runMigrations();
       dbService.close();
     } catch (error) {
+      if (error instanceof InstallError) throw error;
       throw new InstallError("Failed to initialize database", error);
     }
   }
@@ -351,22 +353,21 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
    * @returns The existing project if found, null otherwise
    */
   async findExistingProject(): Promise<Project | null> {
-    // For PostgreSQL connections, we can't easily check if project exists locally
-    // The project check will happen during registerProject
-    if (this.isPostgresConnection()) {
-      // TODO: Query PostgreSQL for existing project
+    const connectionString = this.getResolvedConnectionString();
+
+    // TODO: Support PostgreSQL when repository abstraction is complete
+    if (DataSourceFactory.isRemote(connectionString)) {
+      // Can't check remote database yet
       return null;
     }
 
-    const dbPath = this.getResolvedDatabasePath();
-
-    // Database might not exist yet
-    const dbExists = await this.fileSystem.exists(dbPath);
+    // Check if database file exists
+    const dbExists = await this.fileSystem.exists(connectionString);
     if (!dbExists) {
       return null;
     }
 
-    const dbService = await SqliteDataSource.create(dbPath);
+    const dbService = await SqliteDataSource.create(connectionString);
 
     try {
       // Run migrations first to ensure schema is up to date
