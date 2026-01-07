@@ -231,6 +231,50 @@ export interface ProjectStatusField {
   readonly options: ProjectColumn[];
 }
 
+/**
+ * Project field types supported by providers
+ */
+export type ProjectFieldType = "TEXT" | "NUMBER" | "DATE" | "SINGLE_SELECT" | "ITERATION" | "OTHER";
+
+/**
+ * Option for single-select fields
+ */
+export interface ProjectFieldOption {
+  /** Option identifier */
+  readonly id: string;
+
+  /** Option display name */
+  readonly name: string;
+}
+
+/**
+ * Project field information
+ */
+export interface ProjectField {
+  /** Field identifier */
+  readonly id: string;
+
+  /** Field name */
+  readonly name: string;
+
+  /** Field type */
+  readonly type: ProjectFieldType;
+
+  /** Available options (for SINGLE_SELECT fields) */
+  readonly options?: ProjectFieldOption[];
+}
+
+/**
+ * Result of setting a project item field value
+ */
+export interface SetFieldResult {
+  /** Whether the operation succeeded */
+  readonly success: boolean;
+
+  /** Error message if failed */
+  readonly error?: string;
+}
+
 // =============================================================================
 // Provider Interface
 // =============================================================================
@@ -390,6 +434,50 @@ export interface ProjectManagementProvider {
    * @returns Status field info with available columns, or null if not applicable
    */
   getProjectStatusField(projectId: string): Promise<ProjectStatusField | null>;
+
+  /**
+   * Get all fields for a project
+   *
+   * Returns field definitions including type and options for single-select fields.
+   * Used for label-to-field mapping.
+   *
+   * @param projectId - Project/board identifier
+   * @returns Array of project fields
+   */
+  getProjectFields(projectId: string): Promise<ProjectField[]>;
+
+  /**
+   * Set a field value on a project item
+   *
+   * For single-select fields, resolves the human-readable value to the option ID.
+   * Value matching is case-insensitive.
+   *
+   * @param projectId - Project/board identifier
+   * @param itemId - Project item identifier
+   * @param fieldId - Field identifier
+   * @param value - The value to set (human-readable for single-select)
+   * @returns Result indicating success or failure
+   */
+  setProjectItemField(
+    projectId: string,
+    itemId: string,
+    fieldId: string,
+    value: string
+  ): Promise<SetFieldResult>;
+
+  /**
+   * Clear a field value on a project item
+   *
+   * @param projectId - Project/board identifier
+   * @param itemId - Project item identifier
+   * @param fieldId - Field identifier
+   * @returns Result indicating success or failure
+   */
+  clearProjectItemField(
+    projectId: string,
+    itemId: string,
+    fieldId: string
+  ): Promise<SetFieldResult>;
 
   // ===========================================================================
   // Hierarchical Issues (Parent-Child Linking)
