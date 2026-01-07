@@ -23,18 +23,25 @@ import {
   handleUpdateTask,
   handleLogTaskProgress,
   handleGetTaskExecutionLog,
+  handleLoadTaskSession,
   type TaskToolContext,
 } from "../../tools/task-tools.js";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as schema from "@dev-workflow/core/schema";
 
 type DbType = BetterSQLite3Database<typeof schema>;
-const TEST_PROJECT_ID = "test-project-task";
+
+/**
+ * Tracking for mock provider calls
+ */
+interface MockProviderCalls {
+  assignIssue: Array<{ issueRef: string; assignee: string }>;
+}
 
 /**
  * Create a minimal mock provider for testing
  */
-function createMockProvider(): ProjectManagementProvider {
+function createMockProvider(calls?: MockProviderCalls): ProjectManagementProvider {
   return {
     providerId: "mock",
     displayName: "Mock Provider",
@@ -72,22 +79,54 @@ function createMockProvider(): ProjectManagementProvider {
     getProjectStatusField: async () => null,
     linkParentChild: async () => {},
     addComment: async () => {},
+    assignIssue: async (issueRef: string, assignee: string) => {
+      if (calls) {
+        calls.assignIssue.push({ issueRef, assignee });
+      }
+    },
   };
 }
 
 /**
- * Create a TaskToolContext for testing
+ * Extended context for testing that includes projectRepository
  */
-function createTaskToolContext(testDb: TestDatabase): TaskToolContext {
-  const db = testDb.db as DbType;
-  const repos = createRepositories(testDb.db, TEST_PROJECT_ID);
+interface TestTaskToolContext extends TaskToolContext {
+  projectRepository: SqliteProjectRepository;
+  projectId: string;
+}
 
-  // Create project repository (project is auto-created, sync disabled by default)
+/**
+ * Create a TaskToolContext for testing
+ *
+ * @param testDb - The test database
+ * @param options - Options including mock provider calls and GitHub sync config
+ */
+function createTaskToolContext(
+  testDb: TestDatabase,
+  options?: {
+    mockProviderCalls?: MockProviderCalls;
+    githubSync?: {
+      enabled: boolean;
+      assignee?: string;
+    };
+  }
+): TestTaskToolContext {
+  const db = testDb.db as DbType;
   const projectRepository = new SqliteProjectRepository(db);
+
+  // Create project first with optional GitHub sync config
+  const project = projectRepository.create({
+    name: "Test Project",
+    gitRootHash: "test-hash-" + crypto.randomUUID().slice(0, 8),
+    githubSync: options?.githubSync ?? null,
+  });
+
+  const projectId = project.id;
+  const repos = createRepositories(testDb.db, projectId);
 
   // Mock services
   const mockGitWorktreeService = new MockGitWorktreeService();
-  const mockProvider = createMockProvider();
+  const mockProvider = createMockProvider(options?.mockProviderCalls);
 
   const conflictDetectionService = new ConflictDetectionService(db, repos.taskRepository);
 
@@ -97,7 +136,7 @@ function createTaskToolContext(testDb: TestDatabase): TaskToolContext {
     repos.issueRepository,
     mockGitWorktreeService,
     conflictDetectionService,
-    TEST_PROJECT_ID
+    projectId
   );
 
   const taskManagementService = new TaskManagementService(
@@ -112,7 +151,7 @@ function createTaskToolContext(testDb: TestDatabase): TaskToolContext {
     repos.planRepository,
     mockProvider,
     projectRepository,
-    TEST_PROJECT_ID
+    projectId
   );
 
   return {
@@ -125,6 +164,8 @@ function createTaskToolContext(testDb: TestDatabase): TaskToolContext {
     taskExecutionLogsSchema: taskExecutionLogs,
     conflictDetectionService,
     taskGitHubSyncService,
+    projectRepository,
+    projectId,
   };
 }
 
@@ -314,6 +355,176 @@ describe("Task Tools Integration", () => {
       expect(content.entries.length).toBe(1);
       expect(content.entries[0].message).toBe("Started implementation");
       expect(content.entries[0].filesModified).toEqual(["src/file1.ts", "src/file2.ts"]);
+    });
+  });
+
+  describe("handleLoadTaskSession - auto-assignment", () => {
+    it("should auto-assign GitHub issue when assignee is configured", async () => {
+      // Track mock provider calls
+      const mockCalls: MockProviderCalls = { assignIssue: [] };
+      const testDbWithAssignee = createTestDatabase();
+      const ctxWithAssignee = createTaskToolContext(testDbWithAssignee, {
+        mockProviderCalls: mockCalls,
+        githubSync: {
+          enabled: true,
+          assignee: "testuser",
+        },
+      });
+
+      // Create task with GitHub sync info
+      const issue = createTestIssue(ctxWithAssignee.issueRepository);
+      const plan = createTestPlan(ctxWithAssignee.planRepository, issue.id);
+      const task = createTestTask(ctxWithAssignee.taskRepository, plan.id, {
+        title: "Task with GitHub",
+        status: "BACKLOG",
+      });
+
+      // Add GitHub sync state to the task
+      ctxWithAssignee.taskRepository.updateGitHubSync(task.id, {
+        githubIssueNumber: 42,
+        githubUrl: "https://github.com/test/repo/issues/42",
+        githubNodeId: "I_test_42",
+        syncStatus: "SYNCED",
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: null,
+        projectItemId: null,
+      });
+
+      // Start the task
+      const result = await handleLoadTaskSession(ctxWithAssignee, {
+        taskId: task.id,
+        sessionId: "test-session",
+        mode: "main", // Use main mode to skip worktree creation
+      });
+
+      expect(result.isError).toBeUndefined();
+
+      // Verify assignIssue was called with correct parameters
+      expect(mockCalls.assignIssue.length).toBe(1);
+      expect(mockCalls.assignIssue[0]).toEqual({
+        issueRef: "42",
+        assignee: "testuser",
+      });
+    });
+
+    it("should not assign when no assignee is configured", async () => {
+      // Track mock provider calls
+      const mockCalls: MockProviderCalls = { assignIssue: [] };
+      const testDbNoAssignee = createTestDatabase();
+      const ctxNoAssignee = createTaskToolContext(testDbNoAssignee, {
+        mockProviderCalls: mockCalls,
+        githubSync: {
+          enabled: true,
+          // No assignee configured
+        },
+      });
+
+      // Create task with GitHub sync info
+      const issue = createTestIssue(ctxNoAssignee.issueRepository);
+      const plan = createTestPlan(ctxNoAssignee.planRepository, issue.id);
+      const task = createTestTask(ctxNoAssignee.taskRepository, plan.id, {
+        title: "Task with GitHub",
+        status: "BACKLOG",
+      });
+
+      // Add GitHub sync state to the task
+      ctxNoAssignee.taskRepository.updateGitHubSync(task.id, {
+        githubIssueNumber: 42,
+        githubUrl: "https://github.com/test/repo/issues/42",
+        githubNodeId: "I_test_42",
+        syncStatus: "SYNCED",
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: null,
+        projectItemId: null,
+      });
+
+      // Start the task
+      const result = await handleLoadTaskSession(ctxNoAssignee, {
+        taskId: task.id,
+        sessionId: "test-session",
+        mode: "main",
+      });
+
+      expect(result.isError).toBeUndefined();
+
+      // Verify assignIssue was NOT called
+      expect(mockCalls.assignIssue.length).toBe(0);
+    });
+
+    it("should not assign when GitHub sync is disabled", async () => {
+      // Track mock provider calls
+      const mockCalls: MockProviderCalls = { assignIssue: [] };
+      const testDbDisabled = createTestDatabase();
+      // No githubSync option - sync is disabled by default
+      const ctxDisabled = createTaskToolContext(testDbDisabled, {
+        mockProviderCalls: mockCalls,
+      });
+
+      // Create task with GitHub sync info (simulating a previously synced task)
+      const issue = createTestIssue(ctxDisabled.issueRepository);
+      const plan = createTestPlan(ctxDisabled.planRepository, issue.id);
+      const task = createTestTask(ctxDisabled.taskRepository, plan.id, {
+        title: "Task with GitHub",
+        status: "BACKLOG",
+      });
+
+      // Add GitHub sync state to the task
+      ctxDisabled.taskRepository.updateGitHubSync(task.id, {
+        githubIssueNumber: 42,
+        githubUrl: "https://github.com/test/repo/issues/42",
+        githubNodeId: "I_test_42",
+        syncStatus: "SYNCED",
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: null,
+        projectItemId: null,
+      });
+
+      // Start the task
+      const result = await handleLoadTaskSession(ctxDisabled, {
+        taskId: task.id,
+        sessionId: "test-session",
+        mode: "main",
+      });
+
+      expect(result.isError).toBeUndefined();
+
+      // Verify assignIssue was NOT called (sync is disabled)
+      expect(mockCalls.assignIssue.length).toBe(0);
+    });
+
+    it("should not assign when task has no GitHub issue linked", async () => {
+      // Track mock provider calls
+      const mockCalls: MockProviderCalls = { assignIssue: [] };
+      const testDbNoSync = createTestDatabase();
+      const ctxNoSync = createTaskToolContext(testDbNoSync, {
+        mockProviderCalls: mockCalls,
+        githubSync: {
+          enabled: true,
+          assignee: "testuser",
+        },
+      });
+
+      // Create task WITHOUT GitHub sync info
+      const issue = createTestIssue(ctxNoSync.issueRepository);
+      const plan = createTestPlan(ctxNoSync.planRepository, issue.id);
+      const task = createTestTask(ctxNoSync.taskRepository, plan.id, {
+        title: "Task without GitHub",
+        status: "BACKLOG",
+      });
+
+      // Don't add GitHub sync state - task has no linked GitHub issue
+
+      // Start the task
+      const result = await handleLoadTaskSession(ctxNoSync, {
+        taskId: task.id,
+        sessionId: "test-session",
+        mode: "main",
+      });
+
+      expect(result.isError).toBeUndefined();
+
+      // Verify assignIssue was NOT called (no GitHub issue linked)
+      expect(mockCalls.assignIssue.length).toBe(0);
     });
   });
 });

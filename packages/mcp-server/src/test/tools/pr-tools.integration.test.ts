@@ -82,6 +82,7 @@ function createMockProvider(): ProjectManagementProvider {
     getProjectStatusField: async () => null,
     linkParentChild: async () => {},
     addComment: async () => {},
+    assignIssue: async () => {},
   };
 }
 

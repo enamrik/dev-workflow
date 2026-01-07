@@ -420,6 +420,24 @@ export class GitHubProjectManagementProvider implements ProjectManagementProvide
   }
 
   // ===========================================================================
+  // Assignment
+  // ===========================================================================
+
+  async assignIssue(issueRef: string, assignee: string): Promise<void> {
+    try {
+      const issueNumber = this.parseIssueNumber(issueRef);
+      await this.githubCLI.assignIssue(issueNumber, assignee);
+    } catch (error) {
+      throw new ProjectManagementProviderError(
+        error instanceof Error ? error.message : String(error),
+        this.providerId,
+        "assignIssue",
+        error instanceof Error ? error : undefined
+      );
+    }
+  }
+
+  // ===========================================================================
   // Private Helper Methods
   // ===========================================================================
 

@@ -483,6 +483,39 @@ export class TaskGitHubSyncService {
   }
 
   /**
+   * Assign a GitHub issue to the configured assignee
+   *
+   * Called when a task transitions to IN_PROGRESS. Uses best-effort approach:
+   * logs failures but doesn't throw to avoid blocking task start.
+   *
+   * @param taskId - The task UUID
+   */
+  async assignIssue(taskId: string): Promise<void> {
+    const task = this.taskRepository.findById(taskId);
+    if (!task?.githubSync?.githubIssueNumber) {
+      // Task doesn't have GitHub sync - nothing to do
+      return;
+    }
+
+    const config = this.getConfig();
+    if (!config?.enabled || !config.assignee) {
+      // No assignee configured - nothing to do
+      return;
+    }
+
+    const githubNumber = task.githubSync.githubIssueNumber;
+
+    try {
+      await this.provider.assignIssue(String(githubNumber), config.assignee);
+    } catch (error) {
+      // Log but don't fail - assignment is best effort
+      console.warn(
+        `Failed to assign GitHub issue #${githubNumber} to ${config.assignee}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
    * Close GitHub issues for abandoned tasks
    *
    * Called when tasks are abandoned during plan regeneration.
