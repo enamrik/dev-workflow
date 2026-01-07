@@ -197,6 +197,10 @@ export class PlanningService {
       tasks = this.createNewTasks(plan, newTaskDefs, issueLabels);
     }
 
+    // Renumber tasks to be sequential 1, 2, 3...
+    // This ensures clean numbering after regeneration, regardless of which tasks were preserved
+    tasks = this.renumberTasks(tasks);
+
     // Create snapshot after regeneration (captures new state)
     this.versioningService.createSnapshot(
       issue.number,
@@ -495,5 +499,39 @@ export class PlanningService {
     }));
 
     return this.taskRepository.createMany(taskData);
+  }
+
+  /**
+   * Renumber tasks to be sequential 1, 2, 3...
+   *
+   * This ensures clean numbering after plan regeneration, regardless of which
+   * tasks were preserved (matched) vs newly created. Preserved tasks may have
+   * high numbers from previous regenerations, causing new tasks to get even
+   * higher numbers (max + 1). This method fixes that by renumbering all tasks
+   * based on their display order.
+   *
+   * @param tasks - Tasks to renumber (may have non-sequential numbers)
+   * @returns Tasks with sequential numbers starting from 1
+   */
+  private renumberTasks(tasks: Task[]): Task[] {
+    // Sort by order to determine correct sequence
+    const sortedTasks = [...tasks].sort((a, b) => a.order - b.order);
+
+    // Renumber sequentially
+    const renumberedTasks: Task[] = [];
+    for (let i = 0; i < sortedTasks.length; i++) {
+      const task = sortedTasks[i]!;
+      const expectedNumber = i + 1;
+
+      if (task.number !== expectedNumber) {
+        // Update in database and return fresh task
+        const updatedTask = this.taskRepository.update(task.id, { number: expectedNumber });
+        renumberedTasks.push(updatedTask);
+      } else {
+        renumberedTasks.push(task);
+      }
+    }
+
+    return renumberedTasks;
   }
 }
