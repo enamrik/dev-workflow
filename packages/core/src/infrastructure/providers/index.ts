@@ -7,12 +7,11 @@
  *   import { getProjectManagementProvider, ProviderRegistry } from '@dev-workflow/core';
  *
  *   // Simple: use convenience function
- *   const provider = getProjectManagementProvider(config, { githubCLI });
+ *   const provider = getProjectManagementProvider(project, { githubCLI });
  *
  *   // Advanced: use registry directly
  *   const registry = ProviderRegistry.getInstance();
- *   const factory = registry.get('github');
- *   const provider = factory.createProvider(config, { githubCLI });
+ *   const provider = registry.createProvider(project, { githubCLI });
  */
 
 // Provider implementation

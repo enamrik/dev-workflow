@@ -478,3 +478,99 @@ describe("update_settings - assignee configuration", () => {
     });
   });
 });
+
+describe("update_settings - list_available_labels", () => {
+  let testDb: TestDatabase;
+
+  beforeEach(() => {
+    testDb = createTestDatabase();
+  });
+
+  it("should return error when GitHub sync is not enabled", async () => {
+    // Arrange
+    const ctx = createSettingsToolContext(testDb);
+
+    // Act
+    const result = await handleUpdateSettings(ctx, {
+      action: "list_available_labels",
+    });
+
+    // Assert
+    expect(result.isError).toBe(true);
+    const content = JSON.parse(result.content[0].text);
+    expect(content.error).toContain("GitHub issue sync is not enabled");
+  });
+
+  it("should return labels from GitHub Project (excluding Status)", async () => {
+    // Arrange
+    const mockGitHubCLI = new MockGitHubCLI({
+      projectFields: [
+        {
+          id: "PVTF_1",
+          name: "Status",
+          type: "SINGLE_SELECT" as const,
+          options: [{ id: "opt1", name: "Done" }],
+        },
+        {
+          id: "PVTF_2",
+          name: "Product",
+          type: "SINGLE_SELECT" as const,
+          options: [
+            { id: "opt2", name: "Case Workflow" },
+            { id: "opt3", name: "Web Platform" },
+          ],
+        },
+        { id: "PVTF_3", name: "Notes", type: "TEXT" as const },
+      ],
+    });
+    const ctx = createSettingsToolContext(testDb, mockGitHubCLI);
+
+    // Enable GitHub with a projectId
+    await handleUpdateSettings(ctx, {
+      action: "enable_github",
+      github: { projectId: "PVT_test123" },
+    });
+
+    // Act
+    const result = await handleUpdateSettings(ctx, {
+      action: "list_available_labels",
+    });
+
+    // Assert
+    expect(result.isError).toBeFalsy();
+    const content = JSON.parse(result.content[0].text);
+    expect(content.success).toBe(true);
+    expect(content.supported).toBe(true);
+    // Status field should be excluded
+    expect(content.labels).toHaveLength(2);
+    // Product should have constrained values
+    expect(content.labels[0]).toEqual({
+      name: "Product",
+      validValues: ["Case Workflow", "Web Platform"],
+    });
+    // Notes (TEXT field) should allow any value
+    expect(content.labels[1]).toEqual({
+      name: "Notes",
+      validValues: null,
+    });
+  });
+
+  it("should return not supported when no projectId is configured", async () => {
+    // Arrange
+    const ctx = createSettingsToolContext(testDb);
+    await handleUpdateSettings(ctx, { action: "enable_github" });
+
+    // Act
+    const result = await handleUpdateSettings(ctx, {
+      action: "list_available_labels",
+    });
+
+    // Assert
+    expect(result.isError).toBeFalsy();
+    const content = JSON.parse(result.content[0].text);
+    expect(content.success).toBe(true);
+    expect(content.supported).toBe(false);
+    expect(content.labels).toEqual([]);
+    expect(content.message).toContain("No project configured");
+  });
+});
