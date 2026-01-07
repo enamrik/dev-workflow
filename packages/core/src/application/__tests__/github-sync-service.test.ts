@@ -51,6 +51,7 @@ function createMockProvider(
     getProjectStatusField: vi.fn().mockResolvedValue(null),
     linkParentChild: vi.fn().mockResolvedValue(undefined),
     addComment: vi.fn().mockResolvedValue(undefined),
+    assignIssue: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }

@@ -332,6 +332,14 @@ export async function handleLoadTaskSession(
         // Log but don't fail - GitHub sync is best effort after local update
         console.warn(`Failed to sync task status to GitHub: ${error}`);
       }
+
+      // Auto-assign the GitHub issue to the configured assignee
+      try {
+        await ctx.taskGitHubSyncService.assignIssue(taskId);
+      } catch (error) {
+        // Log but don't fail - assignment is best effort
+        console.warn(`Failed to auto-assign GitHub issue: ${error}`);
+      }
     }
 
     // Sync sibling tasks that transitioned from BACKLOG to READY

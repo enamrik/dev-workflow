@@ -76,6 +76,7 @@ function createMockProvider(
     }),
     linkParentChild: vi.fn().mockResolvedValue(undefined),
     addComment: vi.fn().mockResolvedValue(undefined),
+    assignIssue: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }

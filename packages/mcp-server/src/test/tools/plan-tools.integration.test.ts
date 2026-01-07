@@ -99,6 +99,7 @@ function createPlanToolContext(testDb: TestDatabase): PlanToolContext {
     getProjectStatusField: async () => null,
     linkParentChild: async () => {},
     addComment: async () => {},
+    assignIssue: async () => {},
   };
   const taskGitHubSyncService = new TaskGitHubSyncService(
     repos.taskRepository,
