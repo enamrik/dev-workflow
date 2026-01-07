@@ -40,7 +40,6 @@ import {
   // Provider abstraction
   ProviderRegistry,
   getProjectManagementProvider,
-  type ProviderDependencies,
   // Git worktree support
   NodeGitWorktreeService,
   // Conflict detection
@@ -484,14 +483,15 @@ async function main() {
   // Services read config fresh from database on each call, so they handle
   // the case where sync is enabled after server start
   const githubCLI = new NodeGitHubCLI();
-  const providerDeps: ProviderDependencies = { githubCLI };
 
   // Get provider registry for validation and logging
   const providerRegistry = ProviderRegistry.getInstance();
 
+  // Provider dependencies - passed to factory which extracts what it needs
+  // This is the composition root, so it's appropriate to know about concrete deps here
+  const providerDeps = { githubCLI };
+
   // Create provider from project using the registry
-  // This allows switching providers by changing config without code changes
-  // The registry extracts provider config from project.githubSync internally
   const projectManagementProvider = getProjectManagementProvider(project, providerDeps);
 
   const githubSyncService = new GitHubSyncService(

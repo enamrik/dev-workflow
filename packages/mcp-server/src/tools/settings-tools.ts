@@ -250,7 +250,7 @@ async function handleGetSettings(ctx: SettingsToolContext): Promise<ToolResponse
       : null;
 
     // Get available providers from registry
-    const availableProviders = ctx.providerRegistry.list({ githubCLI: ctx.githubCLI }).map((p) => ({
+    const availableProviders = ctx.providerRegistry.list(ctx).map((p) => ({
       id: p.providerId,
       name: p.displayName,
       available: p.available,
@@ -620,9 +620,7 @@ async function handleListAvailableLabels(ctx: SettingsToolContext): Promise<Tool
     }
 
     // Create provider to query available labels
-    const provider = ctx.providerRegistry.createProvider(project, {
-      githubCLI: ctx.githubCLI,
-    });
+    const provider = ctx.providerRegistry.createProvider(project, ctx);
 
     const result = await provider.getAvailableLabels(project.githubSync?.projectId);
 
