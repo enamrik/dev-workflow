@@ -390,6 +390,16 @@ export const DEFAULT_COLUMN_MAPPING: Required<StatusColumnMapping> = {
 };
 
 /**
+ * Label to GitHub Project field mapping
+ *
+ * Maps task label keys to GitHub Project field IDs.
+ * Only mapped labels are synced to the project; unmapped labels are ignored.
+ *
+ * Example: { "Product Area": "PVTF_lAHO...", "priority": "PVTF_lAHO..." }
+ */
+export type LabelFieldMapping = Record<string, string>;
+
+/**
  * GitHub issue sync configuration stored as JSON
  */
 export interface GitHubIssueSyncConfig {
@@ -399,6 +409,7 @@ export interface GitHubIssueSyncConfig {
   labels?: GitHubLabelsConfig;
   columnMapping?: StatusColumnMapping; // Custom status-to-column mapping
   assignee?: string; // GitHub username to auto-assign issues when task enters IN_PROGRESS
+  labelFieldMapping?: LabelFieldMapping; // Maps task label keys → GitHub Project field IDs
 }
 
 /**

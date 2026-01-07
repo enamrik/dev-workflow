@@ -20,6 +20,7 @@ import type { ProjectManagementProvider } from "../domain/project-management-pro
 import {
   DEFAULT_COLUMN_MAPPING,
   type GitHubIssueSyncConfig,
+  type LabelFieldMapping,
 } from "../infrastructure/database/schema.js";
 import type { ProjectRepository } from "../domain/project.js";
 import type { TemplateService } from "../infrastructure/templates/template-service.js";
@@ -261,7 +262,7 @@ export class TaskGitHubSyncService {
 
     if (totalTaskCount === 1) {
       // 1 task case: Link directly to the parent GitHub issue
-      return await this.linkTaskToParentIssue(parentIssueNumber, issue);
+      return await this.linkTaskToParentIssue(parentIssueNumber, issue, task);
     } else {
       // N tasks case: Create a sub-issue under the parent
       return await this.createSubIssueForTask(parentIssueNumber, issue, task);
@@ -273,11 +274,13 @@ export class TaskGitHubSyncService {
    *
    * @param parentIssueNumber - The GitHub issue number to link to
    * @param _issue - The dev-workflow issue for label context (reserved for future use)
+   * @param task - The task being linked (for label sync)
    * @returns The GitHub sync state pointing to the parent issue
    */
   private async linkTaskToParentIssue(
     parentIssueNumber: number,
-    _issue: Issue
+    _issue: Issue,
+    task: Task
   ): Promise<GitHubSyncState> {
     // Fetch the parent GitHub issue to get its nodeId and URL
     const parentIssue = await this.provider.getIssue(String(parentIssueNumber));
@@ -304,6 +307,16 @@ export class TaskGitHubSyncService {
 
         // Move to Backlog column
         await this.provider.moveToColumn(projectItemId, config.projectId, "Backlog");
+
+        // Sync task labels to project custom fields (if mapping configured)
+        if (config.labelFieldMapping && task.labels) {
+          await this.syncLabelsToProjectFields(
+            projectItemId,
+            config.projectId,
+            task.labels,
+            config.labelFieldMapping
+          );
+        }
       } catch (error) {
         if (error instanceof TaskGitHubSyncError) {
           throw error;
@@ -400,6 +413,16 @@ export class TaskGitHubSyncService {
 
         // Move to Backlog column (initial status for activated tasks)
         await this.provider.moveToColumn(projectItemId, config.projectId, "Backlog");
+
+        // Sync task labels to project custom fields (if mapping configured)
+        if (config.labelFieldMapping && task.labels) {
+          await this.syncLabelsToProjectFields(
+            projectItemId,
+            config.projectId,
+            task.labels,
+            config.labelFieldMapping
+          );
+        }
       } catch (error) {
         if (error instanceof TaskGitHubSyncError) {
           throw error;
@@ -824,6 +847,16 @@ export class TaskGitHubSyncService {
           projectItemId = result.itemId;
           const columnName = this.getColumnNameForStatus(config, task.status);
           await this.provider.moveToColumn(projectItemId, config.projectId, columnName);
+
+          // Sync task labels to project custom fields (if mapping configured)
+          if (config.labelFieldMapping && task.labels) {
+            await this.syncLabelsToProjectFields(
+              projectItemId,
+              config.projectId,
+              task.labels,
+              config.labelFieldMapping
+            );
+          }
         }
       } catch (error) {
         // Log but don't fail - project linking is not critical
@@ -874,6 +907,16 @@ export class TaskGitHubSyncService {
           // Move to correct column
           const columnName = this.getColumnNameForStatus(config, task.status);
           await this.provider.moveToColumn(result.itemId, config.projectId, columnName);
+
+          // Sync task labels to project custom fields (if mapping configured)
+          if (config.labelFieldMapping && task.labels) {
+            await this.syncLabelsToProjectFields(
+              result.itemId,
+              config.projectId,
+              task.labels,
+              config.labelFieldMapping
+            );
+          }
         }
       } catch (error) {
         console.warn(
@@ -881,9 +924,19 @@ export class TaskGitHubSyncService {
         );
       }
     } else if (task.githubSync.projectItemId) {
-      // Already has project item - ensure correct column
+      // Already has project item - ensure correct column and labels
       const columnName = this.getColumnNameForStatus(config, task.status);
       await this.provider.moveToColumn(task.githubSync.projectItemId, config.projectId, columnName);
+
+      // Sync task labels to project custom fields (if mapping configured)
+      if (config.labelFieldMapping && task.labels) {
+        await this.syncLabelsToProjectFields(
+          task.githubSync.projectItemId,
+          config.projectId,
+          task.labels,
+          config.labelFieldMapping
+        );
+      }
     }
   }
 
@@ -1037,5 +1090,69 @@ export class TaskGitHubSyncService {
       ...configuredMapping,
     };
     return columnMapping[status];
+  }
+
+  /**
+   * Sync task labels to GitHub Project custom fields
+   *
+   * For each label key in the task that has a mapping in labelFieldMapping,
+   * sets the corresponding project field value. Only mapped labels are synced;
+   * unmapped labels are silently ignored.
+   *
+   * This is a best-effort operation - failures are logged but don't fail the sync.
+   *
+   * @param projectItemId - The GitHub Project item ID
+   * @param projectId - The GitHub Project ID
+   * @param labels - The task's labels (key-value pairs)
+   * @param labelFieldMapping - Maps label keys to GitHub field IDs
+   */
+  private async syncLabelsToProjectFields(
+    projectItemId: string,
+    projectId: string,
+    labels: Record<string, string> | undefined | null,
+    labelFieldMapping: LabelFieldMapping
+  ): Promise<void> {
+    if (!labels || Object.keys(labels).length === 0) {
+      return;
+    }
+
+    // Sync each mapped label
+    for (const [labelKey, labelValue] of Object.entries(labels)) {
+      const fieldId = labelFieldMapping[labelKey];
+      if (!fieldId) {
+        // Label not mapped - skip
+        continue;
+      }
+
+      try {
+        if (labelValue === "" || labelValue === null || labelValue === undefined) {
+          // Empty value - clear the field
+          const result = await this.provider.clearProjectItemField(
+            projectId,
+            projectItemId,
+            fieldId
+          );
+          if (!result.success) {
+            console.warn(`Failed to clear field ${labelKey}: ${result.error}`);
+          }
+        } else {
+          // Non-empty value - set the field
+          const result = await this.provider.setProjectItemField(
+            projectId,
+            projectItemId,
+            fieldId,
+            labelValue
+          );
+          if (!result.success) {
+            console.warn(`Failed to set field ${labelKey}=${labelValue}: ${result.error}`);
+          }
+        }
+      } catch (error) {
+        // Log but don't fail - best effort sync
+        console.warn(
+          `Error syncing label ${labelKey} to project field: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
   }
 }

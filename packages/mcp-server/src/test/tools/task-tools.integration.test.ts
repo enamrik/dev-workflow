@@ -77,6 +77,9 @@ function createMockProvider(calls?: MockProviderCalls): ProjectManagementProvide
     checkProject: async () => true,
     getProjectDetails: async () => null,
     getProjectStatusField: async () => null,
+    getProjectFields: async () => [],
+    setProjectItemField: async () => ({ success: true }),
+    clearProjectItemField: async () => ({ success: true }),
     linkParentChild: async () => {},
     addComment: async () => {},
     assignIssue: async (issueRef: string, assignee: string) => {
