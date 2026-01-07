@@ -1,9 +1,8 @@
 import { eq, max, and, sql, like, or } from "drizzle-orm";
-import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { issues, IssueRow } from "../database/schema.js";
 import type { Issue, IssueFilters, IssueRepository } from "../../domain/issue.js";
 import type { GitHubSyncState, GitHubSyncStatus } from "../../domain/github.js";
-import * as schema from "../database/schema.js";
+import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
 
 /**
  * SQLite implementation of IssueRepository
@@ -16,7 +15,7 @@ import * as schema from "../database/schema.js";
  */
 export class SqliteIssueRepository implements IssueRepository {
   constructor(
-    private readonly db: BetterSQLite3Database<typeof schema>,
+    private readonly db: SqliteDrizzleDatabase,
     private readonly projectId: string
   ) {}
 

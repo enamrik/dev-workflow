@@ -6,10 +6,9 @@
  */
 
 import { and, inArray, asc } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type { Task, TaskRepository } from "../domain/task.js";
 import { taskExecutionLogs } from "../infrastructure/database/schema.js";
-import type * as schema from "../infrastructure/database/schema.js";
+import type { SqliteDrizzleDatabase } from "../domain/data-source.js";
 
 /**
  * Information about a file that was modified by a prior task
@@ -52,7 +51,7 @@ export interface ConflictDetectionResult {
  */
 export class ConflictDetectionService {
   constructor(
-    private readonly db: BetterSQLite3Database<typeof schema>,
+    private readonly db: SqliteDrizzleDatabase,
     private readonly taskRepository: TaskRepository
   ) {}
 

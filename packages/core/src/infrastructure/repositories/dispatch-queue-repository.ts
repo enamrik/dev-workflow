@@ -1,5 +1,4 @@
 import { eq, isNull, or, lte, sql } from "drizzle-orm";
-import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { dispatchQueue, workers, DispatchQueueRow } from "../database/schema.js";
 import type {
   DispatchQueueEntry,
@@ -7,7 +6,7 @@ import type {
   DispatchQueueRepository,
 } from "../../domain/worker.js";
 import { DEFAULT_HEARTBEAT_THRESHOLD_SECONDS, isWorkerAlive } from "../../domain/worker.js";
-import * as schema from "../database/schema.js";
+import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
 
 /**
  * SQLite implementation of DispatchQueueRepository
@@ -16,7 +15,7 @@ import * as schema from "../database/schema.js";
  * The key feature is atomic claiming to prevent race conditions.
  */
 export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
-  constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
+  constructor(private readonly db: SqliteDrizzleDatabase) {}
 
   enqueue(taskId: string): DispatchQueueEntry {
     const now = new Date().toISOString();
