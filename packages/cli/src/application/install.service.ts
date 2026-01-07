@@ -3,10 +3,12 @@ import { execSync, spawnSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
   TrackDirectoryResolver,
+  DataSourceFactory,
   SqliteDataSource,
   SqliteProjectRepository,
   ProjectService,
   NodeGitOperations,
+  resolveConnectionString,
   type Project,
 } from "@dev-workflow/core";
 
@@ -22,13 +24,35 @@ export class InstallError extends Error {
 
 export class InstallService {
   private project: Project | null = null;
+  private databaseConnectionString: string;
 
   constructor(
     private readonly fileSystem: FileSystem,
     private readonly workingDirectory: string,
     private readonly packageRoot: string,
-    private readonly resolver: TrackDirectoryResolver
-  ) {}
+    private readonly resolver: TrackDirectoryResolver,
+    databaseConnectionString: string
+  ) {
+    this.databaseConnectionString = databaseConnectionString;
+  }
+
+  /**
+   * Set the database connection string.
+   * Use this when re-initializing and the connection string changes.
+   */
+  setDatabaseConnectionString(connectionString: string): void {
+    this.databaseConnectionString = connectionString;
+  }
+
+  /**
+   * Get the resolved database connection string.
+   * For file: URLs, resolves relative paths against gitRoot.
+   * For postgresql: URLs, returns unchanged.
+   */
+  private getResolvedConnectionString(): string {
+    const gitRoot = this.resolver.getGitRoot();
+    return resolveConnectionString(this.databaseConnectionString, gitRoot);
+  }
 
   /**
    * Register the project in the database.
@@ -39,8 +63,17 @@ export class InstallService {
    * @returns The registered project
    */
   async registerProject(): Promise<Project> {
-    const dbPath = this.resolver.getDatabasePath();
-    const dbService = await SqliteDataSource.create(dbPath);
+    const connectionString = this.getResolvedConnectionString();
+
+    // TODO: Support PostgreSQL when repository abstraction is complete
+    if (DataSourceFactory.isRemote(connectionString)) {
+      throw new InstallError(
+        "Remote database support for project registration is not yet implemented. " +
+          "Use a local SQLite database for now."
+      );
+    }
+
+    const dbService = await SqliteDataSource.create(connectionString);
 
     try {
       const projectRepo = new SqliteProjectRepository(dbService.getDb());
@@ -133,11 +166,10 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
 
   async registerMCPServer(): Promise<void> {
     try {
-      // Project must be registered first
-      const project = this.getProject();
+      // Project must be registered first (to validate it exists)
+      this.getProject();
 
-      const dbPath = this.resolver.getDatabasePath();
-      const gitRoot = this.resolver.getGitRoot();
+      const slug = this.resolver.getProjectId();
       const cliPath = path.join(this.packageRoot, "dist/index.js");
 
       // Remove existing registration if it exists (from both scopes for migration)
@@ -163,6 +195,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
       // Build the command args for local scope only
       // Local scope stores config in ~/.claude.json, not in the project's .mcp.json
       // This allows dev-workflow to work in projects where .mcp.json is committed
+      // MCP server loads config from ~/.track/<slug>/config.json at startup
       const args = [
         "mcp",
         "add",
@@ -172,11 +205,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
         "stdio",
         "dev-workflow-tracker",
         "--env",
-        `DATABASE_PATH=${dbPath}`,
-        "--env",
-        `PROJECT_ID=${project.id}`,
-        "--env",
-        `GIT_ROOT=${gitRoot}`,
+        `TRACK_SLUG=${slug}`,
         "--",
         "node",
         cliPath,
@@ -197,18 +226,26 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
 
   async initializeDatabase(): Promise<void> {
     try {
-      const dbPath = this.resolver.getDatabasePath();
-      const globalTrackDir = this.resolver.getGlobalTrackDirectory();
-      await this.fileSystem.mkdir(globalTrackDir, { recursive: true });
+      const connectionString = this.getResolvedConnectionString();
 
-      // Import SqliteDataSource from core package
-      const { SqliteDataSource } = await import("@dev-workflow/core");
+      // TODO: Support PostgreSQL when repository abstraction is complete
+      if (DataSourceFactory.isRemote(connectionString)) {
+        throw new InstallError(
+          "Remote database initialization is not yet implemented. " +
+            "Use a local SQLite database for now."
+        );
+      }
 
-      // Create database with automatic native/WASM detection and run migrations
-      const dbService = await SqliteDataSource.create(dbPath);
+      // Ensure parent directory exists for SQLite
+      const dbDir = path.dirname(connectionString);
+      await this.fileSystem.mkdir(dbDir, { recursive: true });
+
+      // Create database and run migrations
+      const dbService = await SqliteDataSource.create(connectionString);
       dbService.runMigrations();
       dbService.close();
     } catch (error) {
+      if (error instanceof InstallError) throw error;
       throw new InstallError("Failed to initialize database", error);
     }
   }
@@ -316,15 +353,21 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
    * @returns The existing project if found, null otherwise
    */
   async findExistingProject(): Promise<Project | null> {
-    const dbPath = this.resolver.getDatabasePath();
+    const connectionString = this.getResolvedConnectionString();
 
-    // Database might not exist yet
-    const dbExists = await this.fileSystem.exists(dbPath);
+    // TODO: Support PostgreSQL when repository abstraction is complete
+    if (DataSourceFactory.isRemote(connectionString)) {
+      // Can't check remote database yet
+      return null;
+    }
+
+    // Check if database file exists
+    const dbExists = await this.fileSystem.exists(connectionString);
     if (!dbExists) {
       return null;
     }
 
-    const dbService = await SqliteDataSource.create(dbPath);
+    const dbService = await SqliteDataSource.create(connectionString);
 
     try {
       // Run migrations first to ensure schema is up to date
