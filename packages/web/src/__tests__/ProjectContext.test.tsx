@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ProjectProvider, useProjectContext } from "../contexts/ProjectContext";
 
@@ -16,6 +16,17 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/",
   useSearchParams: () => mockSearchParams,
 }));
+
+// Mock data sources
+const mockSources = [
+  {
+    id: "src-1",
+    name: "Global Database",
+    connectionString: "file:///path/to/db",
+    resolvedPath: "/path/to/db",
+    type: "global" as const,
+  },
+];
 
 // Mock useProjects hook
 const mockProjects = [
@@ -37,7 +48,7 @@ const mockProjects = [
 
 vi.mock("../hooks", () => ({
   useProjects: () => ({
-    data: { sources: [], projects: mockProjects },
+    data: { sources: mockSources, projects: mockProjects },
     isLoading: false,
   }),
   useUrlState: () => {
@@ -144,13 +155,25 @@ describe("ProjectContext", () => {
     vi.clearAllMocks();
   });
 
-  it("provides projects from useProjects hook", () => {
+  it("provides projects from useProjects hook when source is selected", async () => {
+    // Set up localStorage with source already selected
+    localStorageMock.getItem.mockImplementation((key: string) => {
+      if (key === URL_STATE_KEY) {
+        return JSON.stringify({ source: "src-1" });
+      }
+      return null;
+    });
+
     const { result } = renderHook(() => useProjectContext(), {
       wrapper: createWrapper(),
     });
 
-    expect(result.current.projects).toEqual(mockProjects);
+    // Projects should be filtered by the selected source
+    await waitFor(() => {
+      expect(result.current.projects).toEqual(mockProjects);
+    });
     expect(result.current.isLoading).toBe(false);
+    expect(result.current.sourceId).toBe("src-1");
   });
 
   it("initializes projectId from localStorage", () => {

@@ -105,16 +105,16 @@ export class TaskGitHubSyncService {
   /**
    * Get fresh GitHub sync config from the database
    */
-  private getConfig(): GitHubIssueSyncConfig | null {
-    const project = this.projectRepository.findById(this.projectId);
+  private async getConfig(): Promise<GitHubIssueSyncConfig | null> {
+    const project = await this.projectRepository.findById(this.projectId);
     return project?.githubSync ?? null;
   }
 
   /**
    * Check if GitHub sync is currently enabled
    */
-  isEnabled(): boolean {
-    const config = this.getConfig();
+  async isEnabled(): Promise<boolean> {
+    const config = await this.getConfig();
     return config?.enabled ?? false;
   }
 
@@ -175,7 +175,7 @@ export class TaskGitHubSyncService {
       };
     }
 
-    const config = this.getConfig();
+    const config = await this.getConfig();
     const results: TaskActivationResult[] = [];
 
     // Check if this is an imported issue
@@ -288,7 +288,7 @@ export class TaskGitHubSyncService {
       throw new TaskGitHubSyncError(`Parent GitHub issue #${parentIssueNumber} not found`);
     }
 
-    const config = this.getConfig()!;
+    const config = (await this.getConfig())!;
 
     // Add to project if configured
     let projectItemId: string | null = null;
@@ -375,7 +375,7 @@ export class TaskGitHubSyncService {
    * @returns The GitHub sync state for the task
    */
   async createGitHubIssueForTask(issue: Issue, task: Task): Promise<GitHubSyncState> {
-    const config = this.getConfig();
+    const config = await this.getConfig();
     if (!config?.enabled) {
       throw new TaskGitHubSyncError("GitHub sync is not enabled");
     }
@@ -464,7 +464,7 @@ export class TaskGitHubSyncService {
       return;
     }
 
-    const config = this.getConfig();
+    const config = await this.getConfig();
     if (!config?.enabled) {
       return;
     }
@@ -520,7 +520,7 @@ export class TaskGitHubSyncService {
       return;
     }
 
-    const config = this.getConfig();
+    const config = await this.getConfig();
     if (!config?.enabled || !config.assignee) {
       // No assignee configured - nothing to do
       return;
@@ -546,7 +546,7 @@ export class TaskGitHubSyncService {
    * @param taskIds - Array of task UUIDs that were abandoned
    */
   async closeAbandonedTaskIssues(taskIds: string[]): Promise<void> {
-    const config = this.getConfig();
+    const config = await this.getConfig();
     if (!config?.enabled) {
       return;
     }
@@ -611,7 +611,7 @@ export class TaskGitHubSyncService {
       };
     }
 
-    const config = this.getConfig();
+    const config = await this.getConfig();
     if (!config?.enabled) {
       return {
         success: false,

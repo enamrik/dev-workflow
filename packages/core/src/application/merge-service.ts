@@ -120,8 +120,8 @@ export class MergeService {
   /**
    * Check if GitHub sync is enabled for this project
    */
-  private isGitHubSyncEnabled(): boolean {
-    const project = this.projectRepository.findById(this.projectId);
+  private async isGitHubSyncEnabled(): Promise<boolean> {
+    const project = await this.projectRepository.findById(this.projectId);
     return project?.githubSync?.enabled ?? false;
   }
 
@@ -677,7 +677,7 @@ export class MergeService {
     mode: MergeMode
   ): Promise<void> {
     // Skip if GitHub sync is not enabled or no CLI available
-    if (!this.isGitHubSyncEnabled() || !this.githubCLI) {
+    if (!(await this.isGitHubSyncEnabled()) || !this.githubCLI) {
       return;
     }
 

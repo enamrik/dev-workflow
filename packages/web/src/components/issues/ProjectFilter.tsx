@@ -17,6 +17,9 @@ interface SourceProjectFilterProps {
  *
  * Shows source dropdown only when multiple sources are available.
  * Projects are filtered by the selected source.
+ *
+ * For local sources (one project per database), the project dropdown is hidden
+ * since "All Projects" makes no sense when there's only one project by design.
  */
 export function SourceProjectFilter({
   sources,
@@ -28,31 +31,54 @@ export function SourceProjectFilter({
 }: SourceProjectFilterProps) {
   const hasMultipleSources = sources.length > 1;
 
-  // Source options
-  const sourceOptions = [
-    { value: "", label: "All sources" },
-    ...sources.map((s) => ({
-      value: s.id,
-      label: s.name,
-    })),
-  ];
+  // Find current source to check its type
+  const currentSource = sources.find((s) => s.id === sourceId);
+  const isLocalSource = currentSource?.type === "local";
 
-  // Project options
+  // Source options (no "All sources" - each datasource is independent)
+  const sourceOptions = sources.map((s) => ({
+    value: s.id,
+    label: s.name,
+  }));
+
+  // Project options - for local sources with single project, don't show "All projects"
+  const showAllProjectsOption = !isLocalSource && projects.length > 1;
   const projectOptions = [
-    { value: "", label: "All projects" },
+    ...(showAllProjectsOption ? [{ value: "", label: "All projects" }] : []),
     ...projects.map((p) => ({
       value: p.id,
       label: p.name,
     })),
   ];
 
-  // Find selected project to check for GitHub Project link
-  const selectedProject = projectId ? projects.find((p) => p.id === projectId) : null;
+  // For local sources, hide project dropdown entirely (single project by design)
+  const showProjectDropdown = !isLocalSource && projects.length > 1;
+
+  // Find selected project to check for GitHub links
+  // For local sources with single project, use that project even if projectId isn't set
+  const selectedProject = projectId
+    ? projects.find((p) => p.id === projectId)
+    : isLocalSource && projects.length === 1
+      ? projects[0]
+      : null;
+  const githubRepoUrl = selectedProject?.githubSync?.repoUrl;
   const githubProjectUrl = selectedProject?.githubSync?.projectUrl;
 
   if (projects.length === 0 && sources.length === 0) {
     return null;
   }
+
+  // GitHub links component - shown in multiple places
+  const GitHubLinks = () => (
+    <>
+      {githubRepoUrl && (
+        <GitHubLink url={githubRepoUrl} label="Repo" tooltip={`View GitHub Repository`} />
+      )}
+      {githubProjectUrl && (
+        <GitHubLink url={githubProjectUrl} label="Project" tooltip={`View GitHub Project`} />
+      )}
+    </>
+  );
 
   return (
     <div className="flex items-center gap-3">
@@ -64,20 +90,17 @@ export function SourceProjectFilter({
         </div>
       )}
 
-      {/* Project dropdown */}
-      {projects.length > 0 && (
+      {/* Project dropdown - hidden for local sources (single project by design) */}
+      {showProjectDropdown && (
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-600">Project:</label>
           <Select options={projectOptions} value={projectId} onChange={onProjectChange} />
-          {githubProjectUrl && (
-            <GitHubLink
-              url={githubProjectUrl}
-              label="Project"
-              tooltip={`View GitHub Project: ${githubProjectUrl}`}
-            />
-          )}
+          <GitHubLinks />
         </div>
       )}
+
+      {/* Show GitHub links even when project dropdown is hidden */}
+      {!showProjectDropdown && <GitHubLinks />}
     </div>
   );
 }
@@ -105,20 +128,20 @@ export function ProjectFilter({ projects, value, onChange }: ProjectFilterProps)
     })),
   ];
 
-  // Find selected project to check for GitHub Project link
+  // Find selected project to check for GitHub links
   const selectedProject = value ? projects.find((p) => p.id === value) : null;
+  const githubRepoUrl = selectedProject?.githubSync?.repoUrl;
   const githubProjectUrl = selectedProject?.githubSync?.projectUrl;
 
   return (
     <div className="flex items-center gap-2">
       <label className="text-sm text-gray-600">Project:</label>
       <Select options={options} value={value} onChange={onChange} />
+      {githubRepoUrl && (
+        <GitHubLink url={githubRepoUrl} label="Repo" tooltip={`View GitHub Repository`} />
+      )}
       {githubProjectUrl && (
-        <GitHubLink
-          url={githubProjectUrl}
-          label="Project"
-          tooltip={`View GitHub Project: ${githubProjectUrl}`}
-        />
+        <GitHubLink url={githubProjectUrl} label="Project" tooltip={`View GitHub Project`} />
       )}
     </div>
   );

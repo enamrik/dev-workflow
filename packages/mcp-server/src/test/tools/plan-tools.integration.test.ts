@@ -33,12 +33,12 @@ const TEST_PROJECT_ID = "test-project-plan";
 /**
  * Create a PlanToolContext for testing
  */
-function createPlanToolContext(testDb: TestDatabase): PlanToolContext {
+async function createPlanToolContext(testDb: TestDatabase): Promise<PlanToolContext> {
   const db = testDb.db as DbType;
 
   // Create project first to get the generated ID
   const projectRepository = new SqliteProjectRepository(db);
-  const project = projectRepository.create({
+  const project = await projectRepository.create({
     gitRootHash: TEST_PROJECT_ID,
     name: "Test Project",
   });
@@ -137,9 +137,9 @@ describe("Plan Tools Integration", () => {
   let testDb: TestDatabase;
   let ctx: PlanToolContext;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     testDb = createTestDatabase();
-    ctx = createPlanToolContext(testDb);
+    ctx = await createPlanToolContext(testDb);
   });
 
   describe("handleGeneratePlan", () => {

@@ -97,6 +97,7 @@ export interface Milestone {
  */
 export interface GitHubIssueSyncConfig {
   enabled: boolean;
+  repoUrl?: string;
   projectId?: string;
   projectUrl?: string;
 }

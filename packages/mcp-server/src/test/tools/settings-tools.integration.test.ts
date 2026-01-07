@@ -25,11 +25,11 @@ const TEST_GIT_ROOT = "/test/repo";
 /**
  * Create a SettingsToolContext for testing
  */
-function createSettingsToolContext(
+async function createSettingsToolContext(
   testDb: TestDatabase,
   mockGitHubCLI?: MockGitHubCLI,
   project?: Project
-): SettingsToolContext {
+): Promise<SettingsToolContext> {
   const db = testDb.db as DbType;
   const projectRepository = new SqliteProjectRepository(db);
   const githubCLI = mockGitHubCLI ?? new MockGitHubCLI();
@@ -37,10 +37,10 @@ function createSettingsToolContext(
   // Create project if not provided
   const testProject =
     project ??
-    projectRepository.create({
+    (await projectRepository.create({
       name: "test-project",
       gitRootHash: TEST_GIT_ROOT_HASH,
-    });
+    }));
 
   return {
     project: testProject,
@@ -61,7 +61,7 @@ describe("update_settings - configure_column_mapping", () => {
   describe("when GitHub sync is not enabled", () => {
     it("should return error when trying to configure column mapping", async () => {
       // Arrange
-      const ctx = createSettingsToolContext(testDb);
+      const ctx = await createSettingsToolContext(testDb);
 
       // Act
       const result = await handleUpdateSettings(ctx, {
@@ -82,7 +82,7 @@ describe("update_settings - configure_column_mapping", () => {
     let ctx: SettingsToolContext;
 
     beforeEach(async () => {
-      ctx = createSettingsToolContext(testDb);
+      ctx = await createSettingsToolContext(testDb);
 
       // Enable GitHub sync first
       await handleUpdateSettings(ctx, {
@@ -224,7 +224,7 @@ describe("update_settings - configure_column_mapping", () => {
       });
 
       // Assert - verify persisted in database
-      const project = ctx.projectRepository.findById(ctx.project.id);
+      const project = await ctx.projectRepository.findById(ctx.project.id);
       expect(project?.githubSync?.columnMapping).toEqual({ PR_REVIEW: "Review" });
     });
   });
@@ -239,7 +239,7 @@ describe("update_settings - get_settings", () => {
 
   it("should include column mapping in get_settings response", async () => {
     // Arrange
-    const ctx = createSettingsToolContext(testDb);
+    const ctx = await createSettingsToolContext(testDb);
 
     // Enable GitHub and configure custom mapping
     await handleUpdateSettings(ctx, { action: "enable_github" });
@@ -269,7 +269,7 @@ describe("update_settings - get_settings", () => {
 
   it("should show default column mapping when none configured", async () => {
     // Arrange
-    const ctx = createSettingsToolContext(testDb);
+    const ctx = await createSettingsToolContext(testDb);
     await handleUpdateSettings(ctx, { action: "enable_github" });
 
     // Act
@@ -287,7 +287,7 @@ describe("update_settings - get_settings", () => {
 
   it("should include assignee in get_settings response when configured", async () => {
     // Arrange
-    const ctx = createSettingsToolContext(testDb);
+    const ctx = await createSettingsToolContext(testDb);
     await handleUpdateSettings(ctx, {
       action: "enable_github",
       github: { assignee: "testuser" },
@@ -307,7 +307,7 @@ describe("update_settings - get_settings", () => {
 
   it("should show null assignee when not configured", async () => {
     // Arrange
-    const ctx = createSettingsToolContext(testDb);
+    const ctx = await createSettingsToolContext(testDb);
     await handleUpdateSettings(ctx, { action: "enable_github" });
 
     // Act
@@ -332,7 +332,7 @@ describe("update_settings - assignee configuration", () => {
   describe("enable_github with assignee", () => {
     it("should store assignee when provided with enable_github", async () => {
       // Arrange
-      const ctx = createSettingsToolContext(testDb);
+      const ctx = await createSettingsToolContext(testDb);
 
       // Act
       const result = await handleUpdateSettings(ctx, {
@@ -347,13 +347,13 @@ describe("update_settings - assignee configuration", () => {
       expect(content.config.syncIssues.assignee).toBe("octocat");
 
       // Verify persisted in database
-      const project = ctx.projectRepository.findById(ctx.project.id);
+      const project = await ctx.projectRepository.findById(ctx.project.id);
       expect(project?.githubSync?.assignee).toBe("octocat");
     });
 
     it("should reject assignee with @ prefix", async () => {
       // Arrange
-      const ctx = createSettingsToolContext(testDb);
+      const ctx = await createSettingsToolContext(testDb);
 
       // Act
       const result = await handleUpdateSettings(ctx, {
@@ -369,7 +369,7 @@ describe("update_settings - assignee configuration", () => {
 
     it("should reject invalid username format", async () => {
       // Arrange
-      const ctx = createSettingsToolContext(testDb);
+      const ctx = await createSettingsToolContext(testDb);
 
       // Act
       const result = await handleUpdateSettings(ctx, {
@@ -385,7 +385,7 @@ describe("update_settings - assignee configuration", () => {
 
     it("should accept valid usernames with hyphens", async () => {
       // Arrange
-      const ctx = createSettingsToolContext(testDb);
+      const ctx = await createSettingsToolContext(testDb);
 
       // Act
       const result = await handleUpdateSettings(ctx, {
@@ -404,7 +404,7 @@ describe("update_settings - assignee configuration", () => {
     let ctx: SettingsToolContext;
 
     beforeEach(async () => {
-      ctx = createSettingsToolContext(testDb);
+      ctx = await createSettingsToolContext(testDb);
       // Enable GitHub sync first
       await handleUpdateSettings(ctx, { action: "enable_github" });
     });
@@ -442,7 +442,7 @@ describe("update_settings - assignee configuration", () => {
       expect(content.config.syncIssues.assignee).toBeUndefined();
 
       // Verify in database
-      const project = ctx.projectRepository.findById(ctx.project.id);
+      const project = await ctx.projectRepository.findById(ctx.project.id);
       expect(project?.githubSync?.assignee).toBeUndefined();
     });
 
@@ -460,7 +460,7 @@ describe("update_settings - assignee configuration", () => {
       });
 
       // Assert - assignee should still be there
-      const project = ctx.projectRepository.findById(ctx.project.id);
+      const project = await ctx.projectRepository.findById(ctx.project.id);
       expect(project?.githubSync?.assignee).toBe("existinguser");
     });
 
@@ -488,7 +488,7 @@ describe("update_settings - list_available_labels", () => {
 
   it("should return error when GitHub sync is not enabled", async () => {
     // Arrange
-    const ctx = createSettingsToolContext(testDb);
+    const ctx = await createSettingsToolContext(testDb);
 
     // Act
     const result = await handleUpdateSettings(ctx, {
@@ -523,7 +523,7 @@ describe("update_settings - list_available_labels", () => {
         { id: "PVTF_3", name: "Notes", type: "TEXT" as const },
       ],
     });
-    const ctx = createSettingsToolContext(testDb, mockGitHubCLI);
+    const ctx = await createSettingsToolContext(testDb, mockGitHubCLI);
 
     // Enable GitHub with a projectId
     await handleUpdateSettings(ctx, {
@@ -557,7 +557,7 @@ describe("update_settings - list_available_labels", () => {
 
   it("should return not supported when no projectId is configured", async () => {
     // Arrange
-    const ctx = createSettingsToolContext(testDb);
+    const ctx = await createSettingsToolContext(testDb);
     await handleUpdateSettings(ctx, { action: "enable_github" });
 
     // Act

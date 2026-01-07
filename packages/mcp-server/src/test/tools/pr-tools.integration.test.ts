@@ -660,7 +660,7 @@ describe("submit_for_review", () => {
 
       // Create a project with GitHub sync enabled (including projectId)
       const projectRepository = new SqliteProjectRepository(db);
-      const project = projectRepository.create({
+      const project = await projectRepository.create({
         name: "Test Project",
         gitRootHash: "test-hash-123",
         githubSync: {

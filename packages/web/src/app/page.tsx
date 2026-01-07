@@ -33,7 +33,7 @@ export default function BoardPage() {
 }
 
 function BoardPageContent() {
-  const { projectId, isLoading: projectsLoading } = useProjectContext();
+  const { projectId, sourceId, isLoading: projectsLoading } = useProjectContext();
   const { state, setProperty } = useUrlState();
   const [previewTarget, setPreviewTarget] = useState<PreviewTarget | null>(null);
 
@@ -55,6 +55,7 @@ function BoardPageContent() {
     refetch,
   } = useTasks({
     project: projectId || undefined,
+    source: sourceId || undefined,
   });
 
   const issuesWithTasks = tasksResponse?.issuesWithTasks ?? [];

@@ -38,12 +38,12 @@ const TEST_PROJECT_ID = "test-project-integration";
 /**
  * Create a full IssueToolContext for testing
  */
-function createIssueToolContext(testDb: TestDatabase): IssueToolContext {
+async function createIssueToolContext(testDb: TestDatabase): Promise<IssueToolContext> {
   const db = testDb.db as DbType;
 
   // Create project first to get the generated ID
   const projectRepository = new SqliteProjectRepository(db);
-  const project = projectRepository.create({
+  const project = await projectRepository.create({
     gitRootHash: TEST_PROJECT_ID,
     name: "Test Project",
   });
@@ -109,9 +109,9 @@ describe("Issue Tools Integration", () => {
   let testDb: TestDatabase;
   let ctx: IssueToolContext;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     testDb = createTestDatabase();
-    ctx = createIssueToolContext(testDb);
+    ctx = await createIssueToolContext(testDb);
   });
 
   describe("handleCreateIssue", () => {

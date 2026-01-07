@@ -1,10 +1,16 @@
-export { MultiProjectService, getMultiProjectService } from "../lib/multi-project-service.js";
-export type {
-  Project,
-  ProjectIssue,
-  ProjectTask,
-  CompletedTask,
-  ProjectIssueWithPlanInfo,
-  ProjectIssueWithTasks,
-  MilestoneWithIssues,
-} from "../lib/multi-project-service.js";
+// DI Context and Registry - use these in route handlers
+export { WebDIContext, DataSourceRegistry } from "../lib/di-context";
+export type { SourceInfo, ProjectInfo } from "../lib/di-context";
+
+// Re-export core types for convenience
+export {
+  computeIssueStatus,
+  computeMilestoneStatus,
+  type ComputedIssueStatus,
+  type Issue,
+  type Plan,
+  type Task,
+  type Milestone,
+  type TaskStatusHistory,
+  type TaskExecutionLog,
+} from "@dev-workflow/core";

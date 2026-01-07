@@ -105,7 +105,7 @@ interface TestTaskToolContext extends TaskToolContext {
  * @param testDb - The test database
  * @param options - Options including mock provider calls and GitHub sync config
  */
-function createTaskToolContext(
+async function createTaskToolContext(
   testDb: TestDatabase,
   options?: {
     mockProviderCalls?: MockProviderCalls;
@@ -114,12 +114,12 @@ function createTaskToolContext(
       assignee?: string;
     };
   }
-): TestTaskToolContext {
+): Promise<TestTaskToolContext> {
   const db = testDb.db as DbType;
   const projectRepository = new SqliteProjectRepository(db);
 
   // Create project first with optional GitHub sync config
-  const project = projectRepository.create({
+  const project = await projectRepository.create({
     name: "Test Project",
     gitRootHash: "test-hash-" + crypto.randomUUID().slice(0, 8),
     githubSync: options?.githubSync ?? null,
@@ -177,9 +177,9 @@ describe("Task Tools Integration", () => {
   let testDb: TestDatabase;
   let ctx: TaskToolContext;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     testDb = createTestDatabase();
-    ctx = createTaskToolContext(testDb);
+    ctx = await createTaskToolContext(testDb);
   });
 
   describe("handleGetTask", () => {
@@ -494,7 +494,7 @@ describe("Task Tools Integration", () => {
       // Track mock provider calls
       const mockCalls: MockProviderCalls = { assignIssue: [] };
       const testDbWithAssignee = createTestDatabase();
-      const ctxWithAssignee = createTaskToolContext(testDbWithAssignee, {
+      const ctxWithAssignee = await createTaskToolContext(testDbWithAssignee, {
         mockProviderCalls: mockCalls,
         githubSync: {
           enabled: true,
@@ -542,7 +542,7 @@ describe("Task Tools Integration", () => {
       // Track mock provider calls
       const mockCalls: MockProviderCalls = { assignIssue: [] };
       const testDbNoAssignee = createTestDatabase();
-      const ctxNoAssignee = createTaskToolContext(testDbNoAssignee, {
+      const ctxNoAssignee = await createTaskToolContext(testDbNoAssignee, {
         mockProviderCalls: mockCalls,
         githubSync: {
           enabled: true,
@@ -587,7 +587,7 @@ describe("Task Tools Integration", () => {
       const mockCalls: MockProviderCalls = { assignIssue: [] };
       const testDbDisabled = createTestDatabase();
       // No githubSync option - sync is disabled by default
-      const ctxDisabled = createTaskToolContext(testDbDisabled, {
+      const ctxDisabled = await createTaskToolContext(testDbDisabled, {
         mockProviderCalls: mockCalls,
       });
 
@@ -627,7 +627,7 @@ describe("Task Tools Integration", () => {
       // Track mock provider calls
       const mockCalls: MockProviderCalls = { assignIssue: [] };
       const testDbNoSync = createTestDatabase();
-      const ctxNoSync = createTaskToolContext(testDbNoSync, {
+      const ctxNoSync = await createTaskToolContext(testDbNoSync, {
         mockProviderCalls: mockCalls,
         githubSync: {
           enabled: true,

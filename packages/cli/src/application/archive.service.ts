@@ -238,7 +238,7 @@ export class ArchiveService {
 
       // Look up by gitRootHash (first commit hash)
       const gitRootHash = await gitOps.getInitialCommitHash(this.workingDirectory);
-      return projectRepository.findByGitRootHash(gitRootHash);
+      return await projectRepository.findByGitRootHash(gitRootHash);
     } finally {
       dbService.close();
     }
@@ -284,7 +284,7 @@ export class ArchiveService {
 
     try {
       const projectRepository = new SqliteProjectRepository(dbService.getDb());
-      return projectRepository.archive(project.id);
+      return await projectRepository.archive(project.id);
     } finally {
       dbService.close();
     }
@@ -315,7 +315,7 @@ export class ArchiveService {
       const gitRootHash = await gitOps.getInitialCommitHash(this.workingDirectory);
 
       // Look up by gitRootHash
-      const project = projectRepository.findByGitRootHash(gitRootHash);
+      const project = await projectRepository.findByGitRootHash(gitRootHash);
 
       // Only return if it's archived
       if (project && project.isArchived) {
@@ -367,7 +367,7 @@ export class ArchiveService {
       const projectRepository = new SqliteProjectRepository(dbService.getDb());
 
       // Mark project as unarchived in database first
-      const unarchivedProject = projectRepository.unarchive(project.id);
+      const unarchivedProject = await projectRepository.unarchive(project.id);
 
       // Re-install Claude integration
       const installer = new InstallService(

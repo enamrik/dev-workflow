@@ -92,13 +92,13 @@ describe("TaskGitHubSyncService", () => {
   let testProjectId: string;
   let service: TaskGitHubSyncService;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     testDb = createTestDatabase();
     repos = createRepositories(testDb.db);
     mockProvider = createMockProvider();
 
     // Create a project with GitHub sync enabled (including projectId for column moves)
-    const project = repos.projectRepository.create({
+    const project = await repos.projectRepository.create({
       name: "Test Project",
       gitRootHash: "abc123",
       githubSync: {
@@ -249,7 +249,7 @@ describe("TaskGitHubSyncService", () => {
 
     it("should not call moveToColumn if project has no projectId configured", async () => {
       // Arrange - update project to have no projectId
-      repos.projectRepository.update(testProjectId, {
+      await repos.projectRepository.update(testProjectId, {
         githubSync: {
           enabled: true,
           // No projectId!
@@ -342,7 +342,7 @@ describe("TaskGitHubSyncService", () => {
 
     it("should use custom column mapping when configured", async () => {
       // Arrange - configure custom column mapping with a custom column name
-      repos.projectRepository.update(testProjectId, {
+      await repos.projectRepository.update(testProjectId, {
         githubSync: {
           enabled: true,
           projectId: "PVT_test_project_456",
@@ -373,7 +373,7 @@ describe("TaskGitHubSyncService", () => {
 
     it("should use default mapping for unmapped statuses when custom mapping is partial", async () => {
       // Arrange - configure partial custom column mapping
-      repos.projectRepository.update(testProjectId, {
+      await repos.projectRepository.update(testProjectId, {
         githubSync: {
           enabled: true,
           projectId: "PVT_test_project_456",
@@ -417,7 +417,7 @@ describe("TaskGitHubSyncService", () => {
         testProjectId
       );
 
-      repos.projectRepository.update(testProjectId, {
+      await repos.projectRepository.update(testProjectId, {
         githubSync: {
           enabled: true,
           projectId: "PVT_test_project_456",
@@ -1072,7 +1072,7 @@ describe("TaskGitHubSyncService", () => {
 
     it("should return error when GitHub sync is disabled", async () => {
       // Arrange - disable GitHub sync
-      repos.projectRepository.update(testProjectId, {
+      await repos.projectRepository.update(testProjectId, {
         githubSync: {
           enabled: false,
         },

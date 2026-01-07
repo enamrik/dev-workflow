@@ -183,7 +183,7 @@ describe("Repository Provider Compatibility", () => {
       const projectRepo = new SqliteProjectRepository(dataSource.getDb());
 
       // Create a project
-      const project = projectRepo.create({
+      const project = await projectRepo.create({
         gitRootHash: "abc123def456",
         name: "Test Project",
       });
@@ -193,7 +193,7 @@ describe("Repository Provider Compatibility", () => {
       expect(project.slug).toBe("test-project-abc123");
 
       // Retrieve the project
-      const found = projectRepo.findById(project.id);
+      const found = await projectRepo.findById(project.id);
       expect(found).toBeDefined();
       expect(found?.name).toBe("Test Project");
     });

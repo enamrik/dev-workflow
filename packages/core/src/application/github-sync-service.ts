@@ -53,8 +53,8 @@ export class GitHubSyncService {
    * Get fresh GitHub sync config from the database
    * This ensures we always use the latest config, even if updated after server start
    */
-  private getConfig(): GitHubIssueSyncConfig | null {
-    const project = this.projectRepository.findById(this.projectId);
+  private async getConfig(): Promise<GitHubIssueSyncConfig | null> {
+    const project = await this.projectRepository.findById(this.projectId);
     return project?.githubSync ?? null;
   }
 
@@ -80,7 +80,7 @@ export class GitHubSyncService {
     syncState: GitHubSyncState;
   }> {
     // Get fresh config from database
-    const config = this.getConfig();
+    const config = await this.getConfig();
     if (!config?.enabled) {
       throw new GitHubSyncError("GitHub sync is not enabled");
     }
@@ -154,7 +154,7 @@ export class GitHubSyncService {
    */
   async updateGitHubIssue(issue: Issue, updates: Partial<Issue>): Promise<GitHubSyncState> {
     // Get fresh config from database
-    const config = this.getConfig();
+    const config = await this.getConfig();
     if (!config?.enabled) {
       throw new GitHubSyncError("GitHub sync is not enabled");
     }
@@ -256,8 +256,8 @@ export class GitHubSyncService {
    * Check if GitHub sync is currently enabled
    * This reads fresh config from the database
    */
-  isEnabled(): boolean {
-    const config = this.getConfig();
+  async isEnabled(): Promise<boolean> {
+    const config = await this.getConfig();
     return config?.enabled ?? false;
   }
 

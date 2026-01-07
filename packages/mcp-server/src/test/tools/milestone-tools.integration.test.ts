@@ -27,13 +27,13 @@ describe("Milestone Tools", () => {
   let ctx: MilestoneToolContext;
   let projectId: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     testDb = createTestDatabase();
     const db = testDb.db as DbType;
 
     // Create project first
     const projectRepository = new SqliteProjectRepository(db);
-    const project = projectRepository.create({
+    const project = await projectRepository.create({
       gitRootHash: TEST_PROJECT_ID,
       name: "Test Project",
     });
