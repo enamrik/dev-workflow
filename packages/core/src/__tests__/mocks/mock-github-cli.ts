@@ -53,6 +53,14 @@ export interface MockGitHubCLIConfig {
 
   /** Search results to return from searchIssues */
   searchResults?: GitHubIssueData[];
+
+  /** Project custom fields to return for getProjectFields queries */
+  projectFields?: Array<{
+    id: string;
+    name: string;
+    type: "TEXT" | "NUMBER" | "DATE" | "SINGLE_SELECT" | "ITERATION" | "OTHER";
+    options?: Array<{ id: string; name: string }>;
+  }>;
 }
 
 /**
@@ -95,6 +103,7 @@ export class MockGitHubCLI implements GitHubCLI {
         ],
       },
       searchResults: config.searchResults ?? [],
+      projectFields: config.projectFields ?? [],
     };
   }
 
@@ -429,8 +438,34 @@ export class MockGitHubCLI implements GitHubCLI {
     if (queryArg) {
       const query = queryArg.substring(6); // Remove "query=" prefix
 
-      // Check if this is a project fields query (for getProjectStatusField)
+      // Check if this is a project fields query
       if (query.includes("ProjectV2") && query.includes("fields")) {
+        // If custom projectFields are configured, return them
+        if (this.config.projectFields.length > 0) {
+          const nodes = this.config.projectFields.map((f) => ({
+            id: f.id,
+            name: f.name,
+            dataType: f.type, // Map our type to GitHub's dataType
+            options: f.options,
+          }));
+          const response = {
+            data: {
+              node: {
+                fields: {
+                  nodes,
+                },
+              },
+            },
+          };
+          return {
+            success: true,
+            stdout: JSON.stringify(response),
+            stderr: "",
+            exitCode: 0,
+          };
+        }
+
+        // Default: return status field from projectStatusField config
         const { fieldId, options } = this.config.projectStatusField;
         const response = {
           data: {
@@ -440,6 +475,7 @@ export class MockGitHubCLI implements GitHubCLI {
                   {
                     id: fieldId,
                     name: "Status",
+                    dataType: "SINGLE_SELECT",
                     options: options,
                   },
                 ],

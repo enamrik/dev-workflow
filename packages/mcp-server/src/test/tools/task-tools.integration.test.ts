@@ -253,6 +253,23 @@ describe("Task Tools Integration", () => {
       expect(content.title).toBe("Task 2");
       expect(content.number).toBe(2);
     });
+
+    it("should return task labels and type", () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Task with labels",
+        type: "FEATURE",
+        labels: { priority: "high", sprint: "sprint-1" },
+      });
+
+      const result = handleGetTask(ctx, { taskId: task.id });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.type).toBe("FEATURE");
+      expect(content.labels).toEqual({ priority: "high", sprint: "sprint-1" });
+    });
   });
 
   describe("handleListAvailableTasks", () => {
@@ -331,6 +348,116 @@ describe("Task Tools Integration", () => {
       expect(updated!.title).toBe("Updated Title");
       expect(updated!.description).toBe("New description");
       expect(updated!.estimatedMinutes).toBe(60);
+    });
+
+    it("should add labels to a task", async () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Task without labels",
+      });
+
+      const result = await handleUpdateTask(ctx, {
+        taskId: task.id,
+        labels: {
+          priority: "high",
+          sprint: "sprint-1",
+          urgent: "", // Simple tag (empty value)
+        },
+      });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.task.labels).toEqual({
+        priority: "high",
+        sprint: "sprint-1",
+        urgent: "",
+      });
+
+      // Verify database state
+      const updated = ctx.taskRepository.findById(task.id);
+      expect(updated!.labels).toEqual({
+        priority: "high",
+        sprint: "sprint-1",
+        urgent: "",
+      });
+    });
+
+    it("should merge labels with existing ones", async () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Task with labels",
+        labels: { existing: "value", toUpdate: "old" },
+      });
+
+      const result = await handleUpdateTask(ctx, {
+        taskId: task.id,
+        labels: {
+          toUpdate: "new", // Update existing
+          newLabel: "added", // Add new
+        },
+      });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.task.labels).toEqual({
+        existing: "value", // Preserved
+        toUpdate: "new", // Updated
+        newLabel: "added", // Added
+      });
+    });
+
+    it("should remove labels when value is null", async () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Task with labels",
+        labels: { keep: "value", remove: "gone" },
+      });
+
+      const result = await handleUpdateTask(ctx, {
+        taskId: task.id,
+        labels: {
+          remove: null, // Remove this label
+        },
+      });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.task.labels).toEqual({
+        keep: "value", // Preserved
+        // 'remove' is gone
+      });
+
+      // Verify database state
+      const updated = ctx.taskRepository.findById(task.id);
+      expect(updated!.labels).toEqual({ keep: "value" });
+    });
+
+    it("should clear all labels when all are removed", async () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Task with labels",
+        labels: { only: "label" },
+      });
+
+      const result = await handleUpdateTask(ctx, {
+        taskId: task.id,
+        labels: {
+          only: null, // Remove the only label
+        },
+      });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      // When all labels removed, should be undefined/null
+      expect(content.task.labels).toBeUndefined();
+
+      // Verify database state
+      const updated = ctx.taskRepository.findById(task.id);
+      expect(updated!.labels).toBeUndefined();
     });
   });
 

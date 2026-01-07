@@ -478,3 +478,234 @@ describe("update_settings - assignee configuration", () => {
     });
   });
 });
+
+describe("update_settings - list_project_fields", () => {
+  let testDb: TestDatabase;
+
+  beforeEach(() => {
+    testDb = createTestDatabase();
+  });
+
+  it("should return error when GitHub sync is not enabled", async () => {
+    // Arrange
+    const ctx = createSettingsToolContext(testDb);
+
+    // Act
+    const result = await handleUpdateSettings(ctx, {
+      action: "list_project_fields",
+    });
+
+    // Assert
+    expect(result.isError).toBe(true);
+    const content = JSON.parse(result.content[0].text);
+    expect(content.error).toContain("GitHub issue sync is not enabled");
+  });
+
+  it("should return error when no projectId is configured", async () => {
+    // Arrange
+    const ctx = createSettingsToolContext(testDb);
+    await handleUpdateSettings(ctx, { action: "enable_github" });
+
+    // Act
+    const result = await handleUpdateSettings(ctx, {
+      action: "list_project_fields",
+    });
+
+    // Assert
+    expect(result.isError).toBe(true);
+    const content = JSON.parse(result.content[0].text);
+    expect(content.error).toContain("No GitHub Project configured");
+  });
+
+  it("should return fields from GitHub Project", async () => {
+    // Arrange
+    const mockGitHubCLI = new MockGitHubCLI({
+      projectFields: [
+        {
+          id: "PVTF_1",
+          name: "Status",
+          type: "SINGLE_SELECT" as const,
+          options: [{ id: "opt1", name: "Done" }],
+        },
+        {
+          id: "PVTF_2",
+          name: "Product",
+          type: "SINGLE_SELECT" as const,
+          options: [{ id: "opt2", name: "Case Workflow" }],
+        },
+        { id: "PVTF_3", name: "Notes", type: "TEXT" as const },
+      ],
+    });
+    const ctx = createSettingsToolContext(testDb, mockGitHubCLI);
+
+    // Enable GitHub with a projectId
+    await handleUpdateSettings(ctx, {
+      action: "enable_github",
+      github: { projectId: "PVT_test123" },
+    });
+
+    // Act
+    const result = await handleUpdateSettings(ctx, {
+      action: "list_project_fields",
+    });
+
+    // Assert
+    expect(result.isError).toBeFalsy();
+    const content = JSON.parse(result.content[0].text);
+    expect(content.success).toBe(true);
+    expect(content.projectId).toBe("PVT_test123");
+    expect(content.fields).toHaveLength(3);
+    expect(content.fields[0]).toEqual({
+      id: "PVTF_1",
+      name: "Status",
+      type: "SINGLE_SELECT",
+      options: [{ id: "opt1", name: "Done" }],
+    });
+    expect(content.fields[2]).toEqual({
+      id: "PVTF_3",
+      name: "Notes",
+      type: "TEXT",
+      options: undefined,
+    });
+  });
+});
+
+describe("update_settings - configure_label_mapping", () => {
+  let testDb: TestDatabase;
+
+  beforeEach(() => {
+    testDb = createTestDatabase();
+  });
+
+  it("should return error when GitHub sync is not enabled", async () => {
+    // Arrange
+    const ctx = createSettingsToolContext(testDb);
+
+    // Act
+    const result = await handleUpdateSettings(ctx, {
+      action: "configure_label_mapping",
+      labelFieldMapping: { product: "PVTF_abc" },
+    });
+
+    // Assert
+    expect(result.isError).toBe(true);
+    const content = JSON.parse(result.content[0].text);
+    expect(content.error).toContain("GitHub issue sync is not enabled");
+  });
+
+  describe("when GitHub sync is enabled", () => {
+    let ctx: SettingsToolContext;
+
+    beforeEach(async () => {
+      ctx = createSettingsToolContext(testDb);
+      await handleUpdateSettings(ctx, { action: "enable_github" });
+    });
+
+    it("should return null when no mapping exists", async () => {
+      // Act
+      const result = await handleUpdateSettings(ctx, {
+        action: "configure_label_mapping",
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.message).toBe("Current label field mapping");
+      expect(content.labelFieldMapping).toBeNull();
+      expect(content.hasMapping).toBe(false);
+    });
+
+    it("should set label field mapping", async () => {
+      // Act
+      const result = await handleUpdateSettings(ctx, {
+        action: "configure_label_mapping",
+        labelFieldMapping: { product: "PVTF_product", team: "PVTF_team" },
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.message).toBe("Label field mapping updated");
+      expect(content.labelFieldMapping).toEqual({
+        product: "PVTF_product",
+        team: "PVTF_team",
+      });
+    });
+
+    it("should merge with existing mapping", async () => {
+      // Arrange - set initial mapping
+      await handleUpdateSettings(ctx, {
+        action: "configure_label_mapping",
+        labelFieldMapping: { product: "PVTF_product" },
+      });
+
+      // Act - add another mapping
+      const result = await handleUpdateSettings(ctx, {
+        action: "configure_label_mapping",
+        labelFieldMapping: { team: "PVTF_team" },
+      });
+
+      // Assert - both mappings should exist
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.labelFieldMapping).toEqual({
+        product: "PVTF_product",
+        team: "PVTF_team",
+      });
+    });
+
+    it("should override existing mapping for same key", async () => {
+      // Arrange - set initial mapping
+      await handleUpdateSettings(ctx, {
+        action: "configure_label_mapping",
+        labelFieldMapping: { product: "PVTF_old" },
+      });
+
+      // Act - override the mapping
+      const result = await handleUpdateSettings(ctx, {
+        action: "configure_label_mapping",
+        labelFieldMapping: { product: "PVTF_new" },
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.labelFieldMapping).toEqual({ product: "PVTF_new" });
+    });
+
+    it("should reset label field mapping", async () => {
+      // Arrange - set some mappings
+      await handleUpdateSettings(ctx, {
+        action: "configure_label_mapping",
+        labelFieldMapping: { product: "PVTF_product", team: "PVTF_team" },
+      });
+
+      // Act - reset
+      const result = await handleUpdateSettings(ctx, {
+        action: "configure_label_mapping",
+        resetLabelFieldMapping: true,
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.message).toBe("Label field mapping cleared");
+      expect(content.labelFieldMapping).toBeNull();
+    });
+
+    it("should persist label field mapping in database", async () => {
+      // Act
+      await handleUpdateSettings(ctx, {
+        action: "configure_label_mapping",
+        labelFieldMapping: { product: "PVTF_product" },
+      });
+
+      // Assert - verify persisted in database
+      const project = ctx.projectRepository.findById(ctx.project.id);
+      expect(project?.githubSync?.labelFieldMapping).toEqual({ product: "PVTF_product" });
+    });
+  });
+});
