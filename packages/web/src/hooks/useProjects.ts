@@ -2,10 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { getProjects } from "@/lib/api";
-import type { Project } from "@/lib/types";
+import type { ProjectsBySource } from "@/lib/types";
 
 export function useProjects() {
-  return useQuery<Project[]>({
+  return useQuery<ProjectsBySource>({
     queryKey: ["projects"],
     queryFn: getProjects,
   });
