@@ -4,8 +4,7 @@
  * Utility functions for testing repositories, services, and MCP tools.
  */
 
-import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import * as schema from "../infrastructure/database/schema.js";
+import type { SqliteDrizzleDatabase } from "../domain/data-source.js";
 import { SqliteIssueRepository } from "../infrastructure/repositories/issue-repository.js";
 import { SqlitePlanRepository } from "../infrastructure/repositories/plan-repository.js";
 import { SqliteTaskRepository } from "../infrastructure/repositories/task-repository.js";
@@ -24,7 +23,7 @@ import type { Task, TaskStatus, TaskSource } from "../domain/task.js";
 import type { TestDatabase } from "./setup.js";
 
 /** Database type used by repositories */
-type DbType = BetterSQLite3Database<typeof schema>;
+type DbType = SqliteDrizzleDatabase;
 
 /** Default project ID for tests */
 const TEST_PROJECT_ID = "test-project-abc123";
