@@ -239,6 +239,11 @@ export const tasks = sqliteTable("tasks", {
   completedAt: text("completed_at"),
   abandonedAt: text("abandoned_at"),
 
+  // Labels - unified metadata inherited from parent issue
+  // Supports both simple labels (empty value) and key-value pairs
+  // Example: { "bug": "", "product": "Case Workflow", "Product Area": "HR Portal" }
+  labels: text("labels", { mode: "json" }).$type<Record<string, string>>(),
+
   // Record timestamps
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),

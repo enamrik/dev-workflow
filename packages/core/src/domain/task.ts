@@ -116,6 +116,13 @@ export interface Task {
   // GitHub issue sync state (for task-level GitHub issues)
   readonly githubSync?: GitHubSyncState;
 
+  /**
+   * Labels - unified metadata inherited from parent issue.
+   * Supports both simple labels (empty value) and key-value pairs.
+   * Example: { "bug": "", "product": "Case Workflow", "Product Area": "HR Portal" }
+   */
+  readonly labels?: Record<string, string>;
+
   readonly startedAt?: string; // When task moved to IN_PROGRESS
   readonly submittedForReviewAt?: string; // When task moved to PR_REVIEW
   readonly completedAt?: string; // When task moved to COMPLETED
