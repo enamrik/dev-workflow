@@ -43,6 +43,7 @@ const mockIssue: ProjectIssueWithTasks = {
       id: "task-1",
       planId: "plan-1",
       number: 1,
+      index: 1, // Display index (renumbered on plan changes)
       title: "Test Task",
       description: "Test task description",
       type: "FEATURE",

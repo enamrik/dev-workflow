@@ -167,9 +167,15 @@ export const tasks = sqliteTable("tasks", {
     .notNull()
     .references(() => plans.id, { onDelete: "cascade" }),
 
-  // Task number within the plan (e.g., 1, 2, 3)
-  // Displayed as issue#.task# (e.g., 5.1, 5.2)
+  // Task number within the plan - IMMUTABLE identifier assigned once
+  // Used for URLs and permanent references (e.g., /issues/5/tasks/3)
+  // Never changes after creation, even across plan regenerations
   number: integer("number").notNull(),
+
+  // Display index - 1-based position among active (non-deleted) tasks
+  // Renumbered when plan changes to ensure sequential 1, 2, 3...
+  // Used for UI display as #issue.[index/total] (e.g., #150.[1/2])
+  index: integer("index").notNull().default(1),
 
   // Ordering for display (can differ from number after reordering)
   order: integer("order").notNull(),

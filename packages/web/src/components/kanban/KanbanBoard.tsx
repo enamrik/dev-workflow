@@ -46,6 +46,7 @@ interface KanbanTask extends Task {
   projectId?: string;
   projectName?: string;
   projectSlug?: string;
+  totalTasksInIssue: number; // Total tasks in the issue (for display as #issue.[index/total])
 }
 
 interface KanbanBoardProps {
@@ -63,6 +64,7 @@ export function KanbanBoard({
   const allTasks: KanbanTask[] = [];
   for (const { issue, tasks, projectName, projectSlug } of issuesWithTasks) {
     const issueComputedStatus = computeIssueStatus(issue, tasks);
+    const totalTasksInIssue = tasks.length;
     for (const task of tasks) {
       allTasks.push({
         ...task,
@@ -74,6 +76,7 @@ export function KanbanBoard({
         projectId: issue.projectId,
         projectName,
         projectSlug,
+        totalTasksInIssue,
       });
     }
   }
@@ -138,6 +141,7 @@ export function KanbanBoard({
         projectSlug: task.projectSlug,
         issueType: task.issueType,
         issueComputedStatus,
+        totalTasksInIssue: 1, // Completed tasks from closed issues don't have context, default to 1
       });
     }
   }
