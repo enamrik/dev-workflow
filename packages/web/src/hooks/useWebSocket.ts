@@ -121,6 +121,7 @@ export function useWebSocket() {
         queryClient.invalidateQueries({ queryKey: ["tasks"] });
         queryClient.invalidateQueries({ queryKey: ["milestones"] });
         queryClient.invalidateQueries({ queryKey: ["projects"] });
+        queryClient.invalidateQueries({ queryKey: ["workerData"] });
         return;
       }
 
