@@ -216,7 +216,7 @@ export class ConflictDetectionService {
       task.title,
       task.description,
       ...task.acceptanceCriteria,
-      task.contextInstructions || "",
+      task.implementationPlan || "",
     ].join(" ");
 
     // Look for file path patterns in the text

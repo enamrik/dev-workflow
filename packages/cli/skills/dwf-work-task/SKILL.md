@@ -642,7 +642,7 @@ Same pattern for other force scenarios (abandon orphaned task, close issue with 
 
 Before execution, tasks can be tuned using `update_task`:
 
-- **contextInstructions**: Add custom instructions (e.g., "use existing auth pattern in src/auth")
+- **implementationPlan**: Add technical implementation details (e.g., "use existing auth pattern in src/auth")
 - **acceptanceCriteria**: Refine what needs to be verified
 - **description**: Clarify implementation details
 

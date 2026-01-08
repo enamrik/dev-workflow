@@ -99,8 +99,8 @@ export interface Task {
   readonly sessionStartedAt?: string; // When current session began
   readonly lastSessionActivityAt?: string; // Last activity in session (for timeout detection)
 
-  // Execution context
-  readonly contextInstructions?: string; // Custom instructions for task execution (e.g., "use existing auth pattern in src/auth")
+  // Execution context - technical implementation details for Claude
+  readonly implementationPlan?: string; // Technical implementation details for task execution (e.g., specific patterns to use, file locations)
 
   // Task dependencies - array of task IDs that must be COMPLETED or ABANDONED before this task can start
   readonly dependsOn?: string[]; // Array of task UUIDs within the same plan

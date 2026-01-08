@@ -546,7 +546,7 @@ export class MergeService {
         source: task.source,
         estimatedMinutes: task.estimatedMinutes,
         isDeleted: false,
-        contextInstructions: task.contextInstructions,
+        implementationPlan: task.implementationPlan,
         // Preserve GitHub sync state - the task still references the same GitHub issue
         githubSync: task.githubSync,
         // Note: dependsOn is cleared since task IDs are different in the new plan

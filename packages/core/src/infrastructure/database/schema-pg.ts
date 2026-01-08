@@ -130,7 +130,7 @@ export const tasks = pgTable("tasks", {
   sessionId: text("session_id"),
   sessionStartedAt: text("session_started_at"),
   lastSessionActivityAt: text("last_session_activity_at"),
-  contextInstructions: text("context_instructions"),
+  implementationPlan: text("implementation_plan"),
   dependsOn: jsonb("depends_on").$type<string[]>().default([]),
   worktreePath: text("worktree_path"),
   branchName: text("branch_name"),

@@ -50,7 +50,7 @@ const mockIssue: ProjectIssueWithTasks = {
       status: "IN_PROGRESS",
       estimatedMinutes: 60,
       acceptanceCriteria: [],
-      contextInstructions: null,
+      implementationPlan: null,
       isManual: false,
       sessionId: null,
       worktreePath: null,
