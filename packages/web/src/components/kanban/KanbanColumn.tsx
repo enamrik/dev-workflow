@@ -43,11 +43,11 @@ export function KanbanColumn({ title, status, tasks, tooltip }: KanbanColumnProp
   }[status];
 
   return (
-    <div className="flex flex-col flex-1 h-full min-h-0 min-w-[180px] md:min-w-[220px] bg-gray-50 rounded-lg overflow-hidden">
+    <div className="flex flex-col flex-1 h-full min-h-0 min-w-[220px] bg-gray-50 rounded-lg overflow-hidden">
       {/* Column header */}
       <div
         className={clsx(
-          "flex items-center justify-between px-2 md:px-3 py-2 rounded-t-lg",
+          "flex items-center justify-between px-3 py-2 rounded-t-lg",
           headerColor
         )}
       >
