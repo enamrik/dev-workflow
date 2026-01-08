@@ -88,36 +88,26 @@ function TaskModalContent({
   return (
     <div>
       {/* Sticky Header */}
-      <div className="sticky top-0 z-10 p-4 border-b border-gray-200 bg-white rounded-t-xl">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-gray-900 text-sm break-words">
-              <Tooltip content={tooltipContent} side="bottom">
-                <Link
-                  href={issueUrl}
-                  className="text-blue-600 hover:underline"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {taskDisplay}
-                </Link>
-              </Tooltip>{" "}
-              {task.title}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {issueGithubUrl && (
-              <GitHubLink
-                url={issueGithubUrl}
-                label="Issue"
-                tooltip={`View issue on GitHub: ${issueGithubUrl}`}
-              />
-            )}
-            <Badge variant="status" value={task.status} />
-          </div>
+      <div className="sticky top-0 z-10 p-4 pr-14 border-b border-gray-200 bg-white rounded-t-xl">
+        {/* Title with status badge */}
+        <div className="font-semibold text-gray-900 text-sm break-words mb-3 flex flex-wrap items-center gap-2">
+          <span>
+            <Tooltip content={tooltipContent} side="bottom">
+              <Link
+                href={issueUrl}
+                className="text-blue-600 hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {taskDisplay}
+              </Link>
+            </Tooltip>{" "}
+            {task.title}
+          </span>
+          <Badge variant="status" value={task.status} />
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mt-3">
+        <div className="flex gap-1">
           <button
             onClick={() => setActiveTab("task")}
             className={clsx(
@@ -178,6 +168,13 @@ function TaskModalContent({
               <span className="text-gray-500">Est: {task.estimatedMinutes}m</span>
             )}
           </div>
+          {issueGithubUrl && (
+            <GitHubLink
+              url={issueGithubUrl}
+              label="Issue"
+              tooltip={`View issue on GitHub: ${issueGithubUrl}`}
+            />
+          )}
         </div>
       </div>
     </div>

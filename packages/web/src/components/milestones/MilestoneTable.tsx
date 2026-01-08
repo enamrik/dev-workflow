@@ -18,31 +18,46 @@ export function MilestoneTable({ milestones, onRowClick }: MilestoneTableProps) 
   }
 
   return (
-    <table className="w-full">
-      <thead className="bg-gray-50 border-b-2 border-gray-200">
-        <tr>
-          <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">
-            #
-          </th>
-          <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">
-            Title
-          </th>
-          <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">
-            Date Range
-          </th>
-          <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">
-            Status
-          </th>
-          <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">
-            Progress
-          </th>
-        </tr>
-      </thead>
-      <tbody>
+    <>
+      {/* Desktop table view */}
+      <table className="hidden sm:table w-full">
+        <thead className="bg-gray-50 border-b-2 border-gray-200">
+          <tr>
+            <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              #
+            </th>
+            <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              Title
+            </th>
+            <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              Date Range
+            </th>
+            <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              Status
+            </th>
+            <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              Progress
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {milestones.map((item) => (
+            <MilestoneRow key={item.milestone.id} data={item} onClick={() => onRowClick(item)} />
+          ))}
+        </tbody>
+      </table>
+
+      {/* Mobile card view */}
+      <div className="sm:hidden divide-y divide-gray-200">
         {milestones.map((item) => (
-          <MilestoneRow key={item.milestone.id} data={item} onClick={() => onRowClick(item)} />
+          <MilestoneRow
+            key={item.milestone.id}
+            data={item}
+            onClick={() => onRowClick(item)}
+            isMobile
+          />
         ))}
-      </tbody>
-    </table>
+      </div>
+    </>
   );
 }

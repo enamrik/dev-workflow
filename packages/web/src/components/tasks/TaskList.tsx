@@ -5,9 +5,10 @@ interface TaskListProps {
   tasks: Task[];
   projectId?: string;
   issueNumber?: number;
+  compact?: boolean;
 }
 
-export function TaskList({ tasks, projectId, issueNumber }: TaskListProps) {
+export function TaskList({ tasks, projectId, issueNumber, compact = false }: TaskListProps) {
   const totalTasks = tasks.length;
 
   return (
@@ -19,6 +20,7 @@ export function TaskList({ tasks, projectId, issueNumber }: TaskListProps) {
           projectId={projectId}
           issueNumber={issueNumber}
           totalTasks={totalTasks}
+          compact={compact}
         />
       ))}
     </ul>

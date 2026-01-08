@@ -139,7 +139,7 @@ export function Timeline({ milestones, showCompleted = false }: TimelineProps) {
     <div className="space-y-8">
       {/* Timeline visualization */}
       {visibleMilestones.length > 0 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-4 overflow-x-auto">
+        <div className="bg-white rounded-lg border border-gray-200 p-4 overflow-x-auto scrollbar-auto-hide">
           {/* Month header */}
           <div className="flex border-b border-gray-200 mb-4 min-w-[600px]">
             {months.map((month, idx) => (
@@ -177,16 +177,16 @@ export function Timeline({ milestones, showCompleted = false }: TimelineProps) {
               ))}
             </div>
           </div>
+
+          {/* Legend */}
+          <div className="flex gap-4 justify-center text-sm mt-6 min-w-[600px]">
+            <LegendItem status="PLANNED" label="Planned" />
+            <LegendItem status="IN_PROGRESS" label="In Progress" />
+            <LegendItem status="COMPLETED" label="Completed" />
+            <LegendItem status="DELAYED" label="Delayed" />
+          </div>
         </div>
       )}
-
-      {/* Legend */}
-      <div className="flex gap-4 justify-center text-sm">
-        <LegendItem status="PLANNED" label="Planned" />
-        <LegendItem status="IN_PROGRESS" label="In Progress" />
-        <LegendItem status="COMPLETED" label="Completed" />
-        <LegendItem status="DELAYED" label="Delayed" />
-      </div>
 
       {/* Milestone table with search */}
       <div>

@@ -66,12 +66,12 @@ export function MilestoneDetailModal({ isOpen, onClose, data }: MilestoneDetailM
       />
       {/* Modal */}
       <div
-        className="fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-white rounded-xl shadow-2xl border border-gray-200"
+        className="fixed z-50 left-4 right-4 top-1/2 -translate-y-1/2 sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 w-auto sm:w-full sm:max-w-lg bg-white rounded-xl shadow-2xl border border-gray-200"
         role="dialog"
         aria-modal="true"
         aria-labelledby="milestone-modal-title"
       >
-        <div className="overflow-y-auto max-h-[80vh]">
+        <div className="overflow-y-auto max-h-[calc(100vh-2rem)] sm:max-h-[80vh]">
           {/* Header with close button */}
           <div className="flex items-center justify-between p-4 border-b border-gray-200">
             <div className="flex items-center gap-2">
@@ -87,7 +87,7 @@ export function MilestoneDetailModal({ isOpen, onClose, data }: MilestoneDetailM
             </div>
             <button
               onClick={handleClose}
-              className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
               aria-label="Close modal"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
