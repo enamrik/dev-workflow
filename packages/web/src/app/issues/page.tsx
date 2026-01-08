@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useIssues } from "@/hooks";
+import { useIssues, useUrlState } from "@/hooks";
 import { useProjectContext } from "@/contexts";
 import { IssueTable } from "@/components/issues";
 import {
@@ -33,6 +33,9 @@ export default function IssuesPage() {
 }
 
 function IssuesPageContent() {
+  // Enable URL state persistence
+  useUrlState();
+
   const searchParams = useSearchParams();
   const router = useRouter();
   const { projectId, sourceId, isLoading: projectsLoading } = useProjectContext();
