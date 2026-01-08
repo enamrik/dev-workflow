@@ -91,16 +91,40 @@ export function Modal({
             <div
               ref={contentRef}
               className={clsx(
-                "fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
-                "w-full max-w-lg",
+                "fixed z-50",
+                "left-4 right-4 top-1/2 -translate-y-1/2 sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
+                "w-auto sm:w-full sm:max-w-lg",
+                "max-h-[calc(100vh-2rem)]",
                 "bg-white rounded-xl shadow-2xl border border-gray-200",
                 contentClassName
               )}
-              style={{ maxHeight }}
               role="dialog"
               aria-modal="true"
             >
-              <div className="overflow-y-auto scrollbar-auto-hide" style={{ maxHeight }}>
+              {/* Close button */}
+              <button
+                onClick={handleClose}
+                className="absolute top-2 right-2 z-20 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+                aria-label="Close"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+              <div
+                className="overflow-y-auto scrollbar-auto-hide"
+                style={{
+                  maxHeight:
+                    typeof maxHeight === "number"
+                      ? `min(${maxHeight}px, calc(100vh - 2rem))`
+                      : maxHeight,
+                }}
+              >
                 {children}
               </div>
             </div>
