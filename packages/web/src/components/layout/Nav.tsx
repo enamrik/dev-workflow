@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
 import { useProjectContext } from "@/contexts";
 import { SourceProjectFilter } from "@/components/issues";
+import { useUrlState } from "@/hooks";
 
 const coreNavItems = [
   { href: "/", label: "Board" },
@@ -18,34 +19,15 @@ const systemNavItems = [
   { href: "/workers", label: "Workers" },
 ];
 
-const PINNED_NAV_KEY = "dev-workflow-pinned-nav";
-
-function getPinnedItems(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const stored = localStorage.getItem(PINNED_NAV_KEY);
-    return stored ? JSON.parse(stored) : [];
-  } catch {
-    return [];
-  }
-}
-
-function setPinnedItems(items: string[]): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(PINNED_NAV_KEY, JSON.stringify(items));
-}
-
 export function Nav() {
   const pathname = usePathname();
   const { projectId, setProjectId, sourceId, setSourceId, sources, projects } = useProjectContext();
-  const [pinnedHrefs, setPinnedHrefs] = useState<string[]>([]);
+  const { state, setProperty } = useUrlState();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Load pinned items from localStorage on mount
-  useEffect(() => {
-    setPinnedHrefs(getPinnedItems());
-  }, []);
+  // Get pinned items from URL state
+  const pinnedHrefs = state.pinnedNavItems ?? [];
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -62,8 +44,8 @@ export function Nav() {
     const newPinned = pinnedHrefs.includes(href)
       ? pinnedHrefs.filter((h) => h !== href)
       : [...pinnedHrefs, href];
-    setPinnedHrefs(newPinned);
-    setPinnedItems(newPinned);
+    // Store empty array as undefined to keep URL clean
+    setProperty("pinnedNavItems", newPinned.length > 0 ? newPinned : undefined);
   };
 
   const pinnedSystemItems = systemNavItems.filter((item) => pinnedHrefs.includes(item.href));

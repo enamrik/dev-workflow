@@ -202,6 +202,73 @@ describe("URL State Persistence", () => {
     });
   });
 
+  describe("Pinned navigation items", () => {
+    it("should store pinned nav items in _state", () => {
+      vi.mocked(usePathname).mockReturnValue("/");
+
+      // Mock URL state with pinned items
+      vi.mocked(useSearchParams).mockReturnValue({
+        get: vi.fn((key: string) => {
+          if (key === "_state") {
+            // State with pinned items: {pinnedNavItems: ["/worktrees", "/workers"]}
+            return "eyJwaW5uZWROYXZJdGVtcyI6WyIvd29ya3RyZWVzIiwiL3dvcmtlcnMiXX0";
+          }
+          return null;
+        }),
+        toString: () => "_state=eyJwaW5uZWROYXZJdGVtcyI6WyIvd29ya3RyZWVzIiwiL3dvcmtlcnMiXX0",
+      } as any);
+
+      render(<WorktreesPage />);
+
+      // Should sync pinned items to localStorage
+      waitFor(() => {
+        const stored = localStorage.getItem("dev-workflow-url-state");
+        expect(stored).toBeDefined();
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          expect(parsed.pinnedNavItems).toEqual(["/worktrees", "/workers"]);
+        }
+      });
+    });
+
+    it("should preserve pinned items when sharing URL", () => {
+      // Set pinned items in localStorage
+      localStorage.setItem(
+        "dev-workflow-url-state",
+        JSON.stringify({ pinnedNavItems: ["/worktrees"] })
+      );
+
+      vi.mocked(usePathname).mockReturnValue("/");
+      vi.mocked(useSearchParams).mockReturnValue({
+        get: vi.fn(() => null),
+        toString: () => "",
+      } as any);
+
+      const mockReplace = vi.fn();
+      vi.mocked(useRouter).mockReturnValue({
+        push: vi.fn(),
+        replace: mockReplace,
+        prefetch: vi.fn(),
+      } as any);
+
+      render(<WorktreesPage />);
+
+      // Should restore _state with pinned items
+      waitFor(() => {
+        expect(mockReplace).toHaveBeenCalled();
+        const callArgs = mockReplace.mock.calls[0]?.[0];
+        expect(callArgs).toBeDefined();
+        expect(callArgs).toContain("_state=");
+        // Decode and verify pinnedNavItems is in the URL
+        const match = callArgs?.match(/_state=([^&]+)/);
+        if (match) {
+          const decoded = JSON.parse(atob(match[1].replace(/-/g, "+").replace(/_/g, "/")));
+          expect(decoded.pinnedNavItems).toEqual(["/worktrees"]);
+        }
+      });
+    });
+  });
+
   describe("Cross-page navigation", () => {
     it("should preserve state when navigating from Board to Worktrees", () => {
       // Simulate user on Board page with state
