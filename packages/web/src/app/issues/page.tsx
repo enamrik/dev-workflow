@@ -147,12 +147,12 @@ function IssuesPageContent() {
         </span>
       </CardHeader>
 
-      <div className="flex flex-col gap-3 mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
         <SearchInput
           value={searchQuery}
           onChange={handleSearchChange}
           placeholder="Search issues..."
-          className="max-w-md"
+          className="w-full sm:max-w-md"
         />
         <Checkbox label="Show closed" checked={showClosed} onChange={handleShowClosedChange} />
       </div>

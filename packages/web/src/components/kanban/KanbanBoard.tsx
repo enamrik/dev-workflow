@@ -176,7 +176,7 @@ export function KanbanBoard({
   return (
     <div className="flex gap-3 md:gap-4 overflow-x-auto overflow-y-hidden h-full scrollbar-auto-hide">
       {showBacklog && (
-        <div className="flex flex-col gap-2 min-w-[180px] md:min-w-[220px] flex-1 h-full">
+        <div className="flex flex-col gap-2 min-w-[220px] flex-1 h-full">
           <KanbanColumn
             title="Backlog"
             status="BACKLOG"

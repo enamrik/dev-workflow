@@ -24,7 +24,10 @@ export function Nav() {
   const { projectId, setProjectId, sourceId, setSourceId, sources, projects } = useProjectContext();
   const { state, setProperty } = useUrlState();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileSystemExpanded, setIsMobileSystemExpanded] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
 
   // Get pinned items from URL state
   const pinnedHrefs = state.pinnedNavItems ?? [];
@@ -34,6 +37,9 @@ export function Nav() {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsDropdownOpen(false);
+      }
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node)) {
+        setIsMobileMenuOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -60,16 +66,20 @@ export function Nav() {
           >
             Dev Workflow
           </Link>
-          <SourceProjectFilter
-            sources={sources}
-            projects={projects}
-            sourceId={sourceId}
-            projectId={projectId}
-            onSourceChange={setSourceId}
-            onProjectChange={setProjectId}
-          />
+          <div className="hidden md:block">
+            <SourceProjectFilter
+              sources={sources}
+              projects={projects}
+              sourceId={sourceId}
+              projectId={projectId}
+              onSourceChange={setSourceId}
+              onProjectChange={setProjectId}
+            />
+          </div>
         </div>
-        <nav className="flex items-center gap-1">
+
+        {/* Desktop nav */}
+        <nav className="hidden md:flex items-center gap-1">
           {/* Core nav items */}
           {coreNavItems.map((item) => (
             <NavLink key={item.href} href={item.href} label={item.label} pathname={pathname} />
@@ -137,6 +147,131 @@ export function Nav() {
             )}
           </div>
         </nav>
+
+        {/* Mobile hamburger button */}
+        <div className="md:hidden" ref={mobileMenuRef}>
+          <button
+            onClick={() => {
+              setIsMobileMenuOpen(!isMobileMenuOpen);
+              // Reset System section to collapsed when opening menu
+              if (!isMobileMenuOpen) {
+                setIsMobileSystemExpanded(false);
+              }
+            }}
+            className="p-2 rounded text-gray-600 hover:bg-gray-100 hover:text-gray-800 transition-colors"
+            aria-label="Toggle menu"
+          >
+            {isMobileMenuOpen ? <CloseIcon /> : <MenuIcon />}
+          </button>
+
+          {/* Mobile menu dropdown */}
+          {isMobileMenuOpen && (
+            <div className="absolute right-0 top-14 left-0 mx-4 bg-white rounded-md shadow-lg border border-gray-200 py-2 z-50">
+              {/* Mobile filters */}
+              <div className="px-4 pb-3 border-b border-gray-200">
+                <SourceProjectFilter
+                  sources={sources}
+                  projects={projects}
+                  sourceId={sourceId}
+                  projectId={projectId}
+                  onSourceChange={setSourceId}
+                  onProjectChange={setProjectId}
+                />
+              </div>
+
+              {/* Core nav items */}
+              <div className="py-2">
+                {coreNavItems.map((item) => {
+                  const isActive =
+                    item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className={clsx(
+                        "block px-4 py-3 text-base font-medium transition-colors",
+                        isActive ? "bg-blue-50 text-blue-600" : "text-gray-700 hover:bg-gray-50"
+                      )}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
+
+                {/* Pinned system items appear here */}
+                {pinnedSystemItems.map((item) => {
+                  const isActive = pathname.startsWith(item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className={clsx(
+                        "block px-4 py-3 text-base font-medium transition-colors",
+                        isActive ? "bg-blue-50 text-blue-600" : "text-gray-700 hover:bg-gray-50"
+                      )}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
+
+              {/* Collapsible System section - all items always visible here */}
+              <div className="border-t border-gray-200">
+                <button
+                  onClick={() => setIsMobileSystemExpanded(!isMobileSystemExpanded)}
+                  className="w-full px-4 py-3 flex items-center justify-between text-left active:bg-transparent focus:outline-none"
+                >
+                  <span className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+                    System
+                  </span>
+                  <ChevronDownIcon
+                    className={clsx(
+                      "transform transition-transform",
+                      isMobileSystemExpanded ? "rotate-180" : ""
+                    )}
+                  />
+                </button>
+
+                {isMobileSystemExpanded && (
+                  <div>
+                    {systemNavItems.map((item) => {
+                      const isPinned = pinnedHrefs.includes(item.href);
+                      const isActive = pathname.startsWith(item.href);
+                      return (
+                        <div key={item.href} className="flex items-center hover:bg-gray-50">
+                          <button
+                            onClick={() => togglePin(item.href)}
+                            className="p-3 hover:bg-gray-100 transition-colors"
+                            aria-label={isPinned ? `Unpin ${item.label}` : `Pin ${item.label}`}
+                          >
+                            {isPinned ? (
+                              <PinFilledIcon className="w-5 h-5 text-blue-600" />
+                            ) : (
+                              <PinOutlineIcon className="w-5 h-5 text-gray-400" />
+                            )}
+                          </button>
+                          <Link
+                            href={item.href}
+                            onClick={() => setIsMobileMenuOpen(false)}
+                            className={clsx(
+                              "flex-1 py-3 pr-4 text-base font-medium transition-colors",
+                              isActive ? "text-blue-600" : "text-gray-700"
+                            )}
+                          >
+                            {item.label}
+                          </Link>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );
@@ -166,6 +301,27 @@ function NavLink({ href, label, pathname }: NavLinkProps) {
   );
 }
 
+function MenuIcon() {
+  return (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M4 6h16M4 12h16M4 18h16"
+      />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  );
+}
+
 function GearIcon() {
   return (
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -185,9 +341,14 @@ function GearIcon() {
   );
 }
 
-function ChevronDownIcon() {
+function ChevronDownIcon({ className }: { className?: string }) {
   return (
-    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className={clsx("w-3 h-3", className)}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
     </svg>
   );
