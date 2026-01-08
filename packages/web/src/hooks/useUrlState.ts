@@ -14,6 +14,8 @@ export interface UrlState {
   showBacklog?: boolean;
   showWorkQueue?: boolean;
   showCompleted?: boolean;
+  /** Pinned navigation items (hrefs) */
+  pinnedNavItems?: string[];
 }
 
 const STATE_PARAM = "_state";

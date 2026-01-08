@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import { useWorktrees, usePruneWorktrees } from "@/hooks";
+import { useWorktrees, usePruneWorktrees, useUrlState } from "@/hooks";
 import { useProjectContext } from "@/contexts";
 import { Card, Badge, LoadingState, ErrorState, EmptyState } from "@/components/ui";
 import type { Worktree } from "@/lib/types";
@@ -35,6 +35,9 @@ export default function WorktreesPage() {
 }
 
 function WorktreesPageContent() {
+  // Enable URL state persistence
+  useUrlState();
+
   const { projectId, projects } = useProjectContext();
 
   // Create lookup map for project names
