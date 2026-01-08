@@ -230,10 +230,10 @@ export const taskToolDefinitions: ToolDefinition[] = [
           items: { type: "string" },
           description: "New acceptance criteria",
         },
-        contextInstructions: {
+        implementationPlan: {
           type: "string",
           description:
-            "Custom instructions for task execution (e.g., 'use existing auth pattern in src/auth')",
+            "Technical implementation details for task execution (e.g., specific patterns to use, file locations)",
         },
         estimatedMinutes: {
           type: "number",
@@ -450,7 +450,7 @@ export async function handleLoadTaskSession(
   const task = response.task as {
     planId: string;
     dependsOn?: string[];
-    contextInstructions?: string;
+    implementationPlan?: string;
   };
 
   // Get plan and issue
@@ -485,8 +485,8 @@ export async function handleLoadTaskSession(
   }
 
   // Format task requirements prominently
-  if (task.contextInstructions) {
-    response.taskRequirements = formatTaskRequirements(task.contextInstructions);
+  if (task.implementationPlan) {
+    response.taskRequirements = formatTaskRequirements(task.implementationPlan);
   }
 
   return successResponse(response);
@@ -607,8 +607,8 @@ export function handleGetTask(
 /**
  * Format task requirements for Claude consumption
  */
-function formatTaskRequirements(contextInstructions: string): string {
-  return "## Task-Specific Instructions\n" + contextInstructions;
+function formatTaskRequirements(implementationPlan: string): string {
+  return "## Task-Specific Instructions\n" + implementationPlan;
 }
 
 /**
@@ -689,7 +689,7 @@ export async function handleUpdateTask(
     title?: string;
     description?: string;
     acceptanceCriteria?: string[];
-    contextInstructions?: string;
+    implementationPlan?: string;
     estimatedMinutes?: number;
     labels?: Record<string, string | null>;
   }
@@ -699,7 +699,7 @@ export async function handleUpdateTask(
     title,
     description,
     acceptanceCriteria,
-    contextInstructions,
+    implementationPlan,
     estimatedMinutes,
     labels,
   } = args;
@@ -714,7 +714,7 @@ export async function handleUpdateTask(
   if (title !== undefined) updates.title = title;
   if (description !== undefined) updates.description = description;
   if (acceptanceCriteria !== undefined) updates.acceptanceCriteria = acceptanceCriteria;
-  if (contextInstructions !== undefined) updates.contextInstructions = contextInstructions;
+  if (implementationPlan !== undefined) updates.implementationPlan = implementationPlan;
   if (estimatedMinutes !== undefined) updates.estimatedMinutes = estimatedMinutes;
 
   // Handle labels - validate and merge with existing, null values remove labels
@@ -801,7 +801,7 @@ ${task.description}
 **Task Acceptance Criteria:**
 ${taskAcceptanceCriteria || "- None specified"}
 
-${task.contextInstructions ? `## Additional Instructions\n${task.contextInstructions}\n` : ""}
+${task.implementationPlan ? `## Additional Instructions\n${task.implementationPlan}\n` : ""}
 ## Execution Instructions
 
 1. Implement the task following the plan's approach
