@@ -550,25 +550,33 @@ export const workers = sqliteTable("workers", {
 /**
  * Dispatch queue table schema
  *
- * Queue of tasks waiting to be claimed by workers.
+ * Queue of tasks assigned to workers.
  * Workers poll this queue and atomically claim unclaimed or stale-claimed tasks.
+ * Entry persists until task reaches terminal state (COMPLETED/ABANDONED).
  *
  * Flow:
- * 1. dispatch_task(taskId) → INSERT with worker_id = null
- * 2. Worker polls → finds unclaimed or stale-claimed task
- * 3. Worker claims → atomic UPDATE sets worker_id, claimed_at
- * 4. Task completes → DELETE from queue
+ * 1. dispatch_task(taskId) → INSERT with status=PENDING
+ * 2. Worker polls → finds PENDING or stale WORKING task
+ * 3. Worker claims → UPDATE status=WORKING, worker_id, claimed_at
+ * 4. Worker finishes → UPDATE status=RELEASED (keeps worker assignment)
+ * 5. Task reaches terminal state → DELETE from queue
  */
 export const dispatchQueue = sqliteTable("dispatch_queue", {
   // Task being dispatched (references tasks.id)
   taskId: text("task_id").primaryKey(),
 
+  // Queue entry status
+  status: text("status").notNull().default("PENDING"),
+
   // Worker that claimed this task (null = unclaimed)
   workerId: text("worker_id"),
 
   // When the task was claimed (for staleness detection)
-  // Stale = claimed but worker.lastHeartbeat is old
+  // Stale = WORKING but worker.lastHeartbeat is old
   claimedAt: text("claimed_at"),
+
+  // When the worker finished (for RELEASED status)
+  releasedAt: text("released_at"),
 
   // When the task was added to the queue
   createdAt: text("created_at").notNull(),

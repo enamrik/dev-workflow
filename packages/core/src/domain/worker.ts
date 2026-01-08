@@ -47,14 +47,26 @@ export interface WorkerWithHealth extends Worker {
 }
 
 /**
+ * Dispatch queue entry status
+ *
+ * - PENDING: Task in queue, waiting to be claimed
+ * - WORKING: Worker has claimed and is actively working
+ * - RELEASED: Worker finished but task not in terminal state (e.g., PR_REVIEW)
+ */
+export type DispatchQueueStatus = "PENDING" | "WORKING" | "RELEASED";
+
+/**
  * Dispatch queue entry
  *
- * Represents a task waiting to be claimed by a worker.
+ * Represents a task assigned to a worker.
+ * Entry persists until task reaches terminal state (COMPLETED/ABANDONED).
  */
 export interface DispatchQueueEntry {
   readonly taskId: string; // Task being dispatched
+  readonly status: DispatchQueueStatus; // Queue entry status
   readonly workerId: string | null; // Worker that claimed (null = unclaimed)
   readonly claimedAt: string | null; // When claimed (for staleness detection)
+  readonly releasedAt: string | null; // When worker finished (for RELEASED status)
   readonly createdAt: string; // When added to queue
 }
 
@@ -208,11 +220,21 @@ export interface DispatchQueueRepository {
   claimTask(workerId: string, thresholdSeconds?: number): DispatchQueueEntry | null;
 
   /**
-   * Release a task claim (remove from queue)
+   * Mark a task as released (worker finished but task not complete)
    *
-   * Called when task completes or is abandoned.
+   * Sets status to RELEASED and keeps the worker assignment.
+   * Called when worker finishes but task is not in terminal state.
    *
    * @param taskId - Task to release
+   */
+  releaseTask(taskId: string): void;
+
+  /**
+   * Remove a task from the queue entirely
+   *
+   * Called when task reaches terminal state (COMPLETED/ABANDONED).
+   *
+   * @param taskId - Task to remove
    */
   releaseClaim(taskId: string): void;
 

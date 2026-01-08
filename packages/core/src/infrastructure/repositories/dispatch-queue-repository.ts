@@ -1,9 +1,10 @@
-import { eq, isNull, or, lte, sql } from "drizzle-orm";
+import { eq, or, sql } from "drizzle-orm";
 import { dispatchQueue, workers, DispatchQueueRow } from "../database/schema.js";
 import type {
   DispatchQueueEntry,
   DispatchQueueEntryWithHealth,
   DispatchQueueRepository,
+  DispatchQueueStatus,
 } from "../../domain/worker.js";
 import { DEFAULT_HEARTBEAT_THRESHOLD_SECONDS, isWorkerAlive } from "../../domain/worker.js";
 import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
@@ -11,8 +12,8 @@ import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
 /**
  * SQLite implementation of DispatchQueueRepository
  *
- * Manages the queue of tasks waiting to be claimed by workers.
- * The key feature is atomic claiming to prevent race conditions.
+ * Manages the queue of tasks assigned to workers.
+ * Entry persists until task reaches terminal state (COMPLETED/ABANDONED).
  */
 export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
   constructor(private readonly db: SqliteDrizzleDatabase) {}
@@ -28,8 +29,10 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
 
     const entry: DispatchQueueEntry = {
       taskId,
+      status: "PENDING",
       workerId: null,
       claimedAt: null,
+      releasedAt: null,
       createdAt: now,
     };
 
@@ -37,8 +40,10 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
       .insert(dispatchQueue)
       .values({
         taskId: entry.taskId,
+        status: entry.status,
         workerId: entry.workerId,
         claimedAt: entry.claimedAt,
+        releasedAt: entry.releasedAt,
         createdAt: entry.createdAt,
       })
       .run();
@@ -54,8 +59,8 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
     const staleThreshold = new Date(Date.now() - thresholdSeconds * 1000).toISOString();
 
     // Find a claimable task:
-    // 1. Unclaimed (worker_id IS NULL), OR
-    // 2. Claimed by a worker with stale heartbeat
+    // 1. PENDING status, OR
+    // 2. WORKING status but worker has stale heartbeat
     //
     // We use a raw SQL approach for atomicity - the claim happens in one statement
     // so if two workers race, only one will succeed.
@@ -64,17 +69,17 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
     const candidate = this.db
       .select({
         taskId: dispatchQueue.taskId,
+        status: dispatchQueue.status,
         workerId: dispatchQueue.workerId,
       })
       .from(dispatchQueue)
       .leftJoin(workers, eq(dispatchQueue.workerId, workers.id))
       .where(
         or(
-          // Unclaimed
-          isNull(dispatchQueue.workerId),
-          // Claimed but worker is dead (no worker record or stale heartbeat)
-          isNull(workers.id),
-          lte(workers.lastHeartbeat, staleThreshold)
+          // PENDING - never claimed
+          eq(dispatchQueue.status, "PENDING"),
+          // WORKING but worker is dead (no worker record or stale heartbeat)
+          sql`${dispatchQueue.status} = 'WORKING' AND (${workers.id} IS NULL OR ${workers.lastHeartbeat} <= ${staleThreshold})`
         )
       )
       .limit(1)
@@ -90,14 +95,16 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
     const result = this.db
       .update(dispatchQueue)
       .set({
+        status: "WORKING",
         workerId,
         claimedAt: now,
+        releasedAt: null, // Clear any previous release
       })
       .where(
         sql`${dispatchQueue.taskId} = ${candidate.taskId}
             AND (
-              ${dispatchQueue.workerId} IS NULL
-              OR ${dispatchQueue.workerId} = ${candidate.workerId}
+              ${dispatchQueue.status} = 'PENDING'
+              OR (${dispatchQueue.status} = 'WORKING' AND ${dispatchQueue.workerId} = ${candidate.workerId})
             )`
       )
       .run();
@@ -111,6 +118,30 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
     return this.findByTaskId(candidate.taskId);
   }
 
+  /**
+   * Mark a task as released (worker finished but task not complete)
+   * Keeps the worker assignment for tracking purposes.
+   *
+   * @param taskId - Task to release
+   */
+  releaseTask(taskId: string): void {
+    const now = new Date().toISOString();
+    this.db
+      .update(dispatchQueue)
+      .set({
+        status: "RELEASED",
+        releasedAt: now,
+      })
+      .where(eq(dispatchQueue.taskId, taskId))
+      .run();
+  }
+
+  /**
+   * Remove a task from the queue entirely.
+   * Called when task reaches terminal state (COMPLETED/ABANDONED).
+   *
+   * @param taskId - Task to remove
+   */
   releaseClaim(taskId: string): void {
     this.db.delete(dispatchQueue).where(eq(dispatchQueue.taskId, taskId)).run();
   }
@@ -142,8 +173,10 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
     const results = this.db
       .select({
         taskId: dispatchQueue.taskId,
+        status: dispatchQueue.status,
         workerId: dispatchQueue.workerId,
         claimedAt: dispatchQueue.claimedAt,
+        releasedAt: dispatchQueue.releasedAt,
         createdAt: dispatchQueue.createdAt,
         workerName: workers.name,
         workerLastHeartbeat: workers.lastHeartbeat,
@@ -157,14 +190,16 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
     return results.map((row) => {
       const entry = this.mapRowToEntry({
         taskId: row.taskId,
+        status: row.status,
         workerId: row.workerId,
         claimedAt: row.claimedAt,
+        releasedAt: row.releasedAt,
         createdAt: row.createdAt,
       });
 
-      // Determine staleness
+      // Determine staleness - only relevant for WORKING status
       let isStale = false;
-      if (row.workerId) {
+      if (entry.status === "WORKING" && row.workerId) {
         if (!row.workerLastHeartbeat) {
           // Worker record doesn't exist - claim is stale
           isStale = true;
@@ -191,8 +226,8 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
     const entries = this.findAllWithHealth(thresholdSeconds);
 
     const total = entries.length;
-    const unclaimed = entries.filter((e) => e.workerId === null).length;
-    const claimed = entries.filter((e) => e.workerId !== null).length;
+    const unclaimed = entries.filter((e) => e.status === "PENDING").length;
+    const claimed = entries.filter((e) => e.status === "WORKING").length;
     const stale = entries.filter((e) => e.isStale).length;
 
     return { total, unclaimed, claimed, stale };
@@ -204,8 +239,10 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
   private mapRowToEntry(row: DispatchQueueRow): DispatchQueueEntry {
     return {
       taskId: row.taskId,
+      status: (row.status ?? "PENDING") as DispatchQueueStatus,
       workerId: row.workerId,
       claimedAt: row.claimedAt,
+      releasedAt: row.releasedAt,
       createdAt: row.createdAt,
     };
   }
