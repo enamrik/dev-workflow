@@ -66,7 +66,7 @@ export function Nav() {
           >
             Dev Workflow
           </Link>
-          <div className="hidden md:block">
+          <div className="hidden sm:block">
             <SourceProjectFilter
               sources={sources}
               projects={projects}
@@ -79,7 +79,7 @@ export function Nav() {
         </div>
 
         {/* Desktop nav */}
-        <nav className="hidden md:flex items-center gap-1">
+        <nav className="hidden lg:flex items-center gap-1">
           {/* Core nav items */}
           {coreNavItems.map((item) => (
             <NavLink key={item.href} href={item.href} label={item.label} pathname={pathname} />
@@ -149,7 +149,7 @@ export function Nav() {
         </nav>
 
         {/* Mobile hamburger button */}
-        <div className="md:hidden" ref={mobileMenuRef}>
+        <div className="lg:hidden" ref={mobileMenuRef}>
           <button
             onClick={() => {
               setIsMobileMenuOpen(!isMobileMenuOpen);
@@ -168,7 +168,7 @@ export function Nav() {
           {isMobileMenuOpen && (
             <div className="absolute right-0 top-14 left-0 mx-4 bg-white rounded-md shadow-lg border border-gray-200 py-2 z-50">
               {/* Mobile filters */}
-              <div className="px-4 pb-3 border-b border-gray-200">
+              <div className="px-4 pb-3 border-b border-gray-200 sm:hidden">
                 <SourceProjectFilter
                   sources={sources}
                   projects={projects}
