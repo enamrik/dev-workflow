@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import { useWorkerData, useRefreshWorkerData } from "@/hooks";
+import { useWorkerData, useRefreshWorkerData, useUrlState } from "@/hooks";
 import { Card, Badge, LoadingState, ErrorState, EmptyState } from "@/components/ui";
 import type { Worker, DispatchQueueEntry } from "@/lib/types";
 
@@ -38,6 +38,9 @@ export default function WorkersPage() {
 }
 
 function WorkersPageContent() {
+  // Enable URL state persistence
+  useUrlState();
+
   const { data, isLoading, error, refetch } = useWorkerData();
   const refreshWorkerData = useRefreshWorkerData();
 
