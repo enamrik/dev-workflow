@@ -909,13 +909,11 @@ function runMcp(): void {
   const cliRoot = path.resolve(path.dirname(currentFile), "..");
   const mcpServerPath = path.resolve(cliRoot, "../mcp-server/dist/index.js");
 
+  // MCP server expects PROJECT_SLUG to be passed via environment
+  // (set by Claude's MCP integration from the registered config)
   const mcpProcess = spawn("node", [mcpServerPath], {
     stdio: "inherit",
-    env: {
-      ...process.env,
-      DATABASE_PATH: process.env["DATABASE_PATH"] || "./data/workflow.db",
-      TEMPLATES_PATH: process.env["TEMPLATES_PATH"] || "./.track/config/issues/templates/",
-    },
+    env: process.env,
   });
 
   mcpProcess.on("exit", (code) => process.exit(code || 0));

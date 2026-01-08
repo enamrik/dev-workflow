@@ -225,8 +225,6 @@ export class UpdateService {
       // Project must be registered first
       const project = this.getProject();
 
-      const dbPath = this.resolver.getDatabasePath();
-      const gitRoot = this.resolver.getGitRoot();
       const cliPath = path.join(this.packageRoot, "dist/index.js");
 
       // Remove existing registration (from both scopes for migration from old versions)
@@ -252,6 +250,7 @@ export class UpdateService {
       // Build the command args for local scope only
       // Local scope stores config in ~/.claude.json, not in the project's .mcp.json
       // This allows dev-workflow to work in projects where .mcp.json is committed
+      // MCP server loads config from ~/.track/<slug>/config.json at startup
       const args = [
         "mcp",
         "add",
@@ -261,11 +260,7 @@ export class UpdateService {
         "stdio",
         "dev-workflow-tracker",
         "--env",
-        `DATABASE_PATH=${dbPath}`,
-        "--env",
-        `PROJECT_ID=${project.id}`,
-        "--env",
-        `GIT_ROOT=${gitRoot}`,
+        `PROJECT_SLUG=${project.slug}`,
         "--",
         "node",
         cliPath,
