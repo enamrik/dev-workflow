@@ -397,19 +397,37 @@ Important: You are running in worker mode. Do NOT ask for user confirmation - pr
    */
   private async spawnClaude(prompt: string, taskId: string): Promise<void> {
     return new Promise<void>((resolve) => {
-      // Spawn claude with the prompt
+      // Visual marker for Claude session start
+      console.log("\n" + "=".repeat(60));
+      console.log("🤖 Claude session starting...");
+      console.log("=".repeat(60) + "\n");
+
+      // Spawn claude with the prompt - use pipe to ensure output is captured
       const claudeProcess = spawn("claude", ["--print", prompt], {
-        stdio: "inherit",
+        stdio: ["inherit", "pipe", "pipe"],
         env: process.env,
       });
 
       this.state.currentClaudeProcess = claudeProcess;
 
+      // Stream stdout to console
+      claudeProcess.stdout?.on("data", (data: Buffer) => {
+        process.stdout.write(data);
+      });
+
+      // Stream stderr to console
+      claudeProcess.stderr?.on("data", (data: Buffer) => {
+        process.stderr.write(data);
+      });
+
       // Start watching task status
       this.startTaskWatch(taskId, claudeProcess);
 
       claudeProcess.on("exit", async (code: number | null) => {
-        console.log(`Claude process exited with code ${code}`);
+        // Visual marker for Claude session end
+        console.log("\n" + "=".repeat(60));
+        console.log(`🤖 Claude session ended (exit code: ${code})`);
+        console.log("=".repeat(60) + "\n");
         this.state.currentClaudeProcess = null;
 
         // Stop task watch
@@ -468,11 +486,23 @@ Important: You are running in worker mode. Do NOT ask for user confirmation - pr
 
   /**
    * Release a task from the dispatch queue and return to polling
+   * - Terminal states (COMPLETED/ABANDONED): removes entry from queue
+   * - Non-terminal states (IN_PROGRESS/PR_REVIEW): marks as RELEASED, keeps worker assignment
    */
   private async releaseTask(taskId: string): Promise<void> {
-    if (this.dispatchQueueRepository) {
-      this.dispatchQueueRepository.releaseClaim(taskId);
-      console.log(`Released task: ${taskId}`);
+    if (this.dispatchQueueRepository && this.taskRepository) {
+      const task = this.taskRepository.findById(taskId);
+      const isTerminal = task?.status === "COMPLETED" || task?.status === "ABANDONED";
+
+      if (isTerminal) {
+        // Task is done - remove from queue entirely
+        this.dispatchQueueRepository.releaseClaim(taskId);
+        console.log(`Task ${task?.status}, removed from queue: ${taskId}`);
+      } else {
+        // Task still in progress (e.g., PR_REVIEW) - mark as RELEASED, keep worker assignment
+        this.dispatchQueueRepository.releaseTask(taskId);
+        console.log(`Task ${task?.status ?? "unknown"}, marked as RELEASED in queue: ${taskId}`);
+      }
     }
 
     // Reset state

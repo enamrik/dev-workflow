@@ -3,6 +3,8 @@ import { DataSourceRegistry, WebDIContext } from "@/server";
 import {
   SqliteWorkerRepository,
   SqliteDispatchQueueRepository,
+  DataSourceFactory,
+  getGlobalDatabasePath,
   type SqliteDataSource,
   type WorkerWithHealth,
   type DispatchQueueEntryWithHealth,
@@ -29,20 +31,10 @@ interface WorkerData {
 
 export async function GET() {
   try {
-    const registry = new DataSourceRegistry();
-    const { sources, projects } = await registry.getSourcesWithProjects();
-
-    if (sources.length === 0 || projects.length === 0) {
-      const emptyData: WorkerData = {
-        workers: [],
-        queue: [],
-        stats: { total: 0, unclaimed: 0, claimed: 0, stale: 0 },
-      };
-      return NextResponse.json(emptyData);
-    }
-
-    // Use first project to get database access
-    const dataSource = (await registry.getDataSource(projects[0]!.slug)) as SqliteDataSource;
+    // Workers are GLOBAL - connect directly to the global database
+    // This ensures workers show up even if no projects are configured
+    const dbPath = getGlobalDatabasePath();
+    const dataSource = (await DataSourceFactory.createSqlite(dbPath)) as SqliteDataSource;
     const db = dataSource.getDb();
 
     const workerRepository = new SqliteWorkerRepository(db);
@@ -52,17 +44,29 @@ export async function GET() {
     const queueEntries = dispatchQueueRepository.findAllWithHealth();
     const stats = dispatchQueueRepository.getQueueStats();
 
-    // Enrich queue entries with task details
+    // Enrich queue entries with task details (optional - won't fail if no projects)
     const enrichedQueue: DispatchQueueEntryWithDetails[] = [];
+
+    // Try to get project info for enrichment, but don't fail if unavailable
+    let projects: { id: string; slug: string }[] = [];
+    let registry: DataSourceRegistry | null = null;
+    try {
+      registry = new DataSourceRegistry();
+      const result = await registry.getSourcesWithProjects();
+      projects = result.projects;
+    } catch {
+      // Projects unavailable, continue without enrichment
+    }
 
     for (const entry of queueEntries) {
       let taskNumber: number | undefined;
       let issueNumber: number | undefined;
       let taskTitle: string | undefined;
 
+      // Try to enrich with task details from projects
       for (const project of projects) {
         try {
-          const context = await WebDIContext.createFromProjectInfo(project, registry);
+          const context = await WebDIContext.createFromProjectInfo(project, registry!);
           const task = context.taskRepository.findById(entry.taskId);
 
           if (task) {
