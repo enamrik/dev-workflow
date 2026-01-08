@@ -55,7 +55,7 @@ export interface Task {
   status: "PLANNED" | "BACKLOG" | "READY" | "IN_PROGRESS" | "PR_REVIEW" | "COMPLETED" | "ABANDONED";
   estimatedMinutes: number | null;
   acceptanceCriteria: string[];
-  contextInstructions: string | null;
+  implementationPlan: string | null;
   isManual: boolean;
   sessionId: string | null;
   // Worktree fields

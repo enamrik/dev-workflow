@@ -213,8 +213,8 @@ export const tasks = sqliteTable("tasks", {
   sessionStartedAt: text("session_started_at"),
   lastSessionActivityAt: text("last_session_activity_at"),
 
-  // Execution context
-  contextInstructions: text("context_instructions"),
+  // Execution context - technical implementation details for Claude
+  implementationPlan: text("implementation_plan"),
 
   // Task dependencies - array of task UUIDs this task depends on
   dependsOn: text("depends_on", { mode: "json" })

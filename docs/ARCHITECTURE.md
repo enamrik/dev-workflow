@@ -31,7 +31,7 @@ This document provides a high-level overview of the dev-workflow architecture.
 │  - title, description, acceptanceCriteria[]                     │
 │  - status (PENDING, IN_PROGRESS, COMPLETED, ABANDONED)          │
 │  - source (generated, manual)                                   │
-│  - sessionId, hookConfigLabels[], contextInstructions           │
+│  - sessionId, hookConfigLabels[], implementationPlan           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -184,7 +184,7 @@ Task execution:
 - `start_task_session` - Begin work on a task
 - `complete_task_session` - Mark task complete (runs pre-complete hooks)
 - `abandon_task_session` - Abandon task with reason
-- `update_task` - Update task fields (title, description, contextInstructions, etc.)
+- `update_task` - Update task fields (title, description, implementationPlan, etc.)
 - `get_task_execution_prompt` - Get prompt for subagent execution
 - `log_task_progress` - Record execution step (subagent audit trail)
 - `get_task_execution_log` - Retrieve execution history

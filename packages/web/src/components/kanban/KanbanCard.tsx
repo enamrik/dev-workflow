@@ -208,14 +208,14 @@ function TaskTab({ task }: { task: Task }) {
         </div>
       )}
 
-      {/* Context instructions */}
-      {task.contextInstructions && (
+      {/* Implementation plan */}
+      {task.implementationPlan && (
         <div>
           <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-            Context Instructions
+            Implementation Plan
           </div>
           <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg border border-gray-200">
-            {task.contextInstructions}
+            {task.implementationPlan}
           </div>
         </div>
       )}
