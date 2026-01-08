@@ -164,7 +164,7 @@ function DetailsTab({ issue }: DetailsTabProps) {
 
       {/* Metadata */}
       <section className="border-t border-gray-200 pt-4">
-        <dl className="grid grid-cols-2 gap-4 text-sm">
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
           <div>
             <dt className="text-gray-500">Created</dt>
             <dd className="text-gray-800">{formatDate(issue.createdAt)}</dd>

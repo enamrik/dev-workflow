@@ -13,6 +13,7 @@ interface TaskItemProps {
   projectId?: string;
   issueNumber?: number;
   totalTasks?: number; // Total tasks in the issue for display formatting
+  compact?: boolean; // Use compact layout for narrow containers (e.g., preview panels)
 }
 
 function getStatusIcon(status: Task["status"]): string {
@@ -30,7 +31,13 @@ function getStatusIcon(status: Task["status"]): string {
   }
 }
 
-export function TaskItem({ task, projectId, issueNumber, totalTasks }: TaskItemProps) {
+export function TaskItem({
+  task,
+  projectId,
+  issueNumber,
+  totalTasks,
+  compact = false,
+}: TaskItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const isCompleted = task.status === "COMPLETED";
@@ -57,10 +64,40 @@ export function TaskItem({ task, projectId, issueNumber, totalTasks }: TaskItemP
       )}
     >
       {/* Main content */}
-      <div className="flex gap-4 p-4">
+      <div
+        className={clsx("flex gap-3 p-4", compact ? "flex-col" : "flex-col sm:flex-row sm:gap-4")}
+      >
+        {/* Mobile/Compact: Status badge at top */}
+        <div className={clsx("flex items-center justify-between", compact ? "" : "sm:hidden")}>
+          <div className="flex items-center gap-2">
+            <div
+              className={clsx(
+                "w-6 h-6 flex items-center justify-center rounded-full text-sm font-bold flex-shrink-0",
+                isCompleted && "bg-green-500 text-white",
+                isInProgress && "bg-orange-500 text-white",
+                isPRReview && "bg-blue-500 text-white",
+                isAbandoned && "bg-red-500 text-white",
+                !isCompleted &&
+                  !isInProgress &&
+                  !isPRReview &&
+                  !isAbandoned &&
+                  "bg-gray-300 text-gray-600"
+              )}
+            >
+              {getStatusIcon(task.status)}
+            </div>
+            <Tooltip content={taskNumberTooltip} side="top">
+              <span className="text-gray-500 font-medium cursor-help">{taskDisplayLabel}</span>
+            </Tooltip>
+          </div>
+          <Badge variant="status" value={task.status} />
+        </div>
+
+        {/* Desktop (non-compact): Icon on left */}
         <div
           className={clsx(
-            "w-6 h-6 flex items-center justify-center rounded-full text-sm font-bold flex-shrink-0",
+            "w-6 h-6 items-center justify-center rounded-full text-sm font-bold flex-shrink-0",
+            compact ? "hidden" : "hidden sm:flex",
             isCompleted && "bg-green-500 text-white",
             isInProgress && "bg-orange-500 text-white",
             isPRReview && "bg-blue-500 text-white",
@@ -76,11 +113,17 @@ export function TaskItem({ task, projectId, issueNumber, totalTasks }: TaskItemP
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          {/* Desktop (non-compact): Task number and title */}
+          <div className={clsx("items-center gap-2", compact ? "hidden" : "hidden sm:flex")}>
             <Tooltip content={taskNumberTooltip} side="top">
               <span className="text-gray-500 font-medium cursor-help">{taskDisplayLabel}</span>
             </Tooltip>
             <span className="font-medium text-gray-800">{task.title}</span>
+          </div>
+
+          {/* Mobile/Compact: Just title */}
+          <div className={clsx("font-medium text-gray-800 mb-2", compact ? "" : "sm:hidden")}>
+            {task.title}
           </div>
 
           {/* Actions panel - just below title */}
@@ -112,6 +155,11 @@ export function TaskItem({ task, projectId, issueNumber, totalTasks }: TaskItemP
             </ul>
           )}
 
+          {/* Mobile/Compact: Timing info at bottom of content */}
+          <div className={clsx("mt-3", compact ? "" : "sm:hidden")}>
+            <TaskTiming task={task} className="text-xs text-gray-500" variant="detailed" />
+          </div>
+
           {/* Toggle link for details */}
           {canExpand && (
             <button
@@ -125,7 +173,13 @@ export function TaskItem({ task, projectId, issueNumber, totalTasks }: TaskItemP
           )}
         </div>
 
-        <div className="flex flex-col items-end gap-2 flex-shrink-0">
+        {/* Desktop (non-compact): Status and timing on right */}
+        <div
+          className={clsx(
+            "flex-col items-end gap-2 flex-shrink-0",
+            compact ? "hidden" : "hidden sm:flex"
+          )}
+        >
           <Badge variant="status" value={task.status} />
           <TaskTiming task={task} className="text-xs" variant="detailed" />
         </div>

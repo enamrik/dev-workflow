@@ -37,7 +37,7 @@ export function TaskActions({
   return (
     <div
       className={clsx(
-        "inline-flex items-center gap-1 px-2 py-1.5 bg-gray-100 rounded-md",
+        "inline-flex flex-wrap items-center gap-1 px-2 py-1.5 bg-gray-100 rounded-md",
         className
       )}
     >

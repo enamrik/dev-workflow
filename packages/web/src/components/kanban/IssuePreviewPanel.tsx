@@ -42,7 +42,7 @@ export function IssuePreviewPanel({ projectSlug, issueNumber, onClose }: IssuePr
       {/* Backdrop for clicking outside */}
       <div className="fixed inset-0 bg-black/20 z-40" onClick={onClose} aria-hidden="true" />
       <div
-        className="fixed inset-y-0 right-0 w-[480px] max-w-full bg-white shadow-xl border-l border-gray-200 z-50 flex flex-col"
+        className="fixed inset-y-0 right-0 w-full sm:w-[480px] sm:max-w-full bg-white shadow-xl border-l border-gray-200 z-50 flex flex-col"
         role="dialog"
         aria-modal="true"
         aria-label={`Issue #${issueNumber} preview`}
@@ -68,7 +68,7 @@ export function IssuePreviewPanel({ projectSlug, issueNumber, onClose }: IssuePr
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700"
+            className="p-2 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700 min-w-[44px] min-h-[44px] flex items-center justify-center"
             aria-label="Close preview"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -216,7 +216,7 @@ function DetailsTab({ issue }: DetailsTabProps) {
 
       {/* Metadata */}
       <section className="border-t border-gray-200 pt-3 text-sm">
-        <dl className="grid grid-cols-2 gap-3">
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <dt className="text-gray-500">Created</dt>
             <dd className="text-gray-800">{formatDate(issue.createdAt)}</dd>
@@ -308,7 +308,7 @@ function TasksTab({ tasks, taskCounts, projectId, issueNumber }: TasksTabProps) 
       </div>
 
       {/* Task list */}
-      <TaskList tasks={tasks} projectId={projectId} issueNumber={issueNumber} />
+      <TaskList tasks={tasks} projectId={projectId} issueNumber={issueNumber} compact />
     </TabPanel>
   );
 }
