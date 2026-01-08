@@ -71,7 +71,7 @@ function WorkersPageContent() {
       </div>
 
       {/* Stats summary */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-4">
           <div className="text-sm text-gray-500">Total Queue</div>
           <div className="text-2xl font-bold text-gray-800">{stats.total}</div>
