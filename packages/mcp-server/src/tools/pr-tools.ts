@@ -690,6 +690,7 @@ export async function handleCompleteTask(
       } catch {
         console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
       }
+
       // Clear worktree info from task
       ctx.taskRepository.clearWorktreeInfo(taskId);
     } else if (hasBranch) {
