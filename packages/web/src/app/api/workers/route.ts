@@ -18,8 +18,14 @@ interface DispatchQueueEntryWithDetails extends DispatchQueueEntryWithHealth {
   taskTitle?: string;
 }
 
+interface WorkerWithTaskDetails extends WorkerWithHealth {
+  taskNumber?: number;
+  issueNumber?: number;
+  taskStartedAt?: string;
+}
+
 interface WorkerData {
-  workers: WorkerWithHealth[];
+  workers: WorkerWithTaskDetails[];
   queue: DispatchQueueEntryWithDetails[];
   stats: {
     total: number;
@@ -27,6 +33,44 @@ interface WorkerData {
     claimed: number;
     stale: number;
   };
+}
+
+interface TaskDetails {
+  taskNumber: number;
+  issueNumber: number;
+  taskTitle: string;
+  taskStartedAt: string | null;
+}
+
+async function lookupTaskDetails(
+  taskId: string,
+  projects: { id: string; slug: string }[],
+  registry: DataSourceRegistry
+): Promise<TaskDetails | null> {
+  for (const project of projects) {
+    try {
+      const context = await WebDIContext.createFromProjectInfo(project, registry);
+      const task = context.taskRepository.findById(taskId);
+
+      if (task) {
+        const plan = context.planRepository.findById(task.planId);
+        if (plan) {
+          const issue = context.issueRepository.findById(plan.issueId);
+          if (issue) {
+            return {
+              taskNumber: task.number,
+              issueNumber: issue.number,
+              taskTitle: task.title,
+              taskStartedAt: task.startedAt ?? null,
+            };
+          }
+        }
+      }
+    } catch {
+      // Continue searching
+    }
+  }
+  return null;
 }
 
 export async function GET() {
@@ -44,9 +88,6 @@ export async function GET() {
     const queueEntries = dispatchQueueRepository.findAllWithHealth();
     const stats = dispatchQueueRepository.getQueueStats();
 
-    // Enrich queue entries with task details (optional - won't fail if no projects)
-    const enrichedQueue: DispatchQueueEntryWithDetails[] = [];
-
     // Try to get project info for enrichment, but don't fail if unavailable
     let projects: { id: string; slug: string }[] = [];
     let registry: DataSourceRegistry | null = null;
@@ -58,45 +99,36 @@ export async function GET() {
       // Projects unavailable, continue without enrichment
     }
 
+    // Enrich queue entries with task details
+    const enrichedQueue: DispatchQueueEntryWithDetails[] = [];
     for (const entry of queueEntries) {
-      let taskNumber: number | undefined;
-      let issueNumber: number | undefined;
-      let taskTitle: string | undefined;
-
-      // Try to enrich with task details from projects
-      for (const project of projects) {
-        try {
-          const context = await WebDIContext.createFromProjectInfo(project, registry!);
-          const task = context.taskRepository.findById(entry.taskId);
-
-          if (task) {
-            taskNumber = task.number;
-            taskTitle = task.title;
-
-            const plan = context.planRepository.findById(task.planId);
-            if (plan) {
-              const issue = context.issueRepository.findById(plan.issueId);
-              if (issue) {
-                issueNumber = issue.number;
-              }
-            }
-            break;
-          }
-        } catch {
-          // Continue searching
-        }
-      }
-
+      const details = registry ? await lookupTaskDetails(entry.taskId, projects, registry) : null;
       enrichedQueue.push({
         ...entry,
-        taskNumber,
-        issueNumber,
-        taskTitle,
+        taskNumber: details?.taskNumber,
+        issueNumber: details?.issueNumber,
+        taskTitle: details?.taskTitle,
       });
     }
 
+    // Enrich workers with task details
+    const enrichedWorkers: WorkerWithTaskDetails[] = [];
+    for (const worker of workers) {
+      if (worker.currentTaskId && registry) {
+        const details = await lookupTaskDetails(worker.currentTaskId, projects, registry);
+        enrichedWorkers.push({
+          ...worker,
+          taskNumber: details?.taskNumber,
+          issueNumber: details?.issueNumber,
+          taskStartedAt: details?.taskStartedAt ?? undefined,
+        });
+      } else {
+        enrichedWorkers.push(worker);
+      }
+    }
+
     const workerData: WorkerData = {
-      workers,
+      workers: enrichedWorkers,
       queue: enrichedQueue,
       stats,
     };

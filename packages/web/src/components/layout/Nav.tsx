@@ -73,9 +73,7 @@ export function Nav() {
             Dev Workflow
           </Link>
           {/* Context label - shows current project/source */}
-          <span className="text-xs text-gray-500">
-            {contextLabel}
-          </span>
+          <span className="text-xs text-gray-500">{contextLabel}</span>
         </div>
 
         {/* Desktop nav */}

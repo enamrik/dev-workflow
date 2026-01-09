@@ -23,6 +23,24 @@ function formatHeartbeatAge(seconds: number): string {
   return `${Math.floor(seconds / 86400)}d ago`;
 }
 
+function formatDuration(startDateString: string): string {
+  const start = new Date(startDateString);
+  const now = new Date();
+  const diffSeconds = Math.floor((now.getTime() - start.getTime()) / 1000);
+
+  if (diffSeconds < 0) return "0s";
+  if (diffSeconds < 60) return `${diffSeconds}s`;
+
+  const hours = Math.floor(diffSeconds / 3600);
+  const minutes = Math.floor((diffSeconds % 3600) / 60);
+  const seconds = diffSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m ${seconds}s`;
+}
+
 export default function WorkersPage() {
   return (
     <Suspense
@@ -208,19 +226,38 @@ function WorkerCard({ worker }: WorkerCardProps) {
           {worker.currentTaskId && (
             <div className="mt-2 text-sm">
               <span className="text-gray-600">Working on:</span>{" "}
-              <span className="font-mono text-gray-800">{worker.currentTaskId.slice(0, 8)}...</span>
+              {worker.issueNumber !== undefined && worker.taskNumber !== undefined ? (
+                <span className="font-medium text-gray-800">
+                  #{worker.issueNumber}.{worker.taskNumber}
+                </span>
+              ) : (
+                <span className="font-mono text-gray-800">
+                  {worker.currentTaskId.slice(0, 8)}...
+                </span>
+              )}
             </div>
           )}
         </div>
 
-        {/* Heartbeat */}
+        {/* Task duration or heartbeat */}
         <div className="text-right">
-          <div className="text-sm text-gray-600">Heartbeat</div>
-          <div
-            className={`text-sm font-medium ${worker.isAlive ? "text-green-600" : "text-red-600"}`}
-          >
-            {formatHeartbeatAge(worker.heartbeatAge)}
-          </div>
+          {worker.currentTaskId && worker.taskStartedAt ? (
+            <>
+              <div className="text-sm text-gray-600">Running for</div>
+              <div className="text-sm font-medium text-blue-600">
+                {formatDuration(worker.taskStartedAt)}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-sm text-gray-600">Heartbeat</div>
+              <div
+                className={`text-sm font-medium ${worker.isAlive ? "text-green-600" : "text-red-600"}`}
+              >
+                {formatHeartbeatAge(worker.heartbeatAge)}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
