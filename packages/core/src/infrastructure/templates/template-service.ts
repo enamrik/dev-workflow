@@ -71,6 +71,7 @@ export interface TemplateServiceConfig {
 export class TemplateService {
   private readonly parser: TemplateParser;
   private cachedTemplates: TemplateDiscovery | null = null;
+  private cachedTaskTemplates: TemplateDiscovery | null = null;
 
   /**
    * Create a new TemplateService
@@ -136,6 +137,58 @@ export class TemplateService {
    */
   async getAvailableTemplates(): Promise<string[]> {
     const discovery = await this.discoverTemplates();
+    return discovery.merged.map((t) => t.filename);
+  }
+
+  /**
+   * Discover all available task templates
+   *
+   * Scans local and global task template directories and returns merged list
+   * where local templates override global templates by filename.
+   *
+   * Results are cached for performance. Use clearCache() to invalidate.
+   *
+   * @returns Template discovery result with user (local), default (global), and merged lists
+   * @throws TemplateServiceError if discovery fails
+   */
+  async discoverTaskTemplates(): Promise<TemplateDiscovery> {
+    // Return cached result if available
+    if (this.cachedTaskTemplates) {
+      return this.cachedTaskTemplates;
+    }
+
+    try {
+      // Load templates from local and global task directories in parallel
+      const [localTemplates, globalTemplates] = await Promise.all([
+        this.loadTemplatesFromDirectory(this.config.localTaskTemplatesPath, true),
+        this.loadTemplatesFromDirectory(this.config.globalTaskTemplatesPath, false),
+      ]);
+
+      // Merge: local templates override global by filename
+      const merged = this.mergeTemplates(localTemplates, globalTemplates);
+
+      const discovery: TemplateDiscovery = {
+        userTemplates: localTemplates, // "user" = local for backward compatibility
+        defaultTemplates: globalTemplates, // "default" = global for backward compatibility
+        merged,
+      };
+
+      // Cache the result
+      this.cachedTaskTemplates = discovery;
+
+      return discovery;
+    } catch (error) {
+      throw new TemplateServiceError("Failed to discover task templates", error);
+    }
+  }
+
+  /**
+   * Get list of available task template filenames
+   *
+   * @returns Array of task template filenames (merged list)
+   */
+  async getAvailableTaskTemplates(): Promise<string[]> {
+    const discovery = await this.discoverTaskTemplates();
     return discovery.merged.map((t) => t.filename);
   }
 
@@ -362,10 +415,11 @@ export class TemplateService {
    * Clear template cache
    *
    * Useful for testing or after template updates.
-   * Next call to discoverTemplates() will re-scan the filesystem.
+   * Next call to discoverTemplates() or discoverTaskTemplates() will re-scan the filesystem.
    */
   clearCache(): void {
     this.cachedTemplates = null;
+    this.cachedTaskTemplates = null;
   }
 
   /**
@@ -378,6 +432,32 @@ export class TemplateService {
     filename: string
   ): Promise<{ template: Template; source: "user" | "default" } | null> {
     const discovery = await this.discoverTemplates();
+
+    // Check local (user) templates first
+    const userTemplate = discovery.userTemplates.find((t) => t.filename === filename);
+    if (userTemplate) {
+      return { template: userTemplate, source: "user" };
+    }
+
+    // Check global (default) templates
+    const defaultTemplate = discovery.defaultTemplates.find((t) => t.filename === filename);
+    if (defaultTemplate) {
+      return { template: defaultTemplate, source: "default" };
+    }
+
+    return null;
+  }
+
+  /**
+   * Get a single task template with source information
+   *
+   * @param filename - Template filename (e.g., "feature.md")
+   * @returns Template with source info, or null if not found
+   */
+  async getTaskTemplateInfo(
+    filename: string
+  ): Promise<{ template: Template; source: "user" | "default" } | null> {
+    const discovery = await this.discoverTaskTemplates();
 
     // Check local (user) templates first
     const userTemplate = discovery.userTemplates.find((t) => t.filename === filename);

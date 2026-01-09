@@ -184,7 +184,14 @@ export const issueToolDefinitions: ToolDefinition[] = [
       "List available issue templates. Returns both user-defined and default templates with their metadata.",
     inputSchema: {
       type: "object",
-      properties: {},
+      properties: {
+        category: {
+          type: "string",
+          enum: ["issue", "task"],
+          description:
+            "Template category: 'issue' for issue templates (default), 'task' for task templates from .track/templates/tasks/",
+        },
+      },
     },
   },
   {
@@ -197,6 +204,12 @@ export const issueToolDefinitions: ToolDefinition[] = [
         filename: {
           type: "string",
           description: "Template filename (e.g., 'feature.md', 'bug.md')",
+        },
+        category: {
+          type: "string",
+          enum: ["issue", "task"],
+          description:
+            "Template category: 'issue' for issue templates (default), 'task' for task templates",
         },
       },
       required: ["filename"],
@@ -787,14 +800,42 @@ export function handleRestoreIssue(
 }
 
 /**
+ * Template category type
+ */
+type TemplateCategory = "issue" | "task";
+
+/**
  * Handle list_templates tool call
  */
-export async function handleListTemplates(ctx: IssueToolContext): Promise<ToolResponse> {
+export async function handleListTemplates(
+  ctx: IssueToolContext,
+  args: { category?: TemplateCategory }
+): Promise<ToolResponse> {
+  const category = args.category ?? "issue";
+
   try {
+    if (category === "task") {
+      const templates = await ctx.templateService.getAvailableTaskTemplates();
+      const discovery = await ctx.templateService.discoverTaskTemplates();
+
+      return successResponse({
+        category: "task",
+        available: templates,
+        details: discovery.merged.map((t) => ({
+          filename: t.filename,
+          type: t.metadata.type,
+          priority: t.metadata.priority,
+          source: t.isUserDefined ? "user" : "default",
+        })),
+      });
+    }
+
+    // Default: issue templates
     const templates = await ctx.templateService.getAvailableTemplates();
     const discovery = await ctx.templateService.discoverTemplates();
 
     return successResponse({
+      category: "issue",
       available: templates,
       details: discovery.merged.map((t) => ({
         filename: t.filename,
@@ -813,18 +854,22 @@ export async function handleListTemplates(ctx: IssueToolContext): Promise<ToolRe
  */
 export async function handleGetTemplate(
   ctx: IssueToolContext,
-  args: { filename: string }
+  args: { filename: string; category?: TemplateCategory }
 ): Promise<ToolResponse> {
-  const { filename } = args;
+  const { filename, category = "issue" } = args;
 
   try {
-    const result = await ctx.templateService.getTemplate(filename);
+    const result =
+      category === "task"
+        ? await ctx.templateService.getTaskTemplateInfo(filename)
+        : await ctx.templateService.getTemplate(filename);
 
     if (!result) {
-      return errorResponse(`Template '${filename}' not found`);
+      return errorResponse(`Template '${filename}' not found in ${category} templates`);
     }
 
     return successResponse({
+      category,
       filename: result.template.filename,
       source: result.source,
       content: result.template.rawContent,
