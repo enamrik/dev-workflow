@@ -22,16 +22,10 @@ export async function GET(request: NextRequest) {
     const sourceFilter = searchParams.get("source") ?? undefined;
 
     const registry = new DataSourceRegistry();
-    const { projects } = await registry.getSourcesWithProjects();
-
-    // Filter projects
-    let filteredProjects = projects;
-    if (projectFilter) {
-      filteredProjects = filteredProjects.filter((p) => p.id === projectFilter);
-    }
-    if (sourceFilter) {
-      filteredProjects = filteredProjects.filter((p) => p.sourceId === sourceFilter);
-    }
+    const filteredProjects = await registry.getFilteredProjects({
+      project: projectFilter,
+      source: sourceFilter,
+    });
 
     const allIssues: IssueWithPlanInfo[] = [];
 

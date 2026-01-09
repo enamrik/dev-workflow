@@ -254,6 +254,35 @@ export class DataSourceRegistry {
   }
 
   /**
+   * Get filtered projects based on project and source filters
+   *
+   * This is a convenience method for API routes that need to filter projects.
+   * Accepts both project UUID and slug for flexibility.
+   *
+   * @param filters - Optional filters for project (by id or slug) and source
+   * @returns Filtered projects
+   */
+  async getFilteredProjects(filters?: {
+    project?: string;
+    source?: string;
+  }): Promise<ProjectInfo[]> {
+    const { projects } = await this.getSourcesWithProjects();
+
+    let filtered = projects;
+
+    if (filters?.project) {
+      const projectFilter = filters.project;
+      filtered = filtered.filter((p) => p.id === projectFilter || p.slug === projectFilter);
+    }
+
+    if (filters?.source) {
+      filtered = filtered.filter((p) => p.sourceId === filters.source);
+    }
+
+    return filtered;
+  }
+
+  /**
    * Get a DataSourceProvider for a project by slug
    *
    * This is the primary API for getting database access.

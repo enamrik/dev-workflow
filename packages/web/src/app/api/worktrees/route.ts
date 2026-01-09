@@ -24,13 +24,9 @@ export async function GET(request: NextRequest) {
     const projectFilter = searchParams.get("project") ?? undefined;
 
     const registry = new DataSourceRegistry();
-    const { projects } = await registry.getSourcesWithProjects();
-
-    // Filter projects
-    let filteredProjects = projects;
-    if (projectFilter) {
-      filteredProjects = filteredProjects.filter((p) => p.id === projectFilter);
-    }
+    const filteredProjects = await registry.getFilteredProjects({
+      project: projectFilter,
+    });
 
     const allWorktrees: ProjectWorktree[] = [];
 

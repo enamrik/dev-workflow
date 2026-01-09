@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import * as crypto from "node:crypto";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
@@ -268,7 +268,9 @@ export class UpdateService {
       ];
 
       // Re-register with local scope only (stored in ~/.claude.json)
-      execSync(`claude ${args.join(" ")}`, {
+      // Use spawnSync with array args to preserve argument boundaries
+      // (execSync with joined string causes --env to be parsed incorrectly)
+      spawnSync("claude", args, {
         cwd: this.workingDirectory,
         stdio: "inherit",
         timeout: 30000,
