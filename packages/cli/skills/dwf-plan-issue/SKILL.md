@@ -75,6 +75,45 @@ Ask yourself: "Would I commit and deploy this alone?"
 - Database migrations + the code using them = ONE task
 - API + validation + error handling + tests = ONE task (if reasonably sized)
 
+## Task Dependencies (CRITICAL)
+
+> **⚠️ WARNING:** Before generating a plan, **always analyze task relationships** and define dependencies explicitly. Empty `dependsOn` arrays when tasks have sequential relationships lead to:
+>
+> - Workers picking up tasks before prerequisites complete
+> - Merge conflicts from parallel work on dependent code
+> - Broken builds when dependent tasks merge out of order
+
+### Why Dependencies Matter
+
+| System Behavior      | Controlled By Dependencies                                 |
+| -------------------- | ---------------------------------------------------------- |
+| Task ordering        | Tasks with unmet dependencies stay in BACKLOG              |
+| Worker dispatch      | Only tasks with all dependencies COMPLETED become READY    |
+| Parallel work safety | Independent tasks (no dependencies) can run simultaneously |
+
+### Dependency Rules
+
+1. **Analyze relationships FIRST** - Before writing tasks, map out which tasks depend on others
+2. **Define `dependsOn` explicitly** - If task B requires task A to complete first, add `dependsOn: ["a"]`
+3. **Never leave dependencies empty when sequential** - Empty arrays mean "can run in parallel"
+4. **Use placeholder IDs** - Reference tasks by their short ID (e.g., `"db"`, `"api"`)
+
+See "Task IDs and Dependencies" section below for syntax examples.
+
+### Anti-Pattern: Missing Dependencies
+
+```json
+{
+  "tasks": [
+    { "id": "schema", "title": "Add database schema", "type": "TASK" },
+    { "id": "api", "title": "Implement API endpoints", "type": "FEATURE" }, // ❌ Missing dependsOn!
+    { "id": "ui", "title": "Build UI", "type": "FEATURE" } // ❌ Missing dependsOn!
+  ]
+}
+```
+
+**Problem:** All three tasks become READY simultaneously. Workers may start `api` before `schema` is done, causing build failures.
+
 ## Information Flow from manage-issue
 
 When chained from `manage-issue`, you may receive additional context:
@@ -234,6 +273,7 @@ Add unit tests to src/__tests__/auth/ following existing test patterns.
    - **Description**: Human-readable story format (syncs to GitHub) - what will be delivered
    - **Type**: One of the valid types from step 1 (e.g., FEATURE, BUG, ENHANCEMENT, TASK)
    - **Acceptance Criteria**: Verifiable outcomes for humans (syncs to GitHub)
+   - **Dependencies**: If this task requires another to complete first, add `dependsOn: ["other-task-id"]` (see "Task Dependencies" section)
    - **Implementation Plan** (optional): Technical details for Claude execution (NOT synced to GitHub) - specific files, patterns, approach
 
 8. **Generate Plan:**
