@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import * as path from "node:path";
 import { createRequire } from "node:module";
-import open from "open";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
   getDaemonPort,
@@ -91,16 +90,6 @@ export class UIService {
 
       console.log(`✓ dev-workflow UI started at ${url}`);
       console.log("\nPress Ctrl+C to stop the server");
-
-      // Open browser (unless disabled via env var)
-      if (!process.env["NO_OPEN_BROWSER"]) {
-        try {
-          await open(url);
-        } catch {
-          console.warn("⚠️  Could not open browser automatically.");
-          console.warn(`   Please visit: ${url}`);
-        }
-      }
 
       // Forward output
       nextProcess.stdout?.on("data", (data) => {
