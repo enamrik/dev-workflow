@@ -198,7 +198,10 @@ export const taskToolDefinitions: ToolDefinition[] = [
   },
   {
     name: "delete_task",
-    description: "Delete a task (soft delete). Only BACKLOG or READY tasks can be deleted.",
+    description:
+      "Delete a task (soft delete). Only PLANNED tasks can be deleted. " +
+      "Once an issue moves to BACKLOG (via move_issue_to_backlog), task numbers become immutable. " +
+      "Use abandon_task_session instead for tasks past PLANNED status.",
     inputSchema: {
       type: "object",
       properties: {

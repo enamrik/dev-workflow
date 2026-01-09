@@ -98,8 +98,11 @@ export class TaskManagementService {
   /**
    * Delete a task (soft delete)
    *
-   * Can delete any task (manual or generated) as long as it's BACKLOG or READY.
-   * Tasks with other statuses cannot be deleted.
+   * Can only delete tasks in PLANNED status. Once an issue moves to BACKLOG
+   * (via move_issue_to_backlog), task numbers become immutable to ensure
+   * stable references like #180.2.
+   *
+   * For tasks past PLANNED status, use abandon_task_session instead.
    *
    * @param taskId - Task UUID
    * @param deletedBy - Who is deleting the task
@@ -115,9 +118,10 @@ export class TaskManagementService {
       throw new Error(`Task is already deleted: ${taskId}`);
     }
 
-    if (task.status !== "BACKLOG" && task.status !== "READY") {
+    if (task.status !== "PLANNED") {
       throw new Error(
-        `Cannot delete task with status ${task.status}. Only BACKLOG or READY tasks can be deleted.`
+        `Cannot delete task with status ${task.status}. Tasks can only be deleted while in PLANNED status. ` +
+          `Use abandon_task_session instead to mark the task as abandoned.`
       );
     }
 
