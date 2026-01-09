@@ -213,35 +213,27 @@ function WorkerCard({ worker }: WorkerCardProps) {
           <div className="flex items-center gap-2">
             <WorkerIcon className={worker.isAlive ? "text-green-500" : "text-red-500"} />
             <span className="font-medium text-gray-800">{worker.name}</span>
-            <Badge variant="status" value={worker.status} className={statusColor} />
-            {!worker.isAlive && (
+            {worker.isAlive ? (
+              <Badge variant="status" value={worker.status} className={statusColor} />
+            ) : (
               <Badge variant="status" value="DEAD" className="bg-red-100 text-red-700" />
             )}
           </div>
 
-          {/* Worker ID */}
-          <div className="text-xs text-gray-500 mt-1 font-mono">{worker.id.slice(0, 8)}...</div>
-
-          {/* Current task */}
-          {worker.currentTaskId && (
-            <div className="mt-2 text-sm">
+          {/* Current task - only show if we have the task details */}
+          {worker.issueNumber !== undefined && worker.taskNumber !== undefined && (
+            <div className="mt-1 text-sm">
               <span className="text-gray-600">Working on:</span>{" "}
-              {worker.issueNumber !== undefined && worker.taskNumber !== undefined ? (
-                <span className="font-medium text-gray-800">
-                  #{worker.issueNumber}.{worker.taskNumber}
-                </span>
-              ) : (
-                <span className="font-mono text-gray-800">
-                  {worker.currentTaskId.slice(0, 8)}...
-                </span>
-              )}
+              <span className="font-medium text-gray-800">
+                #{worker.issueNumber}.{worker.taskNumber}
+              </span>
             </div>
           )}
         </div>
 
-        {/* Task duration or heartbeat */}
+        {/* Task duration (alive workers with task) or heartbeat */}
         <div className="text-right">
-          {worker.currentTaskId && worker.taskStartedAt ? (
+          {worker.isAlive && worker.taskStartedAt ? (
             <>
               <div className="text-sm text-gray-600">Running for</div>
               <div className="text-sm font-medium text-blue-600">
