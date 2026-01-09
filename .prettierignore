@@ -5,3 +5,4 @@ drizzle/
 coverage/
 *.d.ts
 pnpm-lock.yaml
+.claude/settings.local.json
