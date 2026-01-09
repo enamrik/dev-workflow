@@ -251,6 +251,8 @@ export class UpdateService {
       // Local scope stores config in ~/.claude.json, not in the project's .mcp.json
       // This allows dev-workflow to work in projects where .mcp.json is committed
       // MCP server loads config from ~/.track/<slug>/config.json at startup
+      // All options must come BEFORE the server name
+      // Use --env=KEY=value format (equals sign) to avoid variadic arg parsing issues
       const args = [
         "mcp",
         "add",
@@ -258,9 +260,8 @@ export class UpdateService {
         "local",
         "--transport",
         "stdio",
+        `--env=PROJECT_SLUG=${project.slug}`,
         "dev-workflow-tracker",
-        "--env",
-        `PROJECT_SLUG=${project.slug}`,
         "--",
         "node",
         cliPath,
