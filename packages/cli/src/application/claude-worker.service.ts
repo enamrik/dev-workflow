@@ -481,7 +481,7 @@ export class ClaudeWorkerService {
 
 Start working on task #${issueNumber}.${taskNumber} (ID: ${taskId}).
 
-Use the dwf-work-task skill to load the task session and work through the COMPLETE task lifecycle:
+Use the dwf-worker-task skill to load the task session and work through the COMPLETE task lifecycle:
 
 1. Load the task with load_task_session
 2. Implement the task according to its description and acceptance criteria

@@ -17,7 +17,6 @@ import {
   SqliteMilestoneRepository,
   SqliteProjectRepository,
   SqliteDispatchQueueRepository,
-  SqliteWorkerRepository,
   TemplateService,
   type TemplateServiceConfig,
   TypeService,
@@ -171,7 +170,6 @@ export class McpDIContext {
     const taskRepository = new SqliteTaskRepository(db);
     const milestoneRepository = new SqliteMilestoneRepository(db, config.projectId);
     const dispatchQueueRepository = new SqliteDispatchQueueRepository(db);
-    const workerRepository = new SqliteWorkerRepository(db);
 
     // Initialize file system and paths
     const fileSystem = new NodeFileSystem();
@@ -296,8 +294,6 @@ export class McpDIContext {
       project,
       projectRepository,
       githubCLI,
-      workerRepository,
-      dispatchQueueRepository,
     };
 
     const snapshotToolContext: SnapshotToolContext = {
