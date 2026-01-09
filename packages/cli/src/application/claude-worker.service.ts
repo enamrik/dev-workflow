@@ -445,13 +445,20 @@ export class ClaudeWorkerService {
 
 Start working on task #${issueNumber}.${taskNumber} (ID: ${taskId}).
 
-Use the dwf-work-task skill to load the task session and begin working. Follow the skill instructions for:
-1. Loading the task with load_task_session
-2. Implementing the task according to its description and acceptance criteria
-3. Creating a PR when done
-4. Submitting for review
+Use the dwf-work-task skill to load the task session and work through the COMPLETE task lifecycle:
 
-Important: You are running in worker mode. Do NOT ask for user confirmation - proceed autonomously with the implementation.`;
+1. Load the task with load_task_session
+2. Implement the task according to its description and acceptance criteria
+3. Create a PR when implementation is done
+4. Submit for review
+5. WAIT for the PR to be merged (check with get_task_pr_status)
+6. Once PR is merged, call complete_task with a finalLogEntry summary
+7. After task completion, check if all tasks for issue #${issueNumber} are complete
+8. If all tasks are complete, ask the user if they want to close the issue
+
+Follow the skill instructions fully, including asking the user questions when the skill indicates you should (e.g., confirming approaches, validating work, offering next steps). The user is monitoring this worker session and can respond to your prompts.
+
+A task is only complete when it reaches COMPLETED status (PR merged and complete_task called), not when it enters PR_REVIEW.`;
   }
 
   /**
