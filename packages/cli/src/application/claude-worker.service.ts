@@ -525,13 +525,6 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
       // Watch for task completion
       let taskCompleted = false;
 
-      // Store task info for title updates
-      const taskInfo = {
-        issueNumber: this.getIssueNumber(taskId) ?? "?",
-        taskNumber: this.taskRepository?.findById(taskId)?.number ?? "?",
-        taskTitle: this.taskRepository?.findById(taskId)?.title ?? "Unknown",
-      };
-
       this.taskWatchInterval = setInterval(() => {
         if (!this.taskRepository) {
           return;
@@ -559,7 +552,7 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
             }
 
             // Start countdown and kill
-            this.countdownAndKill(claudeProcess, task.status, taskInfo);
+            this.countdownAndKill(claudeProcess, task.status);
           }
         }
       }, 2000);
@@ -600,29 +593,31 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
 
   /**
    * Countdown and kill Claude process
+   * Displays countdown in terminal title, interruptible via shutdown signal
    */
-  private countdownAndKill(
-    claudeProcess: ChildProcess,
-    finalStatus: string,
-    taskInfo: { issueNumber: number | string; taskNumber: number | string; taskTitle: string }
-  ): void {
-    let countdown = 5;
+  private countdownAndKill(claudeProcess: ChildProcess, finalStatus: string): void {
+    let countdown = 10;
 
-    console.log(term.green(`\n✓ Task ${finalStatus}! Session ending in ${countdown} seconds...`));
-    this.setTerminalTitle(
-      `${this.state.workerName} | #${taskInfo.issueNumber}.${taskInfo.taskNumber} ${taskInfo.taskTitle} | ${finalStatus} - ending in ${countdown}s`
-    );
+    console.log(term.green(`\n✓ Task ${finalStatus}! Resetting in ${countdown} seconds...`));
+    this.setTerminalTitle(`${this.state.workerName} | Resetting in ${countdown}s...`);
 
     const countdownInterval = setInterval(() => {
+      // Check for shutdown signal - interrupt countdown if shutting down
+      if (this.isShuttingDown) {
+        clearInterval(countdownInterval);
+        console.log(term.yellow("\nShutdown signal received, ending session immediately..."));
+        this.setTerminalTitle(`${this.state.workerName} | shutting down...`);
+        claudeProcess.kill("SIGTERM");
+        return;
+      }
+
       countdown--;
 
       if (countdown > 0) {
-        this.setTerminalTitle(
-          `${this.state.workerName} | #${taskInfo.issueNumber}.${taskInfo.taskNumber} ${taskInfo.taskTitle} | ${finalStatus} - ending in ${countdown}s`
-        );
+        this.setTerminalTitle(`${this.state.workerName} | Resetting in ${countdown}s...`);
       } else {
         clearInterval(countdownInterval);
-        this.setTerminalTitle(`${this.state.workerName} | ending session...`);
+        this.setTerminalTitle(`${this.state.workerName} | resetting session...`);
         claudeProcess.kill("SIGTERM");
       }
     }, 1000);
