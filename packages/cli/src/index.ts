@@ -734,18 +734,6 @@ async function runUI(): Promise<void> {
       if (serverRunning) {
         const url = `http://127.0.0.1:${savedPort}`;
         console.log(`✓ dev-workflow UI is already running at ${url}`);
-
-        // Open browser
-        if (!process.env["NO_OPEN_BROWSER"]) {
-          const open = (await import("open")).default;
-          try {
-            await open(url);
-            console.log("  Opening browser...");
-          } catch {
-            console.warn("⚠️  Could not open browser automatically.");
-            console.warn(`   Please visit: ${url}`);
-          }
-        }
         return;
       }
     }
