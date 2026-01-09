@@ -66,11 +66,11 @@ const HEADER_LINES = 4; // Number of fixed header lines
 export interface WorkerConfig {
   /** Worker name (auto-generated if not provided) */
   name?: string;
-  /** Heartbeat interval in milliseconds (default: 10000ms = 10s) */
+  /** Heartbeat interval in milliseconds (default: 5000ms = 5s) */
   heartbeatIntervalMs?: number;
   /** Poll interval in milliseconds (default: 2000ms = 2s) */
   pollIntervalMs?: number;
-  /** Stale heartbeat threshold in seconds (default: 60s) */
+  /** Stale heartbeat threshold in seconds (default: 10s) */
   staleThresholdSeconds?: number;
 }
 
@@ -137,9 +137,9 @@ export class ClaudeWorkerService {
   constructor(config: WorkerConfig = {}) {
     this.config = {
       name: config.name ?? "",
-      heartbeatIntervalMs: config.heartbeatIntervalMs ?? 10000,
+      heartbeatIntervalMs: config.heartbeatIntervalMs ?? 5000,
       pollIntervalMs: config.pollIntervalMs ?? 2000,
-      staleThresholdSeconds: config.staleThresholdSeconds ?? 60,
+      staleThresholdSeconds: config.staleThresholdSeconds ?? 10,
     };
   }
 
