@@ -98,29 +98,7 @@ Ask yourself: "Would I commit and deploy this alone?"
 3. **Never leave dependencies empty when sequential** - Empty arrays mean "can run in parallel"
 4. **Use placeholder IDs** - Reference tasks by their short ID (e.g., `"db"`, `"api"`)
 
-### Example: Plan with Dependencies
-
-```json
-{
-  "tasks": [
-    { "id": "schema", "title": "Add database schema for users", "type": "TASK" },
-    {
-      "id": "api",
-      "title": "Implement user API endpoints",
-      "type": "FEATURE",
-      "dependsOn": ["schema"] // ← API needs schema first
-    },
-    {
-      "id": "ui",
-      "title": "Build user management UI",
-      "type": "FEATURE",
-      "dependsOn": ["api"] // ← UI needs API first
-    }
-  ]
-}
-```
-
-**Result:** `schema` runs first → then `api` becomes READY → then `ui` becomes READY.
+See "Task IDs and Dependencies" section below for syntax examples.
 
 ### Anti-Pattern: Missing Dependencies
 
@@ -295,6 +273,7 @@ Add unit tests to src/__tests__/auth/ following existing test patterns.
    - **Description**: Human-readable story format (syncs to GitHub) - what will be delivered
    - **Type**: One of the valid types from step 1 (e.g., FEATURE, BUG, ENHANCEMENT, TASK)
    - **Acceptance Criteria**: Verifiable outcomes for humans (syncs to GitHub)
+   - **Dependencies**: If this task requires another to complete first, add `dependsOn: ["other-task-id"]` (see "Task Dependencies" section)
    - **Implementation Plan** (optional): Technical details for Claude execution (NOT synced to GitHub) - specific files, patterns, approach
 
 8. **Generate Plan:**
