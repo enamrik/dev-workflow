@@ -108,6 +108,7 @@ This passes control to the worker-task skill which handles:
 - **Workers get tasks via dispatch queue** - they use `dwf-worker-task` directly
 - **Inline execution uses `dwf-worker-task`** - no duplication of execution logic
 - **Dispatch is attempted first** - workers are preferred when available
+- **NEVER pass `workerId` to `load_task_session`** - only workers pass workerId (they receive it in their prompt). This skill runs for users, not workers.
 
 ## Example Interactions
 

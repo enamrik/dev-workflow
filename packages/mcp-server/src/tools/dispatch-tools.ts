@@ -12,7 +12,10 @@ export const dispatchToolDefinitions: ToolDefinition[] = [
   {
     name: "dispatch_task",
     description:
-      "Add a task to the dispatch queue for worker execution. Workers will poll and claim tasks from this queue. Idempotent - returns existing entry if task is already queued. Use this instead of load_task_session when you want a background worker to pick up the task.",
+      "⚠️ Prefer 'dwf-work-task' skill for proper workflow. " +
+      "Add a task to the dispatch queue for worker execution. Workers will poll and claim tasks from this queue. " +
+      "Idempotent - returns existing entry if task is already queued. " +
+      "Use this instead of load_task_session when you want a background worker to pick up the task.",
     inputSchema: {
       type: "object",
       properties: {
