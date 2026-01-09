@@ -1056,9 +1056,8 @@ program
   .command("claude")
   .description("Run as a Claude worker that polls for and executes dispatched tasks")
   .option("--name <name>", "Worker name (auto-generates worker-1, worker-2, etc. if not provided)")
-  .option("--tmux", "Use tmux for fixed header UI (requires tmux to be installed)")
-  .action(async (options: { name?: string; tmux?: boolean }) => {
-    const worker = new ClaudeWorkerService({ name: options.name, useTmux: options.tmux });
+  .action(async (options: { name?: string }) => {
+    const worker = new ClaudeWorkerService({ name: options.name });
 
     try {
       await worker.initialize();
