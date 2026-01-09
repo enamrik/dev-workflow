@@ -34,7 +34,6 @@ import {
   getProjectManagementProvider,
   NodeGitWorktreeService,
   ConflictDetectionService,
-  NodeClaudeConfigService,
   type Project,
   resolveGlobalTrackDir,
   resolveConfig,
@@ -320,9 +319,6 @@ export class McpDIContext {
       projectRoot,
     };
 
-    // Claude config service for cleaning up folder registrations on task completion
-    const claudeConfigService = new NodeClaudeConfigService();
-
     const prToolContext: PRToolContext = {
       githubCLI: new NodeGitHubCLI(),
       issueRepository,
@@ -332,7 +328,6 @@ export class McpDIContext {
       taskGitHubSyncService,
       dbService: dataSource,
       taskExecutionLogsSchema: taskExecutionLogs,
-      claudeConfigService,
     };
 
     const mergeToolContext: MergeToolContext = {

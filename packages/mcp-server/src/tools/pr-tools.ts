@@ -14,7 +14,6 @@ import {
   type TaskGitHubSyncService,
   type SqliteDataSource,
   taskExecutionLogs,
-  type ClaudeConfigService,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -156,8 +155,6 @@ export interface PRToolContext {
   /** Required for writing final log entry on task completion */
   dbService: SqliteDataSource;
   taskExecutionLogsSchema: typeof taskExecutionLogs;
-  /** Optional service for cleaning up Claude config when worktrees are removed */
-  claudeConfigService?: ClaudeConfigService;
 }
 
 /**
@@ -692,19 +689,6 @@ export async function handleCompleteTask(
         await ctx.gitWorktreeService.removeWorktree(task.worktreePath!, true);
       } catch {
         console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
-      }
-
-      // 4a. Clean up Claude config folder registration (non-fatal)
-      if (ctx.claudeConfigService) {
-        try {
-          const result = await ctx.claudeConfigService.removeFolder(task.worktreePath!);
-          if (result.folderRemoved) {
-            console.log(`Cleaned up Claude config: ${result.message}`);
-          }
-        } catch {
-          // Non-fatal: log but don't fail task completion
-          console.warn(`Failed to cleanup Claude config for worktree: ${task.worktreePath}`);
-        }
       }
 
       // Clear worktree info from task

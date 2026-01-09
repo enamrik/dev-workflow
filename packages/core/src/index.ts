@@ -212,13 +212,6 @@ export {
 // Infrastructure - Events
 export { EventBus, type DomainEventListener } from "./infrastructure/events/event-bus.js";
 
-// Infrastructure - Claude
-export {
-  NodeClaudeConfigService,
-  type ClaudeConfigService,
-  type ClaudeConfigCleanupResult,
-} from "./infrastructure/claude/claude-config-service.js";
-
 // Infrastructure - Port Management
 export {
   saveDaemonPort,
@@ -237,7 +230,4 @@ export {
   type MockGitWorktreeConfig,
   MockFileSystem,
   type MockFileSystemCall,
-  MockClaudeConfigService,
-  type MockClaudeConfigServiceCall,
-  type MockClaudeConfigServiceConfig,
 } from "./__tests__/mocks/index.js";
