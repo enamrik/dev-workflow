@@ -136,6 +136,12 @@ export const prToolDefinitions: ToolDefinition[] = [
             "Bypass state machine validation. Use when task state has drifted from reality " +
             "(e.g., task is IN_PROGRESS but PR is already merged). Requires user confirmation before use.",
         },
+        autoCloseIssue: {
+          type: "boolean",
+          description:
+            "When true, automatically close the parent issue if all tasks are now in terminal state " +
+            "(COMPLETED or ABANDONED). Default: false. Claude should ask user permission before using this.",
+        },
       },
       required: ["taskId", "sessionId", "finalLogEntry"],
     },
@@ -551,9 +557,10 @@ export async function handleCompleteTask(
     sessionId: string;
     finalLogEntry: string;
     force?: boolean;
+    autoCloseIssue?: boolean;
   }
 ): Promise<ToolResponse> {
-  const { taskId, sessionId, finalLogEntry, force = false } = args;
+  const { taskId, sessionId, finalLogEntry, force = false, autoCloseIssue = false } = args;
 
   // Validate finalLogEntry is provided and not empty
   if (!finalLogEntry || finalLogEntry.trim().length === 0) {
@@ -614,8 +621,16 @@ export async function handleCompleteTask(
       }
     }
 
+    // Check if all tasks are complete and maybe close issue
+    const issueStatus = checkAndMaybeCloseIssue(ctx, task.planId, autoCloseIssue);
+
     // Find next available task
     const nextTask = findNextAvailableTask(ctx, task.planId);
+
+    let message = "Task completed (main mode, no PR review).";
+    if (issueStatus.issueClosed) {
+      message += ` Issue #${issueStatus.issueNumber} has been closed.`;
+    }
 
     return successResponse({
       success: true,
@@ -625,7 +640,10 @@ export async function handleCompleteTask(
         mode: "main",
       },
       nextTask,
-      message: "Task completed (main mode, no PR review).",
+      allTasksComplete: issueStatus.allTasksComplete,
+      issueClosed: issueStatus.issueClosed,
+      issueNumber: issueStatus.issueNumber,
+      message,
     });
   }
 
@@ -730,12 +748,19 @@ export async function handleCompleteTask(
     }
   }
 
-  // 9. Find next available task
+  // 9. Check if all tasks are complete and maybe close issue
+  const issueStatus = checkAndMaybeCloseIssue(ctx, task.planId, autoCloseIssue);
+
+  // 10. Find next available task
   const nextTask = findNextAvailableTask(ctx, task.planId);
 
-  const message = force
+  let message = force
     ? `Task force-completed.${task.prNumber ? ` PR #${task.prNumber} status: ${prMerged ? "merged" : "not verified"}.` : ""} ${hasWorktree ? "Worktree" : "Branch"} cleaned up.`
     : `Task completed. PR #${task.prNumber} was merged, ${hasWorktree ? "worktree" : "branch"} cleaned up.`;
+
+  if (issueStatus.issueClosed) {
+    message += ` Issue #${issueStatus.issueNumber} has been closed.`;
+  }
 
   return successResponse({
     success: true,
@@ -752,9 +777,55 @@ export async function handleCompleteTask(
         }
       : undefined,
     nextTask,
+    allTasksComplete: issueStatus.allTasksComplete,
+    issueClosed: issueStatus.issueClosed,
+    issueNumber: issueStatus.issueNumber,
     forced: force,
     message,
   });
+}
+
+/**
+ * Check if all tasks in a plan are in terminal state (COMPLETED or ABANDONED)
+ * and optionally close the parent issue.
+ *
+ * Returns an object with:
+ * - allTasksComplete: true if all tasks are in terminal state
+ * - issueClosed: true if the issue was closed
+ * - issueNumber: the issue number (for display)
+ */
+function checkAndMaybeCloseIssue(
+  ctx: PRToolContext,
+  planId: string,
+  autoCloseIssue: boolean
+): { allTasksComplete: boolean; issueClosed: boolean; issueNumber: number | null } {
+  // Get all tasks in the plan (excluding deleted ones)
+  const allTasks = ctx.taskRepository.findByPlanId(planId);
+  const activeTasks = allTasks.filter((t) => !t.isDeleted);
+
+  // Check if all tasks are in terminal state
+  const terminalStatuses = ["COMPLETED", "ABANDONED"];
+  const allTasksComplete = activeTasks.every((t) => terminalStatuses.includes(t.status));
+
+  // Get the issue
+  const plan = ctx.planRepository.findById(planId);
+  if (!plan) {
+    return { allTasksComplete, issueClosed: false, issueNumber: null };
+  }
+
+  const issue = ctx.issueRepository.findById(plan.issueId);
+  if (!issue) {
+    return { allTasksComplete, issueClosed: false, issueNumber: null };
+  }
+
+  // If autoCloseIssue is true and all tasks are complete, close the issue
+  let issueClosed = false;
+  if (autoCloseIssue && allTasksComplete && issue.status !== "CLOSED") {
+    ctx.issueRepository.update(issue.id, { status: "CLOSED" });
+    issueClosed = true;
+  }
+
+  return { allTasksComplete, issueClosed, issueNumber: issue.number };
 }
 
 /**

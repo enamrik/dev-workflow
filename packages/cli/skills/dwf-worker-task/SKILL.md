@@ -56,51 +56,7 @@ This prevents workers from accidentally using branch or main modes, which would 
 
 ## Task Lifecycle
 
-**New tasks start in PLANNED status.** The issue and tasks remain in PLANNED until
-the user is satisfied with the plan and calls `move_issue_to_backlog`. This makes
-tasks available to work on, creating GitHub issues for each task (if sync enabled).
-
-Once work begins, when the first task is started, all other BACKLOG tasks automatically
-transition to READY. Both BACKLOG and READY tasks can be started.
-
-The `pause_issue` tool moves all READY tasks back to BACKLOG, allowing you to
-pause work on an issue. Starting any task again will transition remaining
-BACKLOG tasks back to READY.
-
-```
-                    PLANNED (new issues/tasks start here)
-                       │
-                       │ (user confirms plan)
-                       ▼
-             move_issue_to_backlog
-        (creates GitHub issues for each task)
-                       │
-                       ▼
-                    BACKLOG
-                       │
-                       │ (first task started → others become READY)
-                       ▼
-                     READY ←── pause_issue ──┐
-                       │                     │
-         ┌─────────────┼─────────────┐       │
-         │             │             │       │
-     isolated        branch         main     │
-     (default)                       │       │
-         │             │             │       │
-         ▼             ▼             ▼       │
-    IN_PROGRESS   IN_PROGRESS   IN_PROGRESS ─┘
-    (worktree)    (branch)      (main)
-         │             │             │
-         ▼             ▼             │
-    PR_REVIEW     PR_REVIEW         │
-    (submit PR)   (submit PR)       │
-         │             │             │
-         ▼             ▼             ▼
-     COMPLETED     COMPLETED     COMPLETED
-    (merge+cleanup)(merge+cleanup)(direct)
-
-         Any status can → ABANDONED
-```
+Tasks flow: PLANNED → BACKLOG → READY → IN_PROGRESS → PR_REVIEW → COMPLETED (or ABANDONED from any state). Main mode skips PR_REVIEW. See Status Transitions table below for details.
 
 ### Execution Modes
 
@@ -281,6 +237,7 @@ When user needs to push more changes (e.g., review feedback):
    - Call `complete_task` with task ID, session ID, and `finalLogEntry`
    - The `finalLogEntry` should summarize what was accomplished (files changed, features added, etc.)
    - Task transitions directly to COMPLETED
+   - Response includes `allTasksComplete` field - see "Auto-Closing Issues" below
 
 **For Isolated/Branch Modes (with PR):**
 
@@ -296,10 +253,20 @@ When user needs to push more changes (e.g., review feedback):
    - The `finalLogEntry` should summarize what was accomplished
    - This atomically: writes final log, verifies PR merged, pulls main, cleans up worktree/branch
    - Task transitions to COMPLETED
+   - Response includes `allTasksComplete` field - see "Auto-Closing Issues" below
 
 3. **Report completion:**
    - Show task is now COMPLETED
    - Suggest next steps (next task, or done with issue)
+
+### Auto-Closing Issues
+
+The `complete_task` response includes `allTasksComplete` boolean.
+
+| `allTasksComplete` | Action                                                                  |
+| ------------------ | ----------------------------------------------------------------------- |
+| `true`             | Ask: "All tasks done. Close issue #N?" If yes → use `close_issue`       |
+| `false`            | Do NOT ask about closing - just report completion and suggest next task |
 
 ### To Abandon a Task
 
@@ -317,23 +284,7 @@ When user needs to push more changes (e.g., review feedback):
 
 ### To Pause an Issue
 
-Pausing an issue moves all READY tasks back to BACKLOG, allowing work to be
-temporarily put on hold. This is useful when switching focus to another issue.
-
-1. **Pause the issue:**
-   - Call `pause_issue` with the issue number
-   - All READY tasks will move to BACKLOG
-
-2. **Report results:**
-   - Show how many tasks were moved
-   - Explain that starting any task will resume work on the issue
-
-3. **When work resumes:**
-   - Starting any BACKLOG or READY task will transition all BACKLOG tasks to READY
-   - Work resumes on the issue
-
-**Note:** IN_PROGRESS, PR_REVIEW, COMPLETED, and ABANDONED tasks are not affected
-by pause. Only READY tasks are moved.
+Call `pause_issue` with issue number → moves all READY tasks to BACKLOG. Starting any task resumes work (BACKLOG → READY). Only affects READY tasks.
 
 ## CRITICAL: Worktree Path (Isolated Mode)
 
@@ -352,13 +303,11 @@ When a task is started in isolated mode, `load_task_session` returns a `worktree
 
 ## Example Interactions
 
-### Starting a Task (Isolated Mode - Default)
+### Starting a Task
 
 **User:** "Start working on the first task"
 
 ```
-Starting task session in isolated mode...
-
 Task: Add OAuth2 authentication with Google provider
 Branch: issue-5/task-1-add-oauth
 Worktree: ~/.track/project-abc/worktrees/issue-5-task-1
@@ -371,37 +320,14 @@ Acceptance Criteria:
 Task is now IN_PROGRESS. Ready to begin?
 ```
 
-### Starting in Branch/Main Mode
-
-**Branch mode** (user says "branch mode", "no worktree"):
-
-```
-Task: Add session management
-Branch: issue-5/task-2-add-session (checked out in main repo)
-```
-
-**Main mode** (user says "on main", "skip PR"):
-
-```
-Task: Update logging configuration
-Working directly on main. No PR will be created.
-```
-
 ### Creating PR → Submit for Review
 
-**User:** "Create a PR"
-
 ```
-Summary: Added OAuth flow, callback handler, token storage, tests (92% coverage)
-
+Summary: Added OAuth flow, callback handler, tests (92% coverage)
 Acceptance Criteria: ✓ All met
+Validation: PASSED
 
-Validation: pnpm typecheck PASSED, pnpm test PASSED
-Rebased on main: No conflicts
-
-PR #42 created: https://github.com/owner/repo/pull/42
-Task still IN_PROGRESS (lets GitHub automation set column first).
-
+PR #42 created. Task still IN_PROGRESS.
 Submit for review now?
 ```
 
@@ -413,23 +339,10 @@ Submit for review now?
 
 ```
 PR #42: MERGED
-
-complete_task({
-  taskId: "...",
-  sessionId: "...",
-  finalLogEntry: "Implemented OAuth2 authentication with Google provider. Added callback handler, token storage, and session management. Unit tests achieve 92% coverage."
-})
-
-Cleaning up worktree and branch...
 Task COMPLETED. Next task available: "Add session management"
 ```
 
-**Main mode:** Summarize → confirm → commit → `complete_task` with `finalLogEntry` → COMPLETED
-
-### Abandoning / Pausing
-
-**Abandon:** Confirm reason → worktree/branch deleted → ABANDONED
-**Pause:** `pause_issue` moves READY tasks to BACKLOG. Resume by starting any task.
+**Main mode:** Summarize → confirm → commit → `complete_task` → COMPLETED
 
 ## Error Handling
 
@@ -551,13 +464,9 @@ Same pattern for other force scenarios (abandon orphaned task, close issue with 
 
 ## Notes
 
-- **ONE TASK AT A TIME**: Complete a task fully (to COMPLETED or ABANDONED) before starting another. If user requests a new task while one is active, prompt them to finish or abandon the current task first.
 - Session timeout is 1 hour of inactivity
 - Abandoned tasks can inform re-planning
 - Always show acceptance criteria when starting a task
-- **ALWAYS use isolated mode** - never autonomously choose branch or main mode
-- Only use branch/main mode when the user explicitly requests it
-- **NEVER use force mode without explicit user confirmation** - always explain the state mismatch first
 
 ### Task Tuning
 
@@ -569,52 +478,14 @@ Before execution, tasks can be tuned using `update_task`:
 
 ## Progress Logging for Session Continuity
 
-Log progress during task execution so that if a session ends unexpectedly, the next session can pick up where you left off. This is about **memory**, not audit trails.
+Log at **milestones only** so the next session can pick up if this one ends unexpectedly.
 
-### When to Log
+| Task Type | Log Frequency                             |
+| --------- | ----------------------------------------- |
+| Feature   | 2-4 entries (approach, milestones)        |
+| Bug       | 3-5 entries (hypotheses, root cause, fix) |
+| Simple    | 0 entries - just use `finalLogEntry`      |
 
-Log at **milestones only** - not every step. Key moments:
+**Good:** `log_task_progress({ message: "Implemented OAuth callback. Added tests.", filesModified: [...] })`
 
-1. **Starting significant work** - what approach you're taking
-2. **Major findings or decisions** - "Found the issue in X", "Decided to use Y approach"
-3. **Completing significant chunks** - after implementing a component, fixing a bug, adding tests
-4. **Before natural break points** - if you sense the session might end
-
-### Good vs Bad Entries
-
-```typescript
-// ✅ Good - meaningful milestone with context
-log_task_progress({
-  message: "Implemented OAuth callback with token validation. Added unit tests.",
-  filesModified: ["src/auth/callback.ts", "src/auth/__tests__/callback.test.ts"],
-});
-
-// ❌ Bad - too granular, don't log routine operations
-log_task_progress({ message: "Reading src/auth/session.ts" });
-log_task_progress({ message: "Running pnpm test" });
-```
-
-### How Often to Log
-
-- **Feature tasks**: 2-4 entries (approach, milestones)
-- **Bug tasks**: 3-5 entries (hypotheses, root cause, fix)
-- **Simple tasks**: 0 entries - just use `finalLogEntry` in `complete_task`
-
-> **Tip:** `complete_task` requires a `finalLogEntry` parameter. For simple tasks with no intermediate milestones, skip `log_task_progress` entirely and save your summary for `finalLogEntry`. This avoids duplicate entries.
-
-The goal is session continuity - if a session ends unexpectedly, can the next one pick up?
-
-### Bug Investigation Logging
-
-For **BUG** tasks, logging is especially valuable since the investigation journey informs the fix:
-
-1. **Initial hypotheses** - areas examined, what you suspect
-2. **Root cause** - the actual cause and why
-3. **Fix applied** - changes made with `filesModified`
-
-```typescript
-// Bug investigation pattern
-log_task_progress({ message: "Examining session handling. Hypothesis: error not propagated." });
-log_task_progress({ message: "ROOT CAUSE: SessionMiddleware redirects without error param." });
-log_task_progress({ message: "FIX: Added ?error=session_expired to redirect.", filesModified: [...] });
-```
+**Bad:** Logging routine operations like "Reading file X" or "Running tests"

@@ -828,6 +828,201 @@ describe("complete_task", () => {
     testDb = createTestDatabase();
   });
 
+  describe("autoCloseIssue behavior", () => {
+    it("should return allTasksComplete=true when completing the final task", async () => {
+      // Arrange
+      const ctx = createPRToolContext(testDb);
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+
+      // Create two tasks - first is COMPLETED, second is IN_PROGRESS (will be completed)
+      createTestTask(ctx.taskRepository, plan.id, {
+        title: "First task",
+        status: "COMPLETED",
+      });
+      const task2 = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Second task",
+        status: "IN_PROGRESS",
+      });
+      // No branch = main mode
+
+      // Act
+      const result = await handleCompleteTask(ctx, {
+        taskId: task2.id,
+        sessionId: "test-session",
+        finalLogEntry: "Completed second task",
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.allTasksComplete).toBe(true);
+      expect(content.issueClosed).toBe(false); // Not auto-closed since autoCloseIssue was false
+      expect(content.issueNumber).toBe(issue.number);
+    });
+
+    it("should return allTasksComplete=false when tasks remain", async () => {
+      // Arrange
+      const ctx = createPRToolContext(testDb);
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+
+      // Create two tasks - first is IN_PROGRESS (will be completed), second is READY
+      const taskToComplete = createTestTask(ctx.taskRepository, plan.id, {
+        title: "First task",
+        status: "IN_PROGRESS",
+      });
+      createTestTask(ctx.taskRepository, plan.id, {
+        title: "Second task",
+        status: "READY",
+      });
+
+      // Act
+      const result = await handleCompleteTask(ctx, {
+        taskId: taskToComplete.id,
+        sessionId: "test-session",
+        finalLogEntry: "Completed first task",
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.allTasksComplete).toBe(false);
+      expect(content.issueClosed).toBe(false);
+    });
+
+    it("should auto-close issue when autoCloseIssue=true and all tasks complete", async () => {
+      // Arrange
+      const ctx = createPRToolContext(testDb);
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue", status: "OPEN" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+
+      // Create single task
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Only task",
+        status: "IN_PROGRESS",
+      });
+
+      // Act
+      const result = await handleCompleteTask(ctx, {
+        taskId: task.id,
+        sessionId: "test-session",
+        finalLogEntry: "Completed only task",
+        autoCloseIssue: true,
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.allTasksComplete).toBe(true);
+      expect(content.issueClosed).toBe(true);
+      expect(content.message).toContain("has been closed");
+
+      // Verify issue was actually closed in DB
+      const updatedIssue = ctx.issueRepository.findById(issue.id);
+      expect(updatedIssue?.status).toBe("CLOSED");
+    });
+
+    it("should NOT auto-close issue when autoCloseIssue=true but tasks remain", async () => {
+      // Arrange
+      const ctx = createPRToolContext(testDb);
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue", status: "OPEN" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+
+      // Create two tasks
+      const taskToComplete = createTestTask(ctx.taskRepository, plan.id, {
+        title: "First task",
+        status: "IN_PROGRESS",
+      });
+      createTestTask(ctx.taskRepository, plan.id, {
+        title: "Second task",
+        status: "READY",
+      });
+
+      // Act
+      const result = await handleCompleteTask(ctx, {
+        taskId: taskToComplete.id,
+        sessionId: "test-session",
+        finalLogEntry: "Completed first task",
+        autoCloseIssue: true,
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.allTasksComplete).toBe(false);
+      expect(content.issueClosed).toBe(false);
+
+      // Verify issue is still open
+      const updatedIssue = ctx.issueRepository.findById(issue.id);
+      expect(updatedIssue?.status).toBe("OPEN");
+    });
+
+    it("should count ABANDONED tasks as terminal for allTasksComplete", async () => {
+      // Arrange
+      const ctx = createPRToolContext(testDb);
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+
+      // Create two tasks - first is ABANDONED, second is IN_PROGRESS (will be completed)
+      createTestTask(ctx.taskRepository, plan.id, {
+        title: "Abandoned task",
+        status: "ABANDONED",
+      });
+      const taskToComplete = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Final task",
+        status: "IN_PROGRESS",
+      });
+
+      // Act
+      const result = await handleCompleteTask(ctx, {
+        taskId: taskToComplete.id,
+        sessionId: "test-session",
+        finalLogEntry: "Completed final task",
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.allTasksComplete).toBe(true);
+    });
+
+    it("should exclude deleted tasks from allTasksComplete calculation", async () => {
+      // Arrange
+      const ctx = createPRToolContext(testDb);
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+
+      // Create two tasks - first is READY but deleted, second is IN_PROGRESS
+      const deletedTask = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Deleted task",
+        status: "READY",
+      });
+      ctx.taskRepository.softDelete(deletedTask.id, "test-user");
+
+      const taskToComplete = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Only active task",
+        status: "IN_PROGRESS",
+      });
+
+      // Act
+      const result = await handleCompleteTask(ctx, {
+        taskId: taskToComplete.id,
+        sessionId: "test-session",
+        finalLogEntry: "Completed task",
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.allTasksComplete).toBe(true); // Only active task matters
+    });
+  });
+
   describe("finalLogEntry requirement", () => {
     it("should fail if finalLogEntry is not provided", async () => {
       // Arrange
