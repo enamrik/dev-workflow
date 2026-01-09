@@ -305,6 +305,8 @@ export interface Worker {
   issueNumber?: number;
   /** When the task was started (enriched from task lookup) */
   taskStartedAt?: string;
+  /** Total tasks in the issue (enriched from task lookup) */
+  totalTasks?: number;
 }
 
 /**
@@ -325,6 +327,8 @@ export interface DispatchQueueEntry {
   issueNumber?: number;
   /** Task title */
   taskTitle?: string;
+  /** Total tasks in the issue */
+  totalTasks?: number;
 }
 
 /**
