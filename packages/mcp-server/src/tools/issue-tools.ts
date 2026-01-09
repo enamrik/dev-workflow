@@ -145,7 +145,9 @@ export const issueToolDefinitions: ToolDefinition[] = [
   {
     name: "delete_issue",
     description:
-      "Soft delete an issue. The issue will be excluded from search and work queue. Use restore_issue to undo. Associated plans and tasks are preserved but become inaccessible.",
+      "Soft delete an issue. Only PLANNED issues can be deleted. " +
+      "Once work begins (status changes to OPEN or IN_PROGRESS), the issue structure becomes immutable. " +
+      "Use close_issue instead for issues past PLANNED status.",
     inputSchema: {
       type: "object",
       properties: {
@@ -599,6 +601,12 @@ export function handleGetIssue(
  * Handle delete_issue tool call
  *
  * Soft deletes an issue. The issue will be excluded from search and work queue.
+ *
+ * Can only delete issues in PLANNED status. Once work begins (status changes
+ * to OPEN or IN_PROGRESS), the issue structure becomes immutable to ensure
+ * stable task number references like #180.2.
+ *
+ * For issues past PLANNED status, use close_issue instead.
  */
 export async function handleDeleteIssue(
   ctx: IssueToolContext,
@@ -620,6 +628,16 @@ export async function handleDeleteIssue(
         : issueNumber !== undefined
           ? `Issue not found: #${issueNumber}`
           : "Either issueId or issueNumber is required"
+    );
+  }
+
+  // Only allow deletion of PLANNED issues
+  // Once work begins, use close_issue instead to preserve history
+  if (issue.status !== "PLANNED") {
+    return errorResponse(
+      `Cannot delete issue #${issue.number} with status ${issue.status}. ` +
+        `Issues can only be deleted while in PLANNED status. ` +
+        `Use close_issue instead to close the issue.`
     );
   }
 
