@@ -70,6 +70,11 @@ export const planToolDefinitions: ToolDefinition[] = [
                 description:
                   "Array of placeholder IDs this task depends on. References must match 'id' values of other tasks in this plan.",
               },
+              implementationPlan: {
+                type: "string",
+                description:
+                  "Technical implementation details for task execution (e.g., specific patterns to use, file locations). This is for Claude's execution context and is NOT synced to GitHub issues.",
+              },
             },
             required: ["id", "title", "description", "type"],
           },
@@ -201,15 +206,20 @@ export interface PlanToolContext {
  * PlanningService.
  *
  * The 'type' field is REQUIRED and must be a valid type from list_types.
+ *
+ * The 'description' and 'acceptanceCriteria' should use story format (human-readable
+ * content for GitHub issues), while 'implementationPlan' contains technical details
+ * for Claude's execution context.
  */
 interface TaskDefinition {
   id: string; // Short placeholder ID (e.g., "db", "api", "auth")
   title: string;
-  description: string;
+  description: string; // Human-readable story format (syncs to GitHub)
   type: string; // Required task type (FEATURE, BUG, ENHANCEMENT, TASK, or custom)
-  acceptanceCriteria?: string[];
+  acceptanceCriteria?: string[]; // Human-readable criteria (syncs to GitHub)
   estimatedMinutes?: number;
   dependsOn?: string[]; // Placeholder IDs of tasks this depends on
+  implementationPlan?: string; // Technical implementation details for Claude execution (NOT synced to GitHub)
 }
 
 /**
@@ -296,6 +306,7 @@ export async function handleGeneratePlan(
     acceptanceCriteria: t.acceptanceCriteria ?? [],
     estimatedMinutes: t.estimatedMinutes,
     dependsOn: t.dependsOn,
+    implementationPlan: t.implementationPlan,
   }));
 
   const result = await ctx.planningService.generatePlan({
