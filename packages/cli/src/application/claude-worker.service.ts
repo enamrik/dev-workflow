@@ -161,32 +161,30 @@ export class ClaudeWorkerService {
     term.clearLine();
     process.stdout.write(term.cyan(`╔${border}╗`));
 
-    // Line 2: Task info
+    // Line 2: Worker, task number, and title
     term.moveTo(2, 1);
     term.clearLine();
-    const taskInfo = ` 🤖 ${info.workerName} | Task #${info.issueNumber}.${info.taskNumber}: ${info.taskTitle} `;
-    const truncatedInfo = taskInfo.slice(0, cols - 4);
-    const infoPadding = " ".repeat(Math.max(0, cols - truncatedInfo.length - 2));
+    const taskLine = ` 🤖 ${info.workerName}: Task #${info.issueNumber}.${info.taskNumber} - ${info.taskTitle} `;
+    const truncatedTask = taskLine.slice(0, cols - 4);
+    const taskPadding = " ".repeat(Math.max(0, cols - truncatedTask.length - 2));
     process.stdout.write(
-      term.cyan("║") + term.bold(term.yellow(truncatedInfo)) + infoPadding + term.cyan("║")
+      term.cyan("║") + term.bold(term.yellow(truncatedTask)) + taskPadding + term.cyan("║")
     );
 
-    // Line 3: Status line
+    // Line 3: Task status (with countdown if ending)
     term.moveTo(3, 1);
     term.clearLine();
-    let statusText: string;
+    let statusDisplay: string;
+    let plainStatus: string;
     if (info.countdown !== undefined) {
-      statusText = ` Status: ${term.red(term.bold(`ENDING IN ${info.countdown}s...`))} `;
+      statusDisplay = ` Task Status: ${term.red(term.bold(`ENDING IN ${info.countdown}s...`))} `;
+      plainStatus = ` Task Status: ENDING IN ${info.countdown}s... `;
     } else {
-      statusText = ` Status: ${info.status} `;
+      statusDisplay = ` Task Status: ${info.status} `;
+      plainStatus = statusDisplay;
     }
-    // Calculate padding without ANSI codes
-    const plainStatus =
-      info.countdown !== undefined
-        ? ` Status: ENDING IN ${info.countdown}s... `
-        : ` Status: ${info.status} `;
     const statusPadding = " ".repeat(Math.max(0, cols - plainStatus.length - 2));
-    process.stdout.write(term.cyan("║") + term.dim(statusText) + statusPadding + term.cyan("║"));
+    process.stdout.write(term.cyan("║") + statusDisplay + statusPadding + term.cyan("║"));
 
     // Line 4: Bottom border
     term.moveTo(4, 1);
