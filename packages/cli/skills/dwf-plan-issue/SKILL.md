@@ -1,7 +1,7 @@
 ---
 name: dwf-plan-issue
 description: Generate implementation plans with properly-scoped tasks. Auto-invoked when user wants to "plan issue", "create implementation plan", "break down into tasks", "plan #N", etc. (project)
-allowed-tools: mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:generate_plan, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:list_types
+allowed-tools: mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:generate_plan, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:list_types, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:get_template
 ---
 
 # Plan Issue Skill
@@ -125,6 +125,70 @@ We'll use passport.js for OAuth handling...
 
 Don't overuse formatting—clarity beats decoration. Use visuals when they genuinely help communicate the plan structure.
 
+## Task Templates and Story Format
+
+**Task content is separated into two concerns:**
+
+| Field                | Purpose                        | Syncs to GitHub? |
+| -------------------- | ------------------------------ | ---------------- |
+| `description`        | Human-readable story format    | ✓ Yes            |
+| `acceptanceCriteria` | Verifiable outcomes for humans | ✓ Yes            |
+| `implementationPlan` | Technical details for Claude   | ✗ No             |
+
+### Using Task Templates
+
+Call `list_templates(category: 'task')` to see available task templates. Templates provide consistent story format structure for different task types (feature, bug, enhancement, task).
+
+**Workflow:**
+
+1. **Get task template** - Call `get_template(filename, category: 'task')` for the task's type
+2. **Write story format** - Use the template structure for `description` and `acceptanceCriteria`
+3. **Add technical details** - Put implementation specifics in `implementationPlan`
+
+### Story Format (description + acceptanceCriteria)
+
+Write for **humans reading GitHub issues**:
+
+- Clear, non-technical language where possible
+- What the user/system will be able to do
+- Verifiable outcomes (not implementation steps)
+
+**Good story format:**
+
+```
+Description: Users can sign in with their Google account and maintain
+their session across browser refreshes.
+
+Acceptance Criteria:
+- User can click "Sign in with Google" and complete OAuth flow
+- Session persists after closing and reopening the browser
+- Expired sessions show a clear re-authentication prompt
+```
+
+### Implementation Plan (implementationPlan)
+
+Write for **Claude executing the task**:
+
+- Specific file paths and patterns to use
+- Technical approach and architecture decisions
+- Code patterns to follow from existing codebase
+- Edge cases and error handling strategy
+
+**Good implementation plan:**
+
+```
+Use passport.js with GoogleStrategy. Follow the existing auth pattern in
+src/middleware/auth.ts. Store sessions in Redis using connect-redis.
+Token refresh should use the pattern from src/services/token-service.ts.
+Add unit tests to src/__tests__/auth/ following existing test patterns.
+```
+
+### Why This Separation Matters
+
+- **GitHub issues stay readable** - Product managers and stakeholders see clear requirements, not technical jargon
+- **Claude has execution context** - Technical details are preserved for task execution without cluttering the user-facing issue
+- **Templates ensure consistency** - Story format follows project conventions
+
 ## Process
 
 1. **Get Available Types (REQUIRED):**
@@ -133,57 +197,64 @@ Don't overuse formatting—clarity beats decoration. Use visuals when they genui
    - You MUST use types from this list when defining tasks - **invalid types will be rejected**
    - Store this information for step 7
 
-2. **Get Issue Context:**
+2. **Get Task Templates (RECOMMENDED):**
+   - Call `list_templates(category: 'task')` to see available task templates
+   - Optionally call `get_template(filename, category: 'task')` to see the structure
+   - Use templates to guide story format for description and acceptanceCriteria
+
+3. **Get Issue Context:**
    - Call `get_issue` with the issue number
    - Read the issue title, description, and acceptance criteria
    - Note any implementation context passed from manage-issue
    - **Check the issue type** - if it's a BUG, use the single-task investigation approach (see "Bug Issues" section below)
 
-3. **For BUG Issues - Use Single-Task Approach:**
+4. **For BUG Issues - Use Single-Task Approach:**
    - Skip multi-task planning entirely
    - Generate ONE task: "Investigate and fix: [bug title]"
    - Include symptoms and reproduction steps in description
    - Set complexity to LOW
-   - Proceed to step 7 (Generate Plan)
+   - Proceed to step 8 (Generate Plan)
 
-4. **Analyze Scope and Complexity (non-bug issues):**
+5. **Analyze Scope and Complexity (non-bug issues):**
    - Consider what files/components will be touched
    - Identify natural boundaries (different subsystems, different APIs)
    - Incorporate any technology choices from the context
    - Estimate if this is a 1-task or multi-task issue
 
-5. **Design Tasks as Deployable Units:**
+6. **Design Tasks as Deployable Units:**
    For each potential task, ask:
    - Can this be deployed independently without breaking prod?
    - Does it include all necessary tests?
    - Would this make sense as a single commit message?
    - Is anything missing that would cause issues if deployed?
 
-6. **Write Clear Task Definitions:**
+7. **Write Clear Task Definitions:**
    Each task should have:
    - **Title**: Verb phrase describing the deliverable (e.g., "Add user authentication with session management")
-   - **Description**: What will be implemented AND tested
+   - **Description**: Human-readable story format (syncs to GitHub) - what will be delivered
    - **Type**: One of the valid types from step 1 (e.g., FEATURE, BUG, ENHANCEMENT, TASK)
-   - **Acceptance Criteria**: Specific, verifiable outcomes (include test expectations)
+   - **Acceptance Criteria**: Verifiable outcomes for humans (syncs to GitHub)
+   - **Implementation Plan** (optional): Technical details for Claude execution (NOT synced to GitHub) - specific files, patterns, approach
 
-7. **Generate Plan:**
-   - Call `generate_plan` with `issueNumber` (from step 2), summary, approach, and tasks
+8. **Generate Plan:**
+   - Call `generate_plan` with `issueNumber` (from step 3), summary, approach, and tasks
    - **Each task MUST include a `type` field** with a valid type from step 1
+   - Include `implementationPlan` for tasks that need technical execution context
    - Use appropriate complexity estimate (LOW, MEDIUM, HIGH, VERY_HIGH)
    - **Tasks are created in PLANNED status** (no GitHub sync yet)
    - **Display the issue URL** from the `generate_plan` response (the `url` field)
 
-8. **Ask if User is Satisfied with the Plan (REQUIRED):**
+9. **Ask if User is Satisfied with the Plan (REQUIRED):**
    - **NEVER automatically start work.** Always ask the user if they're satisfied with the plan first.
    - Show the issue URL so the user can view the full details in the web UI
    - Present the plan summary and ask: "Are you satisfied with this plan? Ready to start working on it?"
    - Wait for explicit user approval before calling `move_issue_to_backlog`
 
-9. **Start Work on Confirmation:**
-   - Only after user confirms, call `move_issue_to_backlog` with the issue number
-   - This transitions: Issue PLANNED → OPEN, Tasks PLANNED → BACKLOG
-   - If GitHub sync is enabled, creates GitHub issues for each task
-   - **To skip GitHub sync:** If user explicitly requests no GitHub issues (e.g., "don't create GitHub issues", "skip GitHub sync"), call `move_issue_to_backlog` with `skipGitHubSync: true`
+10. **Start Work on Confirmation:**
+    - Only after user confirms, call `move_issue_to_backlog` with the issue number
+    - This transitions: Issue PLANNED → OPEN, Tasks PLANNED → BACKLOG
+    - If GitHub sync is enabled, creates GitHub issues for each task (using story format, not implementationPlan)
+    - **To skip GitHub sync:** If user explicitly requests no GitHub issues (e.g., "don't create GitHub issues", "skip GitHub sync"), call `move_issue_to_backlog` with `skipGitHubSync: true`
 
 ## When a Single Task is Enough
 
@@ -418,7 +489,7 @@ Every task **MUST** have a `type` field. The type determines the GitHub label ap
 - **TASK**: "Set up CI/CD pipeline", "Update dependencies", "Configure logging", "Add database migration"
 - **SPIKE**: "Research OAuth providers", "Prototype caching strategy", "Investigate performance bottleneck", "Explore new framework"
 
-**Example generate_plan call with types:**
+**Example generate_plan call with types and implementationPlan:**
 
 ```typescript
 generate_plan({
@@ -430,16 +501,30 @@ generate_plan({
     {
       id: "auth",
       title: "Implement OAuth2 authentication with passport.js",
-      description: "Add complete OAuth2 flow including callback handler...",
-      type: "FEATURE", // New functionality
-      acceptanceCriteria: ["User can sign in with Google", "Session persists"],
+      // Story format (syncs to GitHub):
+      description:
+        "Users can sign in with their Google account and maintain their session across browser refreshes.",
+      type: "FEATURE",
+      acceptanceCriteria: [
+        "User can click 'Sign in with Google' and complete OAuth flow",
+        "Session persists after closing and reopening the browser",
+        "Expired sessions show a clear re-authentication prompt",
+      ],
+      // Technical details (NOT synced to GitHub):
+      implementationPlan:
+        "Use passport.js with GoogleStrategy. Follow existing auth pattern in src/middleware/auth.ts. Store sessions in Redis using connect-redis. Token refresh should use pattern from src/services/token-service.ts. Add unit tests to src/__tests__/auth/.",
     },
     {
       id: "session",
       title: "Add Redis session storage",
-      description: "Implement session persistence using Redis...",
-      type: "TASK", // Infrastructure work
-      acceptanceCriteria: ["Sessions stored in Redis", "TTL configurable"],
+      description: "Session data is persisted in Redis for reliability and scalability.",
+      type: "TASK",
+      acceptanceCriteria: [
+        "Sessions stored in Redis instead of memory",
+        "Session TTL is configurable via environment variable",
+      ],
+      implementationPlan:
+        "Use connect-redis with existing Redis connection from src/config/redis.ts. Add SESSION_TTL env var defaulting to 24 hours. Update src/middleware/session.ts.",
       dependsOn: ["auth"],
     },
   ],
@@ -447,6 +532,11 @@ generate_plan({
 ```
 
 **Note:** If a task type is missing or invalid, `generate_plan` will reject the request.
+
+**Key distinction:**
+
+- `description` + `acceptanceCriteria` → Human-readable story format, syncs to GitHub issues
+- `implementationPlan` → Technical details for Claude execution, NOT synced to GitHub
 
 ## Notes
 

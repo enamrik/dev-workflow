@@ -6,15 +6,20 @@ import type { IssueType } from "../domain/issue.js";
  * Task definition for new tasks being created
  *
  * Caller must provide id for dependency tracking between tasks.
+ *
+ * The description and acceptanceCriteria should use story format (human-readable
+ * content for GitHub issues), while implementationPlan contains technical details
+ * for Claude's execution context.
  */
 export interface TaskDefinition {
   id: string; // Required task UUID (for dependency tracking)
   title: string;
-  description: string;
-  acceptanceCriteria: string[];
+  description: string; // Human-readable story format (syncs to GitHub)
+  acceptanceCriteria: string[]; // Human-readable criteria (syncs to GitHub)
   estimatedMinutes?: number;
   dependsOn?: string[]; // Array of task IDs this task depends on
   type?: IssueType; // Task type (defaults to "TASK" if not specified)
+  implementationPlan?: string; // Technical implementation details for Claude execution (NOT synced to GitHub)
 }
 
 /**
