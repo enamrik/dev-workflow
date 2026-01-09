@@ -32,23 +32,36 @@ interface KanbanCardProps {
 }
 
 /**
- * Format task display as #issue.[index/total]
- * Example: #150.[1/3] for task index 1 of 3 tasks
+ * Format task display as #issue.taskNumber
+ * Example: #150.3 for task number 3 on issue 150
+ * The task number is immutable - it doesn't change if tasks are deleted or regenerated.
  */
-function formatTaskDisplay(issueNumber: number, task: Task, totalTasks: number): string {
-  return `#${issueNumber}.[${task.index}/${totalTasks}]`;
+function formatTaskDisplay(issueNumber: number, taskNumber: number): string {
+  return `#${issueNumber}.${taskNumber}`;
 }
 
 /**
- * Get tooltip content showing the immutable task number
+ * Format task position as "X of Y"
+ * Example: "1 of 3" for the first of three tasks
+ * Position is determined by task index (1-based) and total task count.
+ */
+function formatTaskPosition(taskIndex: number, totalTasks: number): string {
+  return `${taskIndex} of ${totalTasks}`;
+}
+
+/**
+ * Get tooltip content explaining task number and position
+ * Example: "Task #3 (position 1 of 2) - feat(#150): Add user login"
  */
 function getTaskNumberTooltip(
   issueType: string,
   issueNumber: number,
   issueTitle: string,
-  taskNumber: number
+  taskNumber: number,
+  taskIndex: number,
+  totalTasks: number
 ): string {
-  return `${issueType.toLowerCase()}(#${issueNumber}): ${issueTitle} | Task #${taskNumber}`;
+  return `Task #${taskNumber} (position ${taskIndex} of ${totalTasks}) - ${issueType.toLowerCase()}(#${issueNumber}): ${issueTitle}`;
 }
 
 function truncate(text: string, maxLength: number): string {
@@ -81,15 +94,23 @@ function TaskModalContent({
   projectId,
   totalTasksInIssue,
 }: TaskModalContentProps) {
-  const taskDisplay = formatTaskDisplay(issueNumber, task, totalTasksInIssue);
-  const tooltipContent = getTaskNumberTooltip(issueType, issueNumber, issueTitle, task.number);
+  const taskDisplay = formatTaskDisplay(issueNumber, task.number);
+  const taskPosition = formatTaskPosition(task.index, totalTasksInIssue);
+  const tooltipContent = getTaskNumberTooltip(
+    issueType,
+    issueNumber,
+    issueTitle,
+    task.number,
+    task.index,
+    totalTasksInIssue
+  );
   const [activeTab, setActiveTab] = useState<ModalTab>("task");
 
   return (
     <div>
       {/* Sticky Header */}
       <div className="sticky top-0 z-10 p-4 pr-14 border-b border-gray-200 bg-white rounded-t-xl">
-        {/* Title with status badge */}
+        {/* Title with status badge and position */}
         <div className="font-semibold text-gray-900 text-sm break-words mb-3 flex flex-wrap items-center gap-2">
           <span>
             <Tooltip content={tooltipContent} side="bottom">
@@ -102,6 +123,9 @@ function TaskModalContent({
               </Link>
             </Tooltip>{" "}
             {task.title}
+          </span>
+          <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+            {taskPosition}
           </span>
           <Badge variant="status" value={task.status} />
         </div>
@@ -284,8 +308,16 @@ function CardContent({
   projectName?: string;
   totalTasksInIssue: number;
 }) {
-  const taskDisplay = formatTaskDisplay(issueNumber, task, totalTasksInIssue);
-  const tooltipContent = getTaskNumberTooltip(issueType, issueNumber, issueTitle, task.number);
+  const taskDisplay = formatTaskDisplay(issueNumber, task.number);
+  const taskPosition = formatTaskPosition(task.index, totalTasksInIssue);
+  const tooltipContent = getTaskNumberTooltip(
+    issueType,
+    issueNumber,
+    issueTitle,
+    task.number,
+    task.index,
+    totalTasksInIssue
+  );
   const isAbandoned = task.status === "ABANDONED";
 
   return (
@@ -305,7 +337,7 @@ function CardContent({
         {issueTypeConfig[task.type].label}
       </span>
 
-      {/* Task number and title */}
+      {/* Task number and title with position badge */}
       <div className="font-medium text-gray-800 text-sm mb-1 break-words">
         <Tooltip content={tooltipContent} side="bottom">
           <Link
@@ -315,7 +347,8 @@ function CardContent({
           >
             {taskDisplay}
           </Link>
-        </Tooltip>{" "}
+        </Tooltip>
+        <span className="text-[10px] text-gray-400 mx-1">({taskPosition})</span>
         {task.title}
       </div>
 

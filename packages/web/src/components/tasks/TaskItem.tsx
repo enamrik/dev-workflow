@@ -47,11 +47,13 @@ export function TaskItem({
   const isAbandoned = task.status === "ABANDONED";
   const canExpand = !!projectId && issueNumber !== undefined;
 
-  // Format task display: "Task [index/total]:" or fall back to "Task index:"
-  const taskDisplayLabel = totalTasks
-    ? `Task [${task.index}/${totalTasks}]:`
-    : `Task ${task.index}:`;
-  const taskNumberTooltip = `Immutable task number: #${task.number}`;
+  // Format task display: "Task #N:" with position as secondary context
+  // Example: "Task #3:" with tooltip showing position "1 of 2"
+  const taskDisplayLabel = `Task #${task.number}:`;
+  const taskPositionLabel = totalTasks ? `${task.index} of ${totalTasks}` : null;
+  const taskNumberTooltip = totalTasks
+    ? `Task #${task.number} (position ${task.index} of ${totalTasks})`
+    : `Task #${task.number}`;
 
   return (
     <li
@@ -90,6 +92,11 @@ export function TaskItem({
             <Tooltip content={taskNumberTooltip} side="top">
               <span className="text-gray-500 font-medium cursor-help">{taskDisplayLabel}</span>
             </Tooltip>
+            {taskPositionLabel && (
+              <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                {taskPositionLabel}
+              </span>
+            )}
           </div>
           <Badge variant="status" value={task.status} />
         </div>
@@ -119,6 +126,11 @@ export function TaskItem({
             <Tooltip content={taskNumberTooltip} side="top">
               <span className="text-gray-500 font-medium cursor-help">{taskDisplayLabel}</span>
             </Tooltip>
+            {taskPositionLabel && (
+              <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                {taskPositionLabel}
+              </span>
+            )}
             <span className="font-medium text-gray-800">{task.title}</span>
           </div>
 
