@@ -39,6 +39,7 @@ export function TaskItem({
   compact = false,
 }: TaskItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isPlanExpanded, setIsPlanExpanded] = useState(false);
 
   const isCompleted = task.status === "COMPLETED";
   const isInProgress = task.status === "IN_PROGRESS";
@@ -155,15 +156,22 @@ export function TaskItem({
             </ul>
           )}
 
-          {/* Implementation plan */}
+          {/* Implementation plan - collapsible */}
           {task.implementationPlan && (
             <div className="mt-3">
-              <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
-                Implementation Plan
-              </div>
-              <div className="text-sm text-gray-700 bg-gray-100 p-3 rounded-lg border border-gray-200">
-                <Markdown>{task.implementationPlan}</Markdown>
-              </div>
+              <button
+                type="button"
+                onClick={() => setIsPlanExpanded(!isPlanExpanded)}
+                className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+              >
+                <span>{isPlanExpanded ? "Hide plan" : "Show plan"}</span>
+                <ChevronIcon isExpanded={isPlanExpanded} />
+              </button>
+              {isPlanExpanded && (
+                <div className="text-sm text-gray-700 bg-gray-100 p-3 rounded-lg border border-gray-200 mt-2">
+                  <Markdown>{task.implementationPlan}</Markdown>
+                </div>
+              )}
             </div>
           )}
 
