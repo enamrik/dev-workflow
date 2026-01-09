@@ -5,6 +5,7 @@ import { execSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import * as fs from "node:fs";
+import { promises as fsp } from "node:fs";
 import { InstallService } from "./application/install.service.js";
 import { UpdateService } from "./application/update.service.js";
 import { UninstallService } from "./application/uninstall.service.js";
@@ -13,6 +14,7 @@ import { UIService } from "./application/ui.service.js";
 import { BackupConfigService } from "./application/backup.service.js";
 import { DatabaseConfigService, TRACK_DATABASE_URL_ENV } from "./application/database.service.js";
 import { ClaudeWorkerService } from "./application/claude-worker.service.js";
+import { ClaudeConfigService } from "./application/claude-config.service.js";
 import { NodeFileSystem } from "./infrastructure/file-system.js";
 import {
   TrackDirectoryResolver,
@@ -1739,6 +1741,68 @@ program
     console.error("  dev-workflow init --local      # Local database (./.track/workflow.db)");
     console.error("  dev-workflow init --url <url>  # Remote PostgreSQL database");
     process.exit(1);
+  });
+
+program
+  .command("clean-claude-config")
+  .description("Remove stale worktree folder registrations from ~/.claude.json")
+  .option("--dry-run", "Show what would be removed without making changes")
+  .action(async (options: { dryRun?: boolean }) => {
+    const service = new ClaudeConfigService();
+
+    try {
+      if (options.dryRun) {
+        console.log("🔍 Scanning for stale worktree registrations...\n");
+        const registrations = await service.listWorktreeRegistrations();
+
+        if (registrations.length === 0) {
+          console.log("No worktree registrations found in ~/.claude.json");
+          return;
+        }
+
+        console.log(`Found ${registrations.length} worktree registration(s):\n`);
+
+        let staleCount = 0;
+        for (const regPath of registrations) {
+          try {
+            await fsp.access(regPath);
+            console.log(`  ✓ ${regPath} (exists)`);
+          } catch {
+            console.log(`  ✗ ${regPath} (stale - would be removed)`);
+            staleCount++;
+          }
+        }
+
+        console.log();
+        if (staleCount > 0) {
+          console.log(`Would remove ${staleCount} stale registration(s).`);
+          console.log("Run without --dry-run to apply changes.");
+        } else {
+          console.log("No stale registrations found.");
+        }
+        return;
+      }
+
+      console.log("🧹 Cleaning stale worktree registrations from ~/.claude.json...\n");
+      const result = await service.cleanStaleWorktrees();
+
+      if (!result.success) {
+        console.error(`❌ ${result.message}`);
+        process.exit(1);
+      }
+
+      if (result.removedCount === 0) {
+        console.log("✓ No stale registrations found.");
+      } else {
+        console.log(`✓ Removed ${result.removedCount} stale registration(s):\n`);
+        for (const removedPath of result.removedPaths) {
+          console.log(`  - ${removedPath}`);
+        }
+      }
+    } catch (error) {
+      console.error(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
   });
 
 program.parse(process.argv);
