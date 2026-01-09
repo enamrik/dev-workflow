@@ -472,23 +472,14 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
       console.log("=".repeat(60) + "\n");
 
       // Spawn claude with the prompt in the project directory
-      const claudeProcess = spawn("claude", ["--print", prompt], {
+      // Use stdio: "inherit" so Claude's output streams directly to terminal
+      const claudeProcess = spawn("claude", ["-p", prompt], {
         cwd,
-        stdio: ["inherit", "pipe", "pipe"],
+        stdio: "inherit",
         env: process.env,
       });
 
       this.state.currentClaudeProcess = claudeProcess;
-
-      // Stream stdout to console
-      claudeProcess.stdout?.on("data", (data: Buffer) => {
-        process.stdout.write(data);
-      });
-
-      // Stream stderr to console
-      claudeProcess.stderr?.on("data", (data: Buffer) => {
-        process.stderr.write(data);
-      });
 
       // Start watching task status
       this.startTaskWatch(taskId, claudeProcess);
