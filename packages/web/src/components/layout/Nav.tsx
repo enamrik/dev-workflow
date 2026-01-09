@@ -79,7 +79,7 @@ export function Nav() {
         </div>
 
         {/* Desktop nav */}
-        <nav className="hidden lg:flex items-center gap-1">
+        <nav className="hidden sm:flex items-center gap-1">
           {/* Core nav items */}
           {coreNavItems.map((item) => (
             <NavLink key={item.href} href={item.href} label={item.label} pathname={pathname} />
@@ -192,7 +192,7 @@ export function Nav() {
         </nav>
 
         {/* Mobile hamburger button */}
-        <div className="lg:hidden" ref={mobileMenuRef}>
+        <div className="sm:hidden" ref={mobileMenuRef}>
           <button
             onClick={() => {
               setIsMobileMenuOpen(!isMobileMenuOpen);
