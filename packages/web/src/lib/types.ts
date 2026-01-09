@@ -299,6 +299,12 @@ export interface Worker {
   heartbeatAge: number;
   /** Current task ID if the worker has claimed a task */
   currentTaskId: string | null;
+  /** Task number within the issue (enriched from task lookup) */
+  taskNumber?: number;
+  /** Issue number containing the task (enriched from task lookup) */
+  issueNumber?: number;
+  /** When the task was started (enriched from task lookup) */
+  taskStartedAt?: string;
 }
 
 /**

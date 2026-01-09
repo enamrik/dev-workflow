@@ -13,6 +13,9 @@ import {
 } from "../../domain/worker.js";
 import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
 
+/** Threshold for cleaning up dead workers on registration (1 hour) */
+const DEAD_WORKER_CLEANUP_THRESHOLD_SECONDS = 3600;
+
 /**
  * SQLite implementation of WorkerRepository
  *
@@ -23,6 +26,9 @@ export class SqliteWorkerRepository implements WorkerRepository {
   constructor(private readonly db: SqliteDrizzleDatabase) {}
 
   register(id: string, name: string): Worker {
+    // Clean up workers that have been dead for over an hour
+    this.cleanupDeadWorkers(DEAD_WORKER_CLEANUP_THRESHOLD_SECONDS);
+
     const now = new Date().toISOString();
 
     const worker: Worker = {
