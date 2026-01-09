@@ -13,7 +13,9 @@ import {
   SqliteDispatchQueueRepository,
   SqliteTaskRepository,
   SqlitePlanRepository,
+  SqliteProjectRepository,
   getGlobalDatabasePath,
+  resolveConfig,
   type WorkerStatus,
   type SqliteDataSource,
   issues,
@@ -244,6 +246,56 @@ export class ClaudeWorkerService {
   }
 
   /**
+   * Get the project git root path for a task
+   *
+   * Resolves: task → plan → issue → project → slug → config → gitRoot
+   */
+  private async getProjectPath(taskId: string): Promise<string | null> {
+    if (!this.taskRepository || !this.planRepository || !this.dbService) {
+      return null;
+    }
+
+    const task = this.taskRepository.findById(taskId);
+    if (!task) {
+      return null;
+    }
+
+    const plan = this.planRepository.findById(task.planId);
+    if (!plan) {
+      return null;
+    }
+
+    const db = this.dbService.getDb();
+
+    // Get projectId from the issue
+    const issueResult = db
+      .select({ projectId: issues.projectId })
+      .from(issues)
+      .where(sql`${issues.id} = ${plan.issueId}`)
+      .get();
+
+    if (!issueResult?.projectId) {
+      return null;
+    }
+
+    // Get project slug
+    const projectRepository = new SqliteProjectRepository(db);
+    const project = await projectRepository.findById(issueResult.projectId);
+    if (!project) {
+      return null;
+    }
+
+    // Resolve config to get gitRoot
+    try {
+      const config = await resolveConfig(project.slug);
+      return config.gitRoot;
+    } catch {
+      console.error(`Failed to resolve project config for slug: ${project.slug}`);
+      return null;
+    }
+  }
+
+  /**
    * Update terminal title based on current state
    */
   private updateTitle(): void {
@@ -362,11 +414,21 @@ export class ClaudeWorkerService {
 
     console.log(`Working on task #${issueNumber}.${taskNumber}: ${task.title}`);
 
+    // Get project path for cwd
+    const projectPath = await this.getProjectPath(taskId);
+    if (!projectPath) {
+      console.error(`Could not resolve project path for task: ${taskId}`);
+      await this.releaseTask(taskId);
+      return;
+    }
+
+    console.log(`Project path: ${projectPath}`);
+
     // Build the prompt for Claude
     const prompt = this.buildClaudePrompt(taskId, issueNumber, taskNumber);
 
-    // Spawn Claude process
-    await this.spawnClaude(prompt, taskId);
+    // Spawn Claude process with project cwd
+    await this.spawnClaude(prompt, taskId, projectPath);
   }
 
   /**
@@ -395,15 +457,16 @@ Important: You are running in worker mode. Do NOT ask for user confirmation - pr
   /**
    * Spawn a Claude process to work on the task
    */
-  private async spawnClaude(prompt: string, taskId: string): Promise<void> {
+  private async spawnClaude(prompt: string, taskId: string, cwd: string): Promise<void> {
     return new Promise<void>((resolve) => {
       // Visual marker for Claude session start
       console.log("\n" + "=".repeat(60));
       console.log("🤖 Claude session starting...");
       console.log("=".repeat(60) + "\n");
 
-      // Spawn claude with the prompt - use pipe to ensure output is captured
+      // Spawn claude with the prompt in the project directory
       const claudeProcess = spawn("claude", ["--print", prompt], {
+        cwd,
         stdio: ["inherit", "pipe", "pipe"],
         env: process.env,
       });
