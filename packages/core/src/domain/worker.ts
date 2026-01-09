@@ -51,22 +51,23 @@ export interface WorkerWithHealth extends Worker {
  *
  * - PENDING: Task in queue, waiting to be claimed
  * - WORKING: Worker has claimed and is actively working
- * - RELEASED: Worker finished but task not in terminal state (e.g., PR_REVIEW)
+ *
+ * Entry is deleted when task reaches terminal state (COMPLETED/ABANDONED).
+ * If a worker dies (stale heartbeat), another worker can reclaim the task.
  */
-export type DispatchQueueStatus = "PENDING" | "WORKING" | "RELEASED";
+export type DispatchQueueStatus = "PENDING" | "WORKING";
 
 /**
  * Dispatch queue entry
  *
- * Represents a task assigned to a worker.
- * Entry persists until task reaches terminal state (COMPLETED/ABANDONED).
+ * Represents a task in the dispatch queue.
+ * Entry is deleted when task reaches terminal state (COMPLETED/ABANDONED).
  */
 export interface DispatchQueueEntry {
   readonly taskId: string; // Task being dispatched
   readonly status: DispatchQueueStatus; // Queue entry status
-  readonly workerId: string | null; // Worker that claimed (null = unclaimed)
-  readonly claimedAt: string | null; // When claimed (for staleness detection)
-  readonly releasedAt: string | null; // When worker finished (for RELEASED status)
+  readonly workerId: string | null; // Worker that claimed (null = PENDING)
+  readonly claimedAt: string | null; // When claimed (null = PENDING)
   readonly createdAt: string; // When added to queue
 }
 
@@ -220,23 +221,13 @@ export interface DispatchQueueRepository {
   claimTask(workerId: string, thresholdSeconds?: number): DispatchQueueEntry | null;
 
   /**
-   * Mark a task as released (worker finished but task not complete)
-   *
-   * Sets status to RELEASED and keeps the worker assignment.
-   * Called when worker finishes but task is not in terminal state.
-   *
-   * @param taskId - Task to release
-   */
-  releaseTask(taskId: string): void;
-
-  /**
-   * Remove a task from the queue entirely
+   * Remove a task from the queue
    *
    * Called when task reaches terminal state (COMPLETED/ABANDONED).
    *
    * @param taskId - Task to remove
    */
-  releaseClaim(taskId: string): void;
+  remove(taskId: string): void;
 
   /**
    * Find claim by worker ID

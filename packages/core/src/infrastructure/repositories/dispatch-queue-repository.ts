@@ -32,7 +32,6 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
       status: "PENDING",
       workerId: null,
       claimedAt: null,
-      releasedAt: null,
       createdAt: now,
     };
 
@@ -43,7 +42,6 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
         status: entry.status,
         workerId: entry.workerId,
         claimedAt: entry.claimedAt,
-        releasedAt: entry.releasedAt,
         createdAt: entry.createdAt,
       })
       .run();
@@ -98,7 +96,6 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
         status: "WORKING",
         workerId,
         claimedAt: now,
-        releasedAt: null, // Clear any previous release
       })
       .where(
         sql`${dispatchQueue.taskId} = ${candidate.taskId}
@@ -119,30 +116,12 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
   }
 
   /**
-   * Mark a task as released (worker finished but task not complete)
-   * Keeps the worker assignment for tracking purposes.
-   *
-   * @param taskId - Task to release
-   */
-  releaseTask(taskId: string): void {
-    const now = new Date().toISOString();
-    this.db
-      .update(dispatchQueue)
-      .set({
-        status: "RELEASED",
-        releasedAt: now,
-      })
-      .where(eq(dispatchQueue.taskId, taskId))
-      .run();
-  }
-
-  /**
-   * Remove a task from the queue entirely.
+   * Remove a task from the queue.
    * Called when task reaches terminal state (COMPLETED/ABANDONED).
    *
    * @param taskId - Task to remove
    */
-  releaseClaim(taskId: string): void {
+  remove(taskId: string): void {
     this.db.delete(dispatchQueue).where(eq(dispatchQueue.taskId, taskId)).run();
   }
 
@@ -176,7 +155,6 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
         status: dispatchQueue.status,
         workerId: dispatchQueue.workerId,
         claimedAt: dispatchQueue.claimedAt,
-        releasedAt: dispatchQueue.releasedAt,
         createdAt: dispatchQueue.createdAt,
         workerName: workers.name,
         workerLastHeartbeat: workers.lastHeartbeat,
@@ -193,7 +171,6 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
         status: row.status,
         workerId: row.workerId,
         claimedAt: row.claimedAt,
-        releasedAt: row.releasedAt,
         createdAt: row.createdAt,
       });
 
@@ -242,7 +219,6 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
       status: (row.status ?? "PENDING") as DispatchQueueStatus,
       workerId: row.workerId,
       claimedAt: row.claimedAt,
-      releasedAt: row.releasedAt,
       createdAt: row.createdAt,
     };
   }
