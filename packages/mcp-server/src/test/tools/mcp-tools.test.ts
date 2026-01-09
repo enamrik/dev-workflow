@@ -535,8 +535,8 @@ describe("MCP Tool: delete_task", () => {
     testDb.cleanup();
   });
 
-  it("should soft delete a BACKLOG task", async () => {
-    // Setup
+  it("should soft delete a PLANNED task", async () => {
+    // Setup: Create issue with plan and task (tasks start in PLANNED status)
     createIssueTool(issueRepository, {
       title: "Test Issue",
       description: "Test description",
@@ -561,8 +561,8 @@ describe("MCP Tool: delete_task", () => {
     const tasks = taskRepository.findByPlanId(plan!.id);
     const taskId = tasks[0]!.id;
 
-    // Tasks start in PLANNED, move to BACKLOG to simulate activation
-    taskRepository.updateStatus(taskId, "BACKLOG");
+    // Tasks start in PLANNED status - they can be deleted in this state
+    expect(tasks[0]!.status).toBe("PLANNED");
 
     // Delete task
     const result = deleteTaskTool(taskManagementService, { taskId });
@@ -577,6 +577,43 @@ describe("MCP Tool: delete_task", () => {
     // Task should not appear in findByPlanId (excludes deleted)
     const remainingTasks = taskRepository.findByPlanId(plan!.id);
     expect(remainingTasks).toHaveLength(0);
+  });
+
+  it("should not delete BACKLOG task (immutable after plan activation)", async () => {
+    // Setup
+    createIssueTool(issueRepository, {
+      title: "Test Issue",
+      description: "Test description",
+    });
+    await generatePlanTool(planningService, issueRepository, {
+      issueNumber: 1,
+      summary: "Test",
+      approach: "Test",
+      tasks: [
+        {
+          id: crypto.randomUUID(),
+          title: "BACKLOG Task",
+          description: "Cannot be deleted after activation",
+          acceptanceCriteria: [],
+        },
+      ],
+      estimatedComplexity: "LOW",
+    });
+
+    const issue = issueRepository.findByNumber(1);
+    const plan = planRepository.findByIssueId(issue!.id);
+    const tasks = taskRepository.findByPlanId(plan!.id);
+    const taskId = tasks[0]!.id;
+
+    // Simulate plan activation: move task from PLANNED to BACKLOG
+    taskRepository.updateStatus(taskId, "BACKLOG");
+
+    // Try to delete - should fail because task is past PLANNED status
+    const result = deleteTaskTool(taskManagementService, { taskId });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("PLANNED status");
+    expect(result.error).toContain("abandon_task_session");
   });
 
   it("should not delete IN_PROGRESS task", async () => {
@@ -613,7 +650,8 @@ describe("MCP Tool: delete_task", () => {
     const result = deleteTaskTool(taskManagementService, { taskId });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("BACKLOG");
+    expect(result.error).toContain("PLANNED status");
+    expect(result.error).toContain("abandon_task_session");
   });
 });
 
@@ -914,5 +952,127 @@ describe("MCP Tool: list_available_tasks", () => {
     // Reopen the issue
     issueRepository.update(issue!.id, { status: "OPEN" });
     expect(await taskSessionService.isTaskAvailable(task.id)).toBe(true);
+  });
+});
+
+/**
+ * Simulate delete_issue tool
+ *
+ * Simplified version that only does the status check and soft delete.
+ * The real handler also handles GitHub sync and worktree cleanup.
+ */
+function deleteIssueTool(
+  issueRepository: SqliteIssueRepository,
+  params: { issueNumber: number }
+): ToolResult {
+  const issue = issueRepository.findByNumber(params.issueNumber);
+  if (!issue) {
+    return { success: false, error: `Issue not found: #${params.issueNumber}` };
+  }
+
+  // Only allow deletion of PLANNED issues (matches handleDeleteIssue behavior)
+  if (issue.status !== "PLANNED") {
+    return {
+      success: false,
+      error:
+        `Cannot delete issue #${issue.number} with status ${issue.status}. ` +
+        `Issues can only be deleted while in PLANNED status. ` +
+        `Use close_issue instead to close the issue.`,
+    };
+  }
+
+  try {
+    const deleted = issueRepository.delete(issue.id, "test");
+    return { success: true, issue: deleted };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+describe("MCP Tool: delete_issue", () => {
+  let testDb: TestDatabase;
+  let issueRepository: SqliteIssueRepository;
+
+  beforeEach(() => {
+    testDb = createTestDatabase();
+    const repos = createRepositories(testDb.db);
+    issueRepository = repos.issueRepository;
+  });
+
+  afterEach(() => {
+    testDb.cleanup();
+  });
+
+  it("should soft delete a PLANNED issue", () => {
+    // Create a PLANNED issue
+    const createResult = issueRepository.create({
+      title: "Planned Issue",
+      description: "This issue is still being planned",
+      type: "FEATURE",
+      priority: "MEDIUM",
+      status: "PLANNED",
+      acceptanceCriteria: [],
+      createdBy: "test",
+    });
+
+    // Delete the issue
+    const result = deleteIssueTool(issueRepository, { issueNumber: createResult.number });
+
+    expect(result.success).toBe(true);
+    const deleted = result.issue as { isDeleted: boolean; deletedAt: string };
+    expect(deleted.isDeleted).toBe(true);
+    expect(deleted.deletedAt).toBeDefined();
+  });
+
+  it("should not delete OPEN issue (immutable after planning phase)", () => {
+    // Create an issue in OPEN status
+    createIssueTool(issueRepository, {
+      title: "Open Issue",
+      description: "This issue is open for work",
+    });
+
+    // Try to delete - should fail because issue is past PLANNED status
+    const result = deleteIssueTool(issueRepository, { issueNumber: 1 });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("PLANNED status");
+    expect(result.error).toContain("close_issue");
+  });
+
+  it("should not delete IN_PROGRESS issue", () => {
+    // Create an issue and set to IN_PROGRESS
+    const createResult = createIssueTool(issueRepository, {
+      title: "In Progress Issue",
+      description: "Work is underway",
+    });
+    const issue = createResult.issue as { id: string };
+    issueRepository.update(issue.id, { status: "IN_PROGRESS" });
+
+    // Try to delete - should fail
+    const result = deleteIssueTool(issueRepository, { issueNumber: 1 });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("PLANNED status");
+    expect(result.error).toContain("close_issue");
+  });
+
+  it("should not delete CLOSED issue", () => {
+    // Create an issue and close it
+    const createResult = createIssueTool(issueRepository, {
+      title: "Closed Issue",
+      description: "This issue was completed",
+    });
+    const issue = createResult.issue as { id: string };
+    issueRepository.update(issue.id, { status: "CLOSED" });
+
+    // Try to delete - should fail
+    const result = deleteIssueTool(issueRepository, { issueNumber: 1 });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("PLANNED status");
+    expect(result.error).toContain("close_issue");
   });
 });
