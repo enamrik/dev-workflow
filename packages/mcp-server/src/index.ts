@@ -153,7 +153,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
       return handleGetIssue(context.issueToolContext, a);
     }
     if (name === "list_templates") {
-      return await handleListTemplates(context.issueToolContext);
+      return await handleListTemplates(context.issueToolContext, a);
     }
     if (name === "get_template") {
       return await handleGetTemplate(context.issueToolContext, a);
