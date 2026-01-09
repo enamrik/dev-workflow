@@ -20,6 +20,8 @@ import {
   type ProjectRepository,
   type GitHubCLI,
   type AvailableLabel,
+  type WorkerRepository,
+  type DispatchQueueRepository,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -345,6 +347,10 @@ export interface TaskToolContext {
   project?: Project;
   projectRepository?: ProjectRepository;
   githubCLI?: GitHubCLI;
+  /** Optional - for auto-dispatch to workers */
+  workerRepository?: WorkerRepository;
+  /** Optional - for auto-dispatch to workers */
+  dispatchQueueRepository?: DispatchQueueRepository;
 }
 
 /**
@@ -352,6 +358,12 @@ export interface TaskToolContext {
  *
  * Loads a task for execution with full context. Starts or resumes the session.
  * Idempotent: if task is already IN_PROGRESS, returns context without restarting.
+ *
+ * Auto-dispatch behavior:
+ * - If workers are online AND task is in dispatchable state (BACKLOG/READY),
+ *   the task is automatically dispatched to the worker queue
+ * - Returns { dispatched: true } for the skill to branch on
+ * - If no workers online or task already IN_PROGRESS, proceeds with local execution
  *
  * Supports 3 modes:
  * - 'isolated' (default): creates worktree + branch for parallel work
@@ -370,8 +382,45 @@ export async function handleLoadTaskSession(
     return errorResponse(`Task not found: ${taskId}`);
   }
 
+  // Auto-dispatch: Check for online workers before starting the task locally
+  // Only dispatch if:
+  // 1. Worker repository is available
+  // 2. Dispatch queue repository is available
+  // 3. Task is in a dispatchable state (BACKLOG or READY)
+  // 4. At least one worker is online (even if busy - queue will hold the task)
+  const isDispatchable = existingTask.status === "BACKLOG" || existingTask.status === "READY";
+  if (ctx.workerRepository && ctx.dispatchQueueRepository && isDispatchable) {
+    const workers = ctx.workerRepository.findAllWithHealth();
+    const hasOnlineWorker = workers.some((w) => w.isAlive);
+
+    if (hasOnlineWorker) {
+      // Check if already queued
+      const existing = ctx.dispatchQueueRepository.findByTaskId(taskId);
+      if (existing) {
+        return successResponse({
+          success: true,
+          dispatched: true,
+          alreadyQueued: true,
+          message: "Task was already in dispatch queue - a worker will pick it up",
+        });
+      }
+
+      // Dispatch the task to the queue
+      const entry = ctx.dispatchQueueRepository.enqueue(taskId);
+      return successResponse({
+        success: true,
+        dispatched: true,
+        alreadyQueued: false,
+        entry,
+        message: "Task dispatched to worker queue - a worker will pick it up",
+      });
+    }
+  }
+
+  // No workers online or task not dispatchable - proceed with local execution
   const response: Record<string, unknown> = {
     success: true,
+    dispatched: false,
     sessionId,
   };
 

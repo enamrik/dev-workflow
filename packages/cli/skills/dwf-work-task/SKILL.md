@@ -88,7 +88,11 @@ This ensures:
 
 ### Key Transition Prompts
 
-**After starting a task:**
+**After task is dispatched to worker:**
+
+> "Task dispatched to worker queue. A worker will pick it up shortly."
+
+**After starting a task locally:**
 
 > "Task is now IN_PROGRESS. Ready to begin implementation?"
 
@@ -221,18 +225,29 @@ BACKLOG tasks back to READY.
 
 5. **Load the task session:**
    - Call `load_task_session` with task ID, session ID, and mode
+   - **Check for auto-dispatch:** The response includes a `dispatched` flag
+   - If `dispatched: true` → Task was auto-dispatched to a worker (see step 6)
+   - If `dispatched: false` → Continue with local execution (see step 7+)
+
+6. **If dispatched to worker (`dispatched: true`):**
+   - Report to user: "Task dispatched to worker queue. A worker will pick it up."
+   - **STOP HERE** - do NOT continue to execution instructions
+   - The worker will handle the task in a separate session
+   - You can suggest the user check task status later or work on something else
+
+7. **If running locally (`dispatched: false`):**
    - This returns full context: task, issue, plan, worktree info
    - If task is already IN_PROGRESS, it resumes the existing session
    - Review title, description, and acceptance criteria from the response
 
-6. **If resuming (task was already IN_PROGRESS):**
+8. **If resuming (task was already IN_PROGRESS):**
    - Call `get_task_execution_log` to read previous session's progress
    - Review the logged entries to understand what was already done
    - Summarize the previous progress to the user before continuing
    - Check `git status` in the worktree to see uncommitted changes
    - Continue from where the previous session left off
 
-7. **Present task to user:**
+9. **Present task to user:**
    - Show what needs to be implemented
    - Show acceptance criteria as a checklist
    - For isolated mode: show worktree path and branch name
@@ -391,7 +406,21 @@ by pause. Only READY tasks are moved.
 
 ### To Dispatch a Task to a Worker
 
-When user explicitly requests "in worker" or "dispatch to worker":
+**Auto-dispatch is now the default behavior.** When you call `load_task_session`,
+it automatically checks for online workers and dispatches the task if any are available.
+You no longer need to explicitly detect "in worker" or "dispatch to worker" requests.
+
+**How auto-dispatch works:**
+
+- `load_task_session` checks for online workers before starting locally
+- If workers are online AND task is in BACKLOG/READY status → auto-dispatched
+- Response includes `dispatched: true` → STOP, don't continue to execution
+- If no workers online → runs locally as before with `dispatched: false`
+
+**Explicit dispatch (for backwards compatibility):**
+
+When user explicitly requests "in worker" or "dispatch to worker", you can still
+use `dispatch_task` directly:
 
 1. **Identify the task:**
    - Same as "To Start a Task" - identify task ID
@@ -406,13 +435,8 @@ When user explicitly requests "in worker" or "dispatch to worker":
    - **No workers available:** Fall back to `load_task_session` (local execution)
    - **Task already queued:** Report it's already waiting for a worker
 
-4. **Fallback behavior:**
-   - If `dispatch_task` fails because no workers are registered, inform user:
-     "No workers available. Would you like to work on it locally instead?"
-   - If user agrees, proceed with normal `load_task_session` flow
-
-**Important:** Only dispatch when user explicitly says "in worker". The default
-is always local execution via `load_task_session`.
+**Note:** With auto-dispatch, you typically don't need to call `dispatch_task`
+directly. Just use `load_task_session` and check the `dispatched` flag.
 
 ## CRITICAL: Worktree Path (Isolated Mode)
 
@@ -431,7 +455,19 @@ When a task is started in isolated mode, `load_task_session` returns a `worktree
 
 ## Example Interactions
 
-### Starting a Task (Isolated Mode - Default)
+### Starting a Task (Auto-dispatched to Worker)
+
+**User:** "Start working on the first task"
+
+```
+[Workers online - auto-dispatching to queue]
+
+Task dispatched to worker queue. A worker will pick it up shortly.
+
+You can check on the task status later or work on something else.
+```
+
+### Starting a Task (Local - No Workers Online)
 
 **User:** "Start working on the first task"
 
@@ -630,6 +666,7 @@ Same pattern for other force scenarios (abandon orphaned task, close issue with 
 
 ## Notes
 
+- **AUTO-DISPATCH**: When starting a task, `load_task_session` automatically dispatches to workers if any are online. Check the `dispatched` flag in the response and STOP if true.
 - **ONE TASK AT A TIME**: Complete a task fully (to COMPLETED or ABANDONED) before starting another. If user requests a new task while one is active, prompt them to finish or abandon the current task first.
 - Session timeout is 1 hour of inactivity
 - Abandoned tasks can inform re-planning
