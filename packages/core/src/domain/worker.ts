@@ -88,7 +88,7 @@ export interface DispatchQueueEntryWithHealth extends DispatchQueueEntry {
  *
  * Workers with heartbeats older than this are considered dead.
  */
-export const DEFAULT_HEARTBEAT_THRESHOLD_SECONDS = 60;
+export const DEFAULT_HEARTBEAT_THRESHOLD_SECONDS = 10;
 
 /**
  * Check if a worker is alive based on heartbeat timestamp
