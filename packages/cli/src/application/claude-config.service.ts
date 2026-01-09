@@ -8,8 +8,11 @@
 import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { parser } from "stream-json";
-import { streamObject } from "stream-json/streamers/StreamObject.js";
+import streamJson from "stream-json";
+import StreamObject from "stream-json/streamers/StreamObject.js";
+
+const { parser } = streamJson;
+const { streamObject } = StreamObject;
 
 /**
  * Result from cleaning stale worktree registrations
