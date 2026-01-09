@@ -83,7 +83,7 @@ export function IssuePreviewPanel({ projectSlug, issueNumber, onClose }: IssuePr
         </div>
 
         {/* Content area */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto scrollbar-auto-hide">
           {isLoading && (
             <div className="p-4">
               <LoadingState message="Loading issue..." />
