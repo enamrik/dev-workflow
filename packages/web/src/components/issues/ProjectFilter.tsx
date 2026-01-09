@@ -29,7 +29,9 @@ export function SourceProjectFilter({
   onSourceChange,
   onProjectChange,
 }: SourceProjectFilterProps) {
-  const hasMultipleSources = sources.length > 1;
+  // Show source dropdown when multiple sources exist, or when there's at least one source
+  // (allows single-source users to see source context)
+  const hasMultipleSources = sources.length >= 1;
 
   // Find current source to check its type
   const currentSource = sources.find((s) => s.id === sourceId);
@@ -81,20 +83,30 @@ export function SourceProjectFilter({
   );
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3 flex-wrap">
       {/* Source dropdown - only show when multiple sources */}
       {hasMultipleSources && (
         <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600">Source:</label>
-          <Select options={sourceOptions} value={sourceId} onChange={onSourceChange} />
+          <label className="text-sm text-gray-600 whitespace-nowrap">Source:</label>
+          <Select
+            options={sourceOptions}
+            value={sourceId}
+            onChange={onSourceChange}
+            className="max-w-[200px]"
+          />
         </div>
       )}
 
       {/* Project dropdown - hidden for local sources (single project by design) */}
       {showProjectDropdown && (
         <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600">Project:</label>
-          <Select options={projectOptions} value={projectId} onChange={onProjectChange} />
+          <label className="text-sm text-gray-600 whitespace-nowrap">Project:</label>
+          <Select
+            options={projectOptions}
+            value={projectId}
+            onChange={onProjectChange}
+            className="max-w-[200px]"
+          />
           <GitHubLinks />
         </div>
       )}

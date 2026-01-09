@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
 import { useProjectContext } from "@/contexts";
-import { SourceProjectFilter } from "@/components/issues";
 import { useUrlState } from "@/hooks";
 
 const coreNavItems = [
@@ -27,6 +26,7 @@ export function Nav() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileSystemExpanded, setIsMobileSystemExpanded] = useState(false);
+  const [isMobileContextExpanded, setIsMobileContextExpanded] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
 
@@ -57,26 +57,25 @@ export function Nav() {
 
   const pinnedSystemItems = systemNavItems.filter((item) => pinnedHrefs.includes(item.href));
 
+  // Get current source and project names for the context badge
+  const currentSource = sources.find((s) => s.id === sourceId);
+  const currentProject = projects.find((p) => p.id === projectId);
+  const contextLabel = currentProject?.name || currentSource?.name || "All";
+
   return (
     <header className="bg-white border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-6">
+        <div className="flex flex-col">
           <Link
             href="/"
-            className="text-lg font-semibold text-gray-800 hover:text-gray-600 transition-colors"
+            className="text-lg font-semibold text-gray-800 hover:text-gray-600 transition-colors whitespace-nowrap"
           >
             Dev Workflow
           </Link>
-          <div className="hidden sm:block">
-            <SourceProjectFilter
-              sources={sources}
-              projects={projects}
-              sourceId={sourceId}
-              projectId={projectId}
-              onSourceChange={setSourceId}
-              onProjectChange={setProjectId}
-            />
-          </div>
+          {/* Context label - shows current project/source */}
+          <span className="text-xs text-gray-500">
+            {contextLabel}
+          </span>
         </div>
 
         {/* Desktop nav */}
@@ -108,7 +107,50 @@ export function Nav() {
             </button>
 
             {isDropdownOpen && (
-              <div className="absolute right-0 mt-1 w-48 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50">
+              <div className="absolute right-0 mt-1 w-56 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50">
+                {/* Context section - Source/Project selection */}
+                <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Context
+                </div>
+                <div className="px-3 py-2 space-y-2">
+                  {sources.length > 0 && (
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Source</label>
+                      <select
+                        value={sourceId}
+                        onChange={(e) => setSourceId(e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      >
+                        {sources.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {projects.length > 0 && (
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Project</label>
+                      <select
+                        value={projectId}
+                        onChange={(e) => setProjectId(e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="">All projects</option>
+                        {projects.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-gray-200 my-1" />
+
+                {/* System section */}
                 <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   System
                 </div>
@@ -154,9 +196,10 @@ export function Nav() {
           <button
             onClick={() => {
               setIsMobileMenuOpen(!isMobileMenuOpen);
-              // Reset System section to collapsed when opening menu
+              // Reset collapsible sections when opening menu
               if (!isMobileMenuOpen) {
                 setIsMobileSystemExpanded(false);
+                setIsMobileContextExpanded(false);
               }
             }}
             className="p-2 rounded text-gray-600 hover:bg-gray-100 hover:text-gray-800 transition-colors"
@@ -168,18 +211,6 @@ export function Nav() {
           {/* Mobile menu dropdown */}
           {isMobileMenuOpen && (
             <div className="absolute right-0 top-14 left-0 mx-4 bg-white rounded-md shadow-lg border border-gray-200 py-2 z-50">
-              {/* Mobile filters */}
-              <div className="px-4 pb-3 border-b border-gray-200 sm:hidden">
-                <SourceProjectFilter
-                  sources={sources}
-                  projects={projects}
-                  sourceId={sourceId}
-                  projectId={projectId}
-                  onSourceChange={setSourceId}
-                  onProjectChange={setProjectId}
-                />
-              </div>
-
               {/* Core nav items */}
               <div className="py-2">
                 {coreNavItems.map((item) => {
@@ -217,6 +248,62 @@ export function Nav() {
                     </Link>
                   );
                 })}
+              </div>
+
+              {/* Collapsible Context section */}
+              <div className="border-t border-gray-200">
+                <button
+                  onClick={() => setIsMobileContextExpanded(!isMobileContextExpanded)}
+                  className="w-full px-4 py-3 flex items-center justify-between text-left active:bg-transparent focus:outline-none"
+                >
+                  <span className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+                    Context
+                  </span>
+                  <ChevronDownIcon
+                    className={clsx(
+                      "transform transition-transform",
+                      isMobileContextExpanded ? "rotate-180" : ""
+                    )}
+                  />
+                </button>
+
+                {isMobileContextExpanded && (
+                  <div className="px-4 pb-3 space-y-3">
+                    {sources.length > 0 && (
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Source</label>
+                        <select
+                          value={sourceId}
+                          onChange={(e) => setSourceId(e.target.value)}
+                          className="w-full px-3 py-2 text-base border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                          {sources.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    {projects.length > 0 && (
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Project</label>
+                        <select
+                          value={projectId}
+                          onChange={(e) => setProjectId(e.target.value)}
+                          className="w-full px-3 py-2 text-base border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                          <option value="">All projects</option>
+                          {projects.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Collapsible System section - all items always visible here */}
