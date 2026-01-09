@@ -385,6 +385,15 @@ export async function handleLoadTaskSession(
       response.worktreePath = existingTask.worktreePath;
       response.branchName = existingTask.branchName;
     }
+
+    // Ensure GitHub sync state is correct (repairs failed initial syncs)
+    if (ctx.taskGitHubSyncService && existingTask.githubSync?.githubIssueNumber) {
+      try {
+        await ctx.taskGitHubSyncService.syncTaskStatus(taskId, "IN_PROGRESS");
+      } catch (error) {
+        console.warn(`Failed to sync resumed task status to GitHub: ${error}`);
+      }
+    }
   } else {
     // Start new session
     const result = await ctx.taskSessionService.startTaskSession({

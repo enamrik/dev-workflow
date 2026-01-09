@@ -105,6 +105,37 @@ class SqliteIssueRepository implements IssueRepository {
 }
 ```
 
+#### External Integration Abstraction (ProjectManagementProvider)
+
+For external project management systems (GitHub, Jira, Linear, etc.), use the `ProjectManagementProvider` interface:
+
+```typescript
+// Domain interface - packages/core/src/domain/project-management-provider.ts
+interface ProjectManagementProvider {
+  readonly providerId: string; // "github", "jira", "linear"
+  readonly displayName: string;
+
+  // Issue operations
+  createIssue(params: CreateIssueParams): Promise<ExternalIssue>;
+  closeIssue(issueRef: string): Promise<void>;
+
+  // Project board operations
+  addToProject(issueNodeId: string, projectId: string): Promise<ProjectItemResult>;
+  moveToColumn(itemId: string, projectId: string, columnName: string): Promise<void>;
+}
+
+// Implementation - packages/core/src/infrastructure/providers/
+class GitHubProjectManagementProvider implements ProjectManagementProvider {
+  // Wraps GitHubCLI for GitHub-specific operations
+}
+```
+
+**Key rules:**
+
+- Application services (e.g., `TaskGitHubSyncService`) depend on `ProjectManagementProvider`, not GitHub-specific code
+- Never call GitHub CLI directly from application layer - always go through the provider
+- The provider handles all external API calls and error translation
+
 ### 5. Clean Code Practices
 
 #### Naming
