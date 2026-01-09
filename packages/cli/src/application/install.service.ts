@@ -211,7 +211,9 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
       ];
 
       // Register with local scope only (stored in ~/.claude.json)
-      execSync(`claude ${args.join(" ")}`, {
+      // Use spawnSync with array args to preserve argument boundaries
+      // (execSync with joined string causes --env to be parsed incorrectly)
+      spawnSync("claude", args, {
         cwd: this.workingDirectory,
         stdio: "inherit",
         timeout: 30000,
