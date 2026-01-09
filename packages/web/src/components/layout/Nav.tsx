@@ -17,6 +17,7 @@ const coreNavItems = [
 const systemNavItems = [
   { href: "/worktrees", label: "Worktrees" },
   { href: "/workers", label: "Workers" },
+  { href: "/settings", label: "Settings" },
 ];
 
 export function Nav() {

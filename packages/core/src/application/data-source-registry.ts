@@ -43,6 +43,8 @@ export interface SourceInfo {
   readonly name: string;
   /** Source type for categorization */
   readonly type: SourceType;
+  /** Resolved database path (for SQLite) or connection string (for PostgreSQL) */
+  readonly resolvedPath: string;
 }
 
 /**
@@ -53,6 +55,10 @@ export interface ProjectInfo {
   readonly slug: string;
   readonly name: string;
   readonly sourceId: string;
+  /** Machine-specific track directory path (from config.json) */
+  readonly trackDirectory?: string;
+  /** Machine-specific git root path (from config.json) */
+  readonly gitRoot?: string;
   /** GitHub sync configuration (optional) */
   readonly githubSync?: {
     enabled: boolean;
@@ -181,6 +187,9 @@ export class DataSourceRegistry {
   /** Cached project-to-source mapping by slug */
   private readonly projectToSource = new Map<string, string>();
 
+  /** Cached config by slug for lookup */
+  private readonly configBySlug = new Map<string, ResolvedConfig>();
+
   /** Whether sources have been scanned */
   private scanned = false;
 
@@ -217,13 +226,19 @@ export class DataSourceRegistry {
     const dbProjects = await projectRepo.findAll();
 
     return dbProjects
-      .map((p) => ({
-        id: p.id,
-        slug: p.slug,
-        name: p.name,
-        sourceId,
-        githubSync: p.githubSync,
-      }))
+      .map((p) => {
+        // Look up machine-specific config for this project
+        const config = this.configBySlug.get(p.slug);
+        return {
+          id: p.id,
+          slug: p.slug,
+          name: p.name,
+          sourceId,
+          trackDirectory: config?.resolvedDatabase,
+          gitRoot: config?.gitRoot,
+          githubSync: p.githubSync,
+        };
+      })
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
@@ -315,9 +330,13 @@ export class DataSourceRegistry {
               id: sourceId,
               name: getSourceDisplayName(sourceId),
               type: getSourceType(sourceId),
+              resolvedPath: config.resolvedDatabase,
             },
           });
         }
+
+        // Cache config by slug
+        this.configBySlug.set(projectSlug, config);
       } catch {
         throw new Error(`Project not found: ${projectSlug}`);
       }
@@ -347,6 +366,7 @@ export class DataSourceRegistry {
     this.connections.clear();
     this.sourceMetadata.clear();
     this.projectToSource.clear();
+    this.configBySlug.clear();
     this.scanned = false;
   }
 
@@ -388,12 +408,14 @@ export class DataSourceRegistry {
           id: sourceId,
           name: getSourceDisplayName(sourceId),
           type: getSourceType(sourceId),
+          resolvedPath: firstConfig.resolvedDatabase,
         },
       });
 
-      // Cache project-to-source mappings
+      // Cache project-to-source mappings and configs by slug
       for (const config of dbConfigs) {
         this.projectToSource.set(config.slug, sourceId);
+        this.configBySlug.set(config.slug, config);
       }
     }
 

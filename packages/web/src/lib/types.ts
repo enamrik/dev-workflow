@@ -114,10 +114,8 @@ export interface DataSource {
   id: string;
   /** Display name for the source */
   name: string;
-  /** Database connection string (file:// or postgresql://) */
-  connectionString: string;
-  /** Resolved database path (for SQLite) */
-  resolvedPath: string;
+  /** Resolved database path (for SQLite) or connection string (for PostgreSQL) */
+  resolvedPath?: string;
   /** Source type for categorization */
   type: "local" | "global" | "remote";
 }
@@ -126,7 +124,9 @@ export interface Project {
   id: string;
   name: string;
   slug: string;
-  trackDirectory: string;
+  /** Machine-specific track directory / database path (from config.json) */
+  trackDirectory?: string;
+  /** Machine-specific git root path (from config.json) */
   gitRoot?: string;
   /** GitHub sync configuration (optional - only present if configured) */
   githubSync?: GitHubIssueSyncConfig | null;
