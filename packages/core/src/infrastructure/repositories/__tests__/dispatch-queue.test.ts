@@ -122,18 +122,18 @@ describe("SqliteDispatchQueueRepository", () => {
     });
   });
 
-  describe("releaseClaim", () => {
+  describe("remove", () => {
     it("should remove a task from the queue", () => {
       repos.dispatchQueueRepository.enqueue("task-1");
 
-      repos.dispatchQueueRepository.releaseClaim("task-1");
+      repos.dispatchQueueRepository.remove("task-1");
 
       const entry = repos.dispatchQueueRepository.findByTaskId("task-1");
       expect(entry).toBeNull();
     });
 
     it("should not throw when releasing non-existent task", () => {
-      expect(() => repos.dispatchQueueRepository.releaseClaim("non-existent")).not.toThrow();
+      expect(() => repos.dispatchQueueRepository.remove("non-existent")).not.toThrow();
     });
   });
 

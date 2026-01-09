@@ -771,6 +771,10 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
 
   /**
    * Release a task from the dispatch queue and return to polling
+   *
+   * Only removes from queue if task is in terminal state.
+   * If task is still in progress, leaves it in WORKING status - staleness
+   * mechanism will allow another worker to reclaim if this worker dies.
    */
   private async releaseTask(taskId: string): Promise<void> {
     if (this.dispatchQueueRepository && this.taskRepository) {
@@ -778,11 +782,13 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
       const isTerminal = task?.status === "COMPLETED" || task?.status === "ABANDONED";
 
       if (isTerminal) {
-        this.dispatchQueueRepository.releaseClaim(taskId);
+        this.dispatchQueueRepository.remove(taskId);
         console.log(`Task ${task?.status}, removed from queue: ${taskId}`);
       } else {
-        this.dispatchQueueRepository.releaseTask(taskId);
-        console.log(`Task ${task?.status ?? "unknown"}, marked as RELEASED in queue: ${taskId}`);
+        // Leave in queue as WORKING - staleness will allow re-claim if worker dies
+        console.log(
+          `Task ${task?.status ?? "unknown"}, leaving in queue for potential re-claim: ${taskId}`
+        );
       }
     }
 
