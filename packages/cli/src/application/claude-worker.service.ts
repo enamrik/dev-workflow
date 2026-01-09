@@ -3,6 +3,8 @@
  *
  * Manages a Claude Code worker that polls for tasks from the dispatch queue.
  * Workers self-register, send heartbeats, and claim tasks atomically.
+ *
+ * Features a fixed terminal header with task info while Claude's output scrolls below.
  */
 
 import { spawn, ChildProcess } from "node:child_process";
@@ -21,6 +23,42 @@ import {
   issues,
   sql,
 } from "@dev-workflow/core";
+
+// ============================================================================
+// ANSI Terminal Helpers
+// ============================================================================
+
+const ESC = "\x1b";
+const CSI = `${ESC}[`;
+
+const term = {
+  // Cursor control
+  saveCursor: () => process.stdout.write(`${ESC}7`),
+  restoreCursor: () => process.stdout.write(`${ESC}8`),
+  moveTo: (row: number, col: number) => process.stdout.write(`${CSI}${row};${col}H`),
+  hideCursor: () => process.stdout.write(`${CSI}?25l`),
+  showCursor: () => process.stdout.write(`${CSI}?25h`),
+
+  // Screen control
+  clearScreen: () => process.stdout.write(`${CSI}2J`),
+  clearLine: () => process.stdout.write(`${CSI}2K`),
+  setScrollRegion: (top: number, bottom: number) => process.stdout.write(`${CSI}${top};${bottom}r`),
+  resetScrollRegion: () => process.stdout.write(`${CSI}r`),
+
+  // Colors
+  bold: (text: string) => `${CSI}1m${text}${CSI}0m`,
+  dim: (text: string) => `${CSI}2m${text}${CSI}0m`,
+  cyan: (text: string) => `${CSI}36m${text}${CSI}0m`,
+  yellow: (text: string) => `${CSI}33m${text}${CSI}0m`,
+  green: (text: string) => `${CSI}32m${text}${CSI}0m`,
+  red: (text: string) => `${CSI}31m${text}${CSI}0m`,
+};
+
+const HEADER_LINES = 4; // Number of fixed header lines
+
+// ============================================================================
+// Types
+// ============================================================================
 
 /**
  * Configuration for the worker service
@@ -48,12 +86,20 @@ export interface WorkerState {
 }
 
 /**
- * Sets the terminal title using ANSI escape sequences
+ * Info displayed in the header
  */
-function setTerminalTitle(title: string): void {
-  // ESC ] 0 ; <title> BEL
-  process.stdout.write(`\x1b]0;${title}\x07`);
+interface HeaderInfo {
+  workerName: string;
+  issueNumber: number | string;
+  taskNumber: number | string;
+  taskTitle: string;
+  status: string;
+  countdown?: number;
 }
+
+// ============================================================================
+// Claude Worker Service
+// ============================================================================
 
 /**
  * Claude Worker Service
@@ -62,7 +108,7 @@ function setTerminalTitle(title: string): void {
  * 1. Registers itself on startup
  * 2. Sends periodic heartbeats
  * 3. Polls for tasks from the dispatch queue
- * 4. Spawns Claude to work on claimed tasks
+ * 4. Spawns Claude to work on claimed tasks with a fixed header UI
  * 5. Handles graceful shutdown (DRAINING status)
  */
 export class ClaudeWorkerService {
@@ -84,6 +130,7 @@ export class ClaudeWorkerService {
   private pollInterval: NodeJS.Timeout | null = null;
   private taskWatchInterval: NodeJS.Timeout | null = null;
   private isShuttingDown = false;
+  private scrollRegionActive = false;
 
   private readonly config: Required<WorkerConfig>;
 
@@ -95,6 +142,127 @@ export class ClaudeWorkerService {
       staleThresholdSeconds: config.staleThresholdSeconds ?? 60,
     };
   }
+
+  // ==========================================================================
+  // Terminal UI
+  // ==========================================================================
+
+  /**
+   * Draw the fixed header with task info
+   */
+  private drawHeader(info: HeaderInfo): void {
+    const cols = process.stdout.columns || 80;
+    const border = "═".repeat(Math.max(0, cols - 2));
+
+    term.saveCursor();
+    term.moveTo(1, 1);
+
+    // Line 1: Top border
+    term.clearLine();
+    process.stdout.write(term.cyan(`╔${border}╗`));
+
+    // Line 2: Task info
+    term.moveTo(2, 1);
+    term.clearLine();
+    const taskInfo = ` 🤖 ${info.workerName} | Task #${info.issueNumber}.${info.taskNumber}: ${info.taskTitle} `;
+    const truncatedInfo = taskInfo.slice(0, cols - 4);
+    const infoPadding = " ".repeat(Math.max(0, cols - truncatedInfo.length - 2));
+    process.stdout.write(
+      term.cyan("║") + term.bold(term.yellow(truncatedInfo)) + infoPadding + term.cyan("║")
+    );
+
+    // Line 3: Status line
+    term.moveTo(3, 1);
+    term.clearLine();
+    let statusText: string;
+    if (info.countdown !== undefined) {
+      statusText = ` Status: ${term.red(term.bold(`ENDING IN ${info.countdown}s...`))} `;
+    } else {
+      statusText = ` Status: ${info.status} `;
+    }
+    // Calculate padding without ANSI codes
+    const plainStatus =
+      info.countdown !== undefined
+        ? ` Status: ENDING IN ${info.countdown}s... `
+        : ` Status: ${info.status} `;
+    const statusPadding = " ".repeat(Math.max(0, cols - plainStatus.length - 2));
+    process.stdout.write(term.cyan("║") + term.dim(statusText) + statusPadding + term.cyan("║"));
+
+    // Line 4: Bottom border
+    term.moveTo(4, 1);
+    term.clearLine();
+    process.stdout.write(term.cyan(`╚${border}╝`));
+
+    term.restoreCursor();
+  }
+
+  /**
+   * Set up scroll region below the header
+   */
+  private setupScrollRegion(): void {
+    const rows = process.stdout.rows || 24;
+    term.clearScreen();
+    term.setScrollRegion(HEADER_LINES + 1, rows);
+    term.moveTo(HEADER_LINES + 1, 1);
+    this.scrollRegionActive = true;
+
+    // Handle terminal resize
+    process.stdout.on("resize", () => {
+      if (this.scrollRegionActive) {
+        const newRows = process.stdout.rows || 24;
+        term.setScrollRegion(HEADER_LINES + 1, newRows);
+      }
+    });
+  }
+
+  /**
+   * Reset scroll region and clean up terminal
+   */
+  private cleanupScrollRegion(): void {
+    if (this.scrollRegionActive) {
+      term.resetScrollRegion();
+      term.showCursor();
+      term.moveTo(process.stdout.rows || 24, 1);
+      this.scrollRegionActive = false;
+    }
+  }
+
+  /**
+   * Sets the terminal title using ANSI escape sequences
+   */
+  private setTerminalTitle(title: string): void {
+    process.stdout.write(`\x1b]0;${title}\x07`);
+  }
+
+  /**
+   * Update terminal title based on current state
+   */
+  private updateTitle(): void {
+    let title: string;
+
+    if (this.state.status === "DRAINING") {
+      title = `dev-workflow: ${this.state.workerName} | draining...`;
+    } else if (this.state.currentTaskId) {
+      const task = this.taskRepository?.findById(this.state.currentTaskId);
+      const issueNumber = this.state.currentTaskId
+        ? this.getIssueNumber(this.state.currentTaskId)
+        : null;
+
+      if (issueNumber && task) {
+        title = `dev-workflow: ${this.state.workerName} | #${issueNumber}.${task.number}`;
+      } else {
+        title = `dev-workflow: ${this.state.workerName} | working...`;
+      }
+    } else {
+      title = `dev-workflow: ${this.state.workerName} | waiting...`;
+    }
+
+    this.setTerminalTitle(title);
+  }
+
+  // ==========================================================================
+  // Database & Initialization
+  // ==========================================================================
 
   /**
    * Initialize the worker: connect to database and set up repositories
@@ -166,6 +334,9 @@ export class ClaudeWorkerService {
     }
     this.isShuttingDown = true;
 
+    // Clean up scroll region first
+    this.cleanupScrollRegion();
+
     console.log("\nInitiating graceful shutdown...");
 
     // Stop polling
@@ -216,6 +387,10 @@ export class ClaudeWorkerService {
     console.log("Shutdown complete");
   }
 
+  // ==========================================================================
+  // Task Resolution Helpers
+  // ==========================================================================
+
   /**
    * Get issue number for a task by looking up the plan and issue
    */
@@ -234,7 +409,6 @@ export class ClaudeWorkerService {
       return null;
     }
 
-    // Query the issue directly using raw SQL since we don't have projectId
     const db = this.dbService.getDb();
     const result = db
       .select({ number: issues.number })
@@ -247,8 +421,6 @@ export class ClaudeWorkerService {
 
   /**
    * Get the project git root path for a task
-   *
-   * Resolves: task → plan → issue → project → slug → config → gitRoot
    */
   private async getProjectPath(taskId: string): Promise<string | null> {
     if (!this.taskRepository || !this.planRepository || !this.dbService) {
@@ -267,7 +439,6 @@ export class ClaudeWorkerService {
 
     const db = this.dbService.getDb();
 
-    // Get projectId from the issue
     const issueResult = db
       .select({ projectId: issues.projectId })
       .from(issues)
@@ -278,14 +449,12 @@ export class ClaudeWorkerService {
       return null;
     }
 
-    // Get project slug
     const projectRepository = new SqliteProjectRepository(db);
     const project = await projectRepository.findById(issueResult.projectId);
     if (!project) {
       return null;
     }
 
-    // Resolve config to get gitRoot
     try {
       const config = await resolveConfig(project.slug);
       return config.gitRoot;
@@ -295,32 +464,9 @@ export class ClaudeWorkerService {
     }
   }
 
-  /**
-   * Update terminal title based on current state
-   */
-  private updateTitle(): void {
-    let title: string;
-
-    if (this.state.status === "DRAINING") {
-      title = `dev-workflow: ${this.state.workerName} | draining...`;
-    } else if (this.state.currentTaskId) {
-      // Get task and issue info for display
-      const task = this.taskRepository?.findById(this.state.currentTaskId);
-      const issueNumber = this.state.currentTaskId
-        ? this.getIssueNumber(this.state.currentTaskId)
-        : null;
-
-      if (issueNumber && task) {
-        title = `dev-workflow: ${this.state.workerName} | #${issueNumber}.${task.number}`;
-      } else {
-        title = `dev-workflow: ${this.state.workerName} | working...`;
-      }
-    } else {
-      title = `dev-workflow: ${this.state.workerName} | waiting...`;
-    }
-
-    setTerminalTitle(title);
-  }
+  // ==========================================================================
+  // Signal Handlers & Heartbeat
+  // ==========================================================================
 
   /**
    * Setup signal handlers for graceful shutdown
@@ -345,6 +491,10 @@ export class ClaudeWorkerService {
       }
     }, this.config.heartbeatIntervalMs);
   }
+
+  // ==========================================================================
+  // Task Polling & Claiming
+  // ==========================================================================
 
   /**
    * Start the polling loop to claim tasks
@@ -387,6 +537,10 @@ export class ClaudeWorkerService {
     }
   }
 
+  // ==========================================================================
+  // Task Execution
+  // ==========================================================================
+
   /**
    * Work on a claimed task by spawning a Claude process
    */
@@ -401,7 +555,7 @@ export class ClaudeWorkerService {
     this.workerRepository.updateStatus(this.state.workerId, "WORKING");
     this.updateTitle();
 
-    // Get task details for the prompt
+    // Get task details
     const task = this.taskRepository.findById(taskId);
     if (!task) {
       console.error(`Task not found: ${taskId}`);
@@ -428,7 +582,14 @@ export class ClaudeWorkerService {
     const prompt = this.buildClaudePrompt(taskId, issueNumber, taskNumber);
 
     // Spawn Claude process with project cwd
-    await this.spawnClaude(prompt, taskId, projectPath);
+    await this.spawnClaudeSession({
+      taskId,
+      issueNumber,
+      taskNumber,
+      taskTitle: task.title,
+      prompt,
+      cwd: projectPath,
+    });
   }
 
   /**
@@ -439,8 +600,6 @@ export class ClaudeWorkerService {
     issueNumber: number | string,
     taskNumber: number | string
   ): string {
-    // The prompt instructs Claude to start working on the task
-    // It uses the dwf-work-task skill which will load the task session
     return `You are running as a worker process for dev-workflow. A task has been dispatched to you.
 
 Start working on task #${issueNumber}.${taskNumber} (ID: ${taskId}).
@@ -462,18 +621,38 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
   }
 
   /**
-   * Spawn a Claude process to work on the task
+   * Spawn a Claude session with fixed header UI
    */
-  private async spawnClaude(prompt: string, taskId: string, cwd: string): Promise<void> {
-    return new Promise<void>((resolve) => {
-      // Visual marker for Claude session start
-      console.log("\n" + "=".repeat(60));
-      console.log("🤖 Claude session starting...");
-      console.log("=".repeat(60) + "\n");
+  private async spawnClaudeSession(params: {
+    taskId: string;
+    issueNumber: number | string;
+    taskNumber: number | string;
+    taskTitle: string;
+    prompt: string;
+    cwd: string;
+  }): Promise<void> {
+    const { taskId, issueNumber, taskNumber, taskTitle, prompt, cwd } = params;
 
-      // Spawn claude with the prompt in the project directory
-      // Use stdio: "inherit" so Claude's output streams directly to terminal
-      const claudeProcess = spawn("claude", ["-p", prompt], {
+    // Set up the scroll region UI
+    this.setupScrollRegion();
+
+    const headerInfo: HeaderInfo = {
+      workerName: this.state.workerName,
+      issueNumber,
+      taskNumber,
+      taskTitle,
+      status: "IN_PROGRESS",
+    };
+
+    this.drawHeader(headerInfo);
+
+    // Move cursor to scroll region and show session start message
+    term.moveTo(HEADER_LINES + 1, 1);
+    console.log(term.dim(`\n--- Claude session starting ---\n`));
+
+    return new Promise<void>((resolve) => {
+      // Spawn Claude interactively with the prompt
+      const claudeProcess = spawn("claude", [prompt], {
         cwd,
         stdio: "inherit",
         env: process.env,
@@ -481,21 +660,55 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
 
       this.state.currentClaudeProcess = claudeProcess;
 
-      // Start watching task status
-      this.startTaskWatch(taskId, claudeProcess);
+      // Watch for task completion
+      let taskCompleted = false;
+      let countdownActive = false;
+
+      this.taskWatchInterval = setInterval(() => {
+        if (!this.taskRepository || countdownActive) {
+          return;
+        }
+
+        const task = this.taskRepository.findById(taskId);
+        if (!task) {
+          console.log(term.red("\nTask no longer exists, ending session..."));
+          claudeProcess.kill("SIGTERM");
+          return;
+        }
+
+        // Check for terminal states
+        if (task.status === "COMPLETED" || task.status === "ABANDONED") {
+          if (!taskCompleted) {
+            taskCompleted = true;
+            countdownActive = true;
+
+            // Stop task watch
+            if (this.taskWatchInterval) {
+              clearInterval(this.taskWatchInterval);
+              this.taskWatchInterval = null;
+            }
+
+            // Start countdown
+            this.startCountdown(headerInfo, claudeProcess, task.status);
+          }
+        }
+      }, 2000); // Check every 2 seconds
 
       claudeProcess.on("exit", async (code: number | null) => {
-        // Visual marker for Claude session end
-        console.log("\n" + "=".repeat(60));
-        console.log(`🤖 Claude session ended (exit code: ${code})`);
-        console.log("=".repeat(60) + "\n");
-        this.state.currentClaudeProcess = null;
-
-        // Stop task watch
+        // Stop task watch if still running
         if (this.taskWatchInterval) {
           clearInterval(this.taskWatchInterval);
           this.taskWatchInterval = null;
         }
+
+        // Clean up scroll region
+        this.cleanupScrollRegion();
+
+        console.log("\n" + term.cyan("═".repeat(60)));
+        console.log(term.dim(`Claude session ended (exit code: ${code})`));
+        console.log(term.cyan("═".repeat(60)) + "\n");
+
+        this.state.currentClaudeProcess = null;
 
         // Release the task from the queue
         await this.releaseTask(taskId);
@@ -504,51 +717,62 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
       });
 
       claudeProcess.on("error", async (error: Error) => {
-        console.error("Failed to spawn Claude process:", error);
+        console.error(term.red("Failed to spawn Claude process:"), error);
         this.state.currentClaudeProcess = null;
 
-        // Stop task watch
         if (this.taskWatchInterval) {
           clearInterval(this.taskWatchInterval);
           this.taskWatchInterval = null;
         }
 
-        // Release the task from the queue
+        this.cleanupScrollRegion();
         await this.releaseTask(taskId);
-
         resolve();
       });
     });
   }
 
   /**
-   * Start watching task status for terminal states
+   * Start countdown in header before ending session
    */
-  private startTaskWatch(taskId: string, claudeProcess: ChildProcess): void {
-    this.taskWatchInterval = setInterval(() => {
-      if (!this.taskRepository) {
-        return;
-      }
+  private startCountdown(
+    headerInfo: HeaderInfo,
+    claudeProcess: ChildProcess,
+    finalStatus: string
+  ): void {
+    let countdown = 5;
 
-      const task = this.taskRepository.findById(taskId);
-      if (!task) {
-        console.log("Task no longer exists, killing Claude process");
-        claudeProcess.kill();
-        return;
-      }
+    // Update header with final status
+    headerInfo.status = finalStatus;
+    headerInfo.countdown = countdown;
+    this.drawHeader(headerInfo);
 
-      // Check for terminal states
-      if (task.status === "COMPLETED" || task.status === "ABANDONED") {
-        console.log(`Task reached terminal state: ${task.status}`);
-        claudeProcess.kill();
+    console.log(term.green(`\n✓ Task ${finalStatus}! Session ending in ${countdown} seconds...`));
+
+    const countdownInterval = setInterval(() => {
+      countdown--;
+
+      if (countdown > 0) {
+        headerInfo.countdown = countdown;
+        this.drawHeader(headerInfo);
+      } else {
+        clearInterval(countdownInterval);
+        headerInfo.countdown = undefined;
+        headerInfo.status = "SESSION ENDING";
+        this.drawHeader(headerInfo);
+
+        // Kill Claude process
+        claudeProcess.kill("SIGTERM");
       }
-    }, 5000); // Check every 5 seconds
+    }, 1000);
   }
+
+  // ==========================================================================
+  // Task Release & Cleanup
+  // ==========================================================================
 
   /**
    * Release a task from the dispatch queue and return to polling
-   * - Terminal states (COMPLETED/ABANDONED): removes entry from queue
-   * - Non-terminal states (IN_PROGRESS/PR_REVIEW): marks as RELEASED, keeps worker assignment
    */
   private async releaseTask(taskId: string): Promise<void> {
     if (this.dispatchQueueRepository && this.taskRepository) {
@@ -556,11 +780,9 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
       const isTerminal = task?.status === "COMPLETED" || task?.status === "ABANDONED";
 
       if (isTerminal) {
-        // Task is done - remove from queue entirely
         this.dispatchQueueRepository.releaseClaim(taskId);
         console.log(`Task ${task?.status}, removed from queue: ${taskId}`);
       } else {
-        // Task still in progress (e.g., PR_REVIEW) - mark as RELEASED, keep worker assignment
         this.dispatchQueueRepository.releaseTask(taskId);
         console.log(`Task ${task?.status ?? "unknown"}, marked as RELEASED in queue: ${taskId}`);
       }
@@ -581,6 +803,7 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
 
     // Resume polling if not shutting down
     if (!this.isShuttingDown && this.state.status !== "DRAINING") {
+      console.log(term.dim("\nReturning to polling for next task..."));
       this.startPolling();
     }
   }
