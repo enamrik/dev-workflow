@@ -477,13 +477,20 @@ export class ClaudeWorkerService {
     issueNumber: number | string,
     taskNumber: number | string
   ): string {
+    const workerId = this.state.workerId;
+
     return `You are running as a worker process for dev-workflow. A task has been dispatched to you.
+
+**WORKER ID: ${workerId}**
 
 Start working on task #${issueNumber}.${taskNumber} (ID: ${taskId}).
 
-Use the dwf-work-task skill to load the task session and work through the COMPLETE task lifecycle:
+Use the dwf-worker-task skill to load the task session and work through the COMPLETE task lifecycle:
 
 1. Load the task with load_task_session
+   - **CRITICAL: You MUST pass workerId="${workerId}" to load_task_session**
+   - Workers are required to use isolated mode (the default) and must pass their workerId
+   - The MCP tool will reject your call if you pass workerId with any mode other than "isolated"
 2. Implement the task according to its description and acceptance criteria
 3. Create a PR when implementation is done
 4. Submit for review
@@ -491,6 +498,8 @@ Use the dwf-work-task skill to load the task session and work through the COMPLE
 6. Once PR is merged, call complete_task with a finalLogEntry summary
 7. After task completion, check if all tasks for issue #${issueNumber} are complete
 8. If all tasks are complete, ask the user if they want to close the issue
+
+**REMINDER: When calling load_task_session, include workerId="${workerId}"**
 
 Follow the skill instructions fully, including asking the user questions when the skill indicates you should (e.g., confirming approaches, validating work, offering next steps). The user is monitoring this worker session and can respond to your prompts.
 

@@ -116,6 +116,12 @@ export const taskToolDefinitions: ToolDefinition[] = [
             "'branch': only if user says 'branch mode' or 'no worktree'. " +
             "'main': only if user explicitly says 'on main', 'main mode', or 'skip PR'.",
         },
+        workerId: {
+          type: "string",
+          description:
+            "Worker UUID. When provided, enforces isolated mode - fails if mode is not 'isolated'. " +
+            "Workers MUST pass their workerId to prevent accidental use of non-isolated modes.",
+        },
       },
       required: ["taskId", "sessionId"],
     },
@@ -360,9 +366,22 @@ export interface TaskToolContext {
  */
 export async function handleLoadTaskSession(
   ctx: TaskToolContext,
-  args: { taskId: string; sessionId: string; mode?: "isolated" | "branch" | "main" }
+  args: {
+    taskId: string;
+    sessionId: string;
+    mode?: "isolated" | "branch" | "main";
+    workerId?: string;
+  }
 ): Promise<ToolResponse> {
-  const { taskId, sessionId, mode = "isolated" } = args;
+  const { taskId, sessionId, mode = "isolated", workerId } = args;
+
+  // Enforce isolated mode for workers
+  if (workerId && mode !== "isolated") {
+    return errorResponse(
+      `Workers MUST use isolated mode. Got mode="${mode}" with workerId="${workerId}". ` +
+        `Workers are not allowed to use branch or main modes.`
+    );
+  }
 
   // Check if task exists
   const existingTask = ctx.taskRepository.findById(taskId);
