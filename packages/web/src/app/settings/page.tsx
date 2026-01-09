@@ -135,12 +135,6 @@ function SettingsPageContent() {
             <dt className="text-sm text-gray-500">Project Slug</dt>
             <dd className="text-sm text-gray-900 mt-1 font-mono">{selectedProject.slug}</dd>
           </div>
-          <div className="sm:col-span-2">
-            <dt className="text-sm text-gray-500">Track Directory</dt>
-            <dd className="text-sm text-gray-900 mt-1 font-mono break-all">
-              {selectedProject.trackDirectory}
-            </dd>
-          </div>
           {selectedProject.gitRoot && (
             <div className="sm:col-span-2">
               <dt className="text-sm text-gray-500">Git Root</dt>
