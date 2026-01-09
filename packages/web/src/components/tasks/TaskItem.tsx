@@ -155,6 +155,18 @@ export function TaskItem({
             </ul>
           )}
 
+          {/* Implementation plan */}
+          {task.implementationPlan && (
+            <div className="mt-3">
+              <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                Implementation Plan
+              </div>
+              <div className="text-sm text-gray-700 bg-gray-100 p-3 rounded-lg border border-gray-200">
+                <Markdown>{task.implementationPlan}</Markdown>
+              </div>
+            </div>
+          )}
+
           {/* Mobile/Compact: Timing info at bottom of content */}
           <div className={clsx("mt-3", compact ? "" : "sm:hidden")}>
             <TaskTiming task={task} className="text-xs text-gray-500" variant="detailed" />

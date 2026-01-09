@@ -58,7 +58,7 @@ function truncate(text: string, maxLength: number): string {
   return text.slice(0, maxLength - 3) + "...";
 }
 
-type ModalTab = "task" | "details";
+type ModalTab = "task" | "plan" | "details";
 
 interface TaskModalContentProps {
   task: Task;
@@ -120,6 +120,17 @@ function TaskModalContent({
             Task
           </button>
           <button
+            onClick={() => setActiveTab("plan")}
+            className={clsx(
+              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+              activeTab === "plan"
+                ? "bg-gray-900 text-white"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            )}
+          >
+            Plan
+          </button>
+          <button
             onClick={() => setActiveTab("details")}
             className={clsx(
               "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
@@ -152,9 +163,9 @@ function TaskModalContent({
           </div>
         )}
 
-        {activeTab === "task" ? (
-          <TaskTab task={task} />
-        ) : (
+        {activeTab === "task" && <TaskTab task={task} />}
+        {activeTab === "plan" && <PlanTab task={task} />}
+        {activeTab === "details" && (
           <DetailsTab task={task} projectId={projectId} issueNumber={issueNumber} />
         )}
       </div>
@@ -207,18 +218,22 @@ function TaskTab({ task }: { task: Task }) {
           </ul>
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* Implementation plan */}
-      {task.implementationPlan && (
-        <div>
-          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-            Implementation Plan
-          </div>
-          <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg border border-gray-200">
-            {task.implementationPlan}
-          </div>
-        </div>
-      )}
+function PlanTab({ task }: { task: Task }) {
+  if (!task.implementationPlan) {
+    return (
+      <div className="text-sm text-gray-500 italic">
+        No implementation plan available for this task.
+      </div>
+    );
+  }
+
+  return (
+    <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg border border-gray-200">
+      <Markdown>{task.implementationPlan}</Markdown>
     </div>
   );
 }
