@@ -309,15 +309,22 @@ This command:
 
 1. Installs dependencies if needed (`make worktree-setup`)
 2. Creates a local `.track/` directory with test data
-3. **Detects if running in a worktree** and calculates a unique port (3500 + issue % 100)
+3. **Detects if running in a worktree** and calculates a unique port using both issue and task numbers
 4. Starts the Next.js dev server and opens browser with issue filter querystring
+
+**Port formula:** `3500 + (issue % 50) + (task * 50)`
+
+This gives each issue 50 ports (tasks 0-49) and ensures different tasks from the same issue get different ports.
 
 For example, in worktree `issue-54-task-1`:
 
-- Port: 3554 (3500 + 54 % 100)
+- Port: 3554 (3500 + 54 % 50 + 1 * 50 = 3500 + 4 + 50)
 - URL: http://localhost:3554/?issue=54
 
-Ports are in range 3500-3599 using modulo to handle high issue numbers.
+And in worktree `issue-54-task-2`:
+
+- Port: 3604 (3500 + 54 % 50 + 2 * 50 = 3500 + 4 + 100)
+- URL: http://localhost:3604/?issue=54
 
 ---
 
