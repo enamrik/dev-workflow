@@ -331,6 +331,7 @@ export class PlanningService {
           estimatedMinutes: result.newTask.estimatedMinutes,
           matchConfidence: result.matchConfidence,
           dependsOn: [], // Clear dependencies during matching
+          implementationPlan: result.newTask.implementationPlan,
         });
         tasks.push(updatedTask);
       } else {
@@ -350,6 +351,7 @@ export class PlanningService {
           isDeleted: false,
           dependsOn: [], // Clear dependencies during matching
           labels: issueLabels, // Inherit labels from parent issue
+          implementationPlan: result.newTask.implementationPlan,
         });
         tasks.push(task);
       }
@@ -495,6 +497,7 @@ export class PlanningService {
       estimatedMinutes: def.estimatedMinutes,
       dependsOn: def.dependsOn, // Pass through dependencies
       labels: issueLabels, // Inherit labels from parent issue
+      implementationPlan: def.implementationPlan, // Technical details for Claude execution
     }));
 
     return this.taskRepository.createMany(taskData);
