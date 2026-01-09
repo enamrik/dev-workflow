@@ -16,12 +16,14 @@ interface DispatchQueueEntryWithDetails extends DispatchQueueEntryWithHealth {
   taskNumber?: number;
   issueNumber?: number;
   taskTitle?: string;
+  totalTasks?: number;
 }
 
 interface WorkerWithTaskDetails extends WorkerWithHealth {
   taskNumber?: number;
   issueNumber?: number;
   taskStartedAt?: string;
+  totalTasks?: number;
 }
 
 interface WorkerData {
@@ -40,6 +42,7 @@ interface TaskDetails {
   issueNumber: number;
   taskTitle: string;
   taskStartedAt: string | null;
+  totalTasks: number;
 }
 
 async function lookupTaskDetails(
@@ -57,11 +60,14 @@ async function lookupTaskDetails(
         if (plan) {
           const issue = context.issueRepository.findById(plan.issueId);
           if (issue) {
+            // Get total task count for the plan
+            const allTasks = context.taskRepository.findByPlanId(plan.id);
             return {
               taskNumber: task.number,
               issueNumber: issue.number,
               taskTitle: task.title,
               taskStartedAt: task.startedAt ?? null,
+              totalTasks: allTasks.length,
             };
           }
         }
@@ -108,6 +114,7 @@ export async function GET() {
         taskNumber: details?.taskNumber,
         issueNumber: details?.issueNumber,
         taskTitle: details?.taskTitle,
+        totalTasks: details?.totalTasks,
       });
     }
 
@@ -121,6 +128,7 @@ export async function GET() {
           taskNumber: details?.taskNumber,
           issueNumber: details?.issueNumber,
           taskStartedAt: details?.taskStartedAt ?? undefined,
+          totalTasks: details?.totalTasks,
         });
       } else {
         enrichedWorkers.push(worker);
