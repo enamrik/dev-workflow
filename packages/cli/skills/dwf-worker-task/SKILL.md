@@ -36,6 +36,24 @@ This ensures:
 - Proper worktree management (one worktree per active task per session)
 - Clear audit trail (each task has a complete lifecycle)
 
+## Worker-Specific Requirements
+
+**If you are running as a worker process**, you will have received a `workerId` in your prompt.
+
+**CRITICAL:** Workers MUST pass their `workerId` to `load_task_session`:
+
+```typescript
+load_task_session({
+  taskId: "...",
+  sessionId: "...",
+  workerId: "your-worker-id-from-prompt", // REQUIRED for workers
+});
+```
+
+The MCP tool enforces that workers use isolated mode. If you provide a `workerId` with any mode other than `"isolated"` (the default), the tool will reject the call.
+
+This prevents workers from accidentally using branch or main modes, which would interfere with parallel execution.
+
 ## Task Lifecycle
 
 **New tasks start in PLANNED status.** The issue and tasks remain in PLANNED until

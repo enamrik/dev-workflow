@@ -10,9 +10,10 @@ This skill handles the **dispatch decision** when a user wants to start working 
 
 **Flow:**
 
-1. Try to dispatch the task to a worker
-2. If dispatch succeeds (workers online) → report success and STOP
-3. If no workers available → invoke `dwf-worker-task` skill for inline execution
+1. Check for inline execution hints → if present, skip dispatch
+2. Try to dispatch the task to a worker
+3. If dispatch succeeds (workers online) → report success and STOP
+4. If no workers available → invoke `dwf-worker-task` skill for inline execution
 
 ## When to Invoke
 
@@ -28,6 +29,23 @@ This skill handles the **dispatch decision** when a user wants to start working 
 | ----------------------------- | -------------------------------------------- |
 | "Use /dwf-work-task to start" | "Would you like to start working on task 1?" |
 | "Invoke dwf-worker-task"      | "Starting task locally..."                   |
+
+## Inline Execution Hints
+
+Users can bypass worker dispatch by using keywords that indicate they want the task to run locally:
+
+**Inline execution keywords:**
+
+- "run inline", "inline"
+- "run here", "here"
+- "run locally", "locally"
+- "run in this session", "in this session"
+- "don't dispatch", "no dispatch"
+- "work on it myself", "I'll work on it"
+
+**Example:** "start task 1 inline" or "work on the task here" → skip dispatch, execute locally
+
+When you detect these hints, skip the dispatch attempt entirely and go straight to `dwf-worker-task`.
 
 ## Process
 
@@ -45,7 +63,15 @@ This skill handles the **dispatch decision** when a user wants to start working 
   - This transitions all PLANNED tasks to BACKLOG and creates GitHub issues (unless user requests `skipGitHubSync: true`)
 - **If task is BACKLOG or READY:** Proceed with dispatch attempt
 
-### Step 3: Try Dispatch to Worker
+### Step 3: Check for Inline Execution Hints
+
+Before attempting dispatch, check if the user's request contains inline execution hints (see list above).
+
+**If inline hints detected:** Skip dispatch entirely → proceed to Step 5 (inline execution)
+
+**If no inline hints:** Proceed to Step 4 (dispatch attempt)
+
+### Step 4: Try Dispatch to Worker
 
 Call `dispatch_task` with the task ID.
 
@@ -61,9 +87,9 @@ You can check on the task status later or work on something else.
 
 **If dispatch fails (no workers online):**
 
-Proceed to Step 4.
+Proceed to Step 5.
 
-### Step 4: Execute Inline via dwf-worker-task
+### Step 5: Execute Inline via dwf-worker-task
 
 If no workers are available, invoke the `dwf-worker-task` skill to execute the task locally.
 
@@ -95,6 +121,16 @@ Checking for available workers...
 Task dispatched to worker queue. A worker will pick it up shortly.
 
 You can check on the task status later or work on something else.
+```
+
+### User Requests Inline Execution
+
+**User:** "Start task 1 inline" or "Work on the task here"
+
+```
+Starting task locally (inline execution requested)...
+
+[Control passes to dwf-worker-task]
 ```
 
 ### No Workers - Inline Execution
