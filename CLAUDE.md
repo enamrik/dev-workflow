@@ -318,12 +318,12 @@ This gives each issue 50 ports (tasks 0-49) and ensures different tasks from the
 
 For example, in worktree `issue-54-task-1`:
 
-- Port: 3554 (3500 + 54 % 50 + 1 * 50 = 3500 + 4 + 50)
+- Port: 3554 (3500 + 54 % 50 + 1 \* 50 = 3500 + 4 + 50)
 - URL: http://localhost:3554/?issue=54
 
 And in worktree `issue-54-task-2`:
 
-- Port: 3604 (3500 + 54 % 50 + 2 * 50 = 3500 + 4 + 100)
+- Port: 3604 (3500 + 54 % 50 + 2 \* 50 = 3500 + 4 + 100)
 - URL: http://localhost:3604/?issue=54
 
 ---
