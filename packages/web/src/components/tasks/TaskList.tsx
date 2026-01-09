@@ -9,8 +9,6 @@ interface TaskListProps {
 }
 
 export function TaskList({ tasks, projectId, issueNumber, compact = false }: TaskListProps) {
-  const totalTasks = tasks.length;
-
   return (
     <ul className="space-y-3">
       {tasks.map((task) => (
@@ -19,7 +17,6 @@ export function TaskList({ tasks, projectId, issueNumber, compact = false }: Tas
           task={task}
           projectId={projectId}
           issueNumber={issueNumber}
-          totalTasks={totalTasks}
           compact={compact}
         />
       ))}

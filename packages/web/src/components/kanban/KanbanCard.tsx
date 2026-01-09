@@ -28,27 +28,21 @@ interface KanbanCardProps {
   projectId?: string;
   projectName?: string;
   projectSlug?: string;
-  totalTasksInIssue: number;
 }
 
 /**
- * Format task display as #issue.[index/total]
- * Example: #150.[1/3] for task index 1 of 3 tasks
+ * Format task display as #issue.task
+ * Example: #150.1 for issue 150, task 1
  */
-function formatTaskDisplay(issueNumber: number, task: Task, totalTasks: number): string {
-  return `#${issueNumber}.[${task.index}/${totalTasks}]`;
+function formatTaskDisplay(issueNumber: number, task: Task): string {
+  return `#${issueNumber}.${task.number}`;
 }
 
 /**
- * Get tooltip content showing the immutable task number
+ * Get tooltip content showing the task title
  */
-function getTaskNumberTooltip(
-  issueType: string,
-  issueNumber: number,
-  issueTitle: string,
-  taskNumber: number
-): string {
-  return `${issueType.toLowerCase()}(#${issueNumber}): ${issueTitle} | Task #${taskNumber}`;
+function getTaskTooltip(issueType: string, issueNumber: number, issueTitle: string): string {
+  return `${issueType.toLowerCase()}(#${issueNumber}): ${issueTitle}`;
 }
 
 function truncate(text: string, maxLength: number): string {
@@ -68,7 +62,6 @@ interface TaskModalContentProps {
   issueUrl: string;
   issueGithubUrl?: string;
   projectId?: string;
-  totalTasksInIssue: number;
 }
 
 function TaskModalContent({
@@ -79,10 +72,9 @@ function TaskModalContent({
   issueUrl,
   issueGithubUrl,
   projectId,
-  totalTasksInIssue,
 }: TaskModalContentProps) {
-  const taskDisplay = formatTaskDisplay(issueNumber, task, totalTasksInIssue);
-  const tooltipContent = getTaskNumberTooltip(issueType, issueNumber, issueTitle, task.number);
+  const taskDisplay = formatTaskDisplay(issueNumber, task);
+  const tooltipContent = getTaskTooltip(issueType, issueNumber, issueTitle);
   const [activeTab, setActiveTab] = useState<ModalTab>("task");
 
   return (
@@ -272,7 +264,6 @@ function CardContent({
   issueComputedStatus,
   projectId,
   projectName,
-  totalTasksInIssue,
 }: {
   task: Task;
   issueNumber: number;
@@ -282,10 +273,9 @@ function CardContent({
   issueComputedStatus: ComputedIssueStatus;
   projectId?: string;
   projectName?: string;
-  totalTasksInIssue: number;
 }) {
-  const taskDisplay = formatTaskDisplay(issueNumber, task, totalTasksInIssue);
-  const tooltipContent = getTaskNumberTooltip(issueType, issueNumber, issueTitle, task.number);
+  const taskDisplay = formatTaskDisplay(issueNumber, task);
+  const tooltipContent = getTaskTooltip(issueType, issueNumber, issueTitle);
   const isAbandoned = task.status === "ABANDONED";
 
   return (
@@ -377,7 +367,6 @@ export function KanbanCard({
   projectId,
   projectName,
   projectSlug,
-  totalTasksInIssue,
 }: KanbanCardProps) {
   const issueUrl = projectSlug
     ? `/projects/${encodeURIComponent(projectSlug)}/issues/${issueNumber}`
@@ -395,7 +384,6 @@ export function KanbanCard({
           issueComputedStatus={issueComputedStatus}
           projectId={projectId}
           projectName={projectName}
-          totalTasksInIssue={totalTasksInIssue}
         />
       }
       maxHeight={600}
@@ -408,7 +396,6 @@ export function KanbanCard({
         issueUrl={issueUrl}
         issueGithubUrl={issueGithubUrl}
         projectId={projectId}
-        totalTasksInIssue={totalTasksInIssue}
       />
     </Modal>
   );

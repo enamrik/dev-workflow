@@ -226,11 +226,6 @@ function WorkerCard({ worker }: WorkerCardProps) {
               <span className="text-gray-600">Working on:</span>{" "}
               <span className="font-medium text-gray-800">
                 #{worker.issueNumber}.{worker.taskNumber}
-                {worker.totalTasks !== undefined && (
-                  <span className="text-gray-500 ml-1">
-                    [{worker.taskNumber}/{worker.totalTasks}]
-                  </span>
-                )}
               </span>
             </div>
           )}
@@ -286,11 +281,6 @@ function QueueEntryCard({ entry }: QueueEntryCardProps) {
             {entry.issueNumber !== undefined && entry.taskNumber !== undefined ? (
               <span className="font-medium text-gray-800">
                 #{entry.issueNumber}.{entry.taskNumber}
-                {entry.totalTasks !== undefined && (
-                  <span className="text-gray-500 ml-1">
-                    [{entry.taskNumber}/{entry.totalTasks}]
-                  </span>
-                )}
               </span>
             ) : (
               <span className="font-mono text-sm text-gray-600">{entry.taskId.slice(0, 8)}...</span>
