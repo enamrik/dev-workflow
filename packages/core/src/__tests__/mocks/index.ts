@@ -17,3 +17,9 @@ export {
 } from "./mock-git-worktree-service.js";
 
 export { MockFileSystem, type MockFileSystemCall } from "./mock-file-system.js";
+
+export {
+  MockClaudeConfigService,
+  type MockClaudeConfigServiceCall,
+  type MockClaudeConfigServiceConfig,
+} from "./mock-claude-config-service.js";
