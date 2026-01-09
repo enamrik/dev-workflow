@@ -245,16 +245,20 @@ Add unit tests to src/__tests__/auth/ following existing test patterns.
    - Call `get_issue` with the issue number
    - Read the issue title, description, and acceptance criteria
    - Note any implementation context passed from manage-issue
-   - **Check the issue type** - if it's a BUG, use the single-task investigation approach (see "Bug Issues" section below)
+   - **Check the issue type** - if it's a BUG or SPIKE, use the single-task approach (see "Bug Issues" and "SPIKE Issues" sections below)
 
-4. **For BUG Issues - Use Single-Task Approach:**
-   - Skip multi-task planning entirely
-   - Generate ONE task: "Investigate and fix: [bug title]"
-   - Include symptoms and reproduction steps in description
-   - Set complexity to LOW
+4. **For BUG or SPIKE Issues - Use Single-Task Approach:**
+   - **BUG**: Skip multi-task planning entirely
+     - Generate ONE task: "Investigate and fix: [bug title]"
+     - Include symptoms and reproduction steps in description
+     - Set complexity to LOW
+   - **SPIKE**: Skip multi-task planning entirely
+     - Generate ONE task: "Spike: [spike title]"
+     - Include research goals and questions in description
+     - Set complexity to LOW
    - Proceed to step 8 (Generate Plan)
 
-5. **Analyze Scope and Complexity (non-bug issues):**
+5. **Analyze Scope and Complexity (non-bug/spike issues):**
    - Consider what files/components will be touched
    - Identify natural boundaries (different subsystems, different APIs)
    - Incorporate any technology choices from the context
@@ -377,6 +381,47 @@ Reproduction: [from issue steps to reproduce]
 - [ ] Bug is fixed and verified with reproduction steps
 - [ ] Root cause documented in task progress log
 - [ ] Regression test added to prevent recurrence
+
+## SPIKE Issues: Single-Task Exploration
+
+**SPIKEs are timeboxed exploratory work where discovery happens during implementation.** The goal is learning and documenting findings, not shipping a predefined solution. Creating detailed task breakdowns for SPIKEs is counterproductive since the scope is inherently uncertain.
+
+### SPIKE Planning Rules
+
+When the issue type is **SPIKE**:
+
+1. **Always create a SINGLE task** with the title pattern: `Spike: [issue title]`
+2. **Do NOT attempt to break down into multiple tasks** - the exploration is the work
+3. **Task description** should reference the research goals and questions from the issue
+4. **Acceptance criteria** should focus on:
+   - Documenting findings and learnings
+   - Capturing any prototypes or proof-of-concepts created
+   - Providing recommendations for next steps
+5. **Set complexity to LOW** - SPIKEs are timeboxed, not scope-boxed
+
+### Why Single-Task for SPIKEs?
+
+- **Exploration IS the work**: You can't plan discovery - that defeats the purpose
+- **Scope emerges**: What you learn determines what's worth building next
+- **Timeboxed by nature**: A SPIKE succeeds by producing knowledge within a timebox, not by completing predefined tasks
+- **Findings inform future work**: The output is typically new issues/tasks based on learnings
+
+### SPIKE Task Template
+
+**Title:** Spike: [spike title from issue]
+
+**Description:**
+Explore and investigate the topic. Document all findings, decisions, and recommendations.
+
+Goals: [from issue description]
+Questions to answer: [from issue acceptance criteria]
+
+**Acceptance Criteria:**
+
+- [ ] Research goals addressed with documented findings
+- [ ] Key learnings captured in task progress log or PR description
+- [ ] Recommendations provided for follow-up work (if applicable)
+- [ ] Any prototypes/proof-of-concepts committed (if created)
 
 ## Complexity Estimation
 
