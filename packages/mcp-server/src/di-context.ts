@@ -18,10 +18,10 @@ import {
   SqliteProjectRepository,
   SqliteDispatchQueueRepository,
   SqliteWorkerRepository,
+  SqliteTypeRepository,
   TemplateService,
   type TemplateServiceConfig,
   TypeService,
-  type TypeServiceConfig,
   NodeFileSystem,
   VersioningService,
   PlanningService,
@@ -188,14 +188,9 @@ export class McpDIContext {
       globalTaskTemplatesPath: path.join(globalTrackDir, "config", "templates", "tasks"),
     };
 
-    // Type definitions path for intelligent type assignment
-    const typeConfig: TypeServiceConfig = {
-      localTypesPath: path.join(projectRoot, ".track", "types.md"),
-      globalTypesPath: path.join(globalTrackDir, "config", "types.md"),
-    };
-
-    // Initialize services
-    const typeService = new TypeService(fileSystem, typeConfig);
+    // Initialize type repository and service (types are stored in global DB)
+    const typeRepository = new SqliteTypeRepository(db);
+    const typeService = new TypeService(typeRepository);
     const templateService = new TemplateService(fileSystem, templateConfig, typeService);
 
     // Initialize project management provider

@@ -544,6 +544,46 @@ export const workers = sqliteTable("workers", {
 });
 
 /**
+ * Types table schema
+ *
+ * Stores issue/task type definitions (FEATURE, BUG, ENHANCEMENT, etc.).
+ * Types are global (not project-scoped) - same vocabulary across all projects.
+ * Soft delete support allows types to be retired without breaking historical data.
+ * Default types are seeded on first init.
+ */
+export const types = sqliteTable("types", {
+  // Primary key (UUID)
+  id: text("id").primaryKey(),
+
+  // Type name - uppercase identifier (e.g., "FEATURE", "BUG", "SPIKE")
+  // Must be unique, used as the reference in issues/tasks
+  name: text("name").notNull().unique(),
+
+  // Human-readable display name (e.g., "Feature", "Bug", "Spike")
+  displayName: text("display_name").notNull(),
+
+  // Description for intelligent type selection
+  description: text("description").notNull(),
+
+  // Keywords for intelligent matching (JSON array)
+  keywords: text("keywords", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default(sql`'[]'`),
+
+  // Optional UI color (hex string, e.g., "#ff0000")
+  color: text("color"),
+
+  // Soft delete support
+  isDeleted: integer("is_deleted", { mode: "boolean" }).notNull().default(false),
+  deletedAt: text("deleted_at"),
+
+  // Timestamps (stored as ISO strings)
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+/**
  * Dispatch queue table schema
  *
  * Queue of tasks assigned to workers.
@@ -594,6 +634,7 @@ export type ProjectRow = typeof projects.$inferSelect;
 export type GlobalSettingsRow = typeof globalSettings.$inferSelect;
 export type WorkerRow = typeof workers.$inferSelect;
 export type DispatchQueueRow = typeof dispatchQueue.$inferSelect;
+export type TypeRow = typeof types.$inferSelect;
 
 // Type inference for INSERT operations
 export type NewIssue = typeof issues.$inferInsert;
@@ -607,3 +648,4 @@ export type NewProject = typeof projects.$inferInsert;
 export type NewGlobalSettings = typeof globalSettings.$inferInsert;
 export type NewWorker = typeof workers.$inferInsert;
 export type NewDispatchQueueEntry = typeof dispatchQueue.$inferInsert;
+export type NewType = typeof types.$inferInsert;

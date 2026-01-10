@@ -15,7 +15,7 @@ import {
   TemplateService,
   type TemplateServiceConfig,
 } from "../../infrastructure/templates/template-service.js";
-import { TypeService, type TypeServiceConfig } from "../../infrastructure/types/type-service.js";
+import { TypeService } from "../../infrastructure/types/type-service.js";
 import type { Task } from "../../domain/task.js";
 import type {
   ProjectManagementProvider,
@@ -1413,28 +1413,19 @@ labels: []
 
   describe("task type labels", () => {
     it("should use task.type for GitHub label via TypeService", async () => {
-      // Arrange - create TypeService with custom GitHub labels
-      const mockFs = new MockFileSystem();
-      mockFs.addFile(
-        "/local/.track/types.md",
-        `## FEATURE -> feat
-New functionality.
-
-## BUG -> bug
-Something broken.
-
-## ENHANCEMENT -> improve
-Better existing features.
-
-## TASK -> chore
-Technical work.`
-      );
-
-      const typeConfig: TypeServiceConfig = {
-        localTypesPath: "/local/.track/types.md",
-        globalTypesPath: "/global/.track/types.md",
-      };
-      const typeService = new TypeService(mockFs, typeConfig);
+      // Arrange - create TypeService with repository that has custom types
+      // Seed types in the test database
+      repos.typeRepository.seedTypes([
+        { name: "FEATURE", displayName: "Feature", description: "New functionality" },
+        { name: "BUG", displayName: "Bug", description: "Something broken" },
+        {
+          name: "ENHANCEMENT",
+          displayName: "Enhancement",
+          description: "Better existing features",
+        },
+        { name: "TASK", displayName: "Task", description: "Technical work" },
+      ]);
+      const typeService = new TypeService(repos.typeRepository);
 
       // Create service WITH typeService
       const serviceWithTypes = new TaskGitHubSyncService(
@@ -1467,7 +1458,7 @@ Technical work.`
         generatedBy: "test",
       });
 
-      // Create a TASK type task (should get "chore" label from TypeService)
+      // Create a TASK type task (should get "task" label from TypeService - lowercase name)
       repos.taskRepository.create({
         id: crypto.randomUUID(),
         planId: plan.id,
@@ -1486,32 +1477,21 @@ Technical work.`
       // Assert
       expect(result.success).toBe(true);
 
-      // Verify the correct label was applied (chore from TypeService)
+      // Verify the correct label was applied
       expect(mockProvider.createIssue).toHaveBeenCalledTimes(1);
 
       const createCall = vi.mocked(mockProvider.createIssue).mock.calls[0];
       const labels = createCall[0].labels;
-      expect(labels).toContain("chore"); // From TypeService: TASK -> chore
-      expect(labels).toContain("task"); // Standard "task" label
+      expect(labels).toContain("task"); // From TypeService: TASK -> task (lowercase)
     });
 
     it("should use different label for FEATURE type task", async () => {
-      // Arrange - create TypeService with custom GitHub labels
-      const mockFs = new MockFileSystem();
-      mockFs.addFile(
-        "/local/.track/types.md",
-        `## FEATURE -> feat
-New functionality.
-
-## TASK -> chore
-Technical work.`
-      );
-
-      const typeConfig: TypeServiceConfig = {
-        localTypesPath: "/local/.track/types.md",
-        globalTypesPath: "/global/.track/types.md",
-      };
-      const typeService = new TypeService(mockFs, typeConfig);
+      // Arrange - create TypeService with repository
+      repos.typeRepository.seedTypes([
+        { name: "FEATURE", displayName: "Feature", description: "New functionality" },
+        { name: "TASK", displayName: "Task", description: "Technical work" },
+      ]);
+      const typeService = new TypeService(repos.typeRepository);
 
       const serviceWithTypes = new TaskGitHubSyncService(
         repos.taskRepository,
@@ -1543,7 +1523,7 @@ Technical work.`
         generatedBy: "test",
       });
 
-      // Create a FEATURE type task (should get "feat" label)
+      // Create a FEATURE type task (should get "feature" label - lowercase name)
       repos.taskRepository.create({
         id: crypto.randomUUID(),
         planId: plan.id,
@@ -1564,7 +1544,7 @@ Technical work.`
 
       const createCall = vi.mocked(mockProvider.createIssue).mock.calls[0];
       const labels = createCall[0].labels;
-      expect(labels).toContain("feat"); // From TypeService: FEATURE -> feat
+      expect(labels).toContain("feature"); // From TypeService: FEATURE -> feature (lowercase)
       expect(labels).toContain("task");
     });
 
@@ -1612,16 +1592,10 @@ Technical work.`
       expect(labels).toContain("task");
     });
 
-    it("should use default TypeService labels when no custom types.md exists", async () => {
-      // Arrange - create TypeService with no files (uses defaults)
-      const mockFs = new MockFileSystem();
-      // No types.md files added
-
-      const typeConfig: TypeServiceConfig = {
-        localTypesPath: "/local/.track/types.md",
-        globalTypesPath: "/global/.track/types.md",
-      };
-      const typeService = new TypeService(mockFs, typeConfig);
+    it("should use default TypeService labels when no types in database", async () => {
+      // Arrange - create TypeService with empty repository (uses defaults)
+      // Note: repos.typeRepository is empty, so TypeService will fall back to defaults
+      const typeService = new TypeService(repos.typeRepository);
 
       const serviceWithTypes = new TaskGitHubSyncService(
         repos.taskRepository,

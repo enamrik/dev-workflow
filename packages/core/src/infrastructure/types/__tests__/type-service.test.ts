@@ -1,192 +1,114 @@
 /**
  * Type Service Tests
  *
- * Tests the type parsing and intelligent type assignment from ./.track/types.md
+ * Tests the type management service backed by the database.
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import type { FileSystem } from "../../file-system/file-system.js";
-import { TypeService, type TypeServiceConfig } from "../type-service.js";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { createTestDatabase } from "../../../__tests__/setup.js";
+import { createRepositories } from "../../../__tests__/helpers.js";
+import { TypeService } from "../type-service.js";
 import { DEFAULT_TYPE_DEFINITIONS } from "../../../domain/type-definition.js";
 
-// Sample types.md content
-const SAMPLE_TYPES_MD = `# Issue Types
-
-This file defines the issue types.
-
-## FEATURE
-
-New functionality that doesn't exist yet. Adding new capabilities.
-
-## BUG
-
-Something is broken or not working as expected. Error handling.
-
-## ENHANCEMENT
-
-Improvement to existing functionality. Optimization and refactoring.
-
-## TASK
-
-Technical work, chores, maintenance. Setup and configuration.
-`;
-
-// Sample types.md with explicit remote labels using -> syntax
-const TYPES_WITH_LABELS_MD = `## FEATURE -> feat
-
-New user-facing functionality.
-
-## BUG -> bug
-
-Something is broken or not working correctly.
-
-## ENHANCEMENT -> enhancement
-
-Improvement to existing functionality.
-
-## TASK -> chore
-
-Technical work and maintenance.
-`;
-
-// Partial types.md (only some types defined)
-const PARTIAL_TYPES_MD = `## BUG
-
-Critical errors and crashes that need immediate attention.
-
-## FEATURE
-
-Adding new user-facing functionality.
-`;
-
-// Invalid types.md (invalid type name)
-const INVALID_TYPES_MD = `## FEATURE
-
-Valid feature type.
-
-## INVALID_TYPE
-
-This type name is not valid.
-
-## bug
-
-Lowercase type names are invalid.
-`;
-
 describe("TypeService", () => {
-  let mockFileSystem: FileSystem;
-  let config: TypeServiceConfig;
+  let testDb: ReturnType<typeof createTestDatabase>;
   let service: TypeService;
-  let fileContents: Map<string, string>;
 
   beforeEach(() => {
-    fileContents = new Map();
+    testDb = createTestDatabase();
+    const repos = createRepositories(testDb.db);
+    service = new TypeService(repos.typeRepository);
+  });
 
-    mockFileSystem = {
-      exists: vi.fn().mockImplementation(async (path: string) => {
-        return fileContents.has(path);
-      }),
-      readFile: vi.fn().mockImplementation(async (path: string) => {
-        const content = fileContents.get(path);
-        if (!content) throw new Error(`File not found: ${path}`);
-        return content;
-      }),
-      writeFile: vi.fn().mockResolvedValue(undefined),
-      unlink: vi.fn().mockResolvedValue(undefined),
-      mkdir: vi.fn().mockResolvedValue(undefined),
-      readdirWithFileTypes: vi.fn().mockResolvedValue([]),
-    };
-
-    config = {
-      localTypesPath: "/repo/.track/types.md",
-      globalTypesPath: "/global/config/types.md",
-    };
-
-    service = new TypeService(mockFileSystem, config);
+  afterEach(() => {
+    testDb.cleanup();
   });
 
   describe("loadTypes", () => {
-    it("should return default types when no types.md exists", async () => {
+    it("should return default types when no types in database", async () => {
       const result = await service.loadTypes();
 
       expect(result.isUserDefined).toBe(false);
       expect(result.types).toEqual(DEFAULT_TYPE_DEFINITIONS);
     });
 
-    it("should load types from local types.md when present", async () => {
-      fileContents.set("/repo/.track/types.md", SAMPLE_TYPES_MD);
+    it("should load types from database when present", async () => {
+      const repos = createRepositories(testDb.db);
+      repos.typeRepository.create({
+        name: "FEATURE",
+        displayName: "Feature",
+        description: "New functionality",
+        keywords: ["feature", "new"],
+      });
+      repos.typeRepository.create({
+        name: "BUG",
+        displayName: "Bug",
+        description: "Something broken",
+        keywords: ["bug", "broken"],
+      });
 
-      const result = await service.loadTypes();
+      // Need a new service instance to bypass cache
+      const freshService = new TypeService(repos.typeRepository);
+      const result = await freshService.loadTypes();
 
       expect(result.isUserDefined).toBe(true);
-      expect(result.types).toHaveLength(4);
-      expect(result.types.map((t) => t.name)).toEqual(["FEATURE", "BUG", "ENHANCEMENT", "TASK"]);
-    });
-
-    it("should fall back to global types.md when local not present", async () => {
-      fileContents.set("/global/config/types.md", SAMPLE_TYPES_MD);
-
-      const result = await service.loadTypes();
-
-      expect(result.isUserDefined).toBe(true);
-      expect(result.types).toHaveLength(4);
-    });
-
-    it("should prefer local types.md over global", async () => {
-      fileContents.set("/repo/.track/types.md", PARTIAL_TYPES_MD);
-      fileContents.set("/global/config/types.md", SAMPLE_TYPES_MD);
-
-      const result = await service.loadTypes();
-
-      // Local only has BUG and FEATURE
       expect(result.types).toHaveLength(2);
-      expect(result.types.map((t) => t.name)).toEqual(["BUG", "FEATURE"]);
+      expect(result.types.map((t) => t.name)).toContain("FEATURE");
+      expect(result.types.map((t) => t.name)).toContain("BUG");
     });
 
     it("should cache types after first load", async () => {
-      fileContents.set("/repo/.track/types.md", SAMPLE_TYPES_MD);
+      const repos = createRepositories(testDb.db);
+      repos.typeRepository.create({
+        name: "TEST",
+        displayName: "Test",
+        description: "Test type",
+      });
 
-      await service.loadTypes();
-      await service.loadTypes();
+      const result1 = await service.loadTypes();
+      const result2 = await service.loadTypes();
 
-      // readFile should only be called once
-      expect(mockFileSystem.readFile).toHaveBeenCalledTimes(1);
+      expect(result1).toBe(result2); // Same object reference (cached)
     });
 
     it("should reload types after clearCache", async () => {
-      fileContents.set("/repo/.track/types.md", SAMPLE_TYPES_MD);
+      const repos = createRepositories(testDb.db);
 
-      await service.loadTypes();
+      // First load returns defaults
+      const result1 = await service.loadTypes();
+      expect(result1.types).toEqual(DEFAULT_TYPE_DEFINITIONS);
+
+      // Add a type
+      repos.typeRepository.create({
+        name: "NEW",
+        displayName: "New",
+        description: "New type",
+      });
+
+      // Clear cache and reload
       service.clearCache();
-      await service.loadTypes();
+      const result2 = await service.loadTypes();
 
-      expect(mockFileSystem.readFile).toHaveBeenCalledTimes(2);
-    });
-
-    it("should only parse valid type names", async () => {
-      fileContents.set("/repo/.track/types.md", INVALID_TYPES_MD);
-
-      const result = await service.loadTypes();
-
-      // Only FEATURE should be parsed (INVALID_TYPE and lowercase 'bug' are invalid)
-      expect(result.types).toHaveLength(1);
-      expect(result.types[0].name).toBe("FEATURE");
-    });
-
-    it("should extract keywords from descriptions", async () => {
-      fileContents.set("/repo/.track/types.md", SAMPLE_TYPES_MD);
-
-      const result = await service.loadTypes();
-
-      const bugType = result.types.find((t) => t.name === "BUG");
-      expect(bugType).toBeDefined();
-      expect(bugType!.keywords).toContain("broken");
-      expect(bugType!.keywords).toContain("working");
-      expect(bugType!.keywords).toContain("error");
+      expect(result2.types).toHaveLength(1);
+      expect(result2.types[0]!.name).toBe("NEW");
     });
   });
 
   describe("selectType", () => {
+    beforeEach(() => {
+      // Seed default types for selection tests
+      const repos = createRepositories(testDb.db);
+      for (const typeDef of DEFAULT_TYPE_DEFINITIONS) {
+        repos.typeRepository.create({
+          name: typeDef.name,
+          displayName: typeDef.name.charAt(0) + typeDef.name.slice(1).toLowerCase(),
+          description: typeDef.description,
+          keywords: typeDef.keywords,
+        });
+      }
+      service.clearCache();
+    });
+
     it("should select BUG for descriptions mentioning bugs", async () => {
       const result = await service.selectType("There is a bug in the login system");
       expect(result).toBe("BUG");
@@ -219,138 +141,55 @@ describe("TypeService", () => {
       expect(result).toBe("FEATURE");
     });
 
-    it("should use custom types when types.md is present", async () => {
-      // Custom types.md with different keywords
-      const customTypes = `## BUG
-
-Critical errors, data loss, security vulnerabilities.
-
-## FEATURE
-
-User-facing additions, new screens, new APIs.
-`;
-      fileContents.set("/repo/.track/types.md", customTypes);
-
-      // "critical" should match BUG with custom types (extracted as keyword)
-      const result = await service.selectType("Critical application failure");
-      expect(result).toBe("BUG");
-    });
-
     it("should handle case-insensitive matching", async () => {
       const result = await service.selectType("BUG: Login fails silently");
       expect(result).toBe("BUG");
     });
-
-    it("should prefer higher keyword matches", async () => {
-      // Description mentions both "improve" and "broken" - should pick the one with more matches
-      const result = await service.selectType("The broken feature needs fixing");
-      expect(result).toBe("BUG"); // "broken" is a BUG keyword
-    });
-  });
-
-  describe("graceful degradation", () => {
-    it("should return defaults when file read fails", async () => {
-      mockFileSystem.readFile = vi.fn().mockRejectedValue(new Error("Permission denied"));
-      fileContents.set("/repo/.track/types.md", "exists"); // exists but can't be read
-
-      const result = await service.loadTypes();
-
-      expect(result.isUserDefined).toBe(false);
-      expect(result.types).toEqual(DEFAULT_TYPE_DEFINITIONS);
-    });
-
-    it("should return defaults for empty types.md", async () => {
-      fileContents.set("/repo/.track/types.md", "");
-
-      const result = await service.loadTypes();
-
-      expect(result.isUserDefined).toBe(false);
-      expect(result.types).toEqual(DEFAULT_TYPE_DEFINITIONS);
-    });
-
-    it("should return defaults for types.md with no valid types", async () => {
-      fileContents.set("/repo/.track/types.md", "# Just a header\n\nSome text without types.");
-
-      const result = await service.loadTypes();
-
-      expect(result.isUserDefined).toBe(false);
-      expect(result.types).toEqual(DEFAULT_TYPE_DEFINITIONS);
-    });
-  });
-
-  describe("Remote label parsing (-> syntax)", () => {
-    it("should parse explicit remote labels from types.md", async () => {
-      fileContents.set("/repo/.track/types.md", TYPES_WITH_LABELS_MD);
-
-      const result = await service.loadTypes();
-
-      expect(result.isUserDefined).toBe(true);
-      expect(result.types).toHaveLength(4);
-
-      const feature = result.types.find((t) => t.name === "FEATURE");
-      expect(feature?.remoteLabel).toBe("feat");
-
-      const bug = result.types.find((t) => t.name === "BUG");
-      expect(bug?.remoteLabel).toBe("bug");
-
-      const enhancement = result.types.find((t) => t.name === "ENHANCEMENT");
-      expect(enhancement?.remoteLabel).toBe("enhancement");
-
-      const task = result.types.find((t) => t.name === "TASK");
-      expect(task?.remoteLabel).toBe("chore");
-    });
-
-    it("should default remoteLabel to lowercase type name when not specified", async () => {
-      fileContents.set("/repo/.track/types.md", SAMPLE_TYPES_MD);
-
-      const result = await service.loadTypes();
-
-      // No explicit labels, should default to lowercase type name
-      const feature = result.types.find((t) => t.name === "FEATURE");
-      expect(feature?.remoteLabel).toBe("feature");
-
-      const bug = result.types.find((t) => t.name === "BUG");
-      expect(bug?.remoteLabel).toBe("bug");
-    });
-
-    it("should include remoteLabel in default types", async () => {
-      const result = await service.loadTypes();
-
-      expect(result.isUserDefined).toBe(false);
-
-      // Default types should have remoteLabel
-      for (const type of result.types) {
-        expect(type.remoteLabel).toBeDefined();
-        expect(typeof type.remoteLabel).toBe("string");
-      }
-    });
   });
 
   describe("getTypes", () => {
-    it("should return all available types", async () => {
+    it("should return default types when database is empty", async () => {
       const types = await service.getTypes();
 
-      expect(types).toHaveLength(5);
-      expect(types.map((t) => t.name)).toEqual(["FEATURE", "BUG", "ENHANCEMENT", "TASK", "SPIKE"]);
+      expect(types).toEqual(DEFAULT_TYPE_DEFINITIONS);
     });
 
-    it("should return user-defined types when types.md exists", async () => {
-      fileContents.set("/repo/.track/types.md", PARTIAL_TYPES_MD);
+    it("should return database types when present", async () => {
+      const repos = createRepositories(testDb.db);
+      repos.typeRepository.create({
+        name: "CUSTOM",
+        displayName: "Custom",
+        description: "Custom type",
+        keywords: ["custom"],
+      });
 
+      service.clearCache();
       const types = await service.getTypes();
 
-      expect(types).toHaveLength(2);
-      expect(types.map((t) => t.name)).toEqual(["BUG", "FEATURE"]);
+      expect(types).toHaveLength(1);
+      expect(types[0]!.name).toBe("CUSTOM");
     });
   });
 
   describe("isValidType", () => {
-    it("should return true for valid default types", async () => {
+    beforeEach(() => {
+      const repos = createRepositories(testDb.db);
+      repos.typeRepository.create({
+        name: "FEATURE",
+        displayName: "Feature",
+        description: "New functionality",
+      });
+      repos.typeRepository.create({
+        name: "BUG",
+        displayName: "Bug",
+        description: "Something broken",
+      });
+      service.clearCache();
+    });
+
+    it("should return true for valid types", async () => {
       expect(await service.isValidType("FEATURE")).toBe(true);
       expect(await service.isValidType("BUG")).toBe(true);
-      expect(await service.isValidType("ENHANCEMENT")).toBe(true);
-      expect(await service.isValidType("TASK")).toBe(true);
-      expect(await service.isValidType("SPIKE")).toBe(true);
     });
 
     it("should return false for invalid types", async () => {
@@ -358,41 +197,192 @@ User-facing additions, new screens, new APIs.
       expect(await service.isValidType("feature")).toBe(false); // lowercase
       expect(await service.isValidType("")).toBe(false);
     });
-
-    it("should validate against user-defined types when types.md exists", async () => {
-      fileContents.set("/repo/.track/types.md", PARTIAL_TYPES_MD);
-
-      // Only BUG and FEATURE are defined
-      expect(await service.isValidType("BUG")).toBe(true);
-      expect(await service.isValidType("FEATURE")).toBe(true);
-      expect(await service.isValidType("ENHANCEMENT")).toBe(false);
-      expect(await service.isValidType("TASK")).toBe(false);
-    });
   });
 
   describe("getTypeByName", () => {
+    beforeEach(() => {
+      const repos = createRepositories(testDb.db);
+      repos.typeRepository.create({
+        name: "FEATURE",
+        displayName: "Feature",
+        description: "New functionality",
+        keywords: ["feature", "new"],
+      });
+      service.clearCache();
+    });
+
     it("should return type definition for valid type", async () => {
       const feature = await service.getTypeByName("FEATURE");
 
       expect(feature).toBeDefined();
       expect(feature?.name).toBe("FEATURE");
-      expect(feature?.description).toBeDefined();
-      expect(feature?.keywords).toBeDefined();
+      expect(feature?.description).toBe("New functionality");
+      expect(feature?.keywords).toEqual(["feature", "new"]);
       expect(feature?.remoteLabel).toBe("feature");
     });
 
     it("should return undefined for invalid type", async () => {
       const invalid = await service.getTypeByName("INVALID");
-
       expect(invalid).toBeUndefined();
     });
+  });
 
-    it("should return type with custom remote label when defined", async () => {
-      fileContents.set("/repo/.track/types.md", TYPES_WITH_LABELS_MD);
+  describe("createType", () => {
+    it("should create a new type", () => {
+      const type = service.createType({
+        name: "EPIC",
+        displayName: "Epic",
+        description: "Large feature spanning multiple issues",
+        keywords: ["epic", "large"],
+      });
 
-      const feature = await service.getTypeByName("FEATURE");
+      expect(type.name).toBe("EPIC");
+      expect(type.description).toBe("Large feature spanning multiple issues");
+      expect(type.keywords).toEqual(["epic", "large"]);
+      expect(type.remoteLabel).toBe("epic");
+    });
 
-      expect(feature?.remoteLabel).toBe("feat");
+    it("should throw error for invalid type name", () => {
+      expect(() =>
+        service.createType({
+          name: "lowercase",
+          displayName: "Lower",
+          description: "Invalid",
+        })
+      ).toThrow("Type name must be uppercase");
+    });
+
+    it("should throw error for duplicate type name", () => {
+      service.createType({
+        name: "DUPLICATE",
+        displayName: "Duplicate",
+        description: "First",
+      });
+
+      expect(() =>
+        service.createType({
+          name: "DUPLICATE",
+          displayName: "Another",
+          description: "Second",
+        })
+      ).toThrow("Type 'DUPLICATE' already exists");
+    });
+
+    it("should clear cache after creating type", async () => {
+      // Load defaults first
+      const beforeCreate = await service.getTypes();
+      expect(beforeCreate).toEqual(DEFAULT_TYPE_DEFINITIONS);
+
+      // Create a type - this should clear cache
+      service.createType({
+        name: "NEW",
+        displayName: "New",
+        description: "New type",
+      });
+
+      // Now we should get the new type from DB
+      const afterCreate = await service.getTypes();
+      expect(afterCreate).toHaveLength(1);
+      expect(afterCreate[0]!.name).toBe("NEW");
+    });
+  });
+
+  describe("updateType", () => {
+    beforeEach(() => {
+      service.createType({
+        name: "UPDATE",
+        displayName: "Update",
+        description: "Will be updated",
+        keywords: ["update"],
+      });
+      service.clearCache();
+    });
+
+    it("should update type properties", () => {
+      const updated = service.updateType("UPDATE", {
+        displayName: "Updated Type",
+        description: "Has been updated",
+        keywords: ["updated", "modified"],
+      });
+
+      expect(updated.description).toBe("Has been updated");
+      expect(updated.keywords).toEqual(["updated", "modified"]);
+    });
+
+    it("should throw error for non-existent type", () => {
+      expect(() => service.updateType("NONEXISTENT", { description: "New desc" })).toThrow(
+        "Type 'NONEXISTENT' not found"
+      );
+    });
+
+    it("should clear cache after updating type", async () => {
+      const before = await service.getTypeByName("UPDATE");
+      expect(before?.description).toBe("Will be updated");
+
+      service.updateType("UPDATE", { description: "Changed" });
+
+      const after = await service.getTypeByName("UPDATE");
+      expect(after?.description).toBe("Changed");
+    });
+  });
+
+  describe("deleteType", () => {
+    beforeEach(() => {
+      service.createType({
+        name: "DELETE",
+        displayName: "Delete",
+        description: "Will be deleted",
+      });
+      service.clearCache();
+    });
+
+    it("should delete a type", () => {
+      const deleted = service.deleteType("DELETE");
+
+      expect(deleted.name).toBe("DELETE");
+    });
+
+    it("should remove type from getTypes (falls back to defaults if DB empty)", async () => {
+      const before = await service.getTypes();
+      expect(before).toHaveLength(1);
+
+      service.deleteType("DELETE");
+
+      // When all user types are deleted, TypeService falls back to default types
+      const after = await service.getTypes();
+      expect(after).toEqual(DEFAULT_TYPE_DEFINITIONS);
+    });
+
+    it("should throw error for non-existent type", () => {
+      expect(() => service.deleteType("NONEXISTENT")).toThrow("Type 'NONEXISTENT' not found");
+    });
+
+    it("should throw error for already deleted type", () => {
+      service.deleteType("DELETE");
+
+      expect(() => service.deleteType("DELETE")).toThrow("Type 'DELETE' is already deleted");
+    });
+  });
+
+  describe("remoteLabel", () => {
+    it("should default remoteLabel to lowercase name", async () => {
+      service.createType({
+        name: "TECH_DEBT",
+        displayName: "Tech Debt",
+        description: "Technical debt work",
+      });
+
+      const type = await service.getTypeByName("TECH_DEBT");
+      expect(type?.remoteLabel).toBe("tech_debt");
+    });
+
+    it("should include remoteLabel in default types", async () => {
+      const types = await service.getTypes();
+
+      for (const type of types) {
+        expect(type.remoteLabel).toBeDefined();
+        expect(typeof type.remoteLabel).toBe("string");
+      }
     });
   });
 });

@@ -5,9 +5,11 @@ import {
   TrackDirectoryResolver,
   DataSourceFactory,
   SqliteProjectRepository,
+  SqliteTypeRepository,
   ProjectService,
   NodeGitOperations,
   resolveConnectionString,
+  DEFAULT_TYPE_DEFINITIONS,
   type Project,
 } from "@dev-workflow/core";
 
@@ -450,5 +452,57 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
    */
   setProject(project: Project): void {
     this.project = project;
+  }
+
+  /**
+   * Seed default types to the global database.
+   *
+   * Seeds the default type definitions (FEATURE, BUG, ENHANCEMENT, TASK, SPIKE)
+   * if they don't already exist. This ensures users always have the standard types
+   * available. Custom types can be added via the create_type MCP tool.
+   *
+   * Should be called after initializeDatabase().
+   */
+  async seedDefaultTypes(): Promise<{ seeded: number; existing: number }> {
+    try {
+      const connectionString = this.getResolvedConnectionString();
+
+      if (DataSourceFactory.isRemote(connectionString)) {
+        // Skip for remote databases - will be handled differently
+        return { seeded: 0, existing: 0 };
+      }
+
+      const dbService = await DataSourceFactory.createSqlite(connectionString);
+
+      try {
+        const typeRepository = new SqliteTypeRepository(dbService.getDb());
+
+        // Convert DEFAULT_TYPE_DEFINITIONS to CreateTypeData format
+        const typesToSeed = DEFAULT_TYPE_DEFINITIONS.map((typeDef) => ({
+          name: typeDef.name,
+          displayName: typeDef.name.charAt(0) + typeDef.name.slice(1).toLowerCase(),
+          description: typeDef.description,
+          keywords: typeDef.keywords,
+        }));
+
+        // Check how many already exist
+        const existingTypes = typeRepository.findAll(true);
+        const existingNames = new Set(existingTypes.map((t) => t.name));
+
+        const toSeed = typesToSeed.filter((t) => !existingNames.has(t.name));
+
+        // Seed the types
+        typeRepository.seedTypes(toSeed);
+
+        return {
+          seeded: toSeed.length,
+          existing: existingTypes.length,
+        };
+      } finally {
+        dbService.close();
+      }
+    } catch (error) {
+      throw new InstallError("Failed to seed default types", error);
+    }
   }
 }
