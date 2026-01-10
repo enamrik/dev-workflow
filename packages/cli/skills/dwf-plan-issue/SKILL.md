@@ -164,6 +164,105 @@ We'll use passport.js for OAuth handling...
 
 Don't overuse formatting—clarity beats decoration. Use visuals when they genuinely help communicate the plan structure.
 
+## Plan Completeness (Session Continuity)
+
+> **A plan must be complete enough for a fresh Claude session to execute without the original conversation context.**
+
+Plans are often created in one session and executed in another. The executing session has NO access to the conversation that led to the plan. Everything needed must be in the plan itself.
+
+### Summary Field
+
+Brief statement of WHAT we're building. 1-2 sentences max.
+
+Example: "Redesign the types system to support user-defined types with soft delete and template descriptions for intelligent selection."
+
+### Approach Field (CRITICAL)
+
+The approach captures everything a future session needs. Include:
+
+#### 1. Design Decisions Table
+
+Document key decisions and WHY they were made:
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Type storage | Database, not files | Need soft delete, validation |
+| Type scope | Universal | Same vocabulary across all projects |
+| FK constraints | None - store as string | History resilience when types deleted |
+| Template scope | Local + Global | Projects can override user defaults |
+
+#### 2. Current State
+
+What exists NOW that changes (fresh session won't know the codebase):
+
+- `TypeService` reads from `types.md` files (which are never created by init)
+- `VALID_ISSUE_TYPES` hardcoded in `type-service.ts:31` restricts valid types
+- Templates at `~/.track/config/templates/` (changing to `~/.track/templates/`)
+
+#### 3. Edge Cases
+
+Expected behavior in unusual situations:
+
+- Creating type with existing name → Error "Type already exists"
+- Deleting default type (e.g., FEATURE) → Allowed (soft delete)
+- Issue references deleted type → Still displays, can't use for new issues
+
+#### 4. Data Structures
+
+Include full schemas when creating new tables/types:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| id | string | UUID |
+| name | string | Unique, e.g., "SPIKE" |
+| displayName | string | e.g., "Spike" |
+| description | string | Helps Claude pick type |
+| keywords | string[] | For auto-detection |
+| color | string? | UI display |
+| isDeleted | boolean | Soft delete |
+| createdAt/updatedAt | Date | Timestamps |
+
+### Task implementationPlan Field
+
+Goes DEEPER than approach for the specific task. Include:
+
+- Exact file paths to create/modify
+- Functions/classes with signatures
+- Code patterns to follow (reference specific existing files)
+- Test locations and patterns
+- Order of operations within the task
+
+**Example showing expected detail level:**
+
+```
+1. Create types table in packages/core/src/infrastructure/database/schema.ts
+   - Add after tasks table
+   - Columns: id, name (unique), displayName, description, keywords (JSON), color, isDeleted, deletedAt, createdAt, updatedAt
+
+2. Create SqliteTypeRepository in packages/core/src/infrastructure/repositories/type-repository.ts
+   - Follow SqliteIssueRepository pattern
+   - Methods: create, update, softDelete, findByName, findAll, findActive
+
+3. Update TypeService in packages/core/src/infrastructure/types/type-service.ts
+   - Remove VALID_ISSUE_TYPES hardcoded set (line 31)
+   - Change loadTypes() to read from DB via repository
+   - Add create/update/delete methods delegating to repository
+
+4. Add MCP tools in packages/mcp-server/src/tools/type-tools.ts
+   - create_type, update_type, delete_type
+
+5. Tests in packages/core/src/infrastructure/types/__tests__/
+   - type-repository.test.ts, update type-service.test.ts
+```
+
+### Approach Checklist
+
+- [ ] Design decisions with rationale (WHY, not just what)
+- [ ] Current state (what exists now that changes)
+- [ ] Edge cases and expected behaviors
+- [ ] Full schemas if creating new data structures
+- [ ] Detailed implementationPlan for each task
+
 ## Task Templates and Story Format
 
 **Task content is separated into two concerns:**
