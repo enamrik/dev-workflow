@@ -33,6 +33,18 @@ describe("SqliteWorkerRepository", () => {
       expect(worker1.id).toBe("uuid-1");
       expect(worker2.id).toBe("uuid-2");
     });
+
+    it("should store PID when provided", () => {
+      const worker = repos.workerRepository.register("uuid-1", "worker-1", 12345);
+
+      expect(worker.pid).toBe(12345);
+    });
+
+    it("should store null PID when not provided", () => {
+      const worker = repos.workerRepository.register("uuid-1", "worker-1");
+
+      expect(worker.pid).toBeNull();
+    });
   });
 
   describe("unregister", () => {
@@ -68,6 +80,24 @@ describe("SqliteWorkerRepository", () => {
     it("should return null for non-existent worker", () => {
       const result = repos.workerRepository.updateHeartbeat("non-existent");
       expect(result).toBeNull();
+    });
+
+    it("should update PID when provided", () => {
+      repos.workerRepository.register("uuid-1", "worker-1", 12345);
+
+      const updated = repos.workerRepository.updateHeartbeat("uuid-1", 67890);
+
+      expect(updated).not.toBeNull();
+      expect(updated!.pid).toBe(67890);
+    });
+
+    it("should not modify PID when not provided", () => {
+      repos.workerRepository.register("uuid-1", "worker-1", 12345);
+
+      const updated = repos.workerRepository.updateHeartbeat("uuid-1");
+
+      expect(updated).not.toBeNull();
+      expect(updated!.pid).toBe(12345);
     });
   });
 
