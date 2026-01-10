@@ -2,7 +2,8 @@
  * Dispatch-related MCP tools for worker task assignment
  */
 
-import type { DispatchQueueRepository, TaskRepository } from "@dev-workflow/core";
+import type { DispatchQueueRepository, TaskRepository, WorkerRepository } from "@dev-workflow/core";
+import { DEFAULT_HEARTBEAT_THRESHOLD_SECONDS } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
 /**
@@ -25,6 +26,20 @@ export const dispatchToolDefinitions: ToolDefinition[] = [
         },
       },
       required: ["taskId"],
+    },
+  },
+  {
+    name: "get_dispatch_status",
+    description:
+      "Get status of worker sessions and dispatch queue. " +
+      "Workers are Claude instances polling for tasks - NOT git worktrees (use list_worktrees for that). " +
+      "Returns: (1) all registered workers with status (IDLE/WORKING/DRAINING), isAlive, and currentTaskId; " +
+      "(2) worker summary counts (total, idle, working, draining); " +
+      "(3) dispatch queue entries showing which tasks are pending or being worked on; " +
+      "(4) queue stats (total, unclaimed, claimed, stale).",
+    inputSchema: {
+      type: "object",
+      properties: {},
     },
   },
   {
@@ -56,6 +71,7 @@ export const dispatchToolDefinitions: ToolDefinition[] = [
 export interface DispatchToolContext {
   dispatchQueueRepository: DispatchQueueRepository;
   taskRepository: TaskRepository;
+  workerRepository: WorkerRepository;
 }
 
 /**
@@ -90,23 +106,194 @@ export function handleDispatchTask(
   // Check if already queued
   const existing = context.dispatchQueueRepository.findByTaskId(taskId);
   if (existing) {
+    // Get the queue entry with health info and claiming worker if any
+    const queueEntry = getQueueEntryWithWorker(context, taskId);
+
     return successResponse({
       success: true,
       alreadyQueued: true,
-      entry: existing,
       message: "Task was already in dispatch queue",
+      ...queueEntry,
     });
   }
 
   // Add to queue
-  const entry = context.dispatchQueueRepository.enqueue(taskId);
+  context.dispatchQueueRepository.enqueue(taskId);
+
+  // Get the queue entry with health info
+  const queueEntry = getQueueEntryWithWorker(context, taskId);
 
   return successResponse({
     success: true,
     alreadyQueued: false,
-    entry,
     message: "Task added to dispatch queue. A worker will pick it up.",
+    ...queueEntry,
   });
+}
+
+/**
+ * Queue entry with optional claiming worker - for dispatch_task response
+ */
+interface QueueEntryWithWorker {
+  queueEntry: {
+    taskId: string;
+    status: string;
+    workerId: string | null;
+    workerName: string | null;
+    claimedAt: string | null;
+    isStale: boolean;
+    createdAt: string;
+  };
+  claimedByWorker: {
+    id: string;
+    name: string;
+    status: string;
+    isAlive: boolean;
+    heartbeatAge: number;
+    currentTaskId: string | null;
+  } | null;
+}
+
+/**
+ * Get queue entry for a task with the claiming worker if any
+ */
+function getQueueEntryWithWorker(
+  context: DispatchToolContext,
+  taskId: string
+): QueueEntryWithWorker {
+  const entries = context.dispatchQueueRepository.findAllWithHealth(
+    DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
+  );
+  const entry = entries.find((e) => e.taskId === taskId);
+
+  if (!entry) {
+    throw new Error(`Queue entry not found for task: ${taskId}`);
+  }
+
+  const queueEntry = {
+    taskId: entry.taskId,
+    status: entry.status,
+    workerId: entry.workerId,
+    workerName: entry.workerName,
+    claimedAt: entry.claimedAt,
+    isStale: entry.isStale,
+    createdAt: entry.createdAt,
+  };
+
+  // If claimed, get the worker details
+  let claimedByWorker = null;
+  if (entry.workerId) {
+    const workers = context.workerRepository.findAllWithHealth(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
+    const worker = workers.find((w) => w.id === entry.workerId);
+    if (worker) {
+      claimedByWorker = {
+        id: worker.id,
+        name: worker.name,
+        status: worker.status,
+        isAlive: worker.isAlive,
+        heartbeatAge: worker.heartbeatAge,
+        currentTaskId: worker.currentTaskId,
+      };
+    }
+  }
+
+  return { queueEntry, claimedByWorker };
+}
+
+/**
+ * Full dispatch status - returned by get_dispatch_status
+ */
+interface DispatchStatus {
+  workers: Array<{
+    id: string;
+    name: string;
+    status: string;
+    isAlive: boolean;
+    heartbeatAge: number;
+    currentTaskId: string | null;
+  }>;
+  workerSummary: {
+    total: number;
+    idle: number;
+    working: number;
+    draining: number;
+  };
+  queue: Array<{
+    taskId: string;
+    status: string;
+    workerId: string | null;
+    workerName: string | null;
+    claimedAt: string | null;
+    isStale: boolean;
+    createdAt: string;
+  }>;
+  queueStats: {
+    total: number;
+    unclaimed: number;
+    claimed: number;
+    stale: number;
+  };
+}
+
+/**
+ * Get full dispatch status - workers, queue, and stats
+ * Used by both dispatch_task and get_dispatch_status for consistency
+ */
+function getDispatchStatus(context: DispatchToolContext): DispatchStatus {
+  const workersWithHealth = context.workerRepository.findAllWithHealth(
+    DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
+  );
+
+  // Build workers list
+  const workers = workersWithHealth.map((w) => ({
+    id: w.id,
+    name: w.name,
+    status: w.status,
+    isAlive: w.isAlive,
+    heartbeatAge: w.heartbeatAge,
+    currentTaskId: w.currentTaskId,
+  }));
+
+  // Calculate worker summary (only alive workers)
+  const aliveWorkers = workersWithHealth.filter((w) => w.isAlive);
+  const workerSummary = {
+    total: aliveWorkers.length,
+    idle: aliveWorkers.filter((w) => w.status === "IDLE").length,
+    working: aliveWorkers.filter((w) => w.status === "WORKING").length,
+    draining: aliveWorkers.filter((w) => w.status === "DRAINING").length,
+  };
+
+  // Get dispatch queue
+  const queueEntries = context.dispatchQueueRepository.findAllWithHealth(
+    DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
+  );
+  const queue = queueEntries.map((e) => ({
+    taskId: e.taskId,
+    status: e.status,
+    workerId: e.workerId,
+    workerName: e.workerName,
+    claimedAt: e.claimedAt,
+    isStale: e.isStale,
+    createdAt: e.createdAt,
+  }));
+
+  // Queue stats
+  const queueStats = context.dispatchQueueRepository.getQueueStats(
+    DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
+  );
+
+  return { workers, workerSummary, queue, queueStats };
+}
+
+/**
+ * Handle get_dispatch_status tool
+ *
+ * Returns all registered workers with their status and health information.
+ * Includes current task if the worker is working on one.
+ * Also includes the dispatch queue so Claude can verify tasks are queued.
+ */
+export function handleGetDispatchStatus(context: DispatchToolContext): ToolResponse {
+  return successResponse(getDispatchStatus(context));
 }
 
 /**

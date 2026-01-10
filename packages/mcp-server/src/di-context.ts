@@ -17,6 +17,7 @@ import {
   SqliteMilestoneRepository,
   SqliteProjectRepository,
   SqliteDispatchQueueRepository,
+  SqliteWorkerRepository,
   TemplateService,
   type TemplateServiceConfig,
   TypeService,
@@ -344,9 +345,12 @@ export class McpDIContext {
       typeService,
     };
 
+    const workerRepository = new SqliteWorkerRepository(db);
+
     const dispatchToolContext: DispatchToolContext = {
       dispatchQueueRepository,
       taskRepository,
+      workerRepository,
     };
 
     return new McpDIContext(

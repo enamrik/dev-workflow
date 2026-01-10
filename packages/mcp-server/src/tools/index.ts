@@ -113,5 +113,6 @@ export {
   dispatchToolDefinitions,
   type DispatchToolContext,
   handleDispatchTask,
+  handleGetDispatchStatus,
   handleEndWorkerSession,
 } from "./dispatch-tools.js";
