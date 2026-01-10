@@ -98,6 +98,7 @@ async function createIssueToolContext(testDb: TestDatabase): Promise<IssueToolCo
     planRepository: repos.planRepository,
     taskRepository: repos.taskRepository,
     milestoneRepository,
+    dispatchQueueRepository: repos.dispatchQueueRepository,
     templateService: mockTemplateService,
     planningService,
     githubSyncService,
@@ -225,7 +226,8 @@ describe("Issue Tools Integration", () => {
       expect(content.issue.isDeleted).toBe(true);
 
       // Verify database state - issue should be marked as deleted
-      const issue = ctx.issueRepository.findByNumber(created.issue.number);
+      // Use includeDeleted: true since findByNumber filters out deleted issues by default
+      const issue = ctx.issueRepository.findByNumber(created.issue.number, true);
       expect(issue!.isDeleted).toBe(true);
     });
 

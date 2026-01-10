@@ -166,7 +166,8 @@ describe("Merge Tools Integration", () => {
         expect(content.mergedTaskCount).toBe(3); // 1 original + 2 from source
 
         // Verify source is soft-deleted
-        const deletedSource = ctx.issueRepository.findById(sourceIssue.id);
+        // Use includeDeleted: true since findById filters out deleted issues by default
+        const deletedSource = ctx.issueRepository.findById(sourceIssue.id, true);
         expect(deletedSource?.isDeleted).toBe(true);
 
         // Verify target is unchanged (not deleted)

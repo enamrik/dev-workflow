@@ -8,6 +8,7 @@ import {
   type SqlitePlanRepository,
   type SqliteTaskRepository,
   type SqliteMilestoneRepository,
+  type SqliteDispatchQueueRepository,
   type TemplateService,
   type PlanningService,
   type GitHubSyncService,
@@ -433,6 +434,8 @@ export interface IssueToolContext {
   planRepository: SqlitePlanRepository;
   taskRepository: SqliteTaskRepository;
   milestoneRepository: SqliteMilestoneRepository;
+  /** Dispatch queue repository for cleaning up orphaned tasks */
+  dispatchQueueRepository: SqliteDispatchQueueRepository;
   templateService: TemplateService;
   planningService: PlanningService;
   /** GitHub sync service - always available, check isEnabled() before use */
@@ -733,8 +736,27 @@ export async function handleDeleteIssue(
 
     const deleted = ctx.issueRepository.delete(issue.id, "claude-code");
 
+    // Cascade soft-delete to all tasks and clean up dispatch queue
+    let deletedTaskCount = 0;
+    for (const task of tasks) {
+      // Remove from dispatch queue (if present)
+      ctx.dispatchQueueRepository.remove(task.id);
+
+      // Soft-delete the task
+      try {
+        ctx.taskRepository.softDelete(task.id, "claude-code");
+        deletedTaskCount++;
+      } catch {
+        // Task may already be deleted or in a non-deletable state
+        console.warn(`Could not soft-delete task ${task.id}`);
+      }
+    }
+
     // Build message with cleanup details
     const messageParts: string[] = [`Issue #${deleted.number} has been deleted`];
+    if (deletedTaskCount > 0) {
+      messageParts.push(`deleted ${deletedTaskCount} task(s)`);
+    }
     if (closedGitHubIssues.length > 0) {
       messageParts.push(`closed ${closedGitHubIssues.length} GitHub issue(s)`);
     }
@@ -756,6 +778,7 @@ export async function handleDeleteIssue(
         deletedAt: deleted.deletedAt,
         deletedBy: deleted.deletedBy,
       },
+      deletedTaskCount,
       closedGitHubIssues,
       cleanedUpBranches,
     });
