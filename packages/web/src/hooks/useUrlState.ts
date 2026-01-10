@@ -14,6 +14,8 @@ export interface UrlState {
   showBacklog?: boolean;
   showWorkQueue?: boolean;
   showCompleted?: boolean;
+  /** Show stats ribbon (task/worker counts) - defaults to true */
+  showStats?: boolean;
   /** Pinned navigation items (hrefs) */
   pinnedNavItems?: string[];
 }
