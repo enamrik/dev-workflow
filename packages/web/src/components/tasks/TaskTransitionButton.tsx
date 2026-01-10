@@ -19,19 +19,19 @@ interface TransitionConfig {
 const transitionConfigs: Record<TransitionType, TransitionConfig> = {
   toBacklog: {
     targetStatus: "BACKLOG",
-    label: "Move to Backlog",
+    label: "Activate",
     fromStatuses: ["PLANNED"],
-    icon: <PlayIcon className="w-3 h-3" />,
+    icon: <PlayIcon className="w-4 h-4" />,
   },
   toReady: {
     targetStatus: "READY",
-    label: "Move to Ready",
+    label: "Ready",
     fromStatuses: ["BACKLOG"],
-    icon: <RocketIcon className="w-3 h-3" />,
+    icon: <RocketIcon className="w-4 h-4" />,
   },
   toReview: {
     targetStatus: "PR_REVIEW",
-    label: "Submit for Review",
+    label: "Review",
     fromStatuses: ["IN_PROGRESS"],
     isDisabled: (task) => {
       if (!task.prUrl) {
@@ -39,7 +39,7 @@ const transitionConfigs: Record<TransitionType, TransitionConfig> = {
       }
       return { disabled: false };
     },
-    icon: <SendIcon className="w-3 h-3" />,
+    icon: <SendIcon className="w-4 h-4" />,
   },
 };
 
@@ -114,28 +114,39 @@ export function TaskTransitionButton({
     }
   };
 
-  const tooltipContent = isDisabled && disabledReason ? disabledReason : config.label;
+  // Show tooltip only for errors or disabled reasons
+  const tooltipContent = error ?? (isDisabled && disabledReason ? disabledReason : null);
 
-  return (
-    <Tooltip content={error ?? tooltipContent} side="top">
-      <button
-        onClick={handleClick}
-        disabled={isLoading || isDisabled}
-        className={clsx(
-          "inline-flex items-center justify-center p-1 rounded transition-colors",
-          "hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1",
-          isLoading && "opacity-50 cursor-wait",
-          isDisabled && "opacity-40 cursor-not-allowed",
-          error && "text-red-500",
-          !error && !isDisabled && "text-gray-500 hover:text-gray-700"
-        )}
-        aria-label={config.label}
-        data-transition-type={transitionType}
-      >
-        {isLoading ? <SpinnerIcon className="w-3 h-3 animate-spin" /> : config.icon}
-      </button>
-    </Tooltip>
+  const button = (
+    <button
+      onClick={handleClick}
+      disabled={isLoading || isDisabled}
+      className={clsx(
+        "inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium transition-colors",
+        "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1",
+        isLoading && "opacity-50 cursor-wait",
+        isDisabled && "opacity-40 cursor-not-allowed bg-gray-100 text-gray-400",
+        error && "bg-red-50 text-red-600 hover:bg-red-100",
+        !error && !isDisabled && "bg-blue-50 text-blue-600 hover:bg-blue-100"
+      )}
+      aria-label={config.label}
+      data-transition-type={transitionType}
+    >
+      {isLoading ? <SpinnerIcon className="w-4 h-4 animate-spin" /> : config.icon}
+      <span>{config.label}</span>
+    </button>
   );
+
+  // Only wrap in tooltip if there's content to show
+  if (tooltipContent) {
+    return (
+      <Tooltip content={tooltipContent} side="top">
+        {button}
+      </Tooltip>
+    );
+  }
+
+  return button;
 }
 
 // =============================================================================

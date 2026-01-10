@@ -326,6 +326,17 @@ function CardContent({
         {truncate(task.description, 100)}
       </div>
 
+      {/* Status transition button - prominent placement */}
+      {projectSlug && (
+        <div className="mb-2">
+          <TaskTransitionButton
+            task={task}
+            projectSlug={projectSlug}
+            onTransitionComplete={onTransitionComplete}
+          />
+        </div>
+      )}
+
       {/* Footer: project and metadata */}
       <div className="flex items-center justify-between text-xs">
         {(projectName || projectId) && (
@@ -333,14 +344,6 @@ function CardContent({
         )}
         <div className="flex items-center gap-2">
           <TaskTiming task={task} className="text-gray-500" />
-          {/* Status transition button */}
-          {projectSlug && (
-            <TaskTransitionButton
-              task={task}
-              projectSlug={projectSlug}
-              onTransitionComplete={onTransitionComplete}
-            />
-          )}
           {/* Show PR indicator on card */}
           {task.prUrl && (
             <Tooltip content={`PR #${task.prNumber}`} side="top">
