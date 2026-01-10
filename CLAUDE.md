@@ -196,6 +196,25 @@ class SqliteTypeRepository implements TypeRepository {
 const repo = dataSource.createTypeRepository(projectId);
 ```
 
+**⚠️ Factory Pattern - Creating Data Sources:**
+
+Always use `DataSourceFactory.create()` - never `createSqlite()` or `createNeon()` directly:
+
+```typescript
+// ❌ BAD - Bypasses factory abstraction
+if (DataSourceFactory.isRemote(connectionString)) {
+  throw new Error("Remote not supported");
+}
+const db = await DataSourceFactory.createSqlite(connectionString);
+
+// ✅ GOOD - Use factory method, check property after creation
+const dataSource = await DataSourceFactory.create({ connectionString });
+if (dataSource.isRemote) {
+  dataSource.close();
+  throw new Error("Remote not supported yet");
+}
+```
+
 **Why this matters:** The web UI uses PostgreSQL (Neon), while CLI/MCP use SQLite. Breaking this abstraction means features work in one environment but fail silently in another.
 
 ### 5. Clean Code Practices
@@ -526,6 +545,7 @@ Our `tsconfig.json` enforces maximum type safety:
 ❌ **Global Mutable State** - singletons, module-level `let instance = null` patterns
 ❌ **Wrapper Modules** - modules with many unrelated exported functions (god modules)
 ❌ **Bypassing DataSourceProvider** - creating repositories directly instead of through factory methods, using `SqliteDrizzleDatabase` instead of `DrizzleDatabase`, only updating one schema
+❌ **Bypassing DataSourceFactory** - calling `createSqlite()` or `createNeon()` directly, checking `isRemote()` before creating data source
 
 ## Dependency Injection Patterns
 
