@@ -73,6 +73,10 @@ This prevents workers from accidentally using branch or main modes, which would 
 
 Tasks flow: PLANNED → BACKLOG → READY → IN_PROGRESS → PR_REVIEW → COMPLETED (or ABANDONED from any state). Main mode skips PR_REVIEW. See Status Transitions table below for details.
 
+### SPIKE Task Detection
+
+**Before starting implementation, check `task.type`.** If `SPIKE`, follow the SPIKE Execution Mode below instead of normal implementation flow. SPIKE tasks focus on investigation and discussion, not coding.
+
 ### Execution Modes
 
 **1. Isolated Mode (default)**
@@ -92,6 +96,36 @@ Tasks flow: PLANNED → BACKLOG → READY → IN_PROGRESS → PR_REVIEW → COMP
 - Works directly on main branch, no branch created
 - Skips PR workflow, completes directly
 - Best for: trivial fixes, documentation, config changes
+
+### SPIKE Execution Mode
+
+**1. Start with Questions** - Before ANY research, ask clarifying questions (see example below).
+
+**2. Research, Don't Code** - Document findings, compare options, surface risks. No production code (prototypes OK if requested). Never jump to a solution before exploring alternatives.
+
+**3. Document and Present** - Use `log_task_progress` to record findings. Present options as:
+
+```
+Option A: [approach] - Pros: ... / Cons: ... / Effort: ...
+Option B: [approach] - Pros: ... / Cons: ... / Effort: ...
+Recommendation: [option] because [rationale]
+```
+
+**4. Complete** - No code written → main mode, complete directly. Prototype written → PR as normal.
+
+**Example:**
+
+```
+Task: SPIKE - Evaluate authentication approaches
+
+Before I start researching, I have a few questions:
+1. What authentication methods are you considering?
+2. Are there specific providers you need to support?
+3. What's your priority - simplicity, security, or flexibility?
+4. Any constraints? (existing user system, compliance requirements)
+
+Once I understand your requirements, I'll research and present a comparison.
+```
 
 ### Status Transitions
 
