@@ -357,7 +357,7 @@ If MCP tool call fails:
 - Suggest troubleshooting steps:
   - Is dev-workflow initialized? (run `dev-workflow init`)
   - Is the MCP server running?
-  - Check `.claude/config/mcp-servers.json`
+  - Check `~/.claude.json` mcpServers section
 - Offer to help diagnose the issue
 
 ## Example Interactions

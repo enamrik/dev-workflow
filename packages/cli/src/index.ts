@@ -121,8 +121,8 @@ async function runInit(options: InitOptions = {}): Promise<void> {
   } else if (options.local) {
     databaseConnectionString = "file:./.track/workflow.db";
   } else {
-    // Default: global SQLite database
-    databaseConnectionString = "file:///~/.track/workflow.db";
+    // Default: global SQLite database (respects TRACK_DIR env var)
+    databaseConnectionString = `file://${getGlobalDatabasePath()}`;
   }
 
   // Check if this project was previously initialized (slug exists in .git/config)
@@ -260,7 +260,7 @@ async function runInit(options: InitOptions = {}): Promise<void> {
     } else if (options.url) {
       console.log(`   Mode: remote database (${DatabaseConfigService.maskPassword(options.url)})`);
     } else {
-      console.log("   Mode: global database (~/.track/workflow.db)");
+      console.log(`   Mode: global database (${getGlobalDatabasePath()})`);
     }
     console.log();
 

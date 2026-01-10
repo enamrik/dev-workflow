@@ -40,8 +40,6 @@ export class E2ETestHarness {
   public projectId: string = "";
   /** Database project UUID (used in issues.project_id) - set after init */
   public databaseProjectId: string = "";
-  /** Path to MCP config file for this test project */
-  public mcpConfigPath: string = "";
   private cleanupOnSuccess: boolean;
   private useLocalBuild: boolean;
   private skipSampleProject: boolean;
@@ -190,9 +188,6 @@ export class E2ETestHarness {
       throw new Error(`Project not found in database for git root hash: ${gitRootHash}`);
     }
     this.databaseProjectId = project.id;
-
-    // Set MCP config path for use with claude --mcp-config
-    this.mcpConfigPath = join(this.testDir, ".claude/config/mcp-servers.json");
 
     console.log(`✓ Database ready at ${this.dbPath}\n`);
   }

@@ -87,7 +87,7 @@ describe("E2E: Simple File Rename", () => {
 
     let db = harness.getDb();
     const issue = assertIssueExists(db, "rename", harness.databaseProjectId);
-    expect(issue.status).toBe("OPEN");
+    expect(issue.status).toBe("PLANNED");
     console.log(`✓ Created issue #${issue.number}: ${issue.title}`);
     db.close();
 
@@ -117,6 +117,23 @@ describe("E2E: Simple File Rename", () => {
     db.close();
 
     // ═══════════════════════════════════════════════════════════════════════
+    // STEP 2.5: Move issue to backlog (activates tasks from PLANNED to BACKLOG)
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log("\n📦 Step 2.5: Moving issue to backlog...");
+
+    const backlogResult = await runClaude(
+      `Move issue #${issue.number} to backlog using move_issue_to_backlog with skipGitHubSync=true.`,
+      {
+        cwd: harness.testDir,
+        allowedTools: ["mcp__dev-workflow-tracker__move_issue_to_backlog"],
+        timeout: 60000,
+        env: harness.getEnv() as Record<string, string>,
+      }
+    );
+    expect(backlogResult.exitCode).toBe(0);
+    console.log("✓ Moved issue to backlog");
+
+    // ═══════════════════════════════════════════════════════════════════════
     // STEP 3: Execute the rename task
     // ═══════════════════════════════════════════════════════════════════════
     console.log("\n🔧 Step 3: Executing task...");
@@ -126,7 +143,7 @@ describe("E2E: Simple File Rename", () => {
     db.close();
 
     if (!pendingTask) {
-      throw new Error("No BACKLOG task found after plan generation");
+      throw new Error("No BACKLOG task found after moving issue to backlog");
     }
 
     // Use "main" mode to work directly on main branch (no worktree/PR)

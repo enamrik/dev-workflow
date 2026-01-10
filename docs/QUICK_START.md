@@ -24,7 +24,7 @@ dev-workflow init
 ✓ Initialized database at .track/workflow.db
 ✓ Installed default templates
 ✓ Installed Claude skills to .claude/skills/
-✓ Registered MCP server in .claude/config/mcp-servers.json
+✓ Registered MCP server in ~/.claude.json
 ✓ Created welcome issue #1
 
 dev-workflow initialized successfully!
