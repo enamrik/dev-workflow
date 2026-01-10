@@ -17,11 +17,14 @@ import {
   SqliteTaskRepository,
   SqlitePlanRepository,
   SqliteProjectRepository,
+  DependencyService,
   getGlobalDatabasePath,
   resolveConfig,
   type WorkerStatus,
   type SqliteDataSource,
+  type Task,
   issues,
+  dispatchQueue,
   sql,
 } from "@dev-workflow/core";
 
@@ -57,7 +60,14 @@ export interface WorkerConfig {
   pollIntervalMs?: number;
   /** Stale heartbeat threshold in seconds (default: 10s) */
   staleThresholdSeconds?: number;
+  /** Automatically claim READY tasks when dependencies complete */
+  autoClaim?: boolean;
 }
+
+/**
+ * Source of how a task was claimed
+ */
+export type ClaimSource = "queue" | "auto-claim";
 
 /**
  * State of the Claude worker
@@ -105,6 +115,7 @@ export class ClaudeWorkerService {
   private isShuttingDown = false;
 
   private readonly config: Required<WorkerConfig>;
+  private dependencyService: DependencyService | null = null;
 
   constructor(config: WorkerConfig = {}) {
     this.config = {
@@ -112,6 +123,7 @@ export class ClaudeWorkerService {
       heartbeatIntervalMs: config.heartbeatIntervalMs ?? 5000,
       pollIntervalMs: config.pollIntervalMs ?? 2000,
       staleThresholdSeconds: config.staleThresholdSeconds ?? 10,
+      autoClaim: config.autoClaim ?? false,
     };
   }
 
@@ -168,6 +180,7 @@ export class ClaudeWorkerService {
     this.dispatchQueueRepository = new SqliteDispatchQueueRepository(db);
     this.taskRepository = new SqliteTaskRepository(db);
     this.planRepository = new SqlitePlanRepository(db);
+    this.dependencyService = new DependencyService(this.taskRepository);
   }
 
   /**
@@ -195,8 +208,9 @@ export class ClaudeWorkerService {
 
     // Register worker
     this.workerRepository.register(this.state.workerId, this.state.workerName);
+    const autoClaimSuffix = this.config.autoClaim ? " [auto-claim enabled]" : "";
     console.log(
-      `Worker registered: ${this.state.workerName} (${this.state.workerId.slice(0, 8)}...)`
+      `Worker registered: ${this.state.workerName} (${this.state.workerId.slice(0, 8)}...)${autoClaimSuffix}`
     );
 
     // Update terminal title
@@ -400,20 +414,21 @@ export class ClaudeWorkerService {
   }
 
   /**
-   * Try to claim a task from the dispatch queue
+   * Try to claim a task from the dispatch queue, or auto-claim if enabled
    */
   private async tryClaimTask(): Promise<void> {
     if (!this.dispatchQueueRepository) {
       return;
     }
 
+    // First, try to claim from the dispatch queue (priority)
     const claim = this.dispatchQueueRepository.claimTask(
       this.state.workerId,
       this.config.staleThresholdSeconds
     );
 
     if (claim) {
-      console.log(`Claimed task: ${claim.taskId}`);
+      console.log(term.green(`Claimed from queue: ${claim.taskId}`));
 
       // Stop polling while working
       if (this.pollInterval) {
@@ -421,14 +436,110 @@ export class ClaudeWorkerService {
         this.pollInterval = null;
       }
 
-      await this.workOnTask(claim.taskId);
+      await this.workOnTask(claim.taskId, "queue");
+      return;
+    }
+
+    // If no queued task and auto-claim is enabled, try to find a READY task
+    if (this.config.autoClaim) {
+      const autoClaimedTask = await this.tryAutoClaimTask();
+      if (autoClaimedTask) {
+        console.log(term.cyan(`Auto-claimed: ${autoClaimedTask.id}`));
+
+        // Stop polling while working
+        if (this.pollInterval) {
+          clearInterval(this.pollInterval);
+          this.pollInterval = null;
+        }
+
+        await this.workOnTask(autoClaimedTask.id, "auto-claim");
+      }
     }
   }
 
   /**
-   * Work on a claimed task by spawning a Claude process
+   * Try to auto-claim a READY task with satisfied dependencies
+   *
+   * Scans for READY tasks that:
+   * 1. Have all dependencies satisfied (COMPLETED or ABANDONED)
+   * 2. Are not already claimed by another session
+   * 3. Are not already in the dispatch queue
+   *
+   * When a task is auto-claimed, it's added to the dispatch queue so the
+   * claudeDone mechanism works correctly (end_worker_session sets claudeDone
+   * flag which the worker polls for to know when to terminate).
+   *
+   * @returns The claimed task, or null if none available
    */
-  private async workOnTask(taskId: string): Promise<void> {
+  private async tryAutoClaimTask(): Promise<Task | null> {
+    if (
+      !this.taskRepository ||
+      !this.dependencyService ||
+      !this.dbService ||
+      !this.dispatchQueueRepository
+    ) {
+      return null;
+    }
+
+    // Find READY tasks that are not already in the dispatch queue and have no session
+    const readyTasks = this.taskRepository.findMany({ status: "READY" });
+
+    // Get all task IDs currently in the dispatch queue
+    const db = this.dbService.getDb();
+    const queuedTaskIds = new Set(
+      db
+        .select({ taskId: dispatchQueue.taskId })
+        .from(dispatchQueue)
+        .all()
+        .map((r) => r.taskId)
+    );
+
+    // Filter for claimable tasks
+    for (const task of readyTasks) {
+      // Skip if already in dispatch queue
+      if (queuedTaskIds.has(task.id)) {
+        continue;
+      }
+
+      // Skip if already claimed by another session
+      if (task.sessionId) {
+        continue;
+      }
+
+      // Skip if dependencies are not satisfied
+      if (!this.dependencyService.areDependenciesSatisfied(task)) {
+        continue;
+      }
+
+      // Found a claimable task - add to dispatch queue and claim atomically
+      // First, enqueue the task (idempotent - returns existing if already queued)
+      this.dispatchQueueRepository.enqueue(task.id);
+
+      // Then claim it from the queue using the standard mechanism
+      const claim = this.dispatchQueueRepository.claimTask(
+        this.state.workerId,
+        this.config.staleThresholdSeconds
+      );
+
+      if (!claim || claim.taskId !== task.id) {
+        // Lost the race or got a different task, try the next one
+        continue;
+      }
+
+      // Return the task (status will be updated by load_task_session when Claude runs)
+      return this.taskRepository.findById(task.id);
+    }
+
+    return null;
+  }
+
+  /**
+   * Work on a claimed task by spawning a Claude process
+   *
+   * @param taskId - ID of the task to work on
+   * @param claimSource - How the task was claimed: 'queue' or 'auto-claim'
+   */
+  private async workOnTask(taskId: string, claimSource: ClaimSource = "queue"): Promise<void> {
     if (!this.workerRepository || !this.taskRepository) {
       return;
     }
@@ -449,8 +560,9 @@ export class ClaudeWorkerService {
 
     const issueNumber = this.getIssueNumber(taskId) ?? "?";
     const taskNumber = task.number ?? "?";
+    const sourceLabel = claimSource === "auto-claim" ? " (auto-claimed)" : "";
 
-    console.log(`Working on task #${issueNumber}.${taskNumber}: ${task.title}`);
+    console.log(`Working on task #${issueNumber}.${taskNumber}: ${task.title}${sourceLabel}`);
 
     // Get project path for cwd
     const projectPath = await this.getProjectPath(taskId);
