@@ -33,6 +33,8 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
       workerId: null,
       claimedAt: null,
       createdAt: now,
+      claudeDone: false,
+      claudeDoneAt: null,
     };
 
     this.db
@@ -43,6 +45,8 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
         workerId: entry.workerId,
         claimedAt: entry.claimedAt,
         createdAt: entry.createdAt,
+        claudeDone: entry.claudeDone,
+        claudeDoneAt: entry.claudeDoneAt,
       })
       .run();
 
@@ -156,6 +160,8 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
         workerId: dispatchQueue.workerId,
         claimedAt: dispatchQueue.claimedAt,
         createdAt: dispatchQueue.createdAt,
+        claudeDone: dispatchQueue.claudeDone,
+        claudeDoneAt: dispatchQueue.claudeDoneAt,
         workerName: workers.name,
         workerLastHeartbeat: workers.lastHeartbeat,
       })
@@ -172,6 +178,8 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
         workerId: row.workerId,
         claimedAt: row.claimedAt,
         createdAt: row.createdAt,
+        claudeDone: row.claudeDone,
+        claudeDoneAt: row.claudeDoneAt,
       });
 
       // Determine staleness - only relevant for WORKING status
@@ -210,6 +218,33 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
     return { total, unclaimed, claimed, stale };
   }
 
+  setClaudeDone(taskId: string, workerId: string): DispatchQueueEntry | null {
+    const now = new Date().toISOString();
+
+    // Find the existing entry
+    const existing = this.findByTaskId(taskId);
+    if (!existing) {
+      return null;
+    }
+
+    // Verify the workerId matches
+    if (existing.workerId !== workerId) {
+      return null;
+    }
+
+    // Update the entry
+    this.db
+      .update(dispatchQueue)
+      .set({
+        claudeDone: true,
+        claudeDoneAt: now,
+      })
+      .where(eq(dispatchQueue.taskId, taskId))
+      .run();
+
+    return this.findByTaskId(taskId);
+  }
+
   /**
    * Map database row to domain DispatchQueueEntry object
    */
@@ -220,6 +255,8 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
       workerId: row.workerId,
       claimedAt: row.claimedAt,
       createdAt: row.createdAt,
+      claudeDone: row.claudeDone ?? false,
+      claudeDoneAt: row.claudeDoneAt ?? null,
     };
   }
 }
