@@ -31,7 +31,16 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
             return NextResponse.json([]);
           }
           const dependencies = context.taskRepository.findByIds(task.dependsOn);
-          return NextResponse.json(dependencies);
+          // Enrich dependencies with issue number for #issue.task display format
+          const enrichedDependencies = dependencies.map((dep) => {
+            const depPlan = context.planRepository.findById(dep.planId);
+            const depIssue = depPlan ? context.issueRepository.findById(depPlan.issueId) : null;
+            return {
+              ...dep,
+              issueNumber: depIssue?.number ?? null,
+            };
+          });
+          return NextResponse.json(enrichedDependencies);
         }
       } catch {
         // Continue searching

@@ -439,7 +439,13 @@ export async function handleLoadTaskSession(
     // Include conflict warnings if any were detected
     if (result.conflictWarnings && result.conflictWarnings.length > 0) {
       response.conflictWarnings = result.conflictWarnings;
-      response.conflictWarningMessage = formatConflictWarnings(result.conflictWarnings);
+      // Get issue number for #issue.task format in warning message
+      const taskPlan = ctx.planRepository.findById(result.task.planId);
+      const taskIssue = taskPlan ? ctx.issueRepository.findById(taskPlan.issueId) : null;
+      response.conflictWarningMessage = formatConflictWarnings(
+        result.conflictWarnings,
+        taskIssue?.number
+      );
     }
 
     // Sync to GitHub if task has GitHub sync enabled
@@ -497,25 +503,39 @@ export async function handleLoadTaskSession(
     }
   }
 
-  // Load dependency information
+  // Load dependency information with issue numbers
   if (task.dependsOn?.length) {
     const dependencies = ctx.taskRepository.findByIds(task.dependsOn);
-    response.dependencies = dependencies.map((d) => ({
-      id: d.id,
-      title: d.title,
-      status: d.status,
-    }));
+    response.dependencies = dependencies.map((d) => {
+      // Resolve issue number via plan
+      const depPlan = ctx.planRepository.findById(d.planId);
+      const depIssue = depPlan ? ctx.issueRepository.findById(depPlan.issueId) : null;
+      return {
+        id: d.id,
+        number: d.number,
+        title: d.title,
+        status: d.status,
+        issueNumber: depIssue?.number ?? null,
+      };
+    });
   }
 
   // Find tasks that depend on this one
   const allPlanTasks = ctx.taskRepository.findByPlanId(task.planId);
   const dependents = allPlanTasks.filter((t) => t.dependsOn?.includes(taskId));
   if (dependents.length > 0) {
-    response.dependents = dependents.map((d) => ({
-      id: d.id,
-      title: d.title,
-      status: d.status,
-    }));
+    response.dependents = dependents.map((d) => {
+      // Resolve issue number via plan
+      const depPlan = ctx.planRepository.findById(d.planId);
+      const depIssue = depPlan ? ctx.issueRepository.findById(depPlan.issueId) : null;
+      return {
+        id: d.id,
+        number: d.number,
+        title: d.title,
+        status: d.status,
+        issueNumber: depIssue?.number ?? null,
+      };
+    });
   }
 
   // Format task requirements prominently
@@ -528,12 +548,18 @@ export async function handleLoadTaskSession(
 
 /**
  * Format conflict warnings into a human-readable message
+ * @param warnings - The conflict warnings to format
+ * @param issueNumber - Optional issue number for #issue.task format
  */
-function formatConflictWarnings(warnings: ConflictWarning[]): string {
+function formatConflictWarnings(warnings: ConflictWarning[], issueNumber?: number | null): string {
   const lines = ["⚠️ Potential file conflicts detected:"];
   for (const warning of warnings) {
     const modifiers = warning.modifiedBy
-      .map((m) => `Task #${m.taskNumber} (${m.taskTitle})`)
+      .map((m) => {
+        const storyRef =
+          issueNumber != null ? `#${issueNumber}.${m.taskNumber}` : `#${m.taskNumber}`;
+        return `${storyRef} ${m.taskTitle}`;
+      })
       .join(", ");
     lines.push(`  - ${warning.filePath} was modified by: ${modifiers}`);
   }
@@ -1185,7 +1211,10 @@ export function handleCheckTaskConflicts(
   };
 
   if (result.hasConflicts) {
-    response.warningMessage = formatConflictWarnings(result.warnings);
+    // Get issue number for #issue.task format in warning message
+    const taskPlan = ctx.planRepository.findById(task.planId);
+    const taskIssue = taskPlan ? ctx.issueRepository.findById(taskPlan.issueId) : null;
+    response.warningMessage = formatConflictWarnings(result.warnings, taskIssue?.number);
   } else {
     response.message = "No potential conflicts detected with prior tasks";
   }
