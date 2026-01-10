@@ -47,6 +47,80 @@ This indicates the MCP server is connected to the wrong database. **Do NOT work 
 
 > "I'll update the plan with those changes."
 
+## ⚠️ TASK DEPENDENCIES - READ THIS FIRST
+
+> **Dependencies are the MOST IMPORTANT part of a plan.** Wrong dependencies cause workers to pick up tasks before prerequisites complete, leading to broken builds and wasted effort. **You MUST analyze and set dependencies correctly.**
+
+### The Golden Rule
+
+**`dependsOn: []` (empty array) means "can run in parallel with everything else".**
+
+If a task needs another task to complete first, you MUST add `dependsOn: ["other-task-id"]`. There is no implicit ordering - only explicit dependencies control task sequencing.
+
+### Why Dependencies Matter
+
+| System Behavior      | Controlled By Dependencies                                 |
+| -------------------- | ---------------------------------------------------------- |
+| Task ordering        | Tasks with unmet dependencies stay in BACKLOG              |
+| Worker dispatch      | Only tasks with all dependencies COMPLETED become READY    |
+| Parallel work safety | Independent tasks (no dependencies) can run simultaneously |
+
+### Dependency Analysis Checklist (REQUIRED)
+
+Before writing ANY tasks, answer these questions:
+
+| Question | If Yes → Action |
+|----------|-----------------|
+| Does task B use code/tables/APIs created by task A? | B depends on A |
+| Does task B modify files that task A creates? | B depends on A |
+| Would task B fail to compile/run if task A isn't done? | B depends on A |
+| Can these tasks be developed by different people simultaneously without conflicts? | No dependency needed |
+
+### Common Dependency Patterns
+
+| Pattern | Tasks | Dependencies |
+|---------|-------|--------------|
+| DB → API → UI | schema, api, ui | api→schema, ui→api |
+| Core → Extensions | core, ext1, ext2 | ext1→core, ext2→core |
+| Parallel features | auth, search | none (independent) |
+| Validation depends on types | types-db, settings-validation | settings-validation→types-db |
+
+### Anti-Pattern: Missing Dependencies
+
+```json
+{
+  "tasks": [
+    { "id": "schema", "title": "Add database schema", "type": "TASK" },
+    { "id": "api", "title": "Implement API endpoints", "type": "FEATURE" }, // ❌ WRONG!
+    { "id": "ui", "title": "Build UI", "type": "FEATURE" } // ❌ WRONG!
+  ]
+}
+```
+
+**What happens:** All three tasks become READY simultaneously. Worker starts `api` before `schema` is done → build fails.
+
+**Correct version:**
+```json
+{
+  "tasks": [
+    { "id": "schema", "title": "Add database schema", "type": "TASK" },
+    { "id": "api", "title": "Implement API endpoints", "type": "FEATURE", "dependsOn": ["schema"] },
+    { "id": "ui", "title": "Build UI", "type": "FEATURE", "dependsOn": ["api"] }
+  ]
+}
+```
+
+### Dependency Verification (REQUIRED before generate_plan)
+
+Before calling `generate_plan`, verify:
+
+- [ ] Every task has been analyzed for dependencies
+- [ ] Tasks that use outputs from other tasks have `dependsOn` set
+- [ ] Only truly independent tasks have empty `dependsOn` arrays
+- [ ] The dependency graph makes sense (no task can start before its prerequisites)
+
+---
+
 ## Core Philosophy: Tasks as Deployable Units
 
 **A task is NOT a small implementation step. A task is a COMMITABLE, DEPLOYABLE UNIT OF WORK.**
@@ -75,45 +149,6 @@ Ask yourself: "Would I commit and deploy this alone?"
 - Database migrations + the code using them = ONE task
 - API + validation + error handling + tests = ONE task (if reasonably sized)
 
-## Task Dependencies (CRITICAL)
-
-> **⚠️ WARNING:** Before generating a plan, **always analyze task relationships** and define dependencies explicitly. Empty `dependsOn` arrays when tasks have sequential relationships lead to:
->
-> - Workers picking up tasks before prerequisites complete
-> - Merge conflicts from parallel work on dependent code
-> - Broken builds when dependent tasks merge out of order
-
-### Why Dependencies Matter
-
-| System Behavior      | Controlled By Dependencies                                 |
-| -------------------- | ---------------------------------------------------------- |
-| Task ordering        | Tasks with unmet dependencies stay in BACKLOG              |
-| Worker dispatch      | Only tasks with all dependencies COMPLETED become READY    |
-| Parallel work safety | Independent tasks (no dependencies) can run simultaneously |
-
-### Dependency Rules
-
-1. **Analyze relationships FIRST** - Before writing tasks, map out which tasks depend on others
-2. **Define `dependsOn` explicitly** - If task B requires task A to complete first, add `dependsOn: ["a"]`
-3. **Never leave dependencies empty when sequential** - Empty arrays mean "can run in parallel"
-4. **Use placeholder IDs** - Reference tasks by their short ID (e.g., `"db"`, `"api"`)
-
-See "Task IDs and Dependencies" section below for syntax examples.
-
-### Anti-Pattern: Missing Dependencies
-
-```json
-{
-  "tasks": [
-    { "id": "schema", "title": "Add database schema", "type": "TASK" },
-    { "id": "api", "title": "Implement API endpoints", "type": "FEATURE" }, // ❌ Missing dependsOn!
-    { "id": "ui", "title": "Build UI", "type": "FEATURE" } // ❌ Missing dependsOn!
-  ]
-}
-```
-
-**Problem:** All three tasks become READY simultaneously. Workers may start `api` before `schema` is done, causing build failures.
-
 ## Information Flow from manage-issue
 
 When chained from `manage-issue`, you may receive additional context:
@@ -130,11 +165,9 @@ If no context was passed, make reasonable decisions based on the codebase patter
 
 ## Markdown Formatting for Plans
 
-The plan summary and approach fields support **GitHub Flavored Markdown**. Use rich formatting to make plans clear and scannable:
+Plan summary and approach fields support **GitHub Flavored Markdown**:
 
-**Available formatting:**
-
-- **Tables** for comparisons, mappings, or structured data: `| Header | Header |`
+- **Tables** for comparisons, mappings, structured data: `| Header | Header |`
 - **Task lists** for checklists: `- [x] done` / `- [ ] pending`
 - **Strikethrough** for deprecated/removed items: `~~old approach~~`
 - **Code blocks** with syntax highlighting: ` ```typescript `
@@ -162,7 +195,7 @@ The plan summary and approach fields support **GitHub Flavored Markdown**. Use r
 We'll use passport.js for OAuth handling...
 ```
 
-Don't overuse formatting—clarity beats decoration. Use visuals when they genuinely help communicate the plan structure.
+Clarity beats decoration - use visuals when they genuinely help.
 
 ## Plan Completeness (Session Continuity)
 
@@ -333,9 +366,8 @@ Add unit tests to src/__tests__/auth/ following existing test patterns.
    - Call `list_types` to get the valid type list
    - This returns all available types with their descriptions and GitHub label mappings
    - You MUST use types from this list when defining tasks - **invalid types will be rejected**
-   - Store this information for step 7
 
-2. **Get Task Templates (RECOMMENDED):**
+2. **Get Task Templates (REQUIRED):**
    - Call `list_templates(category: 'task')` to see available task templates
    - Optionally call `get_template(filename, category: 'task')` to see the structure
    - Use templates to guide story format for description and acceptanceCriteria
@@ -344,7 +376,7 @@ Add unit tests to src/__tests__/auth/ following existing test patterns.
    - Call `get_issue` with the issue number
    - Read the issue title, description, and acceptance criteria
    - Note any implementation context passed from manage-issue
-   - **Check the issue type** - if it's a BUG or SPIKE, use the single-task approach (see "Bug Issues" and "SPIKE Issues" sections below)
+   - **Check the issue type** - if it's a BUG or SPIKE, use the single-task approach (see below)
 
 4. **For BUG or SPIKE Issues - Use Single-Task Approach:**
    - **BUG**: Skip multi-task planning entirely
@@ -355,45 +387,83 @@ Add unit tests to src/__tests__/auth/ following existing test patterns.
      - Generate ONE task: "Spike: [spike title]"
      - Include research goals and questions in description
      - Set complexity to LOW
-   - Proceed to step 8 (Generate Plan)
+   - Skip to step 9 (Generate Plan)
 
-5. **Analyze Scope and Complexity (non-bug/spike issues):**
+5. **Analyze Scope and Design Tasks:**
    - Consider what files/components will be touched
-   - Identify natural boundaries (different subsystems, different APIs)
+   - Identify natural task boundaries (different subsystems, different APIs)
    - Incorporate any technology choices from the context
    - Estimate if this is a 1-task or multi-task issue
+   - Design tasks as deployable units (see Core Philosophy section)
 
-6. **Design Tasks as Deployable Units:**
    For each potential task, ask:
    - Can this be deployed independently without breaking prod?
    - Does it include all necessary tests?
    - Would this make sense as a single commit message?
    - Is anything missing that would cause issues if deployed?
 
-7. **Write Clear Task Definitions:**
+   Estimate complexity: 1 task = LOW, 2-3 = MEDIUM, 4-5 = HIGH, 5+ = VERY_HIGH
+
+6. **⚠️ ANALYZE DEPENDENCIES (CRITICAL):**
+
+   **STOP and do this analysis before proceeding:**
+
+   For each pair of tasks, ask:
+   - Does task B use code/tables/APIs created by task A? → B depends on A
+   - Would task B fail to compile if task A isn't done? → B depends on A
+   - Can both tasks be worked on simultaneously without conflicts? → No dependency
+
+   **Write out your dependency analysis explicitly:**
+   ```
+   Dependency Analysis:
+   - Task "api" uses the schema from task "db" → api depends on db
+   - Task "validation" needs TypeService from task "types" → validation depends on types
+   - Tasks "templates" and "types" are independent → no dependency
+   ```
+
+   **If you skip this step, workers will pick up tasks in wrong order.**
+
+7. **Write Task Definitions:**
    Each task should have:
+   - **id**: Short placeholder (e.g., "db", "api", "auth")
    - **Title**: Verb phrase describing the deliverable (e.g., "Add user authentication with session management")
    - **Description**: Human-readable story format (syncs to GitHub) - what will be delivered
-   - **Type**: One of the valid types from step 1 (e.g., FEATURE, BUG, ENHANCEMENT, TASK)
+   - **Type**: One of the valid types from step 1 (e.g., FEATURE, BUG, ENHANCEMENT, TASK, SPIKE)
    - **Acceptance Criteria**: Verifiable outcomes for humans (syncs to GitHub)
-   - **Dependencies**: If this task requires another to complete first, add `dependsOn: ["other-task-id"]` (see "Task Dependencies" section)
-   - **Implementation Plan** (optional): Technical details for Claude execution (NOT synced to GitHub) - specific files, patterns, approach
+   - **Dependencies**: Array of task IDs this depends on (from step 6) - see "Task Dependencies" section
+   - **Implementation Plan** (optional): Technical details for Claude execution (NOT synced to GitHub)
 
-8. **Generate Plan:**
+   **Task ID Guidelines:**
+   - Use short, descriptive IDs: `"db"`, `"api"`, `"auth"`, `"tests"`
+   - Reference dependencies by their placeholder ID
+   - All `dependsOn` references must match an `id` in the tasks array
+   - For single-task plans, the ID can be anything (e.g., `"main"` or `"task1"`)
+
+8. **Verify Dependencies Before Generating:**
+
+   **Checklist (all must be true):**
+   - [ ] Every task analyzed for dependencies in step 6
+   - [ ] Tasks using other tasks' outputs have `dependsOn` set
+   - [ ] Only truly parallel tasks have empty `dependsOn`
+
+   **If any task should wait for another, it MUST have `dependsOn` set.**
+
+9. **Generate Plan:**
    - Call `generate_plan` with `issueNumber` (from step 3), summary, approach, and tasks
    - **Each task MUST include a `type` field** with a valid type from step 1
+   - **Each task MUST have `dependsOn`** - empty array `[]` only if truly independent
    - Include `implementationPlan` for tasks that need technical execution context
    - Use appropriate complexity estimate (LOW, MEDIUM, HIGH, VERY_HIGH)
    - **Tasks are created in PLANNED status** (no GitHub sync yet)
    - **Display the issue URL** from the `generate_plan` response (the `url` field)
 
-9. **Ask if User is Satisfied with the Plan (REQUIRED):**
-   - **NEVER automatically start work.** Always ask the user if they're satisfied with the plan first.
-   - Show the issue URL so the user can view the full details in the web UI
-   - Present the plan summary and ask: "Are you satisfied with this plan? Ready to start working on it?"
-   - Wait for explicit user approval before calling `move_issue_to_backlog`
+10. **Ask if User is Satisfied with the Plan (REQUIRED):**
+    - **NEVER automatically start work.** Always ask the user if they're satisfied with the plan first.
+    - Show the issue URL so the user can view the full details in the web UI
+    - Present the plan summary and ask: "Are you satisfied with this plan? Ready to start working on it?"
+    - Wait for explicit user approval before calling `move_issue_to_backlog`
 
-10. **Start Work on Confirmation:**
+11. **Start Work on Confirmation:**
     - Only after user confirms, call `move_issue_to_backlog` with the issue number
     - This transitions: Issue PLANNED → OPEN, Tasks PLANNED → BACKLOG
     - If GitHub sync is enabled, creates GitHub issues for each task (using story format, not implementationPlan)
@@ -613,41 +683,6 @@ If issue has no description/acceptance criteria:
 
 - Ask the user for more context before planning
 - Suggest updating the issue first with manage-issue
-
-## Task IDs and Dependencies
-
-When calling `generate_plan`, use **short placeholder IDs** for tasks instead of UUIDs. The tool generates real UUIDs internally.
-
-**Example with dependencies and types:**
-
-```json
-{
-  "tasks": [
-    { "id": "db", "title": "Set up database schema", "description": "...", "type": "TASK" },
-    {
-      "id": "api",
-      "title": "Add API endpoints",
-      "description": "...",
-      "type": "FEATURE",
-      "dependsOn": ["db"]
-    },
-    {
-      "id": "ui",
-      "title": "Build UI components",
-      "description": "...",
-      "type": "FEATURE",
-      "dependsOn": ["api"]
-    }
-  ]
-}
-```
-
-**Guidelines:**
-
-- Use short, descriptive IDs: `"db"`, `"api"`, `"auth"`, `"tests"`
-- Reference dependencies by their placeholder ID
-- All `dependsOn` references must match an `id` in the tasks array
-- For single-task plans, the ID can be anything (e.g., `"main"` or `"task1"`)
 
 ## Task Types (REQUIRED)
 
