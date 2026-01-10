@@ -136,24 +136,26 @@ test-e2e: build
 
 # Pre-push validation: runs all checks before pushing to remote
 # Fails fast on first error - no point continuing if typecheck fails
-# E2E tests are excluded (they use Claude CLI and cost money)
 prep:
 	@echo "🔍 Running pre-push validation..."
 	@echo ""
-	@echo "Step 1/5: Type checking..."
+	@echo "Step 1/6: Type checking..."
 	@pnpm typecheck
 	@echo ""
-	@echo "Step 2/5: Linting..."
+	@echo "Step 2/6: Linting..."
 	@pnpm lint
 	@echo ""
-	@echo "Step 3/5: Format checking..."
+	@echo "Step 3/6: Format checking..."
 	@pnpm format:check
 	@echo ""
-	@echo "Step 4/5: Unit tests..."
+	@echo "Step 4/6: Unit tests..."
 	@pnpm test
 	@echo ""
-	@echo "Step 5/5: Integration tests..."
+	@echo "Step 5/6: Integration tests..."
 	@pnpm test:integration
+	@echo ""
+	@echo "Step 6/6: E2E tests..."
+	@pnpm test:e2e
 	@echo ""
 	@echo "✅ All checks passed! Ready to push."
 

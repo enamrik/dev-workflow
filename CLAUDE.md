@@ -375,8 +375,7 @@ This command runs all validation checks in order with fail-fast behavior:
 3. Format checking (`pnpm format:check`)
 4. Unit tests (`pnpm test`)
 5. Integration tests (`pnpm test:integration`)
-
-E2E tests are excluded because they use the Claude CLI and cost money. Integration tests provide comprehensive coverage by testing real code with mocked external boundaries.
+6. E2E tests (`pnpm test:e2e`)
 
 ### Working in Worktrees
 
