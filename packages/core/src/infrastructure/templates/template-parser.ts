@@ -96,10 +96,30 @@ export class TemplateParser {
     const type = this.parseType(data["type"], filename);
     const priority = this.parsePriority(data["priority"], filename);
 
+    // Extract optional description field
+    const description = this.parseDescription(data["description"]);
+
     return {
       type,
       priority,
+      description,
     };
+  }
+
+  /**
+   * Parse optional description field
+   *
+   * @private
+   */
+  private parseDescription(value: unknown): string | undefined {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+    if (typeof value !== "string") {
+      // Ignore invalid description, just treat as undefined
+      return undefined;
+    }
+    return value.trim() || undefined;
   }
 
   /**

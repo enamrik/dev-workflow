@@ -195,6 +195,17 @@ export const issueToolDefinitions: ToolDefinition[] = [
           description:
             "Template category: 'issue' for issue templates (default), 'task' for task templates from .track/templates/tasks/",
         },
+        scope: {
+          type: "string",
+          enum: ["global", "local", "all"],
+          description:
+            "Filter by template scope: 'global' for ~/.track/templates/, 'local' for .track/templates/, 'all' for both (default: all)",
+        },
+        type: {
+          type: "string",
+          description:
+            "Filter by template type (e.g., 'FEATURE', 'BUG'). Returns only templates of the specified type.",
+        },
       },
     },
   },
@@ -845,44 +856,60 @@ export function handleRestoreIssue(
 type TemplateCategory = "issue" | "task";
 
 /**
+ * Template scope type
+ */
+type TemplateScope = "global" | "local" | "all";
+
+/**
  * Handle list_templates tool call
  */
 export async function handleListTemplates(
   ctx: IssueToolContext,
-  args: { category?: TemplateCategory }
+  args: { category?: TemplateCategory; scope?: TemplateScope; type?: string }
 ): Promise<ToolResponse> {
   const category = args.category ?? "issue";
+  const scope = args.scope ?? "all";
+  const typeFilter = args.type?.toUpperCase();
 
   try {
-    if (category === "task") {
-      const templates = await ctx.templateService.getAvailableTaskTemplates();
-      const discovery = await ctx.templateService.discoverTaskTemplates();
+    // Get templates based on category
+    const discovery =
+      category === "task"
+        ? await ctx.templateService.discoverTaskTemplates()
+        : await ctx.templateService.discoverTemplates();
 
-      return successResponse({
-        category: "task",
-        available: templates,
-        details: discovery.merged.map((t) => ({
-          filename: t.filename,
-          type: t.metadata.type,
-          priority: t.metadata.priority,
-          source: t.isUserDefined ? "user" : "default",
-        })),
-      });
+    // Select templates based on scope
+    let templates;
+    if (scope === "global") {
+      templates = discovery.defaultTemplates;
+    } else if (scope === "local") {
+      templates = discovery.userTemplates;
+    } else {
+      templates = discovery.merged;
     }
 
-    // Default: issue templates
-    const templates = await ctx.templateService.getAvailableTemplates();
-    const discovery = await ctx.templateService.discoverTemplates();
+    // Apply type filter if specified
+    if (typeFilter) {
+      templates = templates.filter((t) => t.metadata.type === typeFilter);
+    }
+
+    // Map to response format with description and scope
+    const details = templates.map((t) => ({
+      filename: t.filename,
+      type: t.metadata.type,
+      priority: t.metadata.priority,
+      description: t.metadata.description,
+      scope: t.isUserDefined ? ("local" as const) : ("global" as const),
+      // Keep 'source' for backward compatibility
+      source: t.isUserDefined ? ("user" as const) : ("default" as const),
+    }));
 
     return successResponse({
-      category: "issue",
-      available: templates,
-      details: discovery.merged.map((t) => ({
-        filename: t.filename,
-        type: t.metadata.type,
-        priority: t.metadata.priority,
-        source: t.isUserDefined ? "user" : "default",
-      })),
+      category,
+      scope,
+      typeFilter: typeFilter ?? null,
+      available: templates.map((t) => t.filename),
+      details,
     });
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));
@@ -912,10 +939,12 @@ export async function handleGetTemplate(
       category,
       filename: result.template.filename,
       source: result.source,
+      scope: result.template.isUserDefined ? "local" : "global",
       content: result.template.rawContent,
       metadata: {
         type: result.template.metadata.type,
         priority: result.template.metadata.priority,
+        description: result.template.metadata.description,
       },
       isUserDefined: result.template.isUserDefined,
     });

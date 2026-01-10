@@ -1,6 +1,7 @@
 ---
 type: FEATURE
 priority: MEDIUM
+description: Task for implementing new functionality
 labels: []
 ---
 

@@ -1,6 +1,7 @@
 ---
 type: FEATURE
 priority: MEDIUM
+description: New functionality that doesn't exist yet
 labels: []
 ---
 
