@@ -23,7 +23,7 @@ export function resolveGlobalTrackDir(): string {
  * - Single global database: ~/.track/workflow.db (all projects share one DB)
  * - Per-project worktrees: ~/.track/<project-id>/worktrees/
  * - Local templates: ./.track/templates/issues/ and ./.track/templates/tasks/
- * - Global fallback templates: ~/.track/config/templates/issues/ and ~/.track/config/templates/tasks/
+ * - Global fallback templates: ~/.track/templates/issues/ and ~/.track/templates/tasks/
  *
  * The base directory can be overridden by setting the TRACK_DIR environment
  * variable. This is useful for testing in worktrees without affecting
@@ -169,31 +169,32 @@ export class TrackDirectoryResolver {
   }
 
   // ============================================================
-  // Global ~/.track/config/ paths (fallback)
+  // Global ~/.track/ paths (fallback)
   // ============================================================
 
   /**
-   * Get the global config directory path.
-   * Returns: ~/.track/config/
-   */
-  getGlobalConfigDirectory(): string {
-    return path.join(this.getGlobalTrackDirectory(), "config");
-  }
-
-  /**
    * Get the global issue templates directory path (fallback).
-   * Returns: ~/.track/config/templates/issues/
+   * Returns: ~/.track/templates/issues/
    */
   getGlobalIssueTemplatesPath(): string {
-    return path.join(this.getGlobalConfigDirectory(), "templates", "issues");
+    return path.join(this.getGlobalTrackDirectory(), "templates", "issues");
   }
 
   /**
    * Get the global task templates directory path (fallback).
-   * Returns: ~/.track/config/templates/tasks/
+   * Returns: ~/.track/templates/tasks/
    */
   getGlobalTaskTemplatesPath(): string {
-    return path.join(this.getGlobalConfigDirectory(), "templates", "tasks");
+    return path.join(this.getGlobalTrackDirectory(), "templates", "tasks");
+  }
+
+  /**
+   * Get the old global config directory path (for migration).
+   * Returns: ~/.track/config/
+   * @deprecated Use getGlobalIssueTemplatesPath() and getGlobalTaskTemplatesPath() instead
+   */
+  getOldGlobalConfigDirectory(): string {
+    return path.join(this.getGlobalTrackDirectory(), "config");
   }
 }
 

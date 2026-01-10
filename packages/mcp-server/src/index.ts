@@ -29,6 +29,7 @@ import {
   handleCreateTemplate,
   handleUpdateTemplate,
   handleDeleteTemplate,
+  handleCopyTemplate,
   handleUpdateIssue,
   handleCloseIssue,
   handleChangeIssueType,
@@ -171,6 +172,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     }
     if (name === "delete_template") {
       return await handleDeleteTemplate(context.issueToolContext, a);
+    }
+    if (name === "copy_template") {
+      return await handleCopyTemplate(context.issueToolContext, a);
     }
     if (name === "update_issue") {
       return await handleUpdateIssue(context.issueToolContext, a);

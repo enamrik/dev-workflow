@@ -7,14 +7,14 @@
  * Template Resolution Order (for issues):
  * 1. Local per-type: ./.track/templates/issues/<type>.md
  * 2. Local all.md: ./.track/templates/issues/all.md
- * 3. Global per-type: ~/.track/config/templates/issues/<type>.md
- * 4. Global all.md: ~/.track/config/templates/issues/all.md
+ * 3. Global per-type: ~/.track/templates/issues/<type>.md
+ * 4. Global all.md: ~/.track/templates/issues/all.md
  *
  * Template Resolution Order (for tasks):
  * 1. Local per-type: ./.track/templates/tasks/<type>.md
  * 2. Local all.md: ./.track/templates/tasks/all.md
- * 3. Global per-type: ~/.track/config/templates/tasks/<type>.md
- * 4. Global all.md: ~/.track/config/templates/tasks/all.md
+ * 3. Global per-type: ~/.track/templates/tasks/<type>.md
+ * 4. Global all.md: ~/.track/templates/tasks/all.md
  */
 
 import * as path from "node:path";
@@ -22,6 +22,18 @@ import type { Template, TemplateDiscovery } from "../../domain/template.js";
 import type { FileSystem } from "../file-system/file-system.js";
 import { TemplateParser, TemplateParseError } from "./template-parser.js";
 import type { TypeService } from "../types/type-service.js";
+
+/**
+ * Template scope - determines where templates are stored.
+ * - local: Project-specific templates in ./.track/templates/
+ * - global: User-level templates in ~/.track/templates/
+ */
+export type TemplateScope = "local" | "global";
+
+/**
+ * Template category - determines issue vs task templates.
+ */
+export type TemplateCategory = "issue" | "task";
 
 /**
  * Template service error
@@ -46,9 +58,9 @@ export interface TemplateServiceConfig {
   localIssueTemplatesPath: string;
   /** Local task templates path: ./.track/templates/tasks/ */
   localTaskTemplatesPath: string;
-  /** Global issue templates path (fallback): ~/.track/config/templates/issues/ */
+  /** Global issue templates path (fallback): ~/.track/templates/issues/ */
   globalIssueTemplatesPath: string;
-  /** Global task templates path (fallback): ~/.track/config/templates/tasks/ */
+  /** Global task templates path (fallback): ~/.track/templates/tasks/ */
   globalTaskTemplatesPath: string;
 }
 
@@ -426,20 +438,41 @@ export class TemplateService {
    * Get a single template with source information
    *
    * @param filename - Template filename (e.g., "feature.md")
+   * @param category - Template category: "issue" or "task" (default: "issue")
+   * @param scope - Optional scope to filter by: "local" or "global". If not specified, searches both.
    * @returns Template with source info, or null if not found
    */
   async getTemplate(
-    filename: string
+    filename: string,
+    category: TemplateCategory = "issue",
+    scope?: TemplateScope
   ): Promise<{ template: Template; source: "user" | "default" } | null> {
-    const discovery = await this.discoverTemplates();
+    const discovery =
+      category === "task" ? await this.discoverTaskTemplates() : await this.discoverTemplates();
 
-    // Check local (user) templates first
+    // If scope is specified, only search that scope
+    if (scope === "local") {
+      const userTemplate = discovery.userTemplates.find((t) => t.filename === filename);
+      if (userTemplate) {
+        return { template: userTemplate, source: "user" };
+      }
+      return null;
+    }
+
+    if (scope === "global") {
+      const defaultTemplate = discovery.defaultTemplates.find((t) => t.filename === filename);
+      if (defaultTemplate) {
+        return { template: defaultTemplate, source: "default" };
+      }
+      return null;
+    }
+
+    // No scope specified - search local first, then global
     const userTemplate = discovery.userTemplates.find((t) => t.filename === filename);
     if (userTemplate) {
       return { template: userTemplate, source: "user" };
     }
 
-    // Check global (default) templates
     const defaultTemplate = discovery.defaultTemplates.find((t) => t.filename === filename);
     if (defaultTemplate) {
       return { template: defaultTemplate, source: "default" };
@@ -452,61 +485,61 @@ export class TemplateService {
    * Get a single task template with source information
    *
    * @param filename - Template filename (e.g., "feature.md")
+   * @param scope - Optional scope to filter by: "local" or "global". If not specified, searches both.
    * @returns Template with source info, or null if not found
    */
   async getTaskTemplateInfo(
-    filename: string
+    filename: string,
+    scope?: TemplateScope
   ): Promise<{ template: Template; source: "user" | "default" } | null> {
-    const discovery = await this.discoverTaskTemplates();
-
-    // Check local (user) templates first
-    const userTemplate = discovery.userTemplates.find((t) => t.filename === filename);
-    if (userTemplate) {
-      return { template: userTemplate, source: "user" };
-    }
-
-    // Check global (default) templates
-    const defaultTemplate = discovery.defaultTemplates.find((t) => t.filename === filename);
-    if (defaultTemplate) {
-      return { template: defaultTemplate, source: "default" };
-    }
-
-    return null;
+    return this.getTemplate(filename, "task", scope);
   }
 
   /**
-   * Create a new user template
+   * Create a new template
    *
    * @param filename - Template filename (must end with .md)
    * @param content - Template content (markdown with YAML frontmatter)
+   * @param category - Template category: "issue" or "task" (default: "issue")
+   * @param scope - Template scope: "local" or "global" (default: "local")
    * @returns The created Template
    * @throws TemplateServiceError if template already exists or creation fails
    */
-  async createTemplate(filename: string, content: string): Promise<Template> {
+  async createTemplate(
+    filename: string,
+    content: string,
+    category: TemplateCategory = "issue",
+    scope: TemplateScope = "local"
+  ): Promise<Template> {
     if (!filename.endsWith(".md")) {
       throw new TemplateServiceError("Template filename must end with .md");
     }
 
-    // Check if user template already exists
-    const existing = await this.getTemplate(filename);
-    if (existing?.source === "user") {
+    // Check if template already exists at the target scope
+    const existing = await this.getTemplate(filename, category, scope);
+    if (existing) {
+      const scopeLabel = scope === "local" ? "Local" : "Global";
       throw new TemplateServiceError(
-        `User template '${filename}' already exists. Use updateTemplate to modify it.`
+        `${scopeLabel} ${category} template '${filename}' already exists. Use updateTemplate to modify it.`
       );
     }
 
     try {
-      // Ensure user templates directory exists
-      const dirExists = await this.fileSystem.exists(this.config.localIssueTemplatesPath);
+      // Determine the target directory based on scope and category
+      const targetDir = this.getTemplateDirectory(category, scope);
+
+      // Ensure templates directory exists
+      const dirExists = await this.fileSystem.exists(targetDir);
       if (!dirExists) {
-        await this.fileSystem.mkdir(this.config.localIssueTemplatesPath, { recursive: true });
+        await this.fileSystem.mkdir(targetDir, { recursive: true });
       }
 
       // Validate content by parsing it
-      const template = this.parser.parse(filename, content, true);
+      const isUserDefined = scope === "local";
+      const template = this.parser.parse(filename, content, isUserDefined);
 
       // Write the file
-      const filePath = path.join(this.config.localIssueTemplatesPath, filename);
+      const filePath = path.join(targetDir, filename);
       await this.fileSystem.writeFile(filePath, content);
 
       // Clear cache to reflect new template
@@ -525,32 +558,50 @@ export class TemplateService {
   }
 
   /**
-   * Update an existing user template
+   * Get the template directory path for a given category and scope
+   */
+  private getTemplateDirectory(category: TemplateCategory, scope: TemplateScope): string {
+    if (scope === "local") {
+      return category === "task"
+        ? this.config.localTaskTemplatesPath
+        : this.config.localIssueTemplatesPath;
+    }
+    return category === "task"
+      ? this.config.globalTaskTemplatesPath
+      : this.config.globalIssueTemplatesPath;
+  }
+
+  /**
+   * Update an existing template
    *
    * @param filename - Template filename
    * @param content - New template content
+   * @param category - Template category: "issue" or "task" (default: "issue")
+   * @param scope - Template scope: "local" or "global" (default: "local")
    * @returns The updated Template
-   * @throws TemplateServiceError if template doesn't exist or is a default template
+   * @throws TemplateServiceError if template doesn't exist at the specified scope
    */
-  async updateTemplate(filename: string, content: string): Promise<Template> {
-    const existing = await this.getTemplate(filename);
+  async updateTemplate(
+    filename: string,
+    content: string,
+    category: TemplateCategory = "issue",
+    scope: TemplateScope = "local"
+  ): Promise<Template> {
+    const existing = await this.getTemplate(filename, category, scope);
 
     if (!existing) {
-      throw new TemplateServiceError(`Template '${filename}' not found`);
-    }
-
-    if (existing.source === "default") {
-      throw new TemplateServiceError(
-        `Cannot modify default template '${filename}'. Create a user template with the same name to override it.`
-      );
+      const scopeLabel = scope === "local" ? "Local" : "Global";
+      throw new TemplateServiceError(`${scopeLabel} ${category} template '${filename}' not found`);
     }
 
     try {
       // Validate content by parsing it
-      const template = this.parser.parse(filename, content, true);
+      const isUserDefined = scope === "local";
+      const template = this.parser.parse(filename, content, isUserDefined);
 
-      // Write the file
-      const filePath = path.join(this.config.localIssueTemplatesPath, filename);
+      // Get target directory and write the file
+      const targetDir = this.getTemplateDirectory(category, scope);
+      const filePath = path.join(targetDir, filename);
       await this.fileSystem.writeFile(filePath, content);
 
       // Clear cache to reflect changes
@@ -569,26 +620,28 @@ export class TemplateService {
   }
 
   /**
-   * Delete a user template
+   * Delete a template
    *
    * @param filename - Template filename
-   * @throws TemplateServiceError if template doesn't exist or is a default template
+   * @param category - Template category: "issue" or "task" (default: "issue")
+   * @param scope - Template scope: "local" or "global" (default: "local")
+   * @throws TemplateServiceError if template doesn't exist at the specified scope
    */
-  async deleteTemplate(filename: string): Promise<void> {
-    const existing = await this.getTemplate(filename);
+  async deleteTemplate(
+    filename: string,
+    category: TemplateCategory = "issue",
+    scope: TemplateScope = "local"
+  ): Promise<void> {
+    const existing = await this.getTemplate(filename, category, scope);
 
     if (!existing) {
-      throw new TemplateServiceError(`Template '${filename}' not found`);
-    }
-
-    if (existing.source === "default") {
-      throw new TemplateServiceError(
-        `Cannot delete default template '${filename}'. Default templates are part of the package.`
-      );
+      const scopeLabel = scope === "local" ? "Local" : "Global";
+      throw new TemplateServiceError(`${scopeLabel} ${category} template '${filename}' not found`);
     }
 
     try {
-      const filePath = path.join(this.config.localIssueTemplatesPath, filename);
+      const targetDir = this.getTemplateDirectory(category, scope);
+      const filePath = path.join(targetDir, filename);
       await this.fileSystem.unlink(filePath);
 
       // Clear cache to reflect deletion
@@ -599,6 +652,50 @@ export class TemplateService {
       }
       throw new TemplateServiceError(`Failed to delete template '${filename}'`, error);
     }
+  }
+
+  /**
+   * Copy a template between scopes
+   *
+   * Copies a template from one scope to another (e.g., global to local for customization).
+   *
+   * @param filename - Template filename
+   * @param category - Template category: "issue" or "task"
+   * @param fromScope - Source scope: "local" or "global"
+   * @param toScope - Destination scope: "local" or "global"
+   * @returns The copied Template
+   * @throws TemplateServiceError if source doesn't exist or destination already exists
+   */
+  async copyTemplate(
+    filename: string,
+    category: TemplateCategory,
+    fromScope: TemplateScope,
+    toScope: TemplateScope
+  ): Promise<Template> {
+    if (fromScope === toScope) {
+      throw new TemplateServiceError(
+        `Cannot copy template to the same scope. Use updateTemplate to modify in place.`
+      );
+    }
+
+    // Get source template
+    const source = await this.getTemplate(filename, category, fromScope);
+    if (!source) {
+      const scopeLabel = fromScope === "local" ? "Local" : "Global";
+      throw new TemplateServiceError(`${scopeLabel} ${category} template '${filename}' not found`);
+    }
+
+    // Check destination doesn't already exist
+    const destExists = await this.getTemplate(filename, category, toScope);
+    if (destExists) {
+      const scopeLabel = toScope === "local" ? "Local" : "Global";
+      throw new TemplateServiceError(
+        `${scopeLabel} ${category} template '${filename}' already exists`
+      );
+    }
+
+    // Create template at destination using the raw content
+    return this.createTemplate(filename, source.template.rawContent, category, toScope);
   }
 
   /**

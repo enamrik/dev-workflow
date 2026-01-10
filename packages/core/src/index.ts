@@ -171,6 +171,8 @@ export {
   TemplateService,
   TemplateServiceError,
   type TemplateServiceConfig,
+  type TemplateScope,
+  type TemplateCategory,
 } from "./infrastructure/templates/template-service.js";
 
 // Infrastructure - Types
