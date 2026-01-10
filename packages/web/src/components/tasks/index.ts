@@ -9,3 +9,4 @@ export { CopyTaskCommand } from "./CopyTaskCommand";
 export { TaskMetadataPanel } from "./TaskMetadataPanel";
 export { TaskActions } from "./TaskActions";
 export { WorkerBadge } from "./WorkerBadge";
+export { TaskTransitionButton } from "./TaskTransitionButton";

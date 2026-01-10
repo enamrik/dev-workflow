@@ -4,7 +4,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { Badge, Modal, Markdown, Tooltip, GitHubLink } from "../ui";
-import { TaskTiming, TaskMetadataPanel, TaskActions, WorkerBadge } from "../tasks";
+import {
+  TaskTiming,
+  TaskMetadataPanel,
+  TaskActions,
+  WorkerBadge,
+  TaskTransitionButton,
+} from "../tasks";
 import type { Task, ComputedIssueStatus } from "@/lib/types";
 
 type IssueType = "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK" | "SPIKE";
@@ -28,6 +34,8 @@ interface KanbanCardProps {
   projectId?: string;
   projectName?: string;
   projectSlug?: string;
+  /** Called when a task status transition completes, allowing parent to refresh data */
+  onTransitionComplete?: () => void;
 }
 
 /**
@@ -264,6 +272,8 @@ function CardContent({
   issueComputedStatus,
   projectId,
   projectName,
+  projectSlug,
+  onTransitionComplete,
 }: {
   task: Task;
   issueNumber: number;
@@ -273,6 +283,8 @@ function CardContent({
   issueComputedStatus: ComputedIssueStatus;
   projectId?: string;
   projectName?: string;
+  projectSlug?: string;
+  onTransitionComplete?: () => void;
 }) {
   const taskDisplay = formatTaskDisplay(issueNumber, task);
   const tooltipContent = getTaskTooltip(issueType, issueNumber, issueTitle);
@@ -313,6 +325,17 @@ function CardContent({
       <div className="text-xs text-gray-600 mb-2 break-words">
         {truncate(task.description, 100)}
       </div>
+
+      {/* Status transition button - prominent placement */}
+      {projectSlug && (
+        <div className="mb-2">
+          <TaskTransitionButton
+            task={task}
+            projectSlug={projectSlug}
+            onTransitionComplete={onTransitionComplete}
+          />
+        </div>
+      )}
 
       {/* Footer: project and metadata */}
       <div className="flex items-center justify-between text-xs">
@@ -371,6 +394,7 @@ export function KanbanCard({
   projectId,
   projectName,
   projectSlug,
+  onTransitionComplete,
 }: KanbanCardProps) {
   const issueUrl = projectSlug
     ? `/projects/${encodeURIComponent(projectSlug)}/issues/${issueNumber}`
@@ -388,6 +412,8 @@ export function KanbanCard({
           issueComputedStatus={issueComputedStatus}
           projectId={projectId}
           projectName={projectName}
+          projectSlug={projectSlug}
+          onTransitionComplete={onTransitionComplete}
         />
       }
       maxHeight={600}
