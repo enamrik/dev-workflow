@@ -57,6 +57,16 @@ vi.mock("../hooks", () => ({
     error: null,
     refetch: vi.fn(),
   }),
+  useWorkerData: () => ({
+    data: {
+      workers: [],
+      queue: [],
+      stats: { total: 0, unclaimed: 0, claimed: 0, stale: 0 },
+    },
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
   useUrlState: () => {
     // Re-use the mock localStorage state for useUrlState
     const stored = localStorageMock.getItem(URL_STATE_KEY);

@@ -3,7 +3,12 @@
 import { Suspense, useState, useCallback } from "react";
 import { useTasks, useUrlState } from "@/hooks";
 import { useProjectContext } from "@/contexts";
-import { KanbanBoard, WorkQueueRibbon, IssuePreviewPanel } from "@/components/kanban";
+import {
+  KanbanBoard,
+  WorkQueueRibbon,
+  IssuePreviewPanel,
+  WorkerStatusSummary,
+} from "@/components/kanban";
 import {
   Card,
   CardTitle,
@@ -106,9 +111,12 @@ function BoardPageContent() {
         <div className="flex items-start justify-between mb-4">
           <div>
             <CardTitle>Task Board</CardTitle>
-            <span className="text-gray-500 text-sm">
-              {activeTasks} active task{activeTasks !== 1 ? "s" : ""}
-            </span>
+            <div className="flex items-center gap-4">
+              <span className="text-gray-500 text-sm">
+                {activeTasks} active task{activeTasks !== 1 ? "s" : ""}
+              </span>
+              <WorkerStatusSummary />
+            </div>
           </div>
           <Dropdown
             trigger={
