@@ -45,11 +45,18 @@ export class DependencyNotSatisfiedError extends Error {
     public readonly taskTitle: string,
     public readonly blockingTasks: Array<{
       id: string;
+      number: number;
       title: string;
       status: string;
+      issueNumber?: number | null;
     }>
   ) {
-    const blocking = blockingTasks.map((t) => `"${t.title}" (${t.status})`).join(", ");
+    const blocking = blockingTasks
+      .map((t) => {
+        const storyRef = t.issueNumber != null ? `#${t.issueNumber}.${t.number}` : `#${t.number}`;
+        return `${storyRef} "${t.title}" (${t.status})`;
+      })
+      .join(", ");
     super(`Cannot start task "${taskTitle}": blocked by unsatisfied dependencies: ${blocking}`);
     this.name = "DependencyNotSatisfiedError";
   }

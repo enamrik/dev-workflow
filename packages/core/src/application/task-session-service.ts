@@ -138,11 +138,20 @@ export class TaskSessionService {
       throw new DependencyNotSatisfiedError(
         taskId,
         task.title,
-        blockingTasks.map((t) => ({
-          id: t.id,
-          title: t.title,
-          status: t.status,
-        }))
+        blockingTasks.map((t) => {
+          // Resolve issue number for each blocking task
+          const blockingPlan = this.planRepository.findById(t.planId);
+          const blockingIssue = blockingPlan
+            ? this.issueRepository.findById(blockingPlan.issueId)
+            : null;
+          return {
+            id: t.id,
+            number: t.number,
+            title: t.title,
+            status: t.status,
+            issueNumber: blockingIssue?.number ?? null,
+          };
+        })
       );
     }
 
