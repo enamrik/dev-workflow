@@ -141,7 +141,7 @@ export class ClaudeWorkerService {
 
   /**
    * Update terminal title based on current state
-   * Format: worker | #issue.task title | status
+   * Format: worker | #issue.task [N/M] - title | status
    */
   private updateTitle(): void {
     let title: string;
@@ -151,9 +151,11 @@ export class ClaudeWorkerService {
     } else if (this.state.currentTaskId) {
       const task = this.taskRepository?.findById(this.state.currentTaskId);
       const issueNumber = this.getIssueNumber(this.state.currentTaskId);
+      const totalTasks = task ? this.getTotalTaskCount(task.planId) : null;
 
       if (issueNumber && task) {
-        title = `${this.state.workerName} | #${issueNumber}.${task.number} ${task.title} | ${task.status}`;
+        const taskPosition = totalTasks ? ` [${task.number}/${totalTasks}]` : "";
+        title = `${this.state.workerName} | #${issueNumber}.${task.number}${taskPosition} - ${task.title} | ${task.status}`;
       } else {
         title = `${this.state.workerName} | working...`;
       }
@@ -162,6 +164,17 @@ export class ClaudeWorkerService {
     }
 
     this.setTerminalTitle(title);
+  }
+
+  /**
+   * Get the total number of tasks for a plan
+   */
+  private getTotalTaskCount(planId: string): number | null {
+    if (!this.taskRepository) {
+      return null;
+    }
+    const tasks = this.taskRepository.findByPlanId(planId);
+    return tasks.length;
   }
 
   // ==========================================================================
