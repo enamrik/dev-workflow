@@ -88,6 +88,9 @@ import {
   // Type handlers
   typeToolDefinitions,
   handleListTypes,
+  handleCreateType,
+  handleUpdateType,
+  handleDeleteType,
   // Dispatch handlers (worker task assignment)
   dispatchToolDefinitions,
   handleDispatchTask,
@@ -318,6 +321,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     // Type tools
     if (name === "list_types") {
       return await handleListTypes(context.typeToolContext);
+    }
+    if (name === "create_type") {
+      return handleCreateType(context.typeToolContext, a);
+    }
+    if (name === "update_type") {
+      return handleUpdateType(context.typeToolContext, a);
+    }
+    if (name === "delete_type") {
+      return handleDeleteType(context.typeToolContext, a);
     }
 
     // Dispatch tools (worker task assignment)

@@ -13,6 +13,7 @@
     "build": "pnpm -r build",
     "dev": "pnpm -r --parallel dev",
     "test": "pnpm -r test",
+    "test:e2e": "pnpm -r --filter @dev-workflow/e2e test:e2e",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "clean": "pnpm -r clean && rm -rf node_modules",
     "typecheck": "pnpm -r typecheck",

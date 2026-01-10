@@ -254,6 +254,25 @@ export const dispatchQueue = pgTable("dispatch_queue", {
   createdAt: text("created_at").notNull(),
 });
 
+/**
+ * Types table schema (PostgreSQL)
+ *
+ * Global type definitions (not project-scoped).
+ * Stores available issue/task types like FEATURE, BUG, ENHANCEMENT, etc.
+ */
+export const types = pgTable("types", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  description: text("description").notNull(),
+  keywords: jsonb("keywords").$type<string[]>().notNull().default([]),
+  color: text("color"),
+  isDeleted: boolean("is_deleted").notNull().default(false),
+  deletedAt: text("deleted_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 // Type inference for SELECT operations
 export type IssueRow = typeof issues.$inferSelect;
 export type SnapshotRow = typeof snapshots.$inferSelect;
@@ -266,6 +285,7 @@ export type ProjectRow = typeof projects.$inferSelect;
 export type GlobalSettingsRow = typeof globalSettings.$inferSelect;
 export type WorkerRow = typeof workers.$inferSelect;
 export type DispatchQueueRow = typeof dispatchQueue.$inferSelect;
+export type TypeRow = typeof types.$inferSelect;
 
 // Type inference for INSERT operations
 export type NewIssue = typeof issues.$inferInsert;
@@ -279,3 +299,4 @@ export type NewProject = typeof projects.$inferInsert;
 export type NewGlobalSettings = typeof globalSettings.$inferInsert;
 export type NewWorker = typeof workers.$inferInsert;
 export type NewDispatchQueueEntry = typeof dispatchQueue.$inferInsert;
+export type NewType = typeof types.$inferInsert;

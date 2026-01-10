@@ -11,11 +11,10 @@ import {
   PlanningService,
   VersioningService,
   SqliteProjectRepository,
+  SqliteTypeRepository,
   TaskGitHubSyncService,
   TypeService,
-  type TypeServiceConfig,
   type ProjectManagementProvider,
-  NodeFileSystem,
 } from "@dev-workflow/core";
 import {
   handleGeneratePlan,
@@ -114,13 +113,9 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<PlanToolCont
     project.id
   );
 
-  // TypeService for type validation
-  const fileSystem = new NodeFileSystem();
-  const typeConfig: TypeServiceConfig = {
-    localTypesPath: "/tmp/test-types-local.md",
-    globalTypesPath: "/tmp/test-types-global.md",
-  };
-  const typeService = new TypeService(fileSystem, typeConfig);
+  // TypeService for type validation (backed by database)
+  const typeRepository = new SqliteTypeRepository(db);
+  const typeService = new TypeService(typeRepository);
 
   return {
     project,

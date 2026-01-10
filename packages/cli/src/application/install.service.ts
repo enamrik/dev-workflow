@@ -4,10 +4,10 @@ import { FileSystem } from "../infrastructure/file-system.js";
 import {
   TrackDirectoryResolver,
   DataSourceFactory,
-  SqliteProjectRepository,
   ProjectService,
   NodeGitOperations,
   resolveConnectionString,
+  DEFAULT_TYPE_DEFINITIONS,
   type Project,
 } from "@dev-workflow/core";
 
@@ -63,25 +63,25 @@ export class InstallService {
    */
   async registerProject(): Promise<Project> {
     const connectionString = this.getResolvedConnectionString();
+    const dataSource = await DataSourceFactory.create({ connectionString });
 
-    if (DataSourceFactory.isRemote(connectionString)) {
+    if (dataSource.isRemote) {
+      dataSource.close();
       throw new InstallError(
         "Remote database support for project registration is not yet implemented. " +
           "Use a local SQLite database for now."
       );
     }
 
-    const dbService = await DataSourceFactory.createSqlite(connectionString);
-
     try {
-      const projectRepo = new SqliteProjectRepository(dbService.getDb());
+      const projectRepo = dataSource.getProjectRepository();
       const gitOps = new NodeGitOperations();
       const projectService = new ProjectService(projectRepo, gitOps);
 
       this.project = await projectService.getOrCreateProject(this.workingDirectory);
       return this.project;
     } finally {
-      dbService.close();
+      dataSource.close();
     }
   }
 
@@ -228,8 +228,10 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
   async initializeDatabase(): Promise<void> {
     try {
       const connectionString = this.getResolvedConnectionString();
+      const dataSource = await DataSourceFactory.create({ connectionString });
 
-      if (DataSourceFactory.isRemote(connectionString)) {
+      if (dataSource.isRemote) {
+        dataSource.close();
         throw new InstallError(
           "Remote database initialization is not yet implemented. " +
             "Use a local SQLite database for now."
@@ -241,9 +243,8 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
       await this.fileSystem.mkdir(dbDir, { recursive: true });
 
       // Create database and run migrations
-      const dbService = await DataSourceFactory.createSqlite(connectionString);
-      dbService.runMigrations();
-      dbService.close();
+      dataSource.runMigrations();
+      dataSource.close();
     } catch (error) {
       if (error instanceof InstallError) throw error;
       throw new InstallError("Failed to initialize database", error);
@@ -355,25 +356,27 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
   async findExistingProject(): Promise<Project | null> {
     const connectionString = this.getResolvedConnectionString();
 
-    if (DataSourceFactory.isRemote(connectionString)) {
-      // Remote database check not yet implemented
-      return null;
-    }
-
-    // Check if database file exists
+    // Check if database file exists (only applicable for SQLite)
+    // For remote databases, we'll check after creation
     const dbExists = await this.fileSystem.exists(connectionString);
     if (!dbExists) {
       return null;
     }
 
-    const dbService = await DataSourceFactory.createSqlite(connectionString);
+    const dataSource = await DataSourceFactory.create({ connectionString });
+
+    if (dataSource.isRemote) {
+      // Remote database check not yet implemented
+      dataSource.close();
+      return null;
+    }
 
     try {
       // Run migrations first to ensure schema is up to date
       // This is critical for handling cases where the database exists but is out of date
-      dbService.runMigrations();
+      dataSource.runMigrations();
 
-      const projectRepo = new SqliteProjectRepository(dbService.getDb());
+      const projectRepo = dataSource.getProjectRepository();
       const gitOps = new NodeGitOperations();
 
       // Get gitRootHash for current directory
@@ -382,7 +385,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
       // Look up by gitRootHash
       return await projectRepo.findByGitRootHash(gitRootHash);
     } finally {
-      dbService.close();
+      dataSource.close();
     }
   }
 
@@ -450,5 +453,57 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
    */
   setProject(project: Project): void {
     this.project = project;
+  }
+
+  /**
+   * Seed default types to the global database.
+   *
+   * Seeds the default type definitions (FEATURE, BUG, ENHANCEMENT, TASK, SPIKE)
+   * if they don't already exist. This ensures users always have the standard types
+   * available. Custom types can be added via the create_type MCP tool.
+   *
+   * Should be called after initializeDatabase().
+   */
+  async seedDefaultTypes(): Promise<{ seeded: number; existing: number }> {
+    try {
+      const connectionString = this.getResolvedConnectionString();
+      const dataSource = await DataSourceFactory.create({ connectionString });
+
+      if (dataSource.isRemote) {
+        // Skip for remote databases - will be handled differently
+        dataSource.close();
+        return { seeded: 0, existing: 0 };
+      }
+
+      try {
+        const typeRepository = dataSource.getTypeRepository();
+
+        // Convert DEFAULT_TYPE_DEFINITIONS to CreateTypeData format
+        const typesToSeed = DEFAULT_TYPE_DEFINITIONS.map((typeDef) => ({
+          name: typeDef.name,
+          displayName: typeDef.name.charAt(0) + typeDef.name.slice(1).toLowerCase(),
+          description: typeDef.description,
+          keywords: typeDef.keywords,
+        }));
+
+        // Check how many already exist
+        const existingTypes = typeRepository.findAll(true);
+        const existingNames = new Set(existingTypes.map((t) => t.name));
+
+        const toSeed = typesToSeed.filter((t) => !existingNames.has(t.name));
+
+        // Seed the types
+        typeRepository.seedTypes(toSeed);
+
+        return {
+          seeded: toSeed.length,
+          existing: existingTypes.length,
+        };
+      } finally {
+        dataSource.close();
+      }
+    } catch (error) {
+      throw new InstallError("Failed to seed default types", error);
+    }
   }
 }
