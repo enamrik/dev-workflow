@@ -69,6 +69,8 @@ export interface DispatchQueueEntry {
   readonly workerId: string | null; // Worker that claimed (null = PENDING)
   readonly claimedAt: string | null; // When claimed (null = PENDING)
   readonly createdAt: string; // When added to queue
+  readonly claudeDone: boolean; // True when Claude calls end_worker_session
+  readonly claudeDoneAt: string | null; // When claudeDone was set
 }
 
 /**
@@ -266,4 +268,16 @@ export interface DispatchQueueRepository {
     claimed: number;
     stale: number;
   };
+
+  /**
+   * Mark a queue entry as claudeDone
+   *
+   * Called by end_worker_session MCP tool to signal Claude is done.
+   * Workers poll for this flag before terminating.
+   *
+   * @param taskId - Task UUID
+   * @param workerId - Worker UUID (must match the claiming worker)
+   * @returns Updated entry or null if not found or workerId mismatch
+   */
+  setClaudeDone(taskId: string, workerId: string): DispatchQueueEntry | null;
 }
