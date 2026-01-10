@@ -109,7 +109,8 @@ export class TaskManagementService {
    * @returns The soft-deleted task
    */
   deleteTask(taskId: string, deletedBy?: string): Task {
-    const task = this.taskRepository.findById(taskId);
+    // Use includeDeleted=true to distinguish "not found" from "already deleted"
+    const task = this.taskRepository.findById(taskId, true);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }

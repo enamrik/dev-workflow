@@ -70,21 +70,31 @@ export class SqliteIssueRepository implements IssueRepository {
     return issue;
   }
 
-  findById(id: string): Issue | null {
+  findById(id: string, includeDeleted = false): Issue | null {
+    const conditions = [eq(issues.projectId, this.projectId), eq(issues.id, id)];
+    if (!includeDeleted) {
+      conditions.push(eq(issues.isDeleted, false));
+    }
+
     const result = this.db
       .select()
       .from(issues)
-      .where(and(eq(issues.projectId, this.projectId), eq(issues.id, id)))
+      .where(and(...conditions))
       .get();
 
     return result ? this.mapRowToIssue(result) : null;
   }
 
-  findByNumber(number: number): Issue | null {
+  findByNumber(number: number, includeDeleted = false): Issue | null {
+    const conditions = [eq(issues.projectId, this.projectId), eq(issues.number, number)];
+    if (!includeDeleted) {
+      conditions.push(eq(issues.isDeleted, false));
+    }
+
     const result = this.db
       .select()
       .from(issues)
-      .where(and(eq(issues.projectId, this.projectId), eq(issues.number, number)))
+      .where(and(...conditions))
       .get();
 
     return result ? this.mapRowToIssue(result) : null;

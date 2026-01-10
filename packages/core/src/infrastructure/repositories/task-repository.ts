@@ -1,4 +1,4 @@
-import { eq, max, and, asc, inArray, desc, sql, isNull } from "drizzle-orm";
+import { eq, max, and, asc, inArray, desc, sql } from "drizzle-orm";
 import {
   tasks,
   taskStatusHistory,
@@ -151,18 +151,36 @@ export class SqliteTaskRepository implements TaskRepository {
     return createdTasks;
   }
 
-  findById(id: string): Task | null {
-    const result = this.db.select().from(tasks).where(eq(tasks.id, id)).get();
+  findById(id: string, includeDeleted = false): Task | null {
+    const conditions = [eq(tasks.id, id)];
+    if (!includeDeleted) {
+      conditions.push(eq(tasks.isDeleted, false));
+    }
+
+    const result = this.db
+      .select()
+      .from(tasks)
+      .where(and(...conditions))
+      .get();
 
     return result ? this.mapRowToTask(result) : null;
   }
 
-  findByIds(ids: string[]): Task[] {
+  findByIds(ids: string[], includeDeleted = false): Task[] {
     if (ids.length === 0) {
       return [];
     }
 
-    const results = this.db.select().from(tasks).where(inArray(tasks.id, ids)).all();
+    const conditions = [inArray(tasks.id, ids)];
+    if (!includeDeleted) {
+      conditions.push(eq(tasks.isDeleted, false));
+    }
+
+    const results = this.db
+      .select()
+      .from(tasks)
+      .where(and(...conditions))
+      .all();
 
     return results.map((row) => this.mapRowToTask(row));
   }
@@ -296,10 +314,11 @@ export class SqliteTaskRepository implements TaskRepository {
   }
 
   getNextOrder(planId: string): number {
+    // Exclude deleted tasks - new tasks should be ordered after non-deleted tasks
     const result = this.db
       .select({ maxOrder: max(tasks.order) })
       .from(tasks)
-      .where(and(eq(tasks.planId, planId), isNull(tasks.deletedAt)))
+      .where(and(eq(tasks.planId, planId), eq(tasks.isDeleted, false)))
       .get();
 
     return (result?.maxOrder ?? 0) + 1;
@@ -529,7 +548,8 @@ export class SqliteTaskRepository implements TaskRepository {
       .where(eq(tasks.id, id))
       .run();
 
-    const updatedTask = this.findById(id);
+    // Use includeDeleted=true since we just marked the task as deleted
+    const updatedTask = this.findById(id, true);
     if (!updatedTask) {
       throw new Error(`Failed to soft delete task: ${id}`);
     }

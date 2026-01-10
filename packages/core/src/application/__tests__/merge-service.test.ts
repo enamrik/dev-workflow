@@ -482,7 +482,7 @@ describe("MergeService", () => {
       });
 
       // Source should be soft-deleted
-      const sourceAfter = repos.issueRepository.findByNumber(source.number);
+      const sourceAfter = repos.issueRepository.findByNumber(source.number, true);
       expect(sourceAfter?.isDeleted).toBe(true);
     });
 
