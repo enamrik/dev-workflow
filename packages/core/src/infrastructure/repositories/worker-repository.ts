@@ -25,7 +25,7 @@ const DEAD_WORKER_CLEANUP_THRESHOLD_SECONDS = 3600;
 export class SqliteWorkerRepository implements WorkerRepository {
   constructor(private readonly db: SqliteDrizzleDatabase) {}
 
-  register(id: string, name: string): Worker {
+  register(id: string, name: string, pid?: number): Worker {
     // Clean up workers that have been dead for over an hour
     this.cleanupDeadWorkers(DEAD_WORKER_CLEANUP_THRESHOLD_SECONDS);
 
@@ -36,6 +36,7 @@ export class SqliteWorkerRepository implements WorkerRepository {
       name,
       status: "IDLE",
       lastHeartbeat: now,
+      pid: pid ?? null,
       createdAt: now,
     };
 
@@ -46,6 +47,7 @@ export class SqliteWorkerRepository implements WorkerRepository {
         name: worker.name,
         status: worker.status,
         lastHeartbeat: worker.lastHeartbeat,
+        pid: worker.pid,
         createdAt: worker.createdAt,
       })
       .run();
@@ -57,14 +59,15 @@ export class SqliteWorkerRepository implements WorkerRepository {
     this.db.delete(workers).where(eq(workers.id, id)).run();
   }
 
-  updateHeartbeat(id: string): Worker | null {
+  updateHeartbeat(id: string, pid?: number): Worker | null {
     const now = new Date().toISOString();
 
-    const result = this.db
-      .update(workers)
-      .set({ lastHeartbeat: now })
-      .where(eq(workers.id, id))
-      .run();
+    const updates: { lastHeartbeat: string; pid?: number } = { lastHeartbeat: now };
+    if (pid !== undefined) {
+      updates.pid = pid;
+    }
+
+    const result = this.db.update(workers).set(updates).where(eq(workers.id, id)).run();
 
     if (result.changes === 0) {
       return null;
@@ -149,6 +152,7 @@ export class SqliteWorkerRepository implements WorkerRepository {
       name: row.name,
       status: row.status as WorkerStatus,
       lastHeartbeat: row.lastHeartbeat,
+      pid: row.pid ?? null,
       createdAt: row.createdAt,
     };
   }
