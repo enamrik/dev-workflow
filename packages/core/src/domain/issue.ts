@@ -88,18 +88,24 @@ export interface IssueRepository {
   /**
    * Find an issue by its UUID
    *
+   * By default, excludes soft-deleted issues.
+   *
    * @param id - Issue UUID
+   * @param includeDeleted - Whether to include soft-deleted issues (default: false)
    * @returns The issue if found, null otherwise
    */
-  findById(id: string): Issue | null;
+  findById(id: string, includeDeleted?: boolean): Issue | null;
 
   /**
    * Find an issue by its number (e.g., #123)
    *
+   * By default, excludes soft-deleted issues.
+   *
    * @param number - Issue number
+   * @param includeDeleted - Whether to include soft-deleted issues (default: false)
    * @returns The issue if found, null otherwise
    */
-  findByNumber(number: number): Issue | null;
+  findByNumber(number: number, includeDeleted?: boolean): Issue | null;
 
   /**
    * Find all issues matching the given filters

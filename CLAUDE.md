@@ -571,6 +571,33 @@ async function runInit(options: InitOptions): Promise<void> {
 - Each request/command creates its own repository instances
 - Same repository classes used across web, MCP, and CLI
 
+### Soft Delete Convention
+
+**Tables with soft delete**: `issues`, `tasks` (have `isDeleted`, `deletedAt`, `deletedBy` columns)
+
+**CRITICAL**: All repository query methods MUST filter out soft-deleted records by default.
+
+Pattern to follow:
+
+```typescript
+// ✅ CORRECT - filters deleted by default, opt-in to include
+findById(id: string, includeDeleted = false): Entity | null {
+  const conditions = [eq(table.id, id)];
+  if (!includeDeleted) {
+    conditions.push(eq(table.isDeleted, false));
+  }
+  return this.db.select().from(table).where(and(...conditions)).get();
+}
+
+// ✅ CORRECT - for methods that MUST include deleted (e.g., immutable numbering)
+getNextTaskNumber(planId: string): number {
+  // Includes deleted - task numbers are immutable
+  // ... query without isDeleted filter
+}
+```
+
+**Exception**: Methods like `getNextTaskNumber()` that need deleted records for immutability should NOT filter, and should have a comment explaining why.
+
 ## Code Review Checklist
 
 - [ ] Follows SOLID principles

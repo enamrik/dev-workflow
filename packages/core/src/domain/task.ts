@@ -207,18 +207,24 @@ export interface TaskRepository {
   /**
    * Find a task by its UUID
    *
+   * By default, excludes soft-deleted tasks.
+   *
    * @param id - Task UUID
+   * @param includeDeleted - Whether to include soft-deleted tasks (default: false)
    * @returns The task if found, null otherwise
    */
-  findById(id: string): Task | null;
+  findById(id: string, includeDeleted?: boolean): Task | null;
 
   /**
    * Find multiple tasks by their UUIDs
    *
+   * By default, excludes soft-deleted tasks.
+   *
    * @param ids - Array of task UUIDs
+   * @param includeDeleted - Whether to include soft-deleted tasks (default: false)
    * @returns Array of found tasks (may be fewer than requested if some not found)
    */
-  findByIds(ids: string[]): Task[];
+  findByIds(ids: string[], includeDeleted?: boolean): Task[];
 
   /**
    * Find all tasks for a plan
