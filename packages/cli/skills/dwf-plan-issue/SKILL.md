@@ -69,20 +69,20 @@ If a task needs another task to complete first, you MUST add `dependsOn: ["other
 
 Before writing ANY tasks, answer these questions:
 
-| Question | If Yes → Action |
-|----------|-----------------|
-| Does task B use code/tables/APIs created by task A? | B depends on A |
-| Does task B modify files that task A creates? | B depends on A |
-| Would task B fail to compile/run if task A isn't done? | B depends on A |
+| Question                                                                           | If Yes → Action      |
+| ---------------------------------------------------------------------------------- | -------------------- |
+| Does task B use code/tables/APIs created by task A?                                | B depends on A       |
+| Does task B modify files that task A creates?                                      | B depends on A       |
+| Would task B fail to compile/run if task A isn't done?                             | B depends on A       |
 | Can these tasks be developed by different people simultaneously without conflicts? | No dependency needed |
 
 ### Common Dependency Patterns
 
-| Pattern | Tasks | Dependencies |
-|---------|-------|--------------|
-| DB → API → UI | schema, api, ui | api→schema, ui→api |
-| Core → Extensions | core, ext1, ext2 | ext1→core, ext2→core |
-| Parallel features | auth, search | none (independent) |
+| Pattern                     | Tasks                         | Dependencies                 |
+| --------------------------- | ----------------------------- | ---------------------------- |
+| DB → API → UI               | schema, api, ui               | api→schema, ui→api           |
+| Core → Extensions           | core, ext1, ext2              | ext1→core, ext2→core         |
+| Parallel features           | auth, search                  | none (independent)           |
 | Validation depends on types | types-db, settings-validation | settings-validation→types-db |
 
 ### Anti-Pattern: Missing Dependencies
@@ -100,6 +100,7 @@ Before writing ANY tasks, answer these questions:
 **What happens:** All three tasks become READY simultaneously. Worker starts `api` before `schema` is done → build fails.
 
 **Correct version:**
+
 ```json
 {
   "tasks": [
@@ -217,12 +218,12 @@ The approach captures everything a future session needs. Include:
 
 Document key decisions and WHY they were made:
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Type storage | Database, not files | Need soft delete, validation |
-| Type scope | Universal | Same vocabulary across all projects |
+| Decision       | Choice                 | Rationale                             |
+| -------------- | ---------------------- | ------------------------------------- |
+| Type storage   | Database, not files    | Need soft delete, validation          |
+| Type scope     | Universal              | Same vocabulary across all projects   |
 | FK constraints | None - store as string | History resilience when types deleted |
-| Template scope | Local + Global | Projects can override user defaults |
+| Template scope | Local + Global         | Projects can override user defaults   |
 
 #### 2. Current State
 
@@ -244,16 +245,16 @@ Expected behavior in unusual situations:
 
 Include full schemas when creating new tables/types:
 
-| Field | Type | Notes |
-|-------|------|-------|
-| id | string | UUID |
-| name | string | Unique, e.g., "SPIKE" |
-| displayName | string | e.g., "Spike" |
-| description | string | Helps Claude pick type |
-| keywords | string[] | For auto-detection |
-| color | string? | UI display |
-| isDeleted | boolean | Soft delete |
-| createdAt/updatedAt | Date | Timestamps |
+| Field               | Type     | Notes                  |
+| ------------------- | -------- | ---------------------- |
+| id                  | string   | UUID                   |
+| name                | string   | Unique, e.g., "SPIKE"  |
+| displayName         | string   | e.g., "Spike"          |
+| description         | string   | Helps Claude pick type |
+| keywords            | string[] | For auto-detection     |
+| color               | string?  | UI display             |
+| isDeleted           | boolean  | Soft delete            |
+| createdAt/updatedAt | Date     | Timestamps             |
 
 ### Task implementationPlan Field
 
@@ -414,6 +415,7 @@ Add unit tests to src/__tests__/auth/ following existing test patterns.
    - Can both tasks be worked on simultaneously without conflicts? → No dependency
 
    **Write out your dependency analysis explicitly:**
+
    ```
    Dependency Analysis:
    - Task "api" uses the schema from task "db" → api depends on db

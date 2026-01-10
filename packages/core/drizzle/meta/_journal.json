@@ -169,6 +169,13 @@
       "when": 1768024681382,
       "tag": "0023_empty_pete_wisdom",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1768050075340,
+      "tag": "0024_abnormal_gideon",
+      "breakpoints": true
     }
   ]
 }

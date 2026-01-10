@@ -1,34 +1,25 @@
 /**
  * Type Service Infrastructure
  *
- * Handles parsing of user-defined types from ./.track/types.md
- * and provides intelligent type assignment based on descriptions.
+ * Provides type management operations backed by the global database.
+ * Types are universal across all projects.
  *
- * File Format (./.track/types.md):
- * ```markdown
- * ## FEATURE -> feature
- * New functionality that doesn't exist yet
- *
- * ## BUG -> bug
- * Something is broken or not working as expected
- * ```
- *
- * The arrow syntax (-> label) specifies the remote label to apply when syncing.
- * If omitted, the type name is lowercased (e.g., FEATURE -> feature).
+ * Main responsibilities:
+ * - CRUD operations for type definitions
+ * - Intelligent type selection based on descriptions
+ * - Type validation
  */
 
 import type { IssueType } from "../../domain/issue.js";
 import {
   type TypeDefinition,
   type TypeDefinitions,
+  type TypeRepository,
+  type TypeEntity,
+  type CreateTypeData,
+  type UpdateTypeData,
   DEFAULT_TYPE_DEFINITIONS,
 } from "../../domain/type-definition.js";
-import type { FileSystem } from "../file-system/file-system.js";
-
-/**
- * Valid issue types that can be defined
- */
-const VALID_ISSUE_TYPES: Set<string> = new Set(["FEATURE", "BUG", "ENHANCEMENT", "TASK", "SPIKE"]);
 
 /**
  * Type service error
@@ -44,57 +35,39 @@ export class TypeServiceError extends Error {
 }
 
 /**
- * Configuration for type service
- */
-export interface TypeServiceConfig {
-  /** Path to local types.md: ./.track/types.md */
-  localTypesPath: string;
-  /** Path to global types.md (fallback): ~/.track/config/types.md */
-  globalTypesPath: string;
-}
-
-/**
  * Type Service
  *
- * Parses user-defined types from ./.track/types.md and provides
- * intelligent type assignment based on descriptions.
+ * Manages type definitions stored in the global database.
+ * Provides intelligent type assignment based on descriptions.
  */
 export class TypeService {
   private cachedTypes: TypeDefinitions | null = null;
 
-  constructor(
-    private readonly fileSystem: FileSystem,
-    private readonly config: TypeServiceConfig
-  ) {}
+  constructor(private readonly typeRepository: TypeRepository) {}
 
   /**
-   * Load type definitions from ./.track/types.md or fall back to defaults
+   * Load type definitions from the database
    *
-   * Resolution order:
-   * 1. Local ./.track/types.md
-   * 2. Global ~/.track/config/types.md
-   * 3. Default hardcoded types
+   * Falls back to DEFAULT_TYPE_DEFINITIONS if no types are seeded yet.
+   * This handles the transition period where database may not have types.
    */
   async loadTypes(): Promise<TypeDefinitions> {
     if (this.cachedTypes) {
       return this.cachedTypes;
     }
 
-    // Try local types.md first
-    const localTypes = await this.parseTypesFile(this.config.localTypesPath);
-    if (localTypes.length > 0) {
-      this.cachedTypes = { types: localTypes, isUserDefined: true };
+    // Load from database
+    const dbTypes = this.typeRepository.findActive();
+
+    if (dbTypes.length > 0) {
+      this.cachedTypes = {
+        types: dbTypes.map((t) => this.entityToDefinition(t)),
+        isUserDefined: true,
+      };
       return this.cachedTypes;
     }
 
-    // Try global types.md
-    const globalTypes = await this.parseTypesFile(this.config.globalTypesPath);
-    if (globalTypes.length > 0) {
-      this.cachedTypes = { types: globalTypes, isUserDefined: true };
-      return this.cachedTypes;
-    }
-
-    // Fall back to defaults
+    // Fall back to defaults if no types in DB (pre-migration state)
     this.cachedTypes = { types: DEFAULT_TYPE_DEFINITIONS, isUserDefined: false };
     return this.cachedTypes;
   }
@@ -179,6 +152,79 @@ export class TypeService {
   }
 
   /**
+   * Create a new type
+   *
+   * @param data - Type creation data
+   * @returns The created type definition
+   * @throws TypeServiceError if type already exists or validation fails
+   */
+  createType(data: CreateTypeData): TypeDefinition {
+    // Validate name format (must be uppercase with underscores only)
+    if (!/^[A-Z][A-Z0-9_]*$/.test(data.name)) {
+      throw new TypeServiceError(
+        `Type name must be uppercase letters, numbers, and underscores, starting with a letter. Got: '${data.name}'`
+      );
+    }
+
+    try {
+      const entity = this.typeRepository.create(data);
+      this.clearCache();
+      return this.entityToDefinition(entity);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("already exists")) {
+        throw new TypeServiceError(`Type '${data.name}' already exists`);
+      }
+      throw new TypeServiceError(`Failed to create type: ${error}`, error);
+    }
+  }
+
+  /**
+   * Update an existing type
+   *
+   * @param name - Type name to update
+   * @param data - Fields to update
+   * @returns The updated type definition
+   * @throws TypeServiceError if type not found
+   */
+  updateType(name: string, data: UpdateTypeData): TypeDefinition {
+    try {
+      const entity = this.typeRepository.update(name, data);
+      this.clearCache();
+      return this.entityToDefinition(entity);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("not found")) {
+        throw new TypeServiceError(`Type '${name}' not found`);
+      }
+      throw new TypeServiceError(`Failed to update type: ${error}`, error);
+    }
+  }
+
+  /**
+   * Delete a type (soft delete)
+   *
+   * @param name - Type name to delete
+   * @returns The deleted type definition
+   * @throws TypeServiceError if type not found or already deleted
+   */
+  deleteType(name: string): TypeDefinition {
+    try {
+      const entity = this.typeRepository.softDelete(name);
+      this.clearCache();
+      return this.entityToDefinition(entity);
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.message.includes("not found")) {
+          throw new TypeServiceError(`Type '${name}' not found`);
+        }
+        if (error.message.includes("already deleted")) {
+          throw new TypeServiceError(`Type '${name}' is already deleted`);
+        }
+      }
+      throw new TypeServiceError(`Failed to delete type: ${error}`, error);
+    }
+  }
+
+  /**
    * Clear the type cache
    */
   clearCache(): void {
@@ -186,181 +232,15 @@ export class TypeService {
   }
 
   /**
-   * Parse a types.md file into TypeDefinitions
-   *
-   * @param filePath - Path to types.md file
-   * @returns Array of parsed TypeDefinitions (empty if file not found)
+   * Convert TypeEntity to TypeDefinition
    */
-  private async parseTypesFile(filePath: string): Promise<TypeDefinition[]> {
-    try {
-      const exists = await this.fileSystem.exists(filePath);
-      if (!exists) {
-        return [];
-      }
-
-      const content = await this.fileSystem.readFile(filePath);
-      return this.parseTypesContent(content);
-    } catch {
-      // Graceful degradation - return empty on any error
-      return [];
-    }
-  }
-
-  /**
-   * Parse types.md content into TypeDefinitions
-   *
-   * Format:
-   * ```
-   * ## TYPE_NAME -> remote-label
-   * Description paragraph
-   *
-   * ## ANOTHER_TYPE
-   * Another description (defaults to lowercase type name for remote label)
-   * ```
-   *
-   * @param content - Raw markdown content
-   * @returns Array of parsed TypeDefinitions
-   */
-  private parseTypesContent(content: string): TypeDefinition[] {
-    const types: TypeDefinition[] = [];
-    const lines = content.split("\n");
-
-    let currentType: string | null = null;
-    let currentRemoteLabel: string | null = null;
-    let currentDescription: string[] = [];
-
-    const saveCurrentType = () => {
-      if (currentType && currentDescription.length > 0) {
-        const description = currentDescription.join(" ").trim();
-        const keywords = this.extractKeywords(description);
-
-        // Validate type name
-        if (this.isValidTypeName(currentType)) {
-          types.push({
-            name: currentType as IssueType,
-            description,
-            keywords,
-            // Use explicit remote label if provided, otherwise lowercase the type name
-            remoteLabel: currentRemoteLabel ?? currentType.toLowerCase(),
-          });
-        }
-      }
+  private entityToDefinition(entity: TypeEntity): TypeDefinition {
+    return {
+      name: entity.name as IssueType,
+      description: entity.description,
+      keywords: entity.keywords,
+      // Remote label defaults to lowercase name
+      remoteLabel: entity.name.toLowerCase(),
     };
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-
-      // Check for type header: ## TYPE_NAME or ## TYPE_NAME -> remote-label
-      const headerMatch = trimmed.match(/^##\s+([A-Z_]+)(?:\s*->\s*(\S+))?\s*$/);
-      if (headerMatch) {
-        // Save previous type if any
-        saveCurrentType();
-
-        // Start new type
-        currentType = headerMatch[1]!;
-        currentRemoteLabel = headerMatch[2] ?? null;
-        currentDescription = [];
-        continue;
-      }
-
-      // Accumulate description lines (skip empty lines and other headers)
-      if (currentType && trimmed && !trimmed.startsWith("#")) {
-        currentDescription.push(trimmed);
-      }
-    }
-
-    // Save last type
-    saveCurrentType();
-
-    return types;
-  }
-
-  /**
-   * Validate a type name
-   *
-   * Must be uppercase, no spaces, and one of the valid types.
-   */
-  private isValidTypeName(name: string): boolean {
-    // Must be uppercase with no spaces
-    if (!/^[A-Z_]+$/.test(name)) {
-      return false;
-    }
-
-    // Must be a valid issue type
-    return VALID_ISSUE_TYPES.has(name);
-  }
-
-  /**
-   * Extract keywords from a description
-   *
-   * Extracts meaningful words (4+ chars) as keywords.
-   */
-  private extractKeywords(description: string): string[] {
-    const words = description.toLowerCase().split(/\s+/);
-    const keywords: string[] = [];
-
-    // Common stop words to exclude
-    const stopWords = new Set([
-      "that",
-      "this",
-      "with",
-      "from",
-      "have",
-      "been",
-      "will",
-      "would",
-      "could",
-      "should",
-      "there",
-      "their",
-      "what",
-      "when",
-      "where",
-      "which",
-      "while",
-      "about",
-      "after",
-      "before",
-      "between",
-      "into",
-      "through",
-      "during",
-      "under",
-      "again",
-      "further",
-      "then",
-      "once",
-      "here",
-      "just",
-      "only",
-      "other",
-      "some",
-      "such",
-      "than",
-      "very",
-      "same",
-      "also",
-      "does",
-      "doesn",
-      "isn",
-      "aren",
-      "wasn",
-      "weren",
-      "hasn",
-      "haven",
-      "hadn",
-    ]);
-
-    for (const word of words) {
-      // Remove punctuation
-      const clean = word.replace(/[^a-z]/g, "");
-
-      // Keep meaningful words (4+ chars, not stop words)
-      if (clean.length >= 4 && !stopWords.has(clean)) {
-        keywords.push(clean);
-      }
-    }
-
-    return [...new Set(keywords)]; // Deduplicate
   }
 }

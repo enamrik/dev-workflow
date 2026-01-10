@@ -18,12 +18,14 @@ import type { PlanRepository } from "../../domain/plan.js";
 import type { TaskRepository } from "../../domain/task.js";
 import type { MilestoneRepository } from "../../domain/milestone.js";
 import type { SnapshotRepository } from "../../domain/snapshot.js";
+import type { TypeRepository } from "../../domain/type-definition.js";
 import { SqliteProjectRepository } from "../repositories/project-repository.js";
 import { SqliteIssueRepository } from "../repositories/issue-repository.js";
 import { SqlitePlanRepository } from "../repositories/plan-repository.js";
 import { SqliteTaskRepository } from "../repositories/task-repository.js";
 import { SqliteMilestoneRepository } from "../repositories/milestone-repository.js";
 import { SqliteSnapshotRepository } from "../repositories/snapshot-repository.js";
+import { SqliteTypeRepository } from "../repositories/type-repository.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,6 +49,9 @@ export class SqliteDataSource implements DataSourceProvider {
 
   /** Cached ProjectRepository instance */
   private projectRepository: ProjectRepository | null = null;
+
+  /** Cached TypeRepository instance */
+  private typeRepository: TypeRepository | null = null;
 
   private constructor(adapter: DatabaseAdapter, databasePath: string) {
     this.adapter = adapter;
@@ -193,6 +198,19 @@ export class SqliteDataSource implements DataSourceProvider {
       this.projectRepository = new SqliteProjectRepository(this.db);
     }
     return this.projectRepository;
+  }
+
+  /**
+   * Get the TypeRepository instance for this data source.
+   *
+   * TypeRepository is NOT scoped to a project since types are global.
+   * The instance is cached and reused across calls.
+   */
+  getTypeRepository(): TypeRepository {
+    if (!this.typeRepository) {
+      this.typeRepository = new SqliteTypeRepository(this.db);
+    }
+    return this.typeRepository;
   }
 
   /**

@@ -198,6 +198,12 @@ async function runInit(options: InitOptions = {}): Promise<void> {
       // Ensure database is up to date
       await installer.initializeDatabase();
 
+      // Seed default types if needed
+      const seedResult = await installer.seedDefaultTypes();
+      if (seedResult.seeded > 0) {
+        console.log(`✓ Seeded ${seedResult.seeded} default types`);
+      }
+
       // Update slug in .git/config (in case repo moved)
       writeSlugToGitConfig(gitRoot, slug);
       console.log(`✓ Updated project slug in .git/config`);
@@ -267,6 +273,10 @@ async function runInit(options: InitOptions = {}): Promise<void> {
     // Initialize database first (needed for project registration)
     await installer.initializeDatabase();
     console.log("✓ Initialized database");
+
+    // Seed default types
+    const seedResult = await installer.seedDefaultTypes();
+    console.log(`✓ Seeded ${seedResult.seeded} default types`);
 
     // Register project in database (uses git initial commit hash as stable ID)
     const project = await installer.registerProject();
