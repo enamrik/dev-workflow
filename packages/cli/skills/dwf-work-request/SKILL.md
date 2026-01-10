@@ -47,6 +47,42 @@ This skill should activate whenever the user describes work to be done:
 | "Import issue #42"                       | Import existing GitHub issue |
 | "Import github.com/owner/repo/issues/42" | Import existing GitHub issue |
 
+## SPIKE Detection
+
+**SPIKEs** are exploratory tasks focused on investigation and options analysis rather than implementation. When a user wants to explore approaches, research solutions, or discuss trade-offs before committing to an implementation path, create a SPIKE issue.
+
+### Detection Patterns
+
+| User Says                           | Type  | Why                                      |
+| ----------------------------------- | ----- | ---------------------------------------- |
+| "Let's discuss options for..."      | SPIKE | Explicitly wants to explore alternatives |
+| "We need to figure out..."          | SPIKE | Uncertainty about approach               |
+| "What's the best approach for..."   | SPIKE | Seeking comparison of options            |
+| "Investigate whether..."            | SPIKE | Research-oriented, no clear path         |
+| "Research how to..."                | SPIKE | Explicit research request                |
+| "Explore options for..."            | SPIKE | Explicit exploration request             |
+| "I'm not sure how we should..."     | SPIKE | Uncertainty signals exploration needed   |
+| "What are our options for..."       | SPIKE | Seeking alternatives                     |
+| "Should we use X or Y for..."       | SPIKE | Decision-making, needs analysis          |
+| "Help me understand the trade-offs" | SPIKE | Explicit trade-off analysis              |
+
+### SPIKE vs Feature Examples
+
+| Request                                        | Type    | Reasoning                                |
+| ---------------------------------------------- | ------- | ---------------------------------------- |
+| "Add OAuth2 authentication"                    | FEATURE | Clear implementation goal                |
+| "Let's discuss options for authentication"     | SPIKE   | Wants to explore auth approaches first   |
+| "Fix the login redirect bug"                   | BUG     | Clear problem to fix                     |
+| "Figure out why users keep getting logged out" | SPIKE   | Investigation needed, root cause unknown |
+
+### Handling SPIKE Requests
+
+When you detect a SPIKE request:
+
+1. **Acknowledge the exploratory nature** - "I'll create a SPIKE to explore options for..."
+2. **Set issue type to SPIKE** - Pass `type: "SPIKE"` when creating the issue
+3. **Frame acceptance criteria around outputs** - e.g., "Document viable approaches with pros/cons", "Provide recommendation with rationale"
+
 ## What To Do
 
 When you recognize a work request:
