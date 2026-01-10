@@ -74,6 +74,7 @@ Before writing ANY tasks, answer these questions:
 | Does task B use code/tables/APIs created by task A?                                | B depends on A       |
 | Does task B modify files that task A creates?                                      | B depends on A       |
 | Would task B fail to compile/run if task A isn't done?                             | B depends on A       |
+| Do both tasks edit the same complex file(s)?                                       | One depends on other |
 | Can these tasks be developed by different people simultaneously without conflicts? | No dependency needed |
 
 ### Common Dependency Patterns
@@ -84,6 +85,7 @@ Before writing ANY tasks, answer these questions:
 | Core → Extensions           | core, ext1, ext2              | ext1→core, ext2→core         |
 | Parallel features           | auth, search                  | none (independent)           |
 | Validation depends on types | types-db, settings-validation | settings-validation→types-db |
+| Same file, complex edits    | feature-a, feature-b          | feature-b→feature-a          |
 
 ### Anti-Pattern: Missing Dependencies
 
