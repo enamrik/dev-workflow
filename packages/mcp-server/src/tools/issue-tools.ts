@@ -22,6 +22,7 @@ import {
   type TypeService,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
+import { createSlimEnrichedTaskData } from "./task-tools.js";
 
 /**
  * Computed issue status based on task progress.
@@ -547,6 +548,9 @@ export async function handleCreateIssue(
 
 /**
  * Handle get_issue tool call
+ *
+ * When includePlan is true, returns enriched task data with worker and PR info
+ * for each task in the plan.
  */
 export function handleGetIssue(
   ctx: IssueToolContext,
@@ -570,7 +574,7 @@ export function handleGetIssue(
     ctx.taskRepository
   );
 
-  // If includePlan is true, fetch and include the plan with slim task list
+  // If includePlan is true, fetch and include the plan with enriched task list
   if (includePlan) {
     const plan = ctx.planRepository.findByIssueId(issue.id);
     if (plan) {
@@ -583,12 +587,7 @@ export function handleGetIssue(
           summary: plan.summary,
           approach: plan.approach,
           estimatedComplexity: plan.estimatedComplexity,
-          tasks: tasks.map((t) => ({
-            id: t.id,
-            number: t.number,
-            title: t.title,
-            status: t.status,
-          })),
+          tasks: tasks.map((t) => createSlimEnrichedTaskData(t, ctx.dispatchQueueRepository)),
         },
       });
     }

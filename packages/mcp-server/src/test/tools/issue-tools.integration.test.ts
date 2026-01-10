@@ -24,6 +24,7 @@ import {
   handleUpdateIssue,
   handleCloseIssue,
   handleImportGitHubIssue,
+  handleGetIssue,
   type IssueToolContext,
 } from "../../tools/issue-tools.js";
 import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
@@ -587,6 +588,147 @@ describe("Issue Tools Integration", () => {
       // Verify closeIssue was NOT called
       const closeCalls = mockCLI.getCallsTo("closeIssue");
       expect(closeCalls.length).toBe(0);
+    });
+  });
+
+  describe("handleGetIssue", () => {
+    it("should get issue by number", async () => {
+      // Create an issue
+      const createResult = await handleCreateIssue(ctx, {
+        title: "Test Issue",
+        description: "Test description",
+      });
+      const created = JSON.parse(createResult.content[0].text);
+
+      const result = handleGetIssue(ctx, { issueNumber: created.issue.number });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.title).toBe("Test Issue");
+      expect(content.description).toBe("Test description");
+    });
+
+    it("should return enriched task data when includePlan is true", async () => {
+      // Create issue with plan and tasks
+      const createResult = await handleCreateIssue(ctx, {
+        title: "Issue with Plan",
+        description: "Has tasks",
+      });
+      const created = JSON.parse(createResult.content[0].text);
+
+      // Create a plan with tasks
+      const plan = ctx.planRepository.create({
+        issueId: created.issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "LOW",
+        generatedBy: "test",
+      });
+
+      const task1 = ctx.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Task 1",
+        description: "First task",
+        status: "BACKLOG",
+        type: "TASK",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      const task2 = ctx.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Task 2",
+        description: "Second task",
+        status: "IN_PROGRESS",
+        type: "TASK",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // Add session to the IN_PROGRESS task
+      ctx.taskRepository.update(task2.id, { sessionId: "test-session" });
+
+      // Add PR info to one task
+      ctx.taskRepository.update(task1.id, {
+        prNumber: 123,
+        prUrl: "https://github.com/test/repo/pull/123",
+        prStatus: "OPEN",
+      });
+
+      const result = handleGetIssue(ctx, {
+        issueNumber: created.issue.number,
+        includePlan: true,
+      });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+
+      // Verify plan is included
+      expect(content.plan).toBeDefined();
+      expect(content.plan.summary).toBe("Test plan");
+      expect(content.plan.tasks).toHaveLength(2);
+
+      // Find the tasks in the response
+      const taskWithPR = content.plan.tasks.find((t: { id: string }) => t.id === task1.id);
+      const taskInProgress = content.plan.tasks.find((t: { id: string }) => t.id === task2.id);
+
+      // Verify PR info is included
+      expect(taskWithPR.prInfo).toBeDefined();
+      expect(taskWithPR.prInfo.prNumber).toBe(123);
+      expect(taskWithPR.prInfo.prUrl).toBe("https://github.com/test/repo/pull/123");
+
+      // Verify worker info for IN_PROGRESS task
+      expect(taskInProgress.workerInfo).toBeDefined();
+      expect(taskInProgress.workerInfo.sessionId).toBe("test-session");
+
+      // Task in BACKLOG should not have workerInfo (even with PR)
+      expect(taskWithPR.workerInfo).toBeUndefined();
+    });
+
+    it("should not include enriched data when includePlan is false", async () => {
+      // Create issue with plan and tasks
+      const createResult = await handleCreateIssue(ctx, {
+        title: "Issue without Plan",
+        description: "No plan requested",
+      });
+      const created = JSON.parse(createResult.content[0].text);
+
+      // Create a plan with tasks
+      const plan = ctx.planRepository.create({
+        issueId: created.issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "LOW",
+        generatedBy: "test",
+      });
+
+      ctx.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Task 1",
+        description: "First task",
+        status: "IN_PROGRESS",
+        type: "TASK",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
+      // Request without includePlan
+      const result = handleGetIssue(ctx, {
+        issueNumber: created.issue.number,
+        includePlan: false,
+      });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+
+      // Plan should not be included
+      expect(content.plan).toBeUndefined();
     });
   });
 });
