@@ -1,6 +1,7 @@
 ---
 type: BUG
 priority: HIGH
+description: Task for fixing defects or incorrect behavior
 labels: []
 ---
 
