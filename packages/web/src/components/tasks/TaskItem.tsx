@@ -12,7 +12,6 @@ interface TaskItemProps {
   task: Task;
   projectId?: string;
   issueNumber?: number;
-  totalTasks?: number; // Total tasks in the issue for display formatting
   compact?: boolean; // Use compact layout for narrow containers (e.g., preview panels)
 }
 
@@ -31,13 +30,7 @@ function getStatusIcon(status: Task["status"]): string {
   }
 }
 
-export function TaskItem({
-  task,
-  projectId,
-  issueNumber,
-  totalTasks,
-  compact = false,
-}: TaskItemProps) {
+export function TaskItem({ task, projectId, issueNumber, compact = false }: TaskItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isPlanExpanded, setIsPlanExpanded] = useState(false);
 
@@ -47,11 +40,9 @@ export function TaskItem({
   const isAbandoned = task.status === "ABANDONED";
   const canExpand = !!projectId && issueNumber !== undefined;
 
-  // Format task display: "Task [index/total]:" or fall back to "Task index:"
-  const taskDisplayLabel = totalTasks
-    ? `Task [${task.index}/${totalTasks}]:`
-    : `Task ${task.index}:`;
-  const taskNumberTooltip = `Immutable task number: #${task.number}`;
+  // Format task display as "Task N:" where N is the immutable task number
+  const taskDisplayLabel = `Task ${task.number}:`;
+  const taskTooltip = task.title;
 
   return (
     <li
@@ -87,7 +78,7 @@ export function TaskItem({
             >
               {getStatusIcon(task.status)}
             </div>
-            <Tooltip content={taskNumberTooltip} side="top">
+            <Tooltip content={taskTooltip} side="top">
               <span className="text-gray-500 font-medium cursor-help">{taskDisplayLabel}</span>
             </Tooltip>
           </div>
@@ -116,7 +107,7 @@ export function TaskItem({
         <div className="flex-1 min-w-0">
           {/* Desktop (non-compact): Task number and title */}
           <div className={clsx("items-center gap-2", compact ? "hidden" : "hidden sm:flex")}>
-            <Tooltip content={taskNumberTooltip} side="top">
+            <Tooltip content={taskTooltip} side="top">
               <span className="text-gray-500 font-medium cursor-help">{taskDisplayLabel}</span>
             </Tooltip>
             <span className="font-medium text-gray-800">{task.title}</span>
