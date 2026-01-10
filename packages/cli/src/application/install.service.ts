@@ -122,8 +122,8 @@ Custom templates for issues and tasks. These take precedence over global templat
 ## Resolution Order (same for both issues and tasks)
 1. Local per-type (e.g., ./.track/templates/tasks/feature.md)
 2. Local all.md (./.track/templates/tasks/all.md)
-3. Global per-type (~/.track/config/templates/tasks/feature.md)
-4. Global all.md (~/.track/config/templates/tasks/all.md)
+3. Global per-type (~/.track/templates/tasks/feature.md)
+4. Global all.md (~/.track/templates/tasks/all.md)
 
 ## Template Placeholders (tasks only)
 - {{description}} - Task description
@@ -252,14 +252,67 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
   }
 
   /**
-   * Install default templates to global ~/.track/config/templates/.
+   * Migrate templates from old path (~/.track/config/templates/) to new path (~/.track/templates/).
+   *
+   * Only migrates if old path exists and new path doesn't. This is a one-time migration.
+   *
+   * @returns Object indicating if migration occurred
+   */
+  async migrateTemplatesFromOldPath(): Promise<{ migrated: boolean; message: string }> {
+    try {
+      const oldConfigDir = this.resolver.getOldGlobalConfigDirectory();
+      const oldTemplatesDir = path.join(oldConfigDir, "templates");
+      const newTemplatesDir = path.join(this.resolver.getGlobalTrackDirectory(), "templates");
+
+      // Check if old path exists
+      const oldExists = await this.fileSystem.exists(oldTemplatesDir);
+      if (!oldExists) {
+        return { migrated: false, message: "No old templates to migrate" };
+      }
+
+      // Check if new path already exists (migration already done)
+      const newExists = await this.fileSystem.exists(newTemplatesDir);
+      if (newExists) {
+        return {
+          migrated: false,
+          message: "New templates path already exists, skipping migration",
+        };
+      }
+
+      // Migrate by copying the directory
+      await this.fileSystem.copyDirectory(oldTemplatesDir, newTemplatesDir);
+
+      // Optionally remove old directory (keep it for safety, user can delete manually)
+      // await this.fileSystem.rmdir(oldTemplatesDir, { recursive: true });
+
+      return {
+        migrated: true,
+        message: `Migrated templates from ${oldTemplatesDir} to ${newTemplatesDir}`,
+      };
+    } catch (error) {
+      // Don't fail the install if migration fails, just warn
+      const message = error instanceof Error ? error.message : String(error);
+      return { migrated: false, message: `Migration failed: ${message}` };
+    }
+  }
+
+  /**
+   * Install default templates to global ~/.track/templates/.
    *
    * Copies bundled issue templates to the global fallback location so users
    * always have default templates available. Local templates in ./.track/templates/
    * take precedence over these global defaults.
+   *
+   * Also migrates templates from old path (~/.track/config/templates/) if needed.
    */
   async installGlobalTemplates(): Promise<void> {
     try {
+      // First, try to migrate from old path
+      const migration = await this.migrateTemplatesFromOldPath();
+      if (migration.migrated) {
+        console.log(`  ${migration.message}`);
+      }
+
       const globalIssueTemplatesDir = this.resolver.getGlobalIssueTemplatesPath();
       const globalTaskTemplatesDir = this.resolver.getGlobalTaskTemplatesPath();
 

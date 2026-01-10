@@ -57,14 +57,6 @@ This indicates the MCP server is connected to the wrong database. **Do NOT work 
 
 If a task needs another task to complete first, you MUST add `dependsOn: ["other-task-id"]`. There is no implicit ordering - only explicit dependencies control task sequencing.
 
-### Why Dependencies Matter
-
-| System Behavior      | Controlled By Dependencies                                 |
-| -------------------- | ---------------------------------------------------------- |
-| Task ordering        | Tasks with unmet dependencies stay in BACKLOG              |
-| Worker dispatch      | Only tasks with all dependencies COMPLETED become READY    |
-| Parallel work safety | Independent tasks (no dependencies) can run simultaneously |
-
 ### Dependency Analysis Checklist (REQUIRED)
 
 Before writing ANY tasks, answer these questions:
@@ -79,11 +71,11 @@ Before writing ANY tasks, answer these questions:
 
 ### Common Dependency Patterns
 
-| Pattern                     | Tasks                         | Dependencies                 |
-| --------------------------- | ----------------------------- | ---------------------------- |
-| DB → API → UI               | schema, api, ui               | api→schema, ui→api           |
-| Core → Extensions           | core, ext1, ext2              | ext1→core, ext2→core         |
-| Parallel features           | auth, search                  | none (independent)           |
+| Pattern | Tasks | Dependencies |
+|---------|-------|--------------|
+| DB → API → UI | schema, api, ui | api→schema, ui→api |
+| Core → Extensions | core, ext1, ext2 | ext1→core, ext2→core |
+| Parallel features | auth, search | none (independent) |
 | Validation depends on types | types-db, settings-validation | settings-validation→types-db |
 | Same file, complex edits    | feature-a, feature-b          | feature-b→feature-a          |
 
@@ -102,7 +94,6 @@ Before writing ANY tasks, answer these questions:
 **What happens:** All three tasks become READY simultaneously. Worker starts `api` before `schema` is done → build fails.
 
 **Correct version:**
-
 ```json
 {
   "tasks": [
@@ -171,12 +162,11 @@ If no context was passed, make reasonable decisions based on the codebase patter
 Plan summary and approach fields support **GitHub Flavored Markdown**:
 
 - **Tables** for comparisons, mappings, structured data: `| Header | Header |`
-- **Task lists** for checklists: `- [x] done` / `- [ ] pending`
-- **Strikethrough** for deprecated/removed items: `~~old approach~~`
 - **Code blocks** with syntax highlighting: ` ```typescript `
 - **Headers** for sections: `## Approach`, `### Phase 1`
+- **Task lists** for checklists: `- [x] done` / `- [ ] pending`
 - **Bold/italic** for emphasis
-- **Bullet/numbered lists** for steps or options
+- **Bullet/numbered lists** for steps
 
 **Use tables when appropriate:**
 
@@ -365,49 +355,26 @@ Add unit tests to src/__tests__/auth/ following existing test patterns.
 
 ## Process
 
-1. **Get Available Types (REQUIRED):**
-   - Call `list_types` to get the valid type list
-   - This returns all available types with their descriptions and GitHub label mappings
-   - You MUST use types from this list when defining tasks - **invalid types will be rejected**
-
-2. **Get Task Templates (REQUIRED):**
-   - Call `list_templates(category: 'task')` to see available task templates
-   - Optionally call `get_template(filename, category: 'task')` to see the structure
-   - Use templates to guide story format for description and acceptanceCriteria
-
-3. **Get Issue Context:**
+1. **Get Issue Context:**
    - Call `get_issue` with the issue number
    - Read the issue title, description, and acceptance criteria
-   - Note any implementation context passed from manage-issue
    - **Check the issue type** - if it's a BUG or SPIKE, use the single-task approach (see below)
 
-4. **For BUG or SPIKE Issues - Use Single-Task Approach:**
-   - **BUG**: Skip multi-task planning entirely
-     - Generate ONE task: "Investigate and fix: [bug title]"
-     - Include symptoms and reproduction steps in description
-     - Set complexity to LOW
-   - **SPIKE**: Skip multi-task planning entirely
-     - Generate ONE task: "Spike: [spike title]"
-     - Include research goals and questions in description
-     - Set complexity to LOW
-   - Skip to step 9 (Generate Plan)
+2. **For BUG or SPIKE Issues - Use Single-Task Approach:**
+   - **BUG**: Generate ONE task: "Investigate and fix: [bug title]"
+   - **SPIKE**: Generate ONE task: "Spike: [spike title]"
+   - Skip to step 8 (Generate Plan)
 
-5. **Analyze Scope and Design Tasks:**
-   - Consider what files/components will be touched
+3. **Get Available Types:**
+   - Call `list_types` to get the valid type list
+   - You MUST use types from this list - **invalid types will be rejected**
+
+4. **Analyze Scope and Design Tasks:**
    - Identify natural task boundaries (different subsystems, different APIs)
-   - Incorporate any technology choices from the context
-   - Estimate if this is a 1-task or multi-task issue
    - Design tasks as deployable units (see Core Philosophy section)
+   - Estimate complexity: 1 task = LOW, 2-3 = MEDIUM, 4-5 = HIGH, 5+ = VERY_HIGH
 
-   For each potential task, ask:
-   - Can this be deployed independently without breaking prod?
-   - Does it include all necessary tests?
-   - Would this make sense as a single commit message?
-   - Is anything missing that would cause issues if deployed?
-
-   Estimate complexity: 1 task = LOW, 2-3 = MEDIUM, 4-5 = HIGH, 5+ = VERY_HIGH
-
-6. **⚠️ ANALYZE DEPENDENCIES (CRITICAL):**
+5. **⚠️ ANALYZE DEPENDENCIES (CRITICAL):**
 
    **STOP and do this analysis before proceeding:**
 
@@ -417,7 +384,6 @@ Add unit tests to src/__tests__/auth/ following existing test patterns.
    - Can both tasks be worked on simultaneously without conflicts? → No dependency
 
    **Write out your dependency analysis explicitly:**
-
    ```
    Dependency Analysis:
    - Task "api" uses the schema from task "db" → api depends on db
@@ -427,51 +393,38 @@ Add unit tests to src/__tests__/auth/ following existing test patterns.
 
    **If you skip this step, workers will pick up tasks in wrong order.**
 
-7. **Write Task Definitions:**
-   Each task should have:
-   - **id**: Short placeholder (e.g., "db", "api", "auth")
-   - **Title**: Verb phrase describing the deliverable (e.g., "Add user authentication with session management")
-   - **Description**: Human-readable story format (syncs to GitHub) - what will be delivered
-   - **Type**: One of the valid types from step 1 (e.g., FEATURE, BUG, ENHANCEMENT, TASK, SPIKE)
-   - **Acceptance Criteria**: Verifiable outcomes for humans (syncs to GitHub)
-   - **Dependencies**: Array of task IDs this depends on (from step 6) - see "Task Dependencies" section
-   - **Implementation Plan** (optional): Technical details for Claude execution (NOT synced to GitHub)
+6. **Write Task Definitions:**
+   Each task needs:
+   - **id**: Short placeholder (e.g., "db", "api")
+   - **title**: Verb phrase describing the deliverable
+   - **description**: Human-readable (syncs to GitHub)
+   - **type**: From step 3 (FEATURE, BUG, ENHANCEMENT, TASK, SPIKE)
+   - **acceptanceCriteria**: Verifiable outcomes
+   - **dependsOn**: Array of task IDs this depends on (from step 5)
+   - **implementationPlan** (optional): Technical details for Claude
 
-   **Task ID Guidelines:**
-   - Use short, descriptive IDs: `"db"`, `"api"`, `"auth"`, `"tests"`
-   - Reference dependencies by their placeholder ID
-   - All `dependsOn` references must match an `id` in the tasks array
-   - For single-task plans, the ID can be anything (e.g., `"main"` or `"task1"`)
-
-8. **Verify Dependencies Before Generating:**
+7. **Verify Dependencies Before Generating:**
 
    **Checklist (all must be true):**
-   - [ ] Every task analyzed for dependencies in step 6
+   - [ ] Every task analyzed for dependencies in step 5
    - [ ] Tasks using other tasks' outputs have `dependsOn` set
    - [ ] Only truly parallel tasks have empty `dependsOn`
 
    **If any task should wait for another, it MUST have `dependsOn` set.**
 
-9. **Generate Plan:**
-   - Call `generate_plan` with `issueNumber` (from step 3), summary, approach, and tasks
-   - **Each task MUST include a `type` field** with a valid type from step 1
-   - **Each task MUST have `dependsOn`** - empty array `[]` only if truly independent
-   - Include `implementationPlan` for tasks that need technical execution context
-   - Use appropriate complexity estimate (LOW, MEDIUM, HIGH, VERY_HIGH)
-   - **Tasks are created in PLANNED status** (no GitHub sync yet)
-   - **Display the issue URL** from the `generate_plan` response (the `url` field)
+8. **Generate Plan:**
+   - Call `generate_plan` with issueNumber, summary, approach, and tasks
+   - Verify the tasks array includes `dependsOn` for each task
+   - Display the issue URL from the response
 
-10. **Ask if User is Satisfied with the Plan (REQUIRED):**
-    - **NEVER automatically start work.** Always ask the user if they're satisfied with the plan first.
-    - Show the issue URL so the user can view the full details in the web UI
-    - Present the plan summary and ask: "Are you satisfied with this plan? Ready to start working on it?"
-    - Wait for explicit user approval before calling `move_issue_to_backlog`
+9. **Ask User to Confirm Plan:**
+   - Show the plan summary and task dependencies
+   - Ask: "Are you satisfied with this plan? Ready to start working on it?"
+   - Wait for explicit approval before proceeding
 
-11. **Start Work on Confirmation:**
-    - Only after user confirms, call `move_issue_to_backlog` with the issue number
+10. **Start Work on Confirmation:**
+    - Call `move_issue_to_backlog` with the issue number
     - This transitions: Issue PLANNED → OPEN, Tasks PLANNED → BACKLOG
-    - If GitHub sync is enabled, creates GitHub issues for each task (using story format, not implementationPlan)
-    - **To skip GitHub sync:** If user explicitly requests no GitHub issues (e.g., "don't create GitHub issues", "skip GitHub sync"), call `move_issue_to_backlog` with `skipGitHubSync: true`
 
 ## When a Single Task is Enough
 

@@ -20,6 +20,8 @@ import {
   type GitWorktreeService,
   type Project,
   type TypeService,
+  type TemplateScope,
+  type TemplateCategory,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 import { createSlimEnrichedTaskData } from "./task-tools.js";
@@ -226,6 +228,12 @@ export const issueToolDefinitions: ToolDefinition[] = [
           description:
             "Template category: 'issue' for issue templates (default), 'task' for task templates",
         },
+        scope: {
+          type: "string",
+          enum: ["local", "global"],
+          description:
+            "Template scope: 'local' for project templates (.track/templates/), 'global' for user templates (~/.track/templates/). If not specified, searches local first then global.",
+        },
       },
       required: ["filename"],
     },
@@ -233,7 +241,7 @@ export const issueToolDefinitions: ToolDefinition[] = [
   {
     name: "create_template",
     description:
-      "Create a new user-defined issue template. Templates use markdown with YAML frontmatter for metadata. Cannot create a template if a user template with the same name already exists.",
+      "Create a new template. Templates use markdown with YAML frontmatter for metadata. Cannot create a template if one with the same name already exists at the target scope.",
     inputSchema: {
       type: "object",
       properties: {
@@ -246,14 +254,25 @@ export const issueToolDefinitions: ToolDefinition[] = [
           description:
             "Template content in markdown with YAML frontmatter. Example: '---\\ntype: FEATURE\\npriority: MEDIUM\\n---\\n# Description\\n...'",
         },
+        category: {
+          type: "string",
+          enum: ["issue", "task"],
+          description:
+            "Template category: 'issue' for issue templates (default), 'task' for task templates",
+        },
+        scope: {
+          type: "string",
+          enum: ["local", "global"],
+          description:
+            "Template scope: 'local' for project templates (.track/templates/, default), 'global' for user templates (~/.track/templates/).",
+        },
       },
       required: ["filename", "content"],
     },
   },
   {
     name: "update_template",
-    description:
-      "Update an existing user-defined template. Cannot modify default templates - create a user template with the same name to override it instead.",
+    description: "Update an existing template at the specified scope.",
     inputSchema: {
       type: "object",
       properties: {
@@ -265,14 +284,25 @@ export const issueToolDefinitions: ToolDefinition[] = [
           type: "string",
           description: "New template content in markdown with YAML frontmatter",
         },
+        category: {
+          type: "string",
+          enum: ["issue", "task"],
+          description:
+            "Template category: 'issue' for issue templates (default), 'task' for task templates",
+        },
+        scope: {
+          type: "string",
+          enum: ["local", "global"],
+          description:
+            "Template scope: 'local' for project templates (.track/templates/, default), 'global' for user templates (~/.track/templates/).",
+        },
       },
       required: ["filename", "content"],
     },
   },
   {
     name: "delete_template",
-    description:
-      "Delete a user-defined template. Cannot delete default templates. If the user template was overriding a default, the default will become active again.",
+    description: "Delete a template at the specified scope.",
     inputSchema: {
       type: "object",
       properties: {
@@ -280,8 +310,50 @@ export const issueToolDefinitions: ToolDefinition[] = [
           type: "string",
           description: "Template filename to delete",
         },
+        category: {
+          type: "string",
+          enum: ["issue", "task"],
+          description:
+            "Template category: 'issue' for issue templates (default), 'task' for task templates",
+        },
+        scope: {
+          type: "string",
+          enum: ["local", "global"],
+          description:
+            "Template scope: 'local' for project templates (.track/templates/, default), 'global' for user templates (~/.track/templates/).",
+        },
       },
       required: ["filename"],
+    },
+  },
+  {
+    name: "copy_template",
+    description:
+      "Copy a template between local and global scopes. Useful for customizing global templates locally or promoting local templates to global.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filename: {
+          type: "string",
+          description: "Template filename to copy (e.g., 'feature.md')",
+        },
+        category: {
+          type: "string",
+          enum: ["issue", "task"],
+          description: "Template category: 'issue' for issue templates, 'task' for task templates",
+        },
+        fromScope: {
+          type: "string",
+          enum: ["local", "global"],
+          description: "Source scope to copy from",
+        },
+        toScope: {
+          type: "string",
+          enum: ["local", "global"],
+          description: "Destination scope to copy to",
+        },
+      },
+      required: ["filename", "category", "fromScope", "toScope"],
     },
   },
   {
@@ -851,16 +923,6 @@ export function handleRestoreIssue(
 }
 
 /**
- * Template category type
- */
-type TemplateCategory = "issue" | "task";
-
-/**
- * Template scope type
- */
-type TemplateScope = "global" | "local" | "all";
-
-/**
  * Handle list_templates tool call
  */
 export async function handleListTemplates(
@@ -921,18 +983,18 @@ export async function handleListTemplates(
  */
 export async function handleGetTemplate(
   ctx: IssueToolContext,
-  args: { filename: string; category?: TemplateCategory }
+  args: { filename: string; category?: TemplateCategory; scope?: TemplateScope }
 ): Promise<ToolResponse> {
-  const { filename, category = "issue" } = args;
+  const { filename, category = "issue", scope } = args;
 
   try {
-    const result =
-      category === "task"
-        ? await ctx.templateService.getTaskTemplateInfo(filename)
-        : await ctx.templateService.getTemplate(filename);
+    const result = await ctx.templateService.getTemplate(filename, category, scope);
 
     if (!result) {
-      return errorResponse(`Template '${filename}' not found in ${category} templates`);
+      const scopeLabel = scope ? `${scope} ` : "";
+      return errorResponse(
+        `Template '${filename}' not found in ${scopeLabel}${category} templates`
+      );
     }
 
     return successResponse({
@@ -958,20 +1020,27 @@ export async function handleGetTemplate(
  */
 export async function handleCreateTemplate(
   ctx: IssueToolContext,
-  args: { filename: string; content: string }
+  args: {
+    filename: string;
+    content: string;
+    category?: TemplateCategory;
+    scope?: TemplateScope;
+  }
 ): Promise<ToolResponse> {
-  const { filename, content } = args;
+  const { filename, content, category = "issue", scope = "local" } = args;
 
   try {
-    const template = await ctx.templateService.createTemplate(filename, content);
+    const template = await ctx.templateService.createTemplate(filename, content, category, scope);
 
     return successResponse({
       success: true,
-      message: `Template '${filename}' created successfully`,
+      message: `Template '${filename}' created successfully in ${scope} ${category} templates`,
       template: {
         filename: template.filename,
         type: template.metadata.type,
         priority: template.metadata.priority,
+        scope,
+        category,
         isUserDefined: template.isUserDefined,
       },
     });
@@ -985,20 +1054,27 @@ export async function handleCreateTemplate(
  */
 export async function handleUpdateTemplate(
   ctx: IssueToolContext,
-  args: { filename: string; content: string }
+  args: {
+    filename: string;
+    content: string;
+    category?: TemplateCategory;
+    scope?: TemplateScope;
+  }
 ): Promise<ToolResponse> {
-  const { filename, content } = args;
+  const { filename, content, category = "issue", scope = "local" } = args;
 
   try {
-    const template = await ctx.templateService.updateTemplate(filename, content);
+    const template = await ctx.templateService.updateTemplate(filename, content, category, scope);
 
     return successResponse({
       success: true,
-      message: `Template '${filename}' updated successfully`,
+      message: `Template '${filename}' updated successfully in ${scope} ${category} templates`,
       template: {
         filename: template.filename,
         type: template.metadata.type,
         priority: template.metadata.priority,
+        scope,
+        category,
         isUserDefined: template.isUserDefined,
       },
     });
@@ -1012,16 +1088,50 @@ export async function handleUpdateTemplate(
  */
 export async function handleDeleteTemplate(
   ctx: IssueToolContext,
-  args: { filename: string }
+  args: { filename: string; category?: TemplateCategory; scope?: TemplateScope }
 ): Promise<ToolResponse> {
-  const { filename } = args;
+  const { filename, category = "issue", scope = "local" } = args;
 
   try {
-    await ctx.templateService.deleteTemplate(filename);
+    await ctx.templateService.deleteTemplate(filename, category, scope);
 
     return successResponse({
       success: true,
-      message: `Template '${filename}' deleted successfully`,
+      message: `Template '${filename}' deleted successfully from ${scope} ${category} templates`,
+    });
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Handle copy_template tool call
+ */
+export async function handleCopyTemplate(
+  ctx: IssueToolContext,
+  args: {
+    filename: string;
+    category: TemplateCategory;
+    fromScope: TemplateScope;
+    toScope: TemplateScope;
+  }
+): Promise<ToolResponse> {
+  const { filename, category, fromScope, toScope } = args;
+
+  try {
+    const template = await ctx.templateService.copyTemplate(filename, category, fromScope, toScope);
+
+    return successResponse({
+      success: true,
+      message: `Template '${filename}' copied from ${fromScope} to ${toScope} ${category} templates`,
+      template: {
+        filename: template.filename,
+        type: template.metadata.type,
+        priority: template.metadata.priority,
+        scope: toScope,
+        category,
+        isUserDefined: template.isUserDefined,
+      },
     });
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error));
