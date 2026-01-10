@@ -76,8 +76,7 @@ export type PRStatus = "DRAFT" | "OPEN" | "MERGED" | "CLOSED";
 export interface Task {
   readonly id: string; // UUID
   readonly planId: string; // Foreign key to Plan
-  readonly number: number; // IMMUTABLE task identifier - never changes after creation, used for URLs and permanent references
-  readonly index: number; // Display position (1, 2, 3...) - renumbered when plan changes, used for UI as #issue.[index/total]
+  readonly number: number; // Sequential task number (1, 2, 3...) - renumbered when regenerating in PLANNED state, immutable after activation
   readonly order: number; // Display order (1, 2, 3, ...) - can differ from number after reordering
   readonly title: string; // Short task title
   readonly description: string; // Detailed task description
@@ -382,6 +381,18 @@ export interface TaskRepository {
     id: string,
     data: Partial<Omit<Task, "id" | "planId" | "number" | "order" | "createdAt" | "isDeleted">>
   ): Task;
+
+  /**
+   * Update a task's number
+   *
+   * Used when renumbering tasks during plan regeneration in PLANNED state.
+   * Once the issue is activated (moved to OPEN), task numbers should not change.
+   *
+   * @param id - Task UUID
+   * @param newNumber - The new task number
+   * @returns The updated task
+   */
+  updateNumber(id: string, newNumber: number): Task;
 
   /**
    * Soft delete a task
