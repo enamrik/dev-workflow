@@ -1150,4 +1150,123 @@ describe("complete_task", () => {
       expect(logs.map((l) => l.message)).toContain("Completed all work");
     });
   });
+
+  describe("force mode behavior", () => {
+    it("should fail with force=true when PR is confirmed unmerged", async () => {
+      // Arrange
+      const mockGitHubCLI = new MockGitHubCLI();
+      const mockGitWorktreeService = new MockGitWorktreeService();
+      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "PR_REVIEW",
+      });
+
+      // Set up task with branch, worktree, and PR
+      ctx.taskRepository.update(task.id, {
+        branchName: "issue-1/task-1-test-task",
+        worktreePath: "/tmp/worktree/issue-1-task-1",
+      });
+      ctx.taskRepository.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+
+      // Configure mock to return an unmerged PR
+      mockGitHubCLI.setPRStatus(42, { merged: false, state: "open" });
+
+      // Act - try to force complete with unmerged PR
+      const result = await handleCompleteTask(ctx, {
+        taskId: task.id,
+        sessionId: "test-session",
+        finalLogEntry: "Attempted force complete",
+        force: true,
+      });
+
+      // Assert - should fail even with force=true
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("not merged yet");
+      expect(result.content[0].text).toContain("force=true cannot bypass");
+
+      // Verify task was NOT completed
+      const updatedTask = ctx.taskRepository.findById(task.id);
+      expect(updatedTask?.status).toBe("PR_REVIEW");
+    });
+
+    it("should succeed with force=true when PR is not found on GitHub", async () => {
+      // Arrange
+      const mockGitHubCLI = new MockGitHubCLI();
+      const mockGitWorktreeService = new MockGitWorktreeService();
+      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "PR_REVIEW",
+      });
+
+      // Set up task with branch, worktree, and PR
+      ctx.taskRepository.update(task.id, {
+        branchName: "issue-1/task-1-test-task",
+        worktreePath: "/tmp/worktree/issue-1-task-1",
+      });
+      ctx.taskRepository.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+
+      // Configure mock to return null (PR not found)
+      mockGitHubCLI.setPRStatus(42, null);
+
+      // Act - force complete when PR is not found
+      const result = await handleCompleteTask(ctx, {
+        taskId: task.id,
+        sessionId: "test-session",
+        finalLogEntry: "Force completed with PR not found",
+        force: true,
+      });
+
+      // Assert - should succeed with force=true when PR is not found
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.task.status).toBe("COMPLETED");
+    });
+
+    it("should succeed with force=true when task is in wrong status", async () => {
+      // Arrange
+      const mockGitHubCLI = new MockGitHubCLI();
+      const mockGitWorktreeService = new MockGitWorktreeService();
+      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+
+      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Test task",
+        status: "IN_PROGRESS", // Wrong status for completion
+      });
+
+      // Set up task with branch, worktree, and PR
+      ctx.taskRepository.update(task.id, {
+        branchName: "issue-1/task-1-test-task",
+        worktreePath: "/tmp/worktree/issue-1-task-1",
+      });
+      ctx.taskRepository.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+
+      // Configure mock to return a merged PR
+      mockGitHubCLI.setPRStatus(42, { merged: true, state: "closed" });
+
+      // Act - force complete with wrong status but merged PR
+      const result = await handleCompleteTask(ctx, {
+        taskId: task.id,
+        sessionId: "test-session",
+        finalLogEntry: "Force completed from wrong status",
+        force: true,
+      });
+
+      // Assert - should succeed because PR is merged
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.task.status).toBe("COMPLETED");
+    });
+  });
 });

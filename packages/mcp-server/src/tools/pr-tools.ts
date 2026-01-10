@@ -674,13 +674,15 @@ export async function handleCompleteTask(
       }
       // Force mode: continue without PR verification
     } else if (!pr.merged) {
-      if (!force) {
-        return errorResponse(
-          `PR #${task.prNumber} is not merged yet. Current state: ${pr.state}. ` +
-            "Merge the PR on GitHub before completing the task, or use force=true to bypass."
-        );
-      }
-      // Force mode: continue even if PR is not merged
+      // ALWAYS error when PR is confirmed unmerged - force flag cannot bypass this
+      // The force flag is only for bypassing state machine validation (wrong status,
+      // missing PR number, PR not found on GitHub). When we have definitive proof
+      // the PR isn't merged, completing the task would corrupt the workflow.
+      return errorResponse(
+        `PR #${task.prNumber} is not merged yet. Current state: ${pr.state}. ` +
+          "Merge the PR on GitHub before completing the task. " +
+          "Note: force=true cannot bypass this check because the PR is confirmed unmerged."
+      );
     } else {
       prMerged = true;
     }
