@@ -10,6 +10,8 @@ import {
   SqlitePlanRepository,
   SqliteTaskRepository,
   SqliteSnapshotRepository,
+  SqliteWorkerRepository,
+  SqliteDispatchQueueRepository,
   VersioningService,
   PlanningService,
   TaskManagementService,
@@ -42,6 +44,8 @@ export function createRepositories(db: TestDatabase["db"], projectId: string = T
     planRepository: new SqlitePlanRepository(typedDb),
     taskRepository: new SqliteTaskRepository(typedDb),
     snapshotRepository: new SqliteSnapshotRepository(typedDb, projectId),
+    workerRepository: new SqliteWorkerRepository(typedDb),
+    dispatchQueueRepository: new SqliteDispatchQueueRepository(typedDb),
   };
 }
 

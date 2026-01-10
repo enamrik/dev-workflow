@@ -91,6 +91,7 @@ import {
   // Dispatch handlers (worker task assignment)
   dispatchToolDefinitions,
   handleDispatchTask,
+  handleGetDispatchStatus,
   handleEndWorkerSession,
   errorResponse,
 } from "./tools/index.js";
@@ -322,6 +323,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     // Dispatch tools (worker task assignment)
     if (name === "dispatch_task") {
       return handleDispatchTask(context.dispatchToolContext, a);
+    }
+    if (name === "get_dispatch_status") {
+      return handleGetDispatchStatus(context.dispatchToolContext);
     }
     if (name === "end_worker_session") {
       return handleEndWorkerSession(context.dispatchToolContext, a);
