@@ -18,7 +18,6 @@ import {
   SqliteProjectRepository,
   SqliteDispatchQueueRepository,
   SqliteWorkerRepository,
-  SqliteTypeRepository,
   TemplateService,
   type TemplateServiceConfig,
   TypeService,
@@ -189,7 +188,7 @@ export class McpDIContext {
     };
 
     // Initialize type repository and service (types are stored in global DB)
-    const typeRepository = new SqliteTypeRepository(db);
+    const typeRepository = dataSource.getTypeRepository();
     const typeService = new TypeService(typeRepository);
     const templateService = new TemplateService(fileSystem, templateConfig, typeService);
 

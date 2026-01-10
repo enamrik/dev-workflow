@@ -156,13 +156,7 @@ export {
 } from "./infrastructure/repositories/global-settings-repository.js";
 export { SqliteWorkerRepository } from "./infrastructure/repositories/worker-repository.js";
 export { SqliteDispatchQueueRepository } from "./infrastructure/repositories/dispatch-queue-repository.js";
-export {
-  SqliteTypeRepository,
-  type TypeRepository,
-  type TypeEntity,
-  type CreateTypeData,
-  type UpdateTypeData,
-} from "./infrastructure/repositories/type-repository.js";
+export { SqliteTypeRepository } from "./infrastructure/repositories/type-repository.js";
 
 // Infrastructure - Backup
 export { S3BackupProvider } from "./infrastructure/backup/s3-backup-provider.js";

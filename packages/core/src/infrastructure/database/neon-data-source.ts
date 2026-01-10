@@ -17,6 +17,7 @@ import type { PlanRepository } from "../../domain/plan.js";
 import type { TaskRepository } from "../../domain/task.js";
 import type { MilestoneRepository } from "../../domain/milestone.js";
 import type { SnapshotRepository } from "../../domain/snapshot.js";
+import type { TypeRepository } from "../../domain/type-definition.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -184,6 +185,10 @@ export class NeonDataSource implements DataSourceProvider {
   // ===========================================================================
 
   getProjectRepository(): ProjectRepository {
+    throw new Error("NeonDataSource: PostgreSQL repositories not yet implemented");
+  }
+
+  getTypeRepository(): TypeRepository {
     throw new Error("NeonDataSource: PostgreSQL repositories not yet implemented");
   }
 

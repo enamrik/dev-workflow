@@ -24,6 +24,7 @@ import type { PlanRepository } from "./plan.js";
 import type { TaskRepository } from "./task.js";
 import type { MilestoneRepository } from "./milestone.js";
 import type { SnapshotRepository } from "./snapshot.js";
+import type { TypeRepository } from "./type-definition.js";
 
 // =============================================================================
 // Database Types
@@ -209,6 +210,14 @@ export interface DataSourceProvider {
    * The instance is cached and reused across calls.
    */
   getProjectRepository(): ProjectRepository;
+
+  /**
+   * Get the TypeRepository instance for this data source.
+   *
+   * TypeRepository is NOT scoped to a project since types are global.
+   * The instance is cached and reused across calls.
+   */
+  getTypeRepository(): TypeRepository;
 
   /**
    * Create an IssueRepository scoped to a specific project.

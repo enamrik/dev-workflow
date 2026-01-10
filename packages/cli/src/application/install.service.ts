@@ -5,7 +5,6 @@ import {
   TrackDirectoryResolver,
   DataSourceFactory,
   SqliteProjectRepository,
-  SqliteTypeRepository,
   ProjectService,
   NodeGitOperations,
   resolveConnectionString,
@@ -475,7 +474,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
       const dbService = await DataSourceFactory.createSqlite(connectionString);
 
       try {
-        const typeRepository = new SqliteTypeRepository(dbService.getDb());
+        const typeRepository = dbService.getTypeRepository();
 
         // Convert DEFAULT_TYPE_DEFINITIONS to CreateTypeData format
         const typesToSeed = DEFAULT_TYPE_DEFINITIONS.map((typeDef) => ({

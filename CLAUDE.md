@@ -136,6 +136,68 @@ class GitHubProjectManagementProvider implements ProjectManagementProvider {
 - Never call GitHub CLI directly from application layer - always go through the provider
 - The provider handles all external API calls and error translation
 
+#### ⚠️ CRITICAL: Database Abstraction (DataSourceProvider)
+
+**This is the most important abstraction in the codebase. NEVER bypass it.**
+
+The `DataSourceProvider` interface (`packages/core/src/domain/data-source.ts`) abstracts database operations to support multiple backends (SQLite for CLI/MCP, PostgreSQL/Neon for web). **ALL repositories MUST be created through this interface.**
+
+```typescript
+// Domain interface - packages/core/src/domain/data-source.ts
+interface DataSourceProvider {
+  readonly providerId: string; // "sqlite", "neon"
+
+  getDb(): DrizzleDatabase;
+
+  // Repository factory methods - ALL repositories go here
+  getProjectRepository(): ProjectRepository;
+  createIssueRepository(projectId: string): IssueRepository;
+  createPlanRepository(projectId: string): PlanRepository;
+  createTaskRepository(projectId: string): TaskRepository;
+  createMilestoneRepository(projectId: string): MilestoneRepository;
+  createSnapshotRepository(projectId: string): SnapshotRepository;
+  // Add new repositories here...
+}
+
+// Implementations:
+// - SqliteDataSource (packages/core/src/infrastructure/database/sqlite-data-source.ts)
+// - NeonDataSource (packages/core/src/infrastructure/database/neon-data-source.ts)
+```
+
+**⚠️ When adding a new table or repository, you MUST:**
+
+1. **Update BOTH schemas** - `schema.ts` (SQLite) AND `schema-pg.ts` (PostgreSQL)
+2. **Define the repository interface** in `domain/` (e.g., `domain/type.ts`)
+3. **Add factory method** to `DataSourceProvider` interface
+4. **Implement in BOTH** `SqliteDataSource` AND `NeonDataSource`
+5. **Use `DrizzleDatabase`** type (not `SqliteDrizzleDatabase`) for dialect-agnostic queries
+
+**❌ NEVER DO THIS:**
+
+```typescript
+// BAD - Bypasses DataSourceProvider, only works with SQLite
+class SqliteTypeRepository {
+  constructor(private readonly db: SqliteDrizzleDatabase) {} // WRONG TYPE
+}
+
+// BAD - Creating repository directly instead of through DataSourceProvider
+const repo = new SqliteTypeRepository(db);
+```
+
+**✅ ALWAYS DO THIS:**
+
+```typescript
+// GOOD - Repository uses dialect-agnostic type
+class SqliteTypeRepository implements TypeRepository {
+  constructor(private readonly db: DrizzleDatabase) {}
+}
+
+// GOOD - Get repository through DataSourceProvider
+const repo = dataSource.createTypeRepository(projectId);
+```
+
+**Why this matters:** The web UI uses PostgreSQL (Neon), while CLI/MCP use SQLite. Breaking this abstraction means features work in one environment but fail silently in another.
+
 ### 5. Clean Code Practices
 
 #### Naming
@@ -344,11 +406,16 @@ And in worktree `issue-54-task-2`:
 
 When making schema changes:
 
-1. Update the schema in `packages/core/src/infrastructure/database/schema.ts`
+1. **Update BOTH schemas:**
+   - `packages/core/src/infrastructure/database/schema.ts` (SQLite)
+   - `packages/core/src/infrastructure/database/schema-pg.ts` (PostgreSQL)
 2. Run `pnpm drizzle-kit generate` in `packages/core` to create an incremental migration
 3. Run `dev-workflow update` to apply the migration
+4. **If adding a new table:** Follow the DataSourceProvider checklist above (add repository interface, factory method, implement in both data sources)
 
 The generated migration will contain only the changes (ALTER TABLE statements), preserving existing data.
+
+**⚠️ Forgetting to update `schema-pg.ts` will break the web UI silently.**
 
 ## TypeScript Guidelines
 
@@ -458,6 +525,7 @@ Our `tsconfig.json` enforces maximum type safety:
 ❌ **Shotgun Surgery** - one change requires many file edits
 ❌ **Global Mutable State** - singletons, module-level `let instance = null` patterns
 ❌ **Wrapper Modules** - modules with many unrelated exported functions (god modules)
+❌ **Bypassing DataSourceProvider** - creating repositories directly instead of through factory methods, using `SqliteDrizzleDatabase` instead of `DrizzleDatabase`, only updating one schema
 
 ## Dependency Injection Patterns
 
@@ -610,6 +678,7 @@ getNextTaskNumber(planId: string): number {
 - [ ] Business logic in domain layer
 - [ ] Infrastructure concerns separated
 - [ ] TypeScript strict mode compliant
+- [ ] **New tables/repositories follow DataSourceProvider pattern** (both schemas, factory methods, both implementations)
 
 ## Testing GitHub Sync
 

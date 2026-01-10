@@ -14,14 +14,12 @@ import type { IssueType } from "../../domain/issue.js";
 import {
   type TypeDefinition,
   type TypeDefinitions,
+  type TypeRepository,
+  type TypeEntity,
+  type CreateTypeData,
+  type UpdateTypeData,
   DEFAULT_TYPE_DEFINITIONS,
 } from "../../domain/type-definition.js";
-import type {
-  TypeRepository,
-  TypeEntity,
-  CreateTypeData,
-  UpdateTypeData,
-} from "../repositories/type-repository.js";
 
 /**
  * Type service error
