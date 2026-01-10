@@ -1,14 +1,14 @@
 /**
- * TaskGitHubSyncService - Orchestrates synchronization between tasks and GitHub issues
+ * TaskSyncService - Orchestrates synchronization between tasks and external project management systems
  *
  * Key differences from GitHubSyncService:
- * - Syncs tasks (not dev-workflow issues) to GitHub issues
- * - Creates GitHub issues when tasks move from PLANNED → BACKLOG
- * - Keeps task status in sync with GitHub issue state and Project column
+ * - Syncs tasks (not dev-workflow issues) to external issues
+ * - Creates external issues when tasks move from PLANNED → BACKLOG
+ * - Keeps task status in sync with external issue state and Project column
  *
  * Follows the same patterns:
  * - Push-only sync: tasks are source of truth
- * - GitHub-first on create: create on GitHub before updating local
+ * - Provider-first on create: create on provider before updating local
  * - Fail fast: if sync fails, operation fails
  */
 
@@ -29,13 +29,13 @@ import type { TypeService } from "../infrastructure/types/type-service.js";
 /**
  * Error thrown when task GitHub sync fails
  */
-export class TaskGitHubSyncError extends Error {
+export class TaskSyncError extends Error {
   constructor(
     message: string,
     public readonly cause?: unknown
   ) {
     super(message);
-    this.name = "TaskGitHubSyncError";
+    this.name = "TaskSyncError";
   }
 }
 
@@ -88,9 +88,9 @@ export interface IssueSyncResult {
 }
 
 /**
- * TaskGitHubSyncService - Creates and syncs GitHub issues for tasks
+ * TaskSyncService - Creates and syncs GitHub issues for tasks
  */
-export class TaskGitHubSyncService {
+export class TaskSyncService {
   constructor(
     private readonly taskRepository: TaskRepository,
     private readonly issueRepository: IssueRepository,
@@ -221,7 +221,7 @@ export class TaskGitHubSyncService {
       } catch (error) {
         // Fail fast - if any task fails, entire operation fails
         const errorMessage = error instanceof Error ? error.message : String(error);
-        throw new TaskGitHubSyncError(
+        throw new TaskSyncError(
           `Failed to activate task ${task.number}: ${errorMessage}`,
           error
         );
@@ -285,7 +285,7 @@ export class TaskGitHubSyncService {
     // Fetch the parent GitHub issue to get its nodeId and URL
     const parentIssue = await this.provider.getIssue(String(parentIssueNumber));
     if (!parentIssue) {
-      throw new TaskGitHubSyncError(`Parent GitHub issue #${parentIssueNumber} not found`);
+      throw new TaskSyncError(`Parent GitHub issue #${parentIssueNumber} not found`);
     }
 
     const config = (await this.getConfig())!;
@@ -297,7 +297,7 @@ export class TaskGitHubSyncService {
         const result = await this.provider.addToProject(parentIssue.nodeId, config.projectId);
 
         if (!result.success || !result.itemId) {
-          throw new TaskGitHubSyncError(
+          throw new TaskSyncError(
             result.error ??
               `Project association returned empty item ID for project ${config.projectId}`
           );
@@ -318,10 +318,10 @@ export class TaskGitHubSyncService {
           );
         }
       } catch (error) {
-        if (error instanceof TaskGitHubSyncError) {
+        if (error instanceof TaskSyncError) {
           throw error;
         }
-        throw new TaskGitHubSyncError(
+        throw new TaskSyncError(
           `Failed to add parent issue to GitHub Project ${config.projectId}`,
           error
         );
@@ -377,7 +377,7 @@ export class TaskGitHubSyncService {
   async createGitHubIssueForTask(issue: Issue, task: Task): Promise<GitHubSyncState> {
     const config = await this.getConfig();
     if (!config?.enabled) {
-      throw new TaskGitHubSyncError("GitHub sync is not enabled");
+      throw new TaskSyncError("GitHub sync is not enabled");
     }
 
     // Use plain task title (no prefix) to avoid confusing teammates not using dev-workflow
@@ -403,7 +403,7 @@ export class TaskGitHubSyncService {
         const result = await this.provider.addToProject(externalIssue.nodeId, config.projectId);
 
         if (!result.success || !result.itemId) {
-          throw new TaskGitHubSyncError(
+          throw new TaskSyncError(
             result.error ??
               `Project association returned empty item ID for project ${config.projectId}`
           );
@@ -424,10 +424,10 @@ export class TaskGitHubSyncService {
           );
         }
       } catch (error) {
-        if (error instanceof TaskGitHubSyncError) {
+        if (error instanceof TaskSyncError) {
           throw error;
         }
-        throw new TaskGitHubSyncError(
+        throw new TaskSyncError(
           `Failed to add task to GitHub Project ${config.projectId}`,
           error
         );

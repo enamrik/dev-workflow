@@ -28,7 +28,7 @@ import {
   TaskManagementService,
   taskExecutionLogs,
   GitHubSyncService,
-  TaskGitHubSyncService,
+  TaskSyncService,
   NodeGitHubCLI,
   ProviderRegistry,
   getProjectManagementProvider,
@@ -206,7 +206,7 @@ export class McpDIContext {
       config.projectId
     );
 
-    const taskGitHubSyncService = new TaskGitHubSyncService(
+    const taskSyncService = new TaskSyncService(
       taskRepository,
       issueRepository,
       planRepository,
@@ -272,7 +272,7 @@ export class McpDIContext {
       planRepository,
       taskRepository,
       planningService,
-      taskGitHubSyncService,
+      taskSyncService,
       typeService,
     };
 
@@ -285,7 +285,7 @@ export class McpDIContext {
       taskManagementService,
       taskExecutionLogsSchema: taskExecutionLogs,
       conflictDetectionService,
-      taskGitHubSyncService,
+      taskSyncService,
       providerRegistry,
       project,
       projectRepository,
@@ -323,7 +323,7 @@ export class McpDIContext {
       planRepository,
       taskRepository,
       gitWorktreeService,
-      taskGitHubSyncService,
+      taskSyncService,
       dbService: dataSource,
       taskExecutionLogsSchema: taskExecutionLogs,
     };

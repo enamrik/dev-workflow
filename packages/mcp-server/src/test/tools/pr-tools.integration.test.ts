@@ -12,7 +12,7 @@ import {
   MockGitHubCLI,
   MockGitWorktreeService,
   SqliteProjectRepository,
-  TaskGitHubSyncService,
+  TaskSyncService,
   taskExecutionLogs,
   type SqliteDataSource,
   type ProjectManagementProvider,
@@ -106,7 +106,7 @@ function createPRToolContext(
   const gitWorktreeService = mockGitWorktreeService ?? new MockGitWorktreeService();
   const mockProvider = createMockProvider();
 
-  const taskGitHubSyncService = new TaskGitHubSyncService(
+  const taskSyncService = new TaskSyncService(
     repos.taskRepository,
     repos.issueRepository,
     repos.planRepository,
@@ -121,7 +121,7 @@ function createPRToolContext(
     planRepository: repos.planRepository,
     taskRepository: repos.taskRepository,
     gitWorktreeService,
-    taskGitHubSyncService,
+    taskSyncService,
     dbService: createMockDbService(db) as unknown as SqliteDataSource,
     taskExecutionLogsSchema: taskExecutionLogs,
   };
@@ -685,7 +685,7 @@ describe("submit_for_review", () => {
         ...createMockProvider(),
         moveToColumn: moveToColumnMock,
       };
-      const taskGitHubSyncService = new TaskGitHubSyncService(
+      const taskSyncService = new TaskSyncService(
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
@@ -700,7 +700,7 @@ describe("submit_for_review", () => {
         planRepository: repos.planRepository,
         taskRepository: repos.taskRepository,
         gitWorktreeService: mockGitWorktreeService,
-        taskGitHubSyncService,
+        taskSyncService,
         dbService: createMockDbService(db) as unknown as SqliteDataSource,
         taskExecutionLogsSchema: taskExecutionLogs,
       };

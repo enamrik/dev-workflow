@@ -279,5 +279,56 @@ describe("TaskSessionService", () => {
       const isAvailable = await taskSessionService.isTaskAvailable(task.id);
       expect(isAvailable).toBe(false);
     });
+
+    it("should return false for ABANDONED tasks", async () => {
+      const issue = createTestIssue(repos.issueRepository);
+      const plan = createTestPlan(repos.planRepository, issue.id);
+
+      const task = createTestTask(repos.taskRepository, plan.id, {
+        status: "ABANDONED",
+      });
+
+      const isAvailable = await taskSessionService.isTaskAvailable(task.id);
+      expect(isAvailable).toBe(false);
+    });
+
+    it("should return false for IN_PROGRESS tasks (not available for fresh start)", async () => {
+      const issue = createTestIssue(repos.issueRepository);
+      const plan = createTestPlan(repos.planRepository, issue.id);
+
+      const task = createTestTask(repos.taskRepository, plan.id, {
+        status: "IN_PROGRESS",
+      });
+
+      const isAvailable = await taskSessionService.isTaskAvailable(task.id);
+      expect(isAvailable).toBe(false);
+    });
+
+    it("should return false for PR_REVIEW tasks (not available for fresh start)", async () => {
+      const issue = createTestIssue(repos.issueRepository);
+      const plan = createTestPlan(repos.planRepository, issue.id);
+
+      const task = createTestTask(repos.taskRepository, plan.id, {
+        status: "PR_REVIEW",
+      });
+
+      const isAvailable = await taskSessionService.isTaskAvailable(task.id);
+      expect(isAvailable).toBe(false);
+    });
+
+    it("should return false for tasks in CLOSED issues", async () => {
+      const issue = createTestIssue(repos.issueRepository);
+      const plan = createTestPlan(repos.planRepository, issue.id);
+
+      const task = createTestTask(repos.taskRepository, plan.id, {
+        status: "BACKLOG",
+      });
+
+      // Close the issue
+      repos.issueRepository.update(issue.id, { status: "CLOSED" });
+
+      const isAvailable = await taskSessionService.isTaskAvailable(task.id);
+      expect(isAvailable).toBe(false);
+    });
   });
 });

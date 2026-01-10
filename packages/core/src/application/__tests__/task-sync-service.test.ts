@@ -1,5 +1,5 @@
 /**
- * TaskGitHubSyncService Tests
+ * TaskSyncService Tests
  *
  * Tests task-level GitHub issue synchronization including:
  * - Column moves on status changes (PR_REVIEW -> In Review, COMPLETED -> Done)
@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createTestDatabase, type TestDatabase } from "../../__tests__/setup.js";
 import { createRepositories } from "../../__tests__/helpers.js";
 import { MockFileSystem } from "../../__tests__/mocks/mock-file-system.js";
-import { TaskGitHubSyncService } from "../task-github-sync-service.js";
+import { TaskSyncService } from "../task-sync-service.js";
 import {
   TemplateService,
   type TemplateServiceConfig,
@@ -85,12 +85,12 @@ function createMockProvider(
   };
 }
 
-describe("TaskGitHubSyncService", () => {
+describe("TaskSyncService", () => {
   let testDb: TestDatabase;
   let repos: ReturnType<typeof createRepositories>;
   let mockProvider: ProjectManagementProvider;
   let testProjectId: string;
-  let service: TaskGitHubSyncService;
+  let service: TaskSyncService;
 
   beforeEach(async () => {
     testDb = createTestDatabase();
@@ -116,7 +116,7 @@ describe("TaskGitHubSyncService", () => {
     });
     testProjectId = project.id;
 
-    service = new TaskGitHubSyncService(
+    service = new TaskSyncService(
       repos.taskRepository,
       repos.issueRepository,
       repos.planRepository,
@@ -276,7 +276,7 @@ describe("TaskGitHubSyncService", () => {
       mockProvider = createMockProvider({
         moveToColumn: vi.fn().mockRejectedValue(new Error("Column move failed")),
       });
-      service = new TaskGitHubSyncService(
+      service = new TaskSyncService(
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
@@ -408,7 +408,7 @@ describe("TaskGitHubSyncService", () => {
       mockProvider = createMockProvider({
         moveToColumn: vi.fn().mockRejectedValue(new Error("Column 'NonExistent Column' not found")),
       });
-      service = new TaskGitHubSyncService(
+      service = new TaskSyncService(
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
@@ -496,7 +496,7 @@ describe("TaskGitHubSyncService", () => {
           return Promise.resolve(null);
         }),
       });
-      service = new TaskGitHubSyncService(
+      service = new TaskSyncService(
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
@@ -612,7 +612,7 @@ describe("TaskGitHubSyncService", () => {
         }),
         linkParentChild: vi.fn().mockResolvedValue(undefined),
       });
-      service = new TaskGitHubSyncService(
+      service = new TaskSyncService(
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
@@ -761,7 +761,7 @@ describe("TaskGitHubSyncService", () => {
           return Promise.resolve(null);
         }),
       });
-      service = new TaskGitHubSyncService(
+      service = new TaskSyncService(
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
@@ -876,7 +876,7 @@ describe("TaskGitHubSyncService", () => {
           },
         ]),
       });
-      service = new TaskGitHubSyncService(
+      service = new TaskSyncService(
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
@@ -955,7 +955,7 @@ describe("TaskGitHubSyncService", () => {
           return Promise.resolve(createdIssues.get(ref) ?? null);
         }),
       });
-      service = new TaskGitHubSyncService(
+      service = new TaskSyncService(
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
@@ -1158,7 +1158,7 @@ describe("TaskGitHubSyncService", () => {
           return Promise.resolve(null);
         }),
       });
-      service = new TaskGitHubSyncService(
+      service = new TaskSyncService(
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
@@ -1215,7 +1215,7 @@ labels: []
       const templateService = new TemplateService(mockFs, templateConfig);
 
       // Create service WITH template service
-      const serviceWithTemplates = new TaskGitHubSyncService(
+      const serviceWithTemplates = new TaskSyncService(
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
@@ -1298,7 +1298,7 @@ labels: []
       const templateService = new TemplateService(mockFs, templateConfig);
 
       // Create service WITH template service (but no matching templates)
-      const serviceWithTemplates = new TaskGitHubSyncService(
+      const serviceWithTemplates = new TaskSyncService(
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
@@ -1428,7 +1428,7 @@ labels: []
       const typeService = new TypeService(repos.typeRepository);
 
       // Create service WITH typeService
-      const serviceWithTypes = new TaskGitHubSyncService(
+      const serviceWithTypes = new TaskSyncService(
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
@@ -1493,7 +1493,7 @@ labels: []
       ]);
       const typeService = new TypeService(repos.typeRepository);
 
-      const serviceWithTypes = new TaskGitHubSyncService(
+      const serviceWithTypes = new TaskSyncService(
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
@@ -1597,7 +1597,7 @@ labels: []
       // Note: repos.typeRepository is empty, so TypeService will fall back to defaults
       const typeService = new TypeService(repos.typeRepository);
 
-      const serviceWithTypes = new TaskGitHubSyncService(
+      const serviceWithTypes = new TaskSyncService(
         repos.taskRepository,
         repos.issueRepository,
         repos.planRepository,
