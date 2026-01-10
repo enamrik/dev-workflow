@@ -170,6 +170,35 @@ export class MockGitHubCLI implements GitHubCLI {
     return this.prs.get(number);
   }
 
+  /**
+   * Set PR status for testing.
+   * Pass null to simulate PR not found on GitHub.
+   * Pass an object with merged/state to simulate specific PR state.
+   */
+  setPRStatus(prNumber: number, status: { merged: boolean; state: string } | null): void {
+    if (status === null) {
+      // Remove PR to simulate "not found"
+      this.prs.delete(prNumber);
+    } else {
+      // Create or update PR with specified status
+      const existing = this.prs.get(prNumber);
+      const pr: GitHubPRData = {
+        number: prNumber,
+        url: existing?.url ?? `https://github.com/test/repo/pull/${prNumber}`,
+        nodeId: existing?.nodeId ?? `PR_test_${prNumber}`,
+        title: existing?.title ?? `PR #${prNumber}`,
+        body: existing?.body ?? "",
+        state: status.state as "OPEN" | "CLOSED" | "MERGED",
+        isDraft: existing?.isDraft ?? false,
+        headBranch: existing?.headBranch ?? `branch-${prNumber}`,
+        baseBranch: existing?.baseBranch ?? "main",
+        merged: status.merged,
+        mergeable: existing?.mergeable ?? "MERGEABLE",
+      };
+      this.prs.set(prNumber, pr);
+    }
+  }
+
   private recordCall(method: string, args: unknown[]): void {
     this.calls.push({ method, args, timestamp: new Date() });
   }
