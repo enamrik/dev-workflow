@@ -219,8 +219,8 @@ export class ClaudeWorkerService {
       this.state.status = "WORKING";
     }
 
-    // Register worker
-    this.workerRepository.register(this.state.workerId, this.state.workerName);
+    // Register worker with process ID (for killing stale workers)
+    this.workerRepository.register(this.state.workerId, this.state.workerName, process.pid);
     const autoClaimSuffix = this.config.autoClaim ? " [auto-claim enabled]" : "";
     console.log(
       `Worker registered: ${this.state.workerName} (${this.state.workerId.slice(0, 8)}...)${autoClaimSuffix}`
@@ -402,7 +402,8 @@ export class ClaudeWorkerService {
   private startHeartbeat(): void {
     this.heartbeatInterval = setInterval(() => {
       if (this.workerRepository) {
-        this.workerRepository.updateHeartbeat(this.state.workerId);
+        // Update heartbeat with PID (in case PID somehow changed, though unlikely)
+        this.workerRepository.updateHeartbeat(this.state.workerId, process.pid);
       }
     }, this.config.heartbeatIntervalMs);
   }

@@ -539,6 +539,10 @@ export const workers = sqliteTable("workers", {
   // Workers with stale heartbeats (>60s) are considered dead
   lastHeartbeat: text("last_heartbeat").notNull(),
 
+  // Process ID of the worker process - used to kill stale workers before reclaiming tasks
+  // Nullable for migration compatibility with existing workers
+  pid: integer("pid"),
+
   // Timestamps
   createdAt: text("created_at").notNull(),
 });

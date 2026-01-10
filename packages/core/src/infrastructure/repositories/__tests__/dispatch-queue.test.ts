@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createTestDatabase } from "../../../__tests__/setup.js";
 import { createRepositories } from "../../../__tests__/helpers.js";
 
@@ -365,6 +365,90 @@ describe("SqliteDispatchQueueRepository", () => {
 
       expect(entry.claudeDone).toBe(false);
       expect(entry.claudeDoneAt).toBeNull();
+    });
+  });
+
+  describe("stale worker process termination", () => {
+    it("should attempt to kill stale worker process when reclaiming task", () => {
+      const mockKill = vi.spyOn(process, "kill").mockImplementation(() => true);
+
+      // Register worker-1 with a PID
+      repos.workerRepository.register("worker-1", "worker-1", 12345);
+      repos.workerRepository.register("worker-2", "worker-2", 67890);
+      repos.dispatchQueueRepository.enqueue("task-1");
+
+      // Worker 1 claims the task
+      repos.dispatchQueueRepository.claimTask("worker-1");
+
+      // Worker 2 reclaims with 0 threshold (worker-1 is stale)
+      repos.dispatchQueueRepository.claimTask("worker-2", 0);
+
+      // Should have attempted to kill worker-1's process
+      expect(mockKill).toHaveBeenCalledWith(12345, "SIGTERM");
+
+      mockKill.mockRestore();
+    });
+
+    it("should proceed with reclaim even if kill fails (process already exited)", () => {
+      const mockKill = vi.spyOn(process, "kill").mockImplementation(() => {
+        const error = new Error("No such process") as NodeJS.ErrnoException;
+        error.code = "ESRCH";
+        throw error;
+      });
+
+      // Register worker-1 with a PID
+      repos.workerRepository.register("worker-1", "worker-1", 12345);
+      repos.workerRepository.register("worker-2", "worker-2", 67890);
+      repos.dispatchQueueRepository.enqueue("task-1");
+
+      // Worker 1 claims the task
+      repos.dispatchQueueRepository.claimTask("worker-1");
+
+      // Worker 2 reclaims - should succeed despite kill failure
+      const claimed = repos.dispatchQueueRepository.claimTask("worker-2", 0);
+
+      expect(claimed).not.toBeNull();
+      expect(claimed!.workerId).toBe("worker-2");
+      expect(mockKill).toHaveBeenCalledWith(12345, "SIGTERM");
+
+      mockKill.mockRestore();
+    });
+
+    it("should not attempt kill when stale worker has no PID", () => {
+      const mockKill = vi.spyOn(process, "kill").mockImplementation(() => true);
+
+      // Register worker-1 without a PID
+      repos.workerRepository.register("worker-1", "worker-1");
+      repos.workerRepository.register("worker-2", "worker-2", 67890);
+      repos.dispatchQueueRepository.enqueue("task-1");
+
+      // Worker 1 claims the task
+      repos.dispatchQueueRepository.claimTask("worker-1");
+
+      // Worker 2 reclaims with 0 threshold
+      const claimed = repos.dispatchQueueRepository.claimTask("worker-2", 0);
+
+      expect(claimed).not.toBeNull();
+      expect(claimed!.workerId).toBe("worker-2");
+      // Should not have attempted to kill (no PID)
+      expect(mockKill).not.toHaveBeenCalled();
+
+      mockKill.mockRestore();
+    });
+
+    it("should not attempt kill when claiming PENDING task", () => {
+      const mockKill = vi.spyOn(process, "kill").mockImplementation(() => true);
+
+      // Register worker
+      repos.workerRepository.register("worker-1", "worker-1", 12345);
+      repos.dispatchQueueRepository.enqueue("task-1");
+
+      // Claim PENDING task - should not trigger kill
+      repos.dispatchQueueRepository.claimTask("worker-1");
+
+      expect(mockKill).not.toHaveBeenCalled();
+
+      mockKill.mockRestore();
     });
   });
 });

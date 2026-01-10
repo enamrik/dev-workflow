@@ -18,6 +18,42 @@ import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
 export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
   constructor(private readonly db: SqliteDrizzleDatabase) {}
 
+  /**
+   * Kill a stale worker process before reclaiming its task.
+   * This prevents two workers from working on the same task simultaneously.
+   *
+   * @param workerId - The stale worker's ID
+   * @returns true if kill was attempted (regardless of success)
+   */
+  private killStaleWorkerProcess(workerId: string): boolean {
+    // Get the worker's PID from the database
+    const worker = this.db
+      .select({ pid: workers.pid })
+      .from(workers)
+      .where(eq(workers.id, workerId))
+      .get();
+
+    if (!worker?.pid) {
+      // No PID recorded, nothing to kill
+      return false;
+    }
+
+    try {
+      // Send SIGTERM to gracefully terminate the process
+      process.kill(worker.pid, "SIGTERM");
+      return true;
+    } catch (error) {
+      // Process may have already exited (ESRCH) or we don't have permission (EPERM)
+      // In either case, we proceed with reclamation
+      const errorCode = (error as NodeJS.ErrnoException).code;
+      if (errorCode !== "ESRCH") {
+        // Log unexpected errors, but don't block reclamation
+        console.warn(`Failed to kill stale worker process (PID ${worker.pid}): ${errorCode}`);
+      }
+      return false;
+    }
+  }
+
   enqueue(taskId: string): DispatchQueueEntry {
     const now = new Date().toISOString();
 
@@ -89,6 +125,12 @@ export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
 
     if (!candidate) {
       return null;
+    }
+
+    // If reclaiming from a stale worker, kill the old worker process first
+    // This prevents two workers from working on the same task simultaneously
+    if (candidate.status === "WORKING" && candidate.workerId) {
+      this.killStaleWorkerProcess(candidate.workerId);
     }
 
     // Atomic claim: UPDATE only if the condition still holds

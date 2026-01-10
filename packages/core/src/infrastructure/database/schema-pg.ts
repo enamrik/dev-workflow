@@ -241,6 +241,7 @@ export const workers = pgTable("workers", {
   name: text("name").notNull(),
   status: text("status").notNull().default("IDLE"),
   lastHeartbeat: text("last_heartbeat").notNull(),
+  pid: integer("pid"),
   createdAt: text("created_at").notNull(),
 });
 
