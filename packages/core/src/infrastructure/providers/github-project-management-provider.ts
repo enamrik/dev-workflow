@@ -773,7 +773,7 @@ export class GitHubProjectManagementProvider implements ProjectManagementProvide
   /**
    * Update a project item's field value using GraphQL (single-select)
    *
-   * Moved from TaskGitHubSyncService to centralize GitHub Projects V2 operations
+   * Moved from TaskSyncService to centralize GitHub Projects V2 operations
    */
   private async updateProjectItemField(
     projectId: string,

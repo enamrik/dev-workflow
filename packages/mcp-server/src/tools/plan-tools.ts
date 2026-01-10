@@ -8,7 +8,7 @@ import type {
   SqliteTaskRepository,
   PlanningService,
   PlanComplexity,
-  TaskGitHubSyncService,
+  TaskSyncService,
   Project,
   TypeService,
   IssueType,
@@ -194,7 +194,7 @@ export interface PlanToolContext {
   planRepository: SqlitePlanRepository;
   taskRepository: SqliteTaskRepository;
   planningService: PlanningService;
-  taskGitHubSyncService?: TaskGitHubSyncService; // Optional - only present if GitHub sync is enabled
+  taskSyncService?: TaskSyncService; // Optional - only present if GitHub sync is enabled
   typeService: TypeService; // Required for type validation in generate_plan
 }
 
@@ -414,9 +414,9 @@ export async function handleMoveIssueToReady(
     const result = ctx.planningService.readyIssue(issueNumber);
 
     // Sync each task's READY status to GitHub (if sync enabled)
-    if (ctx.taskGitHubSyncService && result.tasks.length > 0) {
+    if (ctx.taskSyncService && result.tasks.length > 0) {
       for (const task of result.tasks) {
-        await ctx.taskGitHubSyncService.syncTaskStatus(task.id, "READY");
+        await ctx.taskSyncService.syncTaskStatus(task.id, "READY");
       }
     }
 
@@ -493,10 +493,10 @@ export async function handleMoveIssueToBacklog(
     });
   }
 
-  // Use TaskGitHubSyncService if available and not skipped
-  if (ctx.taskGitHubSyncService && !skipGitHubSync) {
+  // Use TaskSyncService if available and not skipped
+  if (ctx.taskSyncService && !skipGitHubSync) {
     try {
-      const result = await ctx.taskGitHubSyncService.activatePlannedTasks(issue.id);
+      const result = await ctx.taskSyncService.activatePlannedTasks(issue.id);
 
       if (!result.success) {
         return errorResponse(result.error ?? "Failed to activate tasks");
@@ -578,12 +578,12 @@ export async function handleSyncIssue(
     return errorResponse("issueNumber is required");
   }
 
-  if (!ctx.taskGitHubSyncService) {
+  if (!ctx.taskSyncService) {
     return errorResponse("GitHub sync is not enabled for this project");
   }
 
   try {
-    const result = await ctx.taskGitHubSyncService.syncIssue(issueNumber);
+    const result = await ctx.taskSyncService.syncIssue(issueNumber);
 
     if (!result.success && result.errors.length > 0) {
       // Partial failure - some tasks had errors
