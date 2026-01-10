@@ -263,6 +263,7 @@ export class McpDIContext {
       planRepository,
       taskRepository,
       milestoneRepository,
+      dispatchQueueRepository,
       templateService,
       planningService,
       githubSyncService,
