@@ -765,4 +765,206 @@ describe("Task Tools Integration", () => {
       expect(mockCalls.assignIssue.length).toBe(0);
     });
   });
+
+  describe("handleLoadTaskSession - claiming rules", () => {
+    it("should reject queued task without workerId", async () => {
+      const testDbQueue = createTestDatabase();
+      const ctxQueue = await createTaskToolContext(testDbQueue);
+      const repos = createRepositories(testDbQueue.db);
+
+      // Create task
+      const issue = createTestIssue(ctxQueue.issueRepository);
+      const plan = createTestPlan(ctxQueue.planRepository, issue.id);
+      const task = createTestTask(ctxQueue.taskRepository, plan.id, {
+        title: "Queued Task",
+        status: "BACKLOG",
+      });
+
+      // Add task to dispatch queue
+      repos.dispatchQueueRepository.enqueue(task.id);
+
+      // Add dispatch queue to context
+      const ctxWithQueue = {
+        ...ctxQueue,
+        dispatchQueueRepository: repos.dispatchQueueRepository,
+      };
+
+      // Try to start without workerId
+      const result = await handleLoadTaskSession(ctxWithQueue, {
+        taskId: task.id,
+        sessionId: "test-session",
+        mode: "main",
+      });
+
+      // Should fail with error about needing a worker
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(false);
+      expect(content.error).toContain("dispatch queue");
+      expect(content.error).toContain("worker");
+    });
+
+    it("should allow worker to claim queued task", async () => {
+      const testDbQueue = createTestDatabase();
+      const ctxQueue = await createTaskToolContext(testDbQueue);
+      const repos = createRepositories(testDbQueue.db);
+
+      // Create task
+      const issue = createTestIssue(ctxQueue.issueRepository);
+      const plan = createTestPlan(ctxQueue.planRepository, issue.id);
+      const task = createTestTask(ctxQueue.taskRepository, plan.id, {
+        title: "Queued Task",
+        status: "BACKLOG",
+      });
+
+      // Add task to dispatch queue
+      repos.dispatchQueueRepository.enqueue(task.id);
+
+      // Add dispatch queue to context
+      const ctxWithQueue = {
+        ...ctxQueue,
+        dispatchQueueRepository: repos.dispatchQueueRepository,
+      };
+
+      // Start with workerId (isolated mode is enforced for workers)
+      const result = await handleLoadTaskSession(ctxWithQueue, {
+        taskId: task.id,
+        sessionId: "test-session",
+        workerId: "test-worker-id",
+        // mode defaults to "isolated"
+      });
+
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.resumed).toBe(true);
+    });
+
+    it("should resume non-queued IN_PROGRESS task by any session", async () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "In Progress Task",
+        status: "IN_PROGRESS",
+      });
+
+      // Update task with session info (as if started by another session)
+      ctx.taskRepository.update(task.id, { sessionId: "original-session" });
+
+      // Resume with different session
+      const result = await handleLoadTaskSession(ctx, {
+        taskId: task.id,
+        sessionId: "new-session",
+        mode: "main",
+      });
+
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.resumed).toBe(true);
+    });
+
+    it("should resume non-queued PR_REVIEW task by any session", async () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      // Create task directly in PR_REVIEW status (bypassing state machine)
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "PR Review Task",
+        status: "PR_REVIEW",
+      });
+
+      // Resume with new session
+      const result = await handleLoadTaskSession(ctx, {
+        taskId: task.id,
+        sessionId: "new-session",
+        mode: "main",
+      });
+
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.resumed).toBe(true);
+      expect(content.task.status).toBe("PR_REVIEW");
+    });
+
+    it("should reject COMPLETED task", async () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      // Create task directly in COMPLETED status (bypassing state machine)
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Completed Task",
+        status: "COMPLETED",
+      });
+
+      // Try to start
+      const result = await handleLoadTaskSession(ctx, {
+        taskId: task.id,
+        sessionId: "new-session",
+        mode: "main",
+      });
+
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(false);
+      expect(content.error).toContain("COMPLETED");
+    });
+
+    it("should reject ABANDONED task", async () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      // Create task directly in ABANDONED status (bypassing state machine)
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Abandoned Task",
+        status: "ABANDONED",
+      });
+
+      // Try to start
+      const result = await handleLoadTaskSession(ctx, {
+        taskId: task.id,
+        sessionId: "new-session",
+        mode: "main",
+      });
+
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(false);
+      expect(content.error).toContain("ABANDONED");
+    });
+
+    it("should start fresh for non-queued BACKLOG task", async () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Backlog Task",
+        status: "BACKLOG",
+      });
+
+      const result = await handleLoadTaskSession(ctx, {
+        taskId: task.id,
+        sessionId: "test-session",
+        mode: "main",
+      });
+
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.resumed).toBeUndefined(); // Not resumed, fresh start
+      expect(content.startedAt).toBeDefined();
+      expect(content.task.status).toBe("IN_PROGRESS");
+    });
+
+    it("should start fresh for non-queued READY task", async () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Ready Task",
+        status: "READY",
+      });
+
+      const result = await handleLoadTaskSession(ctx, {
+        taskId: task.id,
+        sessionId: "test-session",
+        mode: "main",
+      });
+
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.resumed).toBeUndefined(); // Not resumed, fresh start
+      expect(content.startedAt).toBeDefined();
+      expect(content.task.status).toBe("IN_PROGRESS");
+    });
+  });
 });

@@ -363,7 +363,12 @@ export interface TaskToolContext {
  * Handle load_task_session tool call
  *
  * Loads a task for execution with full context. Starts or resumes the session.
- * Idempotent: if task is already IN_PROGRESS, returns context without restarting.
+ *
+ * Claiming rules:
+ * - Queued tasks (in dispatch queue): Only workers (with workerId) can claim
+ * - Non-queued IN_PROGRESS/PR_REVIEW: Resume by any session
+ * - Non-queued BACKLOG/READY: Fresh start via startTaskSession()
+ * - Non-queued COMPLETED/ABANDONED: Rejected
  *
  * Supports 3 modes:
  * - 'isolated' (default): creates worktree + branch for parallel work
@@ -400,8 +405,19 @@ export async function handleLoadTaskSession(
     sessionId,
   };
 
-  // If task is already IN_PROGRESS, just return context without restarting
-  if (existingTask.status === "IN_PROGRESS") {
+  // Check if task is in dispatch queue
+  const queueEntry = ctx.dispatchQueueRepository?.findByTaskId(taskId);
+
+  if (queueEntry) {
+    // Queued task - must be claimed by worker
+    if (!workerId) {
+      return errorResponse(
+        `Task is in dispatch queue and can only be claimed by a worker. ` +
+          `Start a worker to continue this task, or remove it from the queue first.`
+      );
+    }
+
+    // Worker claiming queued task - resume path for any status
     response.task = existingTask;
     response.resumed = true;
 
@@ -411,16 +427,43 @@ export async function handleLoadTaskSession(
       response.branchName = existingTask.branchName;
     }
 
-    // Ensure GitHub sync state is correct (repairs failed initial syncs)
+    // Update session tracking
+    const now = new Date().toISOString();
+    ctx.taskRepository.updateSessionInfo(taskId, sessionId, now, now);
+
+    // Sync GitHub status if applicable
     if (ctx.taskGitHubSyncService && existingTask.githubSync?.githubIssueNumber) {
       try {
-        await ctx.taskGitHubSyncService.syncTaskStatus(taskId, "IN_PROGRESS");
+        await ctx.taskGitHubSyncService.syncTaskStatus(taskId, existingTask.status);
       } catch (error) {
         console.warn(`Failed to sync resumed task status to GitHub: ${error}`);
       }
     }
-  } else {
-    // Start new session
+  } else if (existingTask.status === "IN_PROGRESS" || existingTask.status === "PR_REVIEW") {
+    // Non-queued IN_PROGRESS/PR_REVIEW - resume
+    response.task = existingTask;
+    response.resumed = true;
+
+    // Include existing worktree info if available
+    if (existingTask.worktreePath) {
+      response.worktreePath = existingTask.worktreePath;
+      response.branchName = existingTask.branchName;
+    }
+
+    // Update session tracking
+    const now = new Date().toISOString();
+    ctx.taskRepository.updateSessionInfo(taskId, sessionId, now, now);
+
+    // Ensure GitHub sync state is correct (repairs failed initial syncs)
+    if (ctx.taskGitHubSyncService && existingTask.githubSync?.githubIssueNumber) {
+      try {
+        await ctx.taskGitHubSyncService.syncTaskStatus(taskId, existingTask.status);
+      } catch (error) {
+        console.warn(`Failed to sync resumed task status to GitHub: ${error}`);
+      }
+    }
+  } else if (existingTask.status === "BACKLOG" || existingTask.status === "READY") {
+    // Fresh start
     const result = await ctx.taskSessionService.startTaskSession({
       taskId,
       sessionId,
@@ -484,6 +527,12 @@ export async function handleLoadTaskSession(
         }
       }
     }
+  } else {
+    // COMPLETED/ABANDONED - reject
+    return errorResponse(
+      `Cannot start session for task in ${existingTask.status} status. ` +
+        `Only BACKLOG, READY, IN_PROGRESS, or PR_REVIEW tasks can be resumed.`
+    );
   }
 
   // Load full context (same as get_task_for_session)

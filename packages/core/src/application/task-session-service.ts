@@ -438,7 +438,8 @@ export class TaskSessionService {
    *
    * A task is available if:
    * - Status is BACKLOG or READY (not started yet)
-   * - OR status is IN_PROGRESS but session has timed out (>1 hour inactive)
+   * - Dependencies are satisfied
+   * - Parent issue is not CLOSED
    */
   async isTaskAvailable(taskId: string): Promise<boolean> {
     const task = this.taskRepository.findById(taskId);
@@ -471,7 +472,9 @@ export class TaskSessionService {
    * A task is available if:
    * - Parent issue is not CLOSED
    * - Status is BACKLOG or READY and dependencies are satisfied
-   * - OR status is IN_PROGRESS but session has timed out (>1 hour inactive)
+   *
+   * Note: IN_PROGRESS/PR_REVIEW tasks are not "available" for fresh starts,
+   * but can be resumed via load_task_session. COMPLETED/ABANDONED are terminal.
    */
   private isTaskAvailableSync(task: Task): boolean {
     // Check if parent issue is closed
@@ -483,24 +486,11 @@ export class TaskSessionService {
       }
     }
 
-    // BACKLOG and READY tasks are available if dependencies are satisfied
+    // Only BACKLOG and READY tasks are available for fresh starts
     if (task.status === "BACKLOG" || task.status === "READY") {
       return this.dependencyService.areDependenciesSatisfied(task);
     }
 
-    // IN_PROGRESS tasks are available if session has timed out
-    if (task.status === "IN_PROGRESS" && task.lastSessionActivityAt) {
-      const lastActivity = new Date(task.lastSessionActivityAt);
-      const now = new Date();
-      const hoursSinceActivity = (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60);
-
-      // Consider session dead after 1 hour of inactivity
-      if (hoursSinceActivity > 1) {
-        return true;
-      }
-    }
-
-    // COMPLETED and ABANDONED tasks are not available
     return false;
   }
 }
