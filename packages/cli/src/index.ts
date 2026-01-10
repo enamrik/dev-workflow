@@ -1056,8 +1056,9 @@ program
   .command("claude")
   .description("Run as a Claude worker that polls for and executes dispatched tasks")
   .option("--name <name>", "Worker name (auto-generates worker-1, worker-2, etc. if not provided)")
-  .action(async (options: { name?: string }) => {
-    const worker = new ClaudeWorkerService({ name: options.name });
+  .option("--auto-claim", "Automatically claim READY tasks when dependencies complete")
+  .action(async (options: { name?: string; autoClaim?: boolean }) => {
+    const worker = new ClaudeWorkerService({ name: options.name, autoClaim: options.autoClaim });
 
     try {
       await worker.initialize();

@@ -114,6 +114,7 @@ export {
   type TaskCounts,
   type ComputedStatusResult,
 } from "./application/issue-status-service.js";
+export { DependencyService } from "./application/dependency-service.js";
 
 // Infrastructure - Database
 export * from "./infrastructure/database/schema.js";
