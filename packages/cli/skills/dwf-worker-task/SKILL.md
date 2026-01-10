@@ -256,9 +256,10 @@ When user needs to push more changes (e.g., review feedback):
 
 4. **Complete the task:**
    - Call `complete_task` with task ID, session ID, and `finalLogEntry`
+   - **Workers:** Also pass `autoCloseIssue: true` to auto-close the issue if this is the last task
    - The `finalLogEntry` should summarize what was accomplished (files changed, features added, etc.)
    - Task transitions directly to COMPLETED
-   - Response includes `allTasksComplete` field - see "Auto-Closing Issues" below
+   - See "Auto-Closing Issues" below for behavior differences between workers and interactive sessions
 
 **For Isolated/Branch Modes (with PR):**
 
@@ -271,10 +272,11 @@ When user needs to push more changes (e.g., review feedback):
 
 2. **Complete the task:**
    - Call `complete_task` with task ID, session ID, and `finalLogEntry`
+   - **Workers:** Also pass `autoCloseIssue: true` to auto-close the issue if this is the last task
    - The `finalLogEntry` should summarize what was accomplished
    - This atomically: writes final log, verifies PR merged, pulls main, cleans up worktree/branch
    - Task transitions to COMPLETED
-   - Response includes `allTasksComplete` field - see "Auto-Closing Issues" below
+   - See "Auto-Closing Issues" below for behavior differences between workers and interactive sessions
 
 3. **Report completion:**
    - Show task is now COMPLETED
@@ -282,7 +284,9 @@ When user needs to push more changes (e.g., review feedback):
 
 ### Auto-Closing Issues
 
-The `complete_task` response includes `allTasksComplete` boolean.
+**Workers:** Always pass `autoCloseIssue: true` when calling `complete_task`. The tool will automatically close the parent issue if all tasks are complete. No user confirmation needed.
+
+**Interactive (non-worker) sessions:** The `complete_task` response includes `allTasksComplete` boolean.
 
 | `allTasksComplete` | Action                                                                  |
 | ------------------ | ----------------------------------------------------------------------- |
@@ -303,9 +307,8 @@ end_worker_session({
 **Complete Worker Flow:**
 
 1. Load task → implement → create PR → submit for review
-2. Wait for PR merge → `complete_task`
-3. If `allTasksComplete` → optionally `close_issue`
-4. **`end_worker_session()` ← TERMINAL (nothing after this)**
+2. Wait for PR merge → `complete_task` with `autoCloseIssue: true` (auto-closes if all tasks done)
+3. **`end_worker_session()` ← TERMINAL (nothing after this)**
 
 ### To Abandon a Task
 
