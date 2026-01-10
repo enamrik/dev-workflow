@@ -577,6 +577,13 @@ export const dispatchQueue = sqliteTable("dispatch_queue", {
 
   // When the task was added to the queue
   createdAt: text("created_at").notNull(),
+
+  // Flag set by Claude via end_worker_session to signal it's done
+  // Workers poll for this flag before terminating
+  claudeDone: integer("claude_done", { mode: "boolean" }).notNull().default(false),
+
+  // Timestamp when claudeDone was set (for timeout calculations)
+  claudeDoneAt: text("claude_done_at"),
 });
 
 // Type inference for SELECT operations

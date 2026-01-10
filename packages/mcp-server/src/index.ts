@@ -91,6 +91,7 @@ import {
   // Dispatch handlers (worker task assignment)
   dispatchToolDefinitions,
   handleDispatchTask,
+  handleEndWorkerSession,
   errorResponse,
 } from "./tools/index.js";
 
@@ -321,6 +322,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     // Dispatch tools (worker task assignment)
     if (name === "dispatch_task") {
       return handleDispatchTask(context.dispatchToolContext, a);
+    }
+    if (name === "end_worker_session") {
+      return handleEndWorkerSession(context.dispatchToolContext, a);
     }
 
     return errorResponse(`Unknown tool: ${name}`);

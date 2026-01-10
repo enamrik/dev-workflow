@@ -312,4 +312,59 @@ describe("SqliteDispatchQueueRepository", () => {
       // Worker can continue working on the task
     });
   });
+
+  describe("setClaudeDone", () => {
+    it("should set claudeDone flag for a claimed task", () => {
+      repos.workerRepository.register("worker-1", "worker-1");
+      repos.dispatchQueueRepository.enqueue("task-1");
+      repos.dispatchQueueRepository.claimTask("worker-1");
+
+      const updated = repos.dispatchQueueRepository.setClaudeDone("task-1", "worker-1");
+
+      expect(updated).not.toBeNull();
+      expect(updated!.claudeDone).toBe(true);
+      expect(updated!.claudeDoneAt).toBeDefined();
+    });
+
+    it("should return null if task is not in queue", () => {
+      repos.workerRepository.register("worker-1", "worker-1");
+
+      const updated = repos.dispatchQueueRepository.setClaudeDone("non-existent", "worker-1");
+
+      expect(updated).toBeNull();
+    });
+
+    it("should return null if workerId does not match", () => {
+      repos.workerRepository.register("worker-1", "worker-1");
+      repos.workerRepository.register("worker-2", "worker-2");
+      repos.dispatchQueueRepository.enqueue("task-1");
+      repos.dispatchQueueRepository.claimTask("worker-1");
+
+      // Worker-2 tries to set claudeDone - should fail
+      const updated = repos.dispatchQueueRepository.setClaudeDone("task-1", "worker-2");
+
+      expect(updated).toBeNull();
+    });
+
+    it("should persist claudeDone flag", () => {
+      repos.workerRepository.register("worker-1", "worker-1");
+      repos.dispatchQueueRepository.enqueue("task-1");
+      repos.dispatchQueueRepository.claimTask("worker-1");
+      repos.dispatchQueueRepository.setClaudeDone("task-1", "worker-1");
+
+      // Re-read from database
+      const entry = repos.dispatchQueueRepository.findByTaskId("task-1");
+
+      expect(entry).not.toBeNull();
+      expect(entry!.claudeDone).toBe(true);
+      expect(entry!.claudeDoneAt).toBeDefined();
+    });
+
+    it("should initialize claudeDone to false when enqueuing", () => {
+      const entry = repos.dispatchQueueRepository.enqueue("task-1");
+
+      expect(entry.claudeDone).toBe(false);
+      expect(entry.claudeDoneAt).toBeNull();
+    });
+  });
 });

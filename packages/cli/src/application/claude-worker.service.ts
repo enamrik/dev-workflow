@@ -522,11 +522,13 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
 
       this.state.currentClaudeProcess = claudeProcess;
 
-      // Watch for task completion
-      let taskCompleted = false;
+      // Watch for task completion via claudeDone flag
+      let sessionEnded = false;
+      let terminalStateDetectedAt: number | null = null;
+      const TERMINAL_STATE_TIMEOUT_MS = 30000; // 30 seconds fallback
 
       this.taskWatchInterval = setInterval(() => {
-        if (!this.taskRepository) {
+        if (!this.taskRepository || !this.dispatchQueueRepository) {
           return;
         }
 
@@ -540,10 +542,11 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
         // Update terminal title with current status
         this.updateTitle();
 
-        // Check for terminal states
-        if (task.status === "COMPLETED" || task.status === "ABANDONED") {
-          if (!taskCompleted) {
-            taskCompleted = true;
+        // Check for claudeDone flag from the dispatch queue
+        const queueEntry = this.dispatchQueueRepository.findByTaskId(taskId);
+        if (queueEntry?.claudeDone) {
+          if (!sessionEnded) {
+            sessionEnded = true;
 
             // Stop task watch
             if (this.taskWatchInterval) {
@@ -551,9 +554,47 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
               this.taskWatchInterval = null;
             }
 
-            // Start countdown and kill
-            this.countdownAndKill(claudeProcess, task.status);
+            console.log(term.green("\n✓ Claude signaled session complete via end_worker_session"));
+            this.terminateSession(claudeProcess, task.status);
           }
+          return;
+        }
+
+        // Timeout fallback: if task is in terminal state but claudeDone not received
+        const isTerminal = task.status === "COMPLETED" || task.status === "ABANDONED";
+        if (isTerminal) {
+          if (terminalStateDetectedAt === null) {
+            terminalStateDetectedAt = Date.now();
+            console.log(
+              term.yellow(
+                `\n⏳ Task ${task.status} but waiting for end_worker_session (timeout in ${TERMINAL_STATE_TIMEOUT_MS / 1000}s)...`
+              )
+            );
+          } else {
+            const elapsed = Date.now() - terminalStateDetectedAt;
+            if (elapsed >= TERMINAL_STATE_TIMEOUT_MS) {
+              if (!sessionEnded) {
+                sessionEnded = true;
+
+                // Stop task watch
+                if (this.taskWatchInterval) {
+                  clearInterval(this.taskWatchInterval);
+                  this.taskWatchInterval = null;
+                }
+
+                console.log(
+                  term.yellow(
+                    `\n⚠ Timeout: Task ${task.status} but Claude did not call end_worker_session. ` +
+                      "Terminating session (Claude may have crashed or forgotten to call it)."
+                  )
+                );
+                this.terminateSession(claudeProcess, task.status);
+              }
+            }
+          }
+        } else {
+          // Reset timeout if task went back to non-terminal state
+          terminalStateDetectedAt = null;
         }
       }, 2000);
 
@@ -592,35 +633,13 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
   }
 
   /**
-   * Countdown and kill Claude process
-   * Displays countdown in terminal title, interruptible via shutdown signal
+   * Terminate the Claude session
+   * Called when claudeDone flag is received or timeout occurs
    */
-  private countdownAndKill(claudeProcess: ChildProcess, finalStatus: string): void {
-    let countdown = 10;
-
-    console.log(term.green(`\n✓ Task ${finalStatus}! Resetting in ${countdown} seconds...`));
-    this.setTerminalTitle(`${this.state.workerName} | Resetting in ${countdown}s...`);
-
-    const countdownInterval = setInterval(() => {
-      // Check for shutdown signal - interrupt countdown if shutting down
-      if (this.isShuttingDown) {
-        clearInterval(countdownInterval);
-        console.log(term.yellow("\nShutdown signal received, ending session immediately..."));
-        this.setTerminalTitle(`${this.state.workerName} | shutting down...`);
-        claudeProcess.kill("SIGTERM");
-        return;
-      }
-
-      countdown--;
-
-      if (countdown > 0) {
-        this.setTerminalTitle(`${this.state.workerName} | Resetting in ${countdown}s...`);
-      } else {
-        clearInterval(countdownInterval);
-        this.setTerminalTitle(`${this.state.workerName} | resetting session...`);
-        claudeProcess.kill("SIGTERM");
-      }
-    }, 1000);
+  private terminateSession(claudeProcess: ChildProcess, finalStatus: string): void {
+    console.log(term.green(`\n✓ Task ${finalStatus}! Terminating session...`));
+    this.setTerminalTitle(`${this.state.workerName} | ${finalStatus} - terminating...`);
+    claudeProcess.kill("SIGTERM");
   }
 
   // ==========================================================================
