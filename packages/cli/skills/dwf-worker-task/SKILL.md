@@ -213,6 +213,10 @@ When user needs to push more changes (e.g., review feedback):
 1. Make the requested changes
 2. Rebase on main and re-run validation (same as PR creation step 4)
 3. Commit and push: `git push` (or `git push --force-with-lease` after rebase)
+4. **Display PR summary:**
+   - Call `get_task_pr_status` to get current PR state
+   - Show PR title, URL, and key status info
+   - This helps users maintain visibility of the PR after each push
 
 ### To Complete a Task
 
