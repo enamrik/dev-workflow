@@ -13,7 +13,7 @@ import {
   ConflictDetectionService,
   MockGitWorktreeService,
   SqliteProjectRepository,
-  TaskGitHubSyncService,
+  TaskSyncService,
   taskExecutionLogs,
   type ProjectManagementProvider,
 } from "@dev-workflow/core";
@@ -149,7 +149,7 @@ async function createTaskToolContext(
     repos.issueRepository
   );
 
-  const taskGitHubSyncService = new TaskGitHubSyncService(
+  const taskSyncService = new TaskSyncService(
     repos.taskRepository,
     repos.issueRepository,
     repos.planRepository,
@@ -167,7 +167,7 @@ async function createTaskToolContext(
     taskManagementService,
     taskExecutionLogsSchema: taskExecutionLogs,
     conflictDetectionService,
-    taskGitHubSyncService,
+    taskSyncService,
     projectRepository,
     projectId,
   };

@@ -72,13 +72,13 @@ export {
 } from "./application/project-config-resolver.js";
 export { GitHubSyncService, GitHubSyncError } from "./application/github-sync-service.js";
 export {
-  TaskGitHubSyncService,
-  TaskGitHubSyncError,
+  TaskSyncService,
+  TaskSyncError,
   type TaskActivationResult,
   type ActivationResult,
   type TaskSyncResult,
   type IssueSyncResult,
-} from "./application/task-github-sync-service.js";
+} from "./application/task-sync-service.js";
 export {
   ProjectService,
   ProjectError,

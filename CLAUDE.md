@@ -132,7 +132,7 @@ class GitHubProjectManagementProvider implements ProjectManagementProvider {
 
 **Key rules:**
 
-- Application services (e.g., `TaskGitHubSyncService`) depend on `ProjectManagementProvider`, not GitHub-specific code
+- Application services (e.g., `TaskSyncService`) depend on `ProjectManagementProvider`, not GitHub-specific code
 - Never call GitHub CLI directly from application layer - always go through the provider
 - The provider handles all external API calls and error translation
 

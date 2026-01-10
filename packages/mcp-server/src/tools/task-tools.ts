@@ -15,7 +15,7 @@ import {
   type TaskExecutionLogRow,
   type ConflictDetectionService,
   type ConflictWarning,
-  type TaskGitHubSyncService,
+  type TaskSyncService,
   type ProviderRegistry,
   type Project,
   type ProjectRepository,
@@ -349,7 +349,7 @@ export interface TaskToolContext {
   taskExecutionLogsSchema: typeof taskExecutionLogs;
   conflictDetectionService?: ConflictDetectionService;
   /** Optional - for syncing task status changes to GitHub */
-  taskGitHubSyncService?: TaskGitHubSyncService;
+  taskSyncService?: TaskSyncService;
   /** Optional - for label validation against project management provider */
   providerRegistry?: ProviderRegistry;
   project?: Project;
@@ -431,12 +431,12 @@ export async function handleLoadTaskSession(
     const now = new Date().toISOString();
     ctx.taskRepository.updateSessionInfo(taskId, sessionId, now, now);
 
-    // Sync GitHub status if applicable
-    if (ctx.taskGitHubSyncService && existingTask.githubSync?.githubIssueNumber) {
+    // Sync status - let service decide if sync is needed (service handles checks internally)
+    if (ctx.taskSyncService) {
       try {
-        await ctx.taskGitHubSyncService.syncTaskStatus(taskId, existingTask.status);
+        await ctx.taskSyncService.syncTaskStatus(taskId, existingTask.status);
       } catch (error) {
-        console.warn(`Failed to sync resumed task status to GitHub: ${error}`);
+        console.warn(`Failed to sync resumed task status: ${error}`);
       }
     }
   } else if (existingTask.status === "IN_PROGRESS" || existingTask.status === "PR_REVIEW") {
@@ -454,12 +454,12 @@ export async function handleLoadTaskSession(
     const now = new Date().toISOString();
     ctx.taskRepository.updateSessionInfo(taskId, sessionId, now, now);
 
-    // Ensure GitHub sync state is correct (repairs failed initial syncs)
-    if (ctx.taskGitHubSyncService && existingTask.githubSync?.githubIssueNumber) {
+    // Sync status - let service decide if sync is needed (service handles checks internally)
+    if (ctx.taskSyncService) {
       try {
-        await ctx.taskGitHubSyncService.syncTaskStatus(taskId, existingTask.status);
+        await ctx.taskSyncService.syncTaskStatus(taskId, existingTask.status);
       } catch (error) {
-        console.warn(`Failed to sync resumed task status to GitHub: ${error}`);
+        console.warn(`Failed to sync resumed task status: ${error}`);
       }
     }
   } else if (existingTask.status === "BACKLOG" || existingTask.status === "READY") {
@@ -491,38 +491,34 @@ export async function handleLoadTaskSession(
       );
     }
 
-    // Sync to GitHub if task has GitHub sync enabled
-    if (ctx.taskGitHubSyncService && result.task.githubSync?.githubIssueNumber) {
+    // Sync to external project management provider (service handles "should I sync?" internally)
+    if (ctx.taskSyncService) {
       try {
-        await ctx.taskGitHubSyncService.syncTaskStatus(taskId, "IN_PROGRESS");
+        await ctx.taskSyncService.syncTaskStatus(taskId, "IN_PROGRESS");
       } catch (error) {
-        // Log but don't fail - GitHub sync is best effort after local update
-        console.warn(`Failed to sync task status to GitHub: ${error}`);
+        // Log but don't fail - sync is best effort after local update
+        console.warn(`Failed to sync task status: ${error}`);
       }
 
-      // Auto-assign the GitHub issue to the configured assignee
+      // Auto-assign the issue to the configured assignee (service handles internally)
       try {
-        await ctx.taskGitHubSyncService.assignIssue(taskId);
+        await ctx.taskSyncService.assignIssue(taskId);
       } catch (error) {
         // Log but don't fail - assignment is best effort
-        console.warn(`Failed to auto-assign GitHub issue: ${error}`);
+        console.warn(`Failed to auto-assign issue: ${error}`);
       }
-    }
 
-    // Sync sibling tasks that transitioned from BACKLOG to READY
-    // When starting a task, all other BACKLOG tasks in the plan move to READY
-    if (ctx.taskGitHubSyncService && result.task.planId) {
-      const siblingTasks = ctx.taskRepository.findByPlanId(result.task.planId);
-      for (const sibling of siblingTasks) {
-        if (
-          sibling.id !== taskId &&
-          sibling.status === "READY" &&
-          sibling.githubSync?.githubIssueNumber
-        ) {
-          try {
-            await ctx.taskGitHubSyncService.syncTaskStatus(sibling.id, "READY");
-          } catch (error) {
-            console.warn(`Failed to sync sibling task READY status to GitHub: ${error}`);
+      // Sync sibling tasks that transitioned from BACKLOG to READY
+      // When starting a task, all other BACKLOG tasks in the plan move to READY
+      if (result.task.planId) {
+        const siblingTasks = ctx.taskRepository.findByPlanId(result.task.planId);
+        for (const sibling of siblingTasks) {
+          if (sibling.id !== taskId && sibling.status === "READY") {
+            try {
+              await ctx.taskSyncService.syncTaskStatus(sibling.id, "READY");
+            } catch (error) {
+              console.warn(`Failed to sync sibling task READY status: ${error}`);
+            }
           }
         }
       }
@@ -632,13 +628,13 @@ export async function handleAbandonTaskSession(
 
   const task = await ctx.taskSessionService.abandonTaskSession(taskId, sessionId, reason, force);
 
-  // Sync to GitHub if task has GitHub sync enabled
-  if (ctx.taskGitHubSyncService && task.githubSync?.githubIssueNumber) {
+  // Sync to external project management provider (service handles "should I sync?" internally)
+  if (ctx.taskSyncService) {
     try {
-      await ctx.taskGitHubSyncService.syncTaskStatus(taskId, "ABANDONED");
+      await ctx.taskSyncService.syncTaskStatus(taskId, "ABANDONED");
     } catch (error) {
-      // Log but don't fail - GitHub sync is best effort after local update
-      console.warn(`Failed to sync task status to GitHub: ${error}`);
+      // Log but don't fail - sync is best effort after local update
+      console.warn(`Failed to sync task status: ${error}`);
     }
   }
 

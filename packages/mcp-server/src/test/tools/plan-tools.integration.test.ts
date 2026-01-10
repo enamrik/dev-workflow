@@ -12,7 +12,7 @@ import {
   VersioningService,
   SqliteProjectRepository,
   SqliteTypeRepository,
-  TaskGitHubSyncService,
+  TaskSyncService,
   TypeService,
   type ProjectManagementProvider,
 } from "@dev-workflow/core";
@@ -59,7 +59,7 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<PlanToolCont
     versioningService
   );
 
-  // TaskGitHubSyncService (disabled - no GitHub sync in tests)
+  // TaskSyncService (disabled - no GitHub sync in tests)
   // Create a minimal mock provider for testing
   const mockProvider: ProjectManagementProvider = {
     providerId: "mock",
@@ -104,7 +104,7 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<PlanToolCont
     addComment: async () => {},
     assignIssue: async () => {},
   };
-  const taskGitHubSyncService = new TaskGitHubSyncService(
+  const taskSyncService = new TaskSyncService(
     repos.taskRepository,
     repos.issueRepository,
     repos.planRepository,
@@ -123,7 +123,7 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<PlanToolCont
     planRepository: repos.planRepository,
     taskRepository: repos.taskRepository,
     planningService,
-    taskGitHubSyncService,
+    taskSyncService,
     typeService,
   };
 }
