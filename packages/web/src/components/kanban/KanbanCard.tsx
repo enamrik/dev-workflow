@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { Badge, Modal, Markdown, Tooltip, GitHubLink } from "../ui";
-import { TaskTiming, TaskMetadataPanel, TaskActions } from "../tasks";
+import { TaskTiming, TaskMetadataPanel, TaskActions, WorkerBadge } from "../tasks";
 import type { Task, ComputedIssueStatus } from "@/lib/types";
 
 type IssueType = "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK" | "SPIKE";
@@ -336,6 +336,10 @@ function CardContent({
                 <BranchIcon />
               </span>
             </Tooltip>
+          )}
+          {/* Show worker indicator for tasks with active worker */}
+          {task.workerId && (
+            <WorkerBadge workerId={task.workerId} workerName={task.workerName} compact />
           )}
           {/* Abandoned indicator - small X icon */}
           {isAbandoned && (

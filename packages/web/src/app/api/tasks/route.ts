@@ -1,13 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DataSourceRegistry, WebDIContext } from "@/server";
 import type { Issue, Plan, Task } from "@dev-workflow/core";
+import {
+  SqliteDispatchQueueRepository,
+  DataSourceFactory,
+  getGlobalDatabasePath,
+  type SqliteDataSource,
+} from "@dev-workflow/core";
 
 export const dynamic = "force-dynamic";
+
+interface TaskWithWorker extends Task {
+  workerId?: string;
+  workerName?: string;
+}
 
 interface IssueWithTasks {
   issue: Issue;
   plan: Plan | null;
-  tasks: Task[];
+  tasks: TaskWithWorker[];
   milestoneNumber?: number;
   milestoneTitle?: string;
   projectName?: string;
@@ -35,6 +46,28 @@ export async function GET(request: NextRequest) {
       project: projectFilter,
       source: sourceFilter,
     });
+
+    // Fetch dispatch queue data from global database for worker info
+    // Build a map of taskId -> { workerId, workerName } for IN_PROGRESS tasks
+    const workerByTaskId = new Map<string, { workerId: string; workerName: string | null }>();
+    try {
+      const dbPath = getGlobalDatabasePath();
+      const dataSource = (await DataSourceFactory.createSqlite(dbPath)) as SqliteDataSource;
+      const db = dataSource.getDb();
+      const dispatchQueueRepository = new SqliteDispatchQueueRepository(db);
+      const queueEntries = dispatchQueueRepository.findAllWithHealth();
+
+      for (const entry of queueEntries) {
+        if (entry.workerId && entry.status === "WORKING") {
+          workerByTaskId.set(entry.taskId, {
+            workerId: entry.workerId,
+            workerName: entry.workerName,
+          });
+        }
+      }
+    } catch {
+      // Continue without worker info if global db is inaccessible
+    }
 
     const issuesWithTasks: IssueWithTasks[] = [];
     const completedTasks: CompletedTaskWithContext[] = [];
@@ -64,10 +97,23 @@ export async function GET(request: NextRequest) {
               }
             }
 
+            // Enrich tasks with worker info for IN_PROGRESS tasks
+            const tasksWithWorker: TaskWithWorker[] = tasks.map((task) => {
+              const workerInfo = workerByTaskId.get(task.id);
+              if (task.status === "IN_PROGRESS" && workerInfo) {
+                return {
+                  ...task,
+                  workerId: workerInfo.workerId,
+                  workerName: workerInfo.workerName ?? undefined,
+                };
+              }
+              return task;
+            });
+
             issuesWithTasks.push({
               issue,
               plan,
-              tasks,
+              tasks: tasksWithWorker,
               milestoneNumber,
               milestoneTitle,
               projectName: project.name,

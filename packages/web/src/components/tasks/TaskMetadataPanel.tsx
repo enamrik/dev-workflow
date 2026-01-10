@@ -6,6 +6,7 @@ import { TimeBreakdown } from "./TimeBreakdown";
 import { TaskDependencies } from "./TaskDependencies";
 import { ExecutionLogList } from "./ExecutionLogList";
 import { TaskActions } from "./TaskActions";
+import { WorkerBadge } from "./WorkerBadge";
 import { Badge } from "../ui";
 import { useTaskMetadata } from "@/hooks";
 import type { Task } from "@/lib/types";
@@ -87,6 +88,9 @@ export function TaskMetadataPanel({
           <Badge variant="prStatus" value={task.prStatus} />
         </div>
       )}
+
+      {/* Worker info (only for tasks with active worker) */}
+      {task.workerId && <WorkerBadge workerId={task.workerId} workerName={task.workerName} />}
 
       {/* Dependencies */}
       {dependencies.length > 0 && <TaskDependencies dependencies={dependencies} />}

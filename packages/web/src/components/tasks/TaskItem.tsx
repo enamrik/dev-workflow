@@ -6,6 +6,7 @@ import { Badge, Markdown, Tooltip } from "../ui";
 import { TaskTiming } from "./TaskTiming";
 import { TaskMetadataPanel } from "./TaskMetadataPanel";
 import { TaskActions } from "./TaskActions";
+import { WorkerBadge } from "./WorkerBadge";
 import type { Task } from "@/lib/types";
 
 interface TaskItemProps {
@@ -132,10 +133,13 @@ export function TaskItem({ task, projectId, issueNumber, compact = false }: Task
             <Markdown>{task.description}</Markdown>
           </div>
 
-          {/* PR status badge (shown separately for visibility) */}
-          {task.prStatus && (
-            <div className="mt-2">
-              <Badge variant="prStatus" value={task.prStatus} />
+          {/* PR status badge and worker indicator */}
+          {(task.prStatus || task.workerId) && (
+            <div className="mt-2 flex items-center gap-2">
+              {task.prStatus && <Badge variant="prStatus" value={task.prStatus} />}
+              {task.workerId && (
+                <WorkerBadge workerId={task.workerId} workerName={task.workerName} compact />
+              )}
             </div>
           )}
 
