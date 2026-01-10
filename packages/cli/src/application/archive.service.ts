@@ -202,7 +202,7 @@ export class ArchiveService {
 
     try {
       const projectRepository = new SqliteProjectRepository(dbService.getDb());
-      projectRepository.hardDelete(project.id);
+      await projectRepository.hardDelete(project.id);
     } finally {
       dbService.close();
     }

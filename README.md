@@ -50,7 +50,7 @@ This creates:
 
 - `.track/` - Configuration, templates, and database
 - `.claude/skills/` - Claude Code skills for natural language interaction
-- `.claude/config/mcp-servers.json` - MCP server registration
+- MCP server registration in `~/.claude.json` (via `claude mcp add --scope local`)
 
 ### Basic Usage
 
