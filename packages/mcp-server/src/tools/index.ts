@@ -16,6 +16,7 @@ export {
   handleCreateTemplate,
   handleUpdateTemplate,
   handleDeleteTemplate,
+  handleCopyTemplate,
   handleUpdateIssue,
   handleCloseIssue,
   handleChangeIssueType,

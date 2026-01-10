@@ -4,8 +4,8 @@
  * Tests the cascading template resolution logic:
  * 1. Local per-type: ./.track/templates/issues/<type>.md
  * 2. Local all.md: ./.track/templates/issues/all.md
- * 3. Global per-type: ~/.track/config/templates/issues/<type>.md
- * 4. Global all.md: ~/.track/config/templates/issues/all.md
+ * 3. Global per-type: ~/.track/templates/issues/<type>.md
+ * 4. Global all.md: ~/.track/templates/issues/all.md
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -521,13 +521,9 @@ describe("TemplateService", () => {
       ).rejects.toThrow("not found");
     });
 
-    it("should throw if trying to update default template", async () => {
-      addTemplate(config.globalIssueTemplatesPath, "default.md", makeTemplate("FEATURE"));
-
-      await expect(
-        service.updateTemplate("default.md", makeTemplate("FEATURE", "HIGH"))
-      ).rejects.toThrow("Cannot modify default template");
-    });
+    // Note: With scope-aware operations, global templates can be updated by specifying scope="global"
+    // The old behavior of "Cannot modify default template" is no longer applicable
+    // See scope-aware operations tests for the new behavior
   });
 
   describe("deleteTemplate", () => {
@@ -543,13 +539,9 @@ describe("TemplateService", () => {
       await expect(service.deleteTemplate("nonexistent.md")).rejects.toThrow("not found");
     });
 
-    it("should throw if trying to delete default template", async () => {
-      addTemplate(config.globalIssueTemplatesPath, "default.md", makeTemplate("FEATURE"));
-
-      await expect(service.deleteTemplate("default.md")).rejects.toThrow(
-        "Cannot delete default template"
-      );
-    });
+    // Note: With scope-aware operations, global templates can be deleted by specifying scope="global"
+    // The old behavior of "Cannot delete default template" is no longer applicable
+    // See scope-aware operations tests for the new behavior
   });
 
   describe("graceful degradation", () => {
@@ -682,6 +674,246 @@ description:
 
       expect(result).not.toBeNull();
       expect(result?.template.metadata.description).toBe("Task for fixing defects");
+    });
+  });
+
+  describe("scope-aware operations", () => {
+    describe("getTemplate with scope parameter", () => {
+      it("should find template in local scope when scope=local", async () => {
+        addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "HIGH"));
+        addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
+
+        const result = await service.getTemplate("feature.md", "issue", "local");
+
+        expect(result).not.toBeNull();
+        expect(result?.source).toBe("user");
+        expect(result?.template.metadata.priority).toBe("HIGH");
+      });
+
+      it("should find template in global scope when scope=global", async () => {
+        addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "HIGH"));
+        addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
+
+        const result = await service.getTemplate("feature.md", "issue", "global");
+
+        expect(result).not.toBeNull();
+        expect(result?.source).toBe("default");
+        expect(result?.template.metadata.priority).toBe("LOW");
+      });
+
+      it("should return null when template not found in specified scope", async () => {
+        addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
+
+        const result = await service.getTemplate("feature.md", "issue", "local");
+
+        expect(result).toBeNull();
+      });
+
+      it("should search both scopes when no scope specified (local first)", async () => {
+        addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
+
+        const result = await service.getTemplate("feature.md", "issue");
+
+        expect(result).not.toBeNull();
+        expect(result?.source).toBe("default");
+      });
+
+      it("should work with task category", async () => {
+        addTemplate(config.localTaskTemplatesPath, "feature.md", makeTemplate("FEATURE", "HIGH"));
+
+        const result = await service.getTemplate("feature.md", "task", "local");
+
+        expect(result).not.toBeNull();
+        expect(result?.source).toBe("user");
+      });
+    });
+
+    describe("createTemplate with scope parameter", () => {
+      it("should create template in local scope by default", async () => {
+        const content = makeTemplate("FEATURE");
+        const result = await service.createTemplate("custom.md", content);
+
+        expect(result.filename).toBe("custom.md");
+        expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
+          "/repo/.track/templates/issues/custom.md",
+          content
+        );
+      });
+
+      it("should create template in global scope when specified", async () => {
+        const content = makeTemplate("FEATURE");
+        const result = await service.createTemplate("custom.md", content, "issue", "global");
+
+        expect(result.filename).toBe("custom.md");
+        expect(result.isUserDefined).toBe(false); // global templates are not user-defined
+        expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
+          "/global/config/templates/issues/custom.md",
+          content
+        );
+      });
+
+      it("should create task template in specified scope", async () => {
+        const content = makeTemplate("TASK");
+        await service.createTemplate("custom.md", content, "task", "local");
+
+        expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
+          "/repo/.track/templates/tasks/custom.md",
+          content
+        );
+      });
+
+      it("should throw if template already exists at target scope", async () => {
+        addTemplate(config.globalIssueTemplatesPath, "existing.md", makeTemplate("FEATURE"));
+
+        await expect(
+          service.createTemplate("existing.md", makeTemplate("FEATURE"), "issue", "global")
+        ).rejects.toThrow("Global issue template 'existing.md' already exists");
+      });
+
+      it("should allow creating local template that shadows global", async () => {
+        addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
+
+        const result = await service.createTemplate(
+          "feature.md",
+          makeTemplate("FEATURE", "HIGH"),
+          "issue",
+          "local"
+        );
+
+        expect(result.metadata.priority).toBe("HIGH");
+      });
+    });
+
+    describe("updateTemplate with scope parameter", () => {
+      it("should update local template by default", async () => {
+        addTemplate(config.localIssueTemplatesPath, "custom.md", makeTemplate("FEATURE", "LOW"));
+
+        const newContent = makeTemplate("FEATURE", "HIGH");
+        const result = await service.updateTemplate("custom.md", newContent);
+
+        expect(result.metadata.priority).toBe("HIGH");
+        expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
+          "/repo/.track/templates/issues/custom.md",
+          newContent
+        );
+      });
+
+      it("should update global template when scope=global", async () => {
+        addTemplate(config.globalIssueTemplatesPath, "custom.md", makeTemplate("FEATURE", "LOW"));
+
+        const newContent = makeTemplate("FEATURE", "HIGH");
+        const result = await service.updateTemplate("custom.md", newContent, "issue", "global");
+
+        expect(result.metadata.priority).toBe("HIGH");
+        expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
+          "/global/config/templates/issues/custom.md",
+          newContent
+        );
+      });
+
+      it("should throw if template not found at specified scope", async () => {
+        addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
+
+        await expect(
+          service.updateTemplate("feature.md", makeTemplate("FEATURE"), "issue", "local")
+        ).rejects.toThrow("Local issue template 'feature.md' not found");
+      });
+    });
+
+    describe("deleteTemplate with scope parameter", () => {
+      it("should delete local template by default", async () => {
+        addTemplate(config.localIssueTemplatesPath, "custom.md", makeTemplate("FEATURE"));
+
+        await service.deleteTemplate("custom.md");
+
+        expect(mockFileSystem.unlink).toHaveBeenCalledWith(
+          "/repo/.track/templates/issues/custom.md"
+        );
+      });
+
+      it("should delete global template when scope=global", async () => {
+        addTemplate(config.globalIssueTemplatesPath, "custom.md", makeTemplate("FEATURE"));
+
+        await service.deleteTemplate("custom.md", "issue", "global");
+
+        expect(mockFileSystem.unlink).toHaveBeenCalledWith(
+          "/global/config/templates/issues/custom.md"
+        );
+      });
+
+      it("should throw if template not found at specified scope", async () => {
+        addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
+
+        await expect(service.deleteTemplate("feature.md", "issue", "local")).rejects.toThrow(
+          "Local issue template 'feature.md' not found"
+        );
+      });
+    });
+
+    describe("copyTemplate", () => {
+      it("should copy template from global to local", async () => {
+        const content = makeTemplate("FEATURE", "MEDIUM");
+        addTemplate(config.globalIssueTemplatesPath, "feature.md", content);
+
+        const result = await service.copyTemplate("feature.md", "issue", "global", "local");
+
+        expect(result.filename).toBe("feature.md");
+        expect(result.isUserDefined).toBe(true);
+        expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
+          "/repo/.track/templates/issues/feature.md",
+          content
+        );
+      });
+
+      it("should copy template from local to global", async () => {
+        const content = makeTemplate("FEATURE", "HIGH");
+        addTemplate(config.localIssueTemplatesPath, "custom.md", content);
+
+        const result = await service.copyTemplate("custom.md", "issue", "local", "global");
+
+        expect(result.filename).toBe("custom.md");
+        expect(result.isUserDefined).toBe(false);
+        expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
+          "/global/config/templates/issues/custom.md",
+          content
+        );
+      });
+
+      it("should throw if source template not found", async () => {
+        await expect(
+          service.copyTemplate("nonexistent.md", "issue", "global", "local")
+        ).rejects.toThrow("Global issue template 'nonexistent.md' not found");
+      });
+
+      it("should throw if destination already exists", async () => {
+        addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
+        addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "HIGH"));
+
+        await expect(
+          service.copyTemplate("feature.md", "issue", "global", "local")
+        ).rejects.toThrow("Local issue template 'feature.md' already exists");
+      });
+
+      it("should throw if trying to copy to same scope", async () => {
+        addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
+
+        await expect(service.copyTemplate("feature.md", "issue", "local", "local")).rejects.toThrow(
+          "Cannot copy template to the same scope"
+        );
+      });
+
+      it("should work with task templates", async () => {
+        const content = makeTemplate("TASK", "LOW");
+        addTemplate(config.globalTaskTemplatesPath, "task.md", content);
+
+        const result = await service.copyTemplate("task.md", "task", "global", "local");
+
+        expect(result.filename).toBe("task.md");
+        expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
+          "/repo/.track/templates/tasks/task.md",
+          content
+        );
+      });
     });
   });
 });

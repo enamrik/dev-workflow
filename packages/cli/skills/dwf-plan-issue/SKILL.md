@@ -210,12 +210,12 @@ The approach captures everything a future session needs. Include:
 
 Document key decisions and WHY they were made:
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Type storage | Database, not files | Need soft delete, validation |
-| Type scope | Universal | Same vocabulary across all projects |
+| Decision       | Choice                 | Rationale                             |
+| -------------- | ---------------------- | ------------------------------------- |
+| Type storage   | Database, not files    | Need soft delete, validation          |
+| Type scope     | Universal              | Same vocabulary across all projects   |
 | FK constraints | None - store as string | History resilience when types deleted |
-| Template scope | Local + Global | Projects can override user defaults |
+| Template scope | Local + Global         | Projects can override user defaults   |
 
 #### 2. Current State
 
@@ -237,16 +237,16 @@ Expected behavior in unusual situations:
 
 Include full schemas when creating new tables/types:
 
-| Field | Type | Notes |
-|-------|------|-------|
-| id | string | UUID |
-| name | string | Unique, e.g., "SPIKE" |
-| displayName | string | e.g., "Spike" |
-| description | string | Helps Claude pick type |
-| keywords | string[] | For auto-detection |
-| color | string? | UI display |
-| isDeleted | boolean | Soft delete |
-| createdAt/updatedAt | Date | Timestamps |
+| Field               | Type     | Notes                  |
+| ------------------- | -------- | ---------------------- |
+| id                  | string   | UUID                   |
+| name                | string   | Unique, e.g., "SPIKE"  |
+| displayName         | string   | e.g., "Spike"          |
+| description         | string   | Helps Claude pick type |
+| keywords            | string[] | For auto-detection     |
+| color               | string?  | UI display             |
+| isDeleted           | boolean  | Soft delete            |
+| createdAt/updatedAt | Date     | Timestamps             |
 
 ### Task implementationPlan Field
 
