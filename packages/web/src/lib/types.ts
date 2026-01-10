@@ -47,8 +47,7 @@ export interface Plan {
 export interface Task {
   id: string;
   planId: string;
-  number: number; // IMMUTABLE task identifier - used for URLs and permanent references
-  index: number; // Display position (1, 2, 3...) - renumbered when plan changes
+  number: number; // Sequential task number (1, 2, 3...) - renumbered in PLANNED state, immutable after activation
   title: string;
   description: string;
   type: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK" | "SPIKE";
