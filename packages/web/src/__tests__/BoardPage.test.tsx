@@ -173,7 +173,8 @@ describe("BoardPage showBacklog persistence", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Task Board")).toBeInTheDocument();
-      expect(screen.getByText(/active task/)).toBeInTheDocument();
+      // Stats ribbon shows "Tasks" label with "X active" badge
+      expect(screen.getByText("Tasks")).toBeInTheDocument();
     });
   });
 

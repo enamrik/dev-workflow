@@ -3,4 +3,4 @@ export { KanbanColumn } from "./KanbanColumn";
 export { KanbanBoard } from "./KanbanBoard";
 export { WorkQueueRibbon } from "./WorkQueueRibbon";
 export { IssuePreviewPanel } from "./IssuePreviewPanel";
-export { WorkerStatusSummary } from "./WorkerStatusSummary";
+export { WorkerStatusSummary, BoardStatsRibbon } from "./WorkerStatusSummary";
