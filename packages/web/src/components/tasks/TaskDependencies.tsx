@@ -33,13 +33,20 @@ export function TaskDependencies({ dependencies, className }: TaskDependenciesPr
         )}
       </div>
       <div className="space-y-1">
-        {dependencies.map((task) => (
-          <div key={task.id} className="flex items-center gap-2 text-sm pl-6">
-            <StatusIcon status={task.status} />
-            <span className="text-gray-600 truncate flex-1">{task.title}</span>
-            <Badge variant="status" value={task.status} className="text-xs" />
-          </div>
-        ))}
+        {dependencies.map((task) => {
+          // Format story reference: #issue.task or just title if issue number unavailable
+          const storyRef = task.issueNumber != null ? `#${task.issueNumber}.${task.number}` : null;
+          return (
+            <div key={task.id} className="flex items-center gap-2 text-sm pl-6">
+              <StatusIcon status={task.status} />
+              <span className="text-gray-600 truncate flex-1">
+                {storyRef && <span className="font-medium text-gray-500">{storyRef} </span>}
+                {task.title}
+              </span>
+              <Badge variant="status" value={task.status} className="text-xs" />
+            </div>
+          );
+        })}
       </div>
     </div>
   );

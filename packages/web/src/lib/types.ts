@@ -74,6 +74,8 @@ export interface Task {
   updatedAt: string;
   // Dependencies
   dependsOn?: string[];
+  /** Issue number for #issue.task display format (only present for dependency tasks) */
+  issueNumber?: number | null;
   // Worker info (present when worker is in WORKING state for this task)
   workerId?: string;
   workerName?: string;
