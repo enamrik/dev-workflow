@@ -103,6 +103,9 @@ export function handleDispatchTask(
     );
   }
 
+  // Get worker summary for the response (so Claude knows worker availability)
+  const workerSummary = getWorkerSummary(context);
+
   // Check if already queued
   const existing = context.dispatchQueueRepository.findByTaskId(taskId);
   if (existing) {
@@ -114,6 +117,7 @@ export function handleDispatchTask(
       alreadyQueued: true,
       message: "Task was already in dispatch queue",
       ...queueEntry,
+      workerSummary,
     });
   }
 
@@ -128,7 +132,18 @@ export function handleDispatchTask(
     alreadyQueued: false,
     message: "Task added to dispatch queue. A worker will pick it up.",
     ...queueEntry,
+    workerSummary,
   });
+}
+
+/**
+ * Worker summary counts - alive workers only
+ */
+interface WorkerSummary {
+  total: number;
+  idle: number;
+  working: number;
+  draining: number;
 }
 
 /**
@@ -152,6 +167,22 @@ interface QueueEntryWithWorker {
     heartbeatAge: number;
     currentTaskId: string | null;
   } | null;
+}
+
+/**
+ * Get worker summary counts (alive workers only)
+ */
+function getWorkerSummary(context: DispatchToolContext): WorkerSummary {
+  const workersWithHealth = context.workerRepository.findAllWithHealth(
+    DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
+  );
+  const aliveWorkers = workersWithHealth.filter((w) => w.isAlive);
+  return {
+    total: aliveWorkers.length,
+    idle: aliveWorkers.filter((w) => w.status === "IDLE").length,
+    working: aliveWorkers.filter((w) => w.status === "WORKING").length,
+    draining: aliveWorkers.filter((w) => w.status === "DRAINING").length,
+  };
 }
 
 /**
