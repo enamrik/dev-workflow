@@ -616,6 +616,10 @@ export interface EnrichedTaskData {
   completedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Worktree path for isolated mode tasks */
+  worktreePath?: string | null;
+  /** Branch name for isolated/branch mode tasks */
+  branchName?: string | null;
   /** Worker session info (present when task has an active session) */
   workerInfo?: TaskWorkerInfo;
   /** PR details (present when task has an associated PR) */
@@ -631,6 +635,10 @@ export interface SlimEnrichedTaskData {
   number: number;
   title: string;
   status: string;
+  /** Worktree path for isolated mode tasks */
+  worktreePath?: string | null;
+  /** Branch name for isolated/branch mode tasks */
+  branchName?: string | null;
   /** Worker session info (present when task has an active session) */
   workerInfo?: TaskWorkerInfo;
   /** PR details (present when task has an associated PR) */
@@ -666,6 +674,8 @@ export function enrichTaskData(
     dependsOn?: string[] | null;
     labels?: Record<string, string> | null;
     sessionId?: string | null;
+    worktreePath?: string | null;
+    branchName?: string | null;
     prNumber?: number | null;
     prUrl?: string | null;
     prStatus?: string | null;
@@ -694,6 +704,8 @@ export function enrichTaskData(
     completedAt: task.completedAt,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
+    worktreePath: task.worktreePath,
+    branchName: task.branchName,
   };
 
   // Add worker info if task has an active session
@@ -738,6 +750,8 @@ export function createSlimEnrichedTaskData(
     title: string;
     status: string;
     sessionId?: string | null;
+    worktreePath?: string | null;
+    branchName?: string | null;
     prNumber?: number | null;
     prUrl?: string | null;
     prStatus?: string | null;
@@ -749,6 +763,8 @@ export function createSlimEnrichedTaskData(
     number: task.number,
     title: task.title,
     status: task.status,
+    worktreePath: task.worktreePath,
+    branchName: task.branchName,
   };
 
   // Add worker info if task has an active session
