@@ -3,7 +3,12 @@
 import { Suspense, useState, useCallback } from "react";
 import { useTasks, useUrlState } from "@/hooks";
 import { useProjectContext } from "@/contexts";
-import { KanbanBoard, WorkQueueRibbon, IssuePreviewPanel } from "@/components/kanban";
+import {
+  KanbanBoard,
+  WorkQueueRibbon,
+  IssuePreviewPanel,
+  BoardStatsRibbon,
+} from "@/components/kanban";
 import {
   Card,
   CardTitle,
@@ -39,6 +44,7 @@ function BoardPageContent() {
 
   const showBacklog = state.showBacklog ?? false;
   const showWorkQueue = state.showWorkQueue ?? false;
+  const showStats = state.showStats ?? true; // Default to showing stats
 
   const handleIssueClick = useCallback((target: PreviewTarget) => {
     setPreviewTarget(target);
@@ -69,6 +75,11 @@ function BoardPageContent() {
 
   function handleShowWorkQueueChange(checked: boolean) {
     setProperty("showWorkQueue", checked || undefined);
+  }
+
+  function handleShowStatsChange(checked: boolean) {
+    // Store false explicitly since default is true
+    setProperty("showStats", checked ? undefined : false);
   }
 
   if (isLoading) {
@@ -106,9 +117,7 @@ function BoardPageContent() {
         <div className="flex items-start justify-between mb-4">
           <div>
             <CardTitle>Task Board</CardTitle>
-            <span className="text-gray-500 text-sm">
-              {activeTasks} active task{activeTasks !== 1 ? "s" : ""}
-            </span>
+            {showStats && <BoardStatsRibbon activeTasks={activeTasks} />}
           </div>
           <Dropdown
             trigger={
@@ -122,6 +131,11 @@ function BoardPageContent() {
               </svg>
             }
           >
+            <DropdownToggle
+              label="Show stats ribbon"
+              checked={showStats}
+              onChange={handleShowStatsChange}
+            />
             <DropdownToggle
               label="Show backlog/planned"
               checked={showBacklog}
