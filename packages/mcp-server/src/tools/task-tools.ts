@@ -9,6 +9,7 @@ import {
   type SqliteIssueRepository,
   type SqlitePlanRepository,
   type SqliteTaskRepository,
+  type SqliteDispatchQueueRepository,
   type TaskSessionService,
   type TaskManagementService,
   type TaskExecutionLogRow,
@@ -354,6 +355,8 @@ export interface TaskToolContext {
   project?: Project;
   projectRepository?: ProjectRepository;
   githubCLI?: GitHubCLI;
+  /** Optional - for enriching task data with worker info */
+  dispatchQueueRepository?: SqliteDispatchQueueRepository;
 }
 
 /**
@@ -573,10 +576,214 @@ export async function handleAbandonTaskSession(
 }
 
 /**
+ * Enriched worker info for tasks with an active worker session.
+ */
+export interface TaskWorkerInfo {
+  /** Worker ID from dispatch queue (if task is dispatched) */
+  workerId: string | null;
+  /** Session ID from the task itself */
+  sessionId: string | null;
+}
+
+/**
+ * Enriched PR info for tasks with an associated PR.
+ */
+export interface TaskPRInfo {
+  prNumber: number;
+  prUrl: string;
+  prStatus: string;
+}
+
+/**
+ * Enriched task data with worker and PR info.
+ * This is used by both get_task and get_issue (with includePlan).
+ */
+export interface EnrichedTaskData {
+  id: string;
+  planId: string;
+  number: number;
+  order: number;
+  title: string;
+  description: string;
+  status: string;
+  type: string;
+  source: string;
+  acceptanceCriteria: string[];
+  estimatedMinutes?: number | null;
+  dependsOn?: string[] | null;
+  labels?: Record<string, string> | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Worker session info (present when task has an active session) */
+  workerInfo?: TaskWorkerInfo;
+  /** PR details (present when task has an associated PR) */
+  prInfo?: TaskPRInfo;
+}
+
+/**
+ * Slim enriched task data for get_issue response.
+ * Contains only the essential fields plus worker and PR info.
+ */
+export interface SlimEnrichedTaskData {
+  id: string;
+  number: number;
+  title: string;
+  status: string;
+  /** Worker session info (present when task has an active session) */
+  workerInfo?: TaskWorkerInfo;
+  /** PR details (present when task has an associated PR) */
+  prInfo?: TaskPRInfo;
+}
+
+/**
+ * Enrich a task with worker and PR info.
+ *
+ * Worker info comes from two sources:
+ * - sessionId: from the task itself (set during load_task_session)
+ * - workerId: from the dispatch queue (set when task is claimed by a worker)
+ *
+ * PR info comes from task fields: prNumber, prUrl, prStatus
+ *
+ * @param task - The task to enrich
+ * @param dispatchQueueRepository - Optional repository for looking up worker info
+ * @returns The enriched task data
+ */
+export function enrichTaskData(
+  task: {
+    id: string;
+    planId: string;
+    number: number;
+    order: number;
+    title: string;
+    description: string;
+    status: string;
+    type: string;
+    source: string;
+    acceptanceCriteria: string[];
+    estimatedMinutes?: number | null;
+    dependsOn?: string[] | null;
+    labels?: Record<string, string> | null;
+    sessionId?: string | null;
+    prNumber?: number | null;
+    prUrl?: string | null;
+    prStatus?: string | null;
+    startedAt?: string | null;
+    completedAt?: string | null;
+    createdAt: string;
+    updatedAt: string;
+  },
+  dispatchQueueRepository?: SqliteDispatchQueueRepository
+): EnrichedTaskData {
+  const enriched: EnrichedTaskData = {
+    id: task.id,
+    planId: task.planId,
+    number: task.number,
+    order: task.order,
+    title: task.title,
+    description: task.description,
+    status: task.status,
+    type: task.type,
+    source: task.source,
+    acceptanceCriteria: task.acceptanceCriteria,
+    estimatedMinutes: task.estimatedMinutes,
+    dependsOn: task.dependsOn,
+    labels: task.labels,
+    startedAt: task.startedAt,
+    completedAt: task.completedAt,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+  };
+
+  // Add worker info if task has an active session
+  const hasActiveSession = task.sessionId && task.status === "IN_PROGRESS";
+  if (hasActiveSession) {
+    // Look up worker ID from dispatch queue
+    let workerId: string | null = null;
+    if (dispatchQueueRepository) {
+      const queueEntry = dispatchQueueRepository.findByTaskId(task.id);
+      workerId = queueEntry?.workerId ?? null;
+    }
+
+    enriched.workerInfo = {
+      workerId,
+      sessionId: task.sessionId ?? null,
+    };
+  }
+
+  // Add PR info if task has a PR
+  if (task.prNumber && task.prUrl && task.prStatus) {
+    enriched.prInfo = {
+      prNumber: task.prNumber,
+      prUrl: task.prUrl,
+      prStatus: task.prStatus,
+    };
+  }
+
+  return enriched;
+}
+
+/**
+ * Create slim enriched task data for get_issue response.
+ *
+ * @param task - The task to create slim data for
+ * @param dispatchQueueRepository - Optional repository for looking up worker info
+ * @returns Slim enriched task data
+ */
+export function createSlimEnrichedTaskData(
+  task: {
+    id: string;
+    number: number;
+    title: string;
+    status: string;
+    sessionId?: string | null;
+    prNumber?: number | null;
+    prUrl?: string | null;
+    prStatus?: string | null;
+  },
+  dispatchQueueRepository?: SqliteDispatchQueueRepository
+): SlimEnrichedTaskData {
+  const slim: SlimEnrichedTaskData = {
+    id: task.id,
+    number: task.number,
+    title: task.title,
+    status: task.status,
+  };
+
+  // Add worker info if task has an active session
+  const hasActiveSession = task.sessionId && task.status === "IN_PROGRESS";
+  if (hasActiveSession) {
+    // Look up worker ID from dispatch queue
+    let workerId: string | null = null;
+    if (dispatchQueueRepository) {
+      const queueEntry = dispatchQueueRepository.findByTaskId(task.id);
+      workerId = queueEntry?.workerId ?? null;
+    }
+
+    slim.workerInfo = {
+      workerId,
+      sessionId: task.sessionId ?? null,
+    };
+  }
+
+  // Add PR info if task has a PR
+  if (task.prNumber && task.prUrl && task.prStatus) {
+    slim.prInfo = {
+      prNumber: task.prNumber,
+      prUrl: task.prUrl,
+      prStatus: task.prStatus,
+    };
+  }
+
+  return slim;
+}
+
+/**
  * Handle get_task tool call
  *
- * Lightweight task lookup - returns task data only without loading
- * execution context (labels, issue, plan).
+ * Lightweight task lookup - returns task data with worker and PR info
+ * without loading full execution context (issue, plan details).
  */
 export function handleGetTask(
   ctx: TaskToolContext,
@@ -613,26 +820,9 @@ export function handleGetTask(
     );
   }
 
-  // Return minimal task data without loading context
-  return successResponse({
-    id: task.id,
-    planId: task.planId,
-    number: task.number,
-    order: task.order,
-    title: task.title,
-    description: task.description,
-    status: task.status,
-    type: task.type,
-    source: task.source,
-    acceptanceCriteria: task.acceptanceCriteria,
-    estimatedMinutes: task.estimatedMinutes,
-    dependsOn: task.dependsOn,
-    labels: task.labels,
-    startedAt: task.startedAt,
-    completedAt: task.completedAt,
-    createdAt: task.createdAt,
-    updatedAt: task.updatedAt,
-  });
+  // Return enriched task data with worker and PR info
+  const enriched = enrichTaskData(task, ctx.dispatchQueueRepository);
+  return successResponse(enriched);
 }
 
 /**

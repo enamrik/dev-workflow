@@ -296,6 +296,7 @@ export class McpDIContext {
       project,
       projectRepository,
       githubCLI,
+      dispatchQueueRepository,
     };
 
     const snapshotToolContext: SnapshotToolContext = {
