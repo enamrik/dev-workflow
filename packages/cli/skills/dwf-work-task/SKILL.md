@@ -75,23 +75,80 @@ Before attempting dispatch, check if the user's request contains inline executio
 
 Call `dispatch_task` with the task ID.
 
-**If dispatch succeeds:**
+#### ⚠️ CRITICAL: Dispatch Success = You Are DONE
+
+**Once `dispatch_task` returns `success: true`, your job is COMPLETE.**
+
+- Do NOT continue to execute the task
+- Do NOT invoke `dwf-worker-task`
+- Do NOT check on the task or wait for it
+- The task is now in the queue - a worker will handle it (or the user will run one later)
+
+This applies **regardless of**:
+
+- Whether workers are currently online (`workerSummary.total` may be 0)
+- Whether the task was already queued (`alreadyQueued: true`)
+- Whether a worker has claimed it yet (`claimedByWorker` may be null)
+
+#### Interpreting dispatch_task Response
+
+The response includes:
+
+| Field               | Meaning                                            |
+| ------------------- | -------------------------------------------------- |
+| `success`           | Task is in the queue - **you are done**            |
+| `alreadyQueued`     | Task was already in queue (idempotent)             |
+| `queueEntry.status` | PENDING (unclaimed) or CLAIMED                     |
+| `claimedByWorker`   | Worker that claimed the task (if any)              |
+| `workerSummary`     | Live worker counts: total, idle, working, draining |
+
+#### Reporting to User
+
+Use `workerSummary` for accurate feedback, then **ask the user what they want to do next**:
 
 ```
-Task dispatched to worker queue. A worker will pick it up shortly.
+// workerSummary.idle > 0
+Task dispatched. 2 idle workers available to pick it up.
 
-You can check on the task status later or work on something else.
+What would you like to do next?
+
+// workerSummary.total == 0
+Task queued. No workers are currently online.
+
+Would you like to:
+- Start a worker with `./scripts/start-worker.sh`
+- Work on something else
+- Run this task inline instead?
+
+// claimedByWorker is set
+Task was already claimed by worker "worker-abc" and is being worked on.
+
+What would you like to do next?
+
+// alreadyQueued && queueEntry.isStale
+Task is queued but the claiming worker may be stale.
+
+Would you like to:
+- Check worker status with `get_dispatch_status`
+- Start a fresh worker
+- Work on something else?
 ```
 
-**STOP HERE** - do not continue to execution. The worker will handle it.
+**After reporting, wait for user direction.** Do not proceed to inline execution on your own.
 
-**If dispatch fails (no workers online):**
+#### When to Execute Inline
 
-Proceed to Step 5.
+Only execute inline (Step 5) when:
+
+1. User explicitly requested inline execution (keywords like "run here", "inline", "locally")
+2. `dispatch_task` returns an **error** (task not found, invalid status, etc.)
+3. User responds to your prompt asking to "run inline" after dispatch succeeded
+
+**A successful dispatch with zero online workers is NOT a reason to execute inline.** The task is queued and will be picked up when workers come online. Report the status and ask the user what they want to do.
 
 ### Step 5: Execute Inline via dwf-worker-task
 
-If no workers are available, invoke the `dwf-worker-task` skill to execute the task locally.
+Execute inline when the user has explicitly requested it (either upfront or after dispatch).
 
 Use the Skill tool: `skill: "dwf-worker-task", args: "start task #N"`
 
@@ -112,19 +169,48 @@ This passes control to the worker-task skill which handles:
 
 ## Example Interactions
 
-### Task Dispatched to Worker
+### Task Dispatched - Workers Available
 
 **User:** "Start working on task 1"
 
 ```
-Checking for available workers...
+Task dispatched. 2 idle workers available to pick it up.
 
-Task dispatched to worker queue. A worker will pick it up shortly.
-
-You can check on the task status later or work on something else.
+What would you like to do next?
 ```
 
-### User Requests Inline Execution
+### Task Dispatched - No Workers Online
+
+**User:** "Start working on task 1"
+
+```
+Task queued. No workers are currently online.
+
+Would you like to:
+- Start a worker with `./scripts/start-worker.sh`
+- Work on something else
+- Run this task inline instead?
+```
+
+**User:** "Run it inline"
+
+```
+Starting task locally...
+
+[Control passes to dwf-worker-task]
+```
+
+### Task Already Being Worked On
+
+**User:** "Start working on task 1"
+
+```
+Task was already claimed by worker "worker-abc" and is being worked on.
+
+What would you like to do next?
+```
+
+### User Requests Inline Execution Upfront
 
 **User:** "Start task 1 inline" or "Work on the task here"
 
@@ -132,30 +218,6 @@ You can check on the task status later or work on something else.
 Starting task locally (inline execution requested)...
 
 [Control passes to dwf-worker-task]
-```
-
-### No Workers - Inline Execution
-
-**User:** "Start working on task 1"
-
-```
-Checking for available workers...
-No workers online. Starting task locally...
-
-[Control passes to dwf-worker-task]
-
-Starting task session in isolated mode...
-
-Task: Add OAuth2 authentication with Google provider
-Branch: issue-5/task-1-add-oauth
-Worktree: ~/.track/project-abc/worktrees/issue-5-task-1
-
-Acceptance Criteria:
-- [ ] OAuth callback processes Google auth correctly
-- [ ] Access tokens securely stored
-- [ ] Unit tests achieve 80%+ coverage
-
-Task is now IN_PROGRESS. Ready to begin?
 ```
 
 ## Notes
