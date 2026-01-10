@@ -304,6 +304,7 @@ export class McpDIContext {
       githubCLI,
       gitRoot: config.gitRoot,
       providerRegistry,
+      typeService,
     };
 
     const milestoneToolContext: MilestoneToolContext = {

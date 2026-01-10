@@ -71,11 +71,11 @@ Before writing ANY tasks, answer these questions:
 
 ### Common Dependency Patterns
 
-| Pattern | Tasks | Dependencies |
-|---------|-------|--------------|
-| DB → API → UI | schema, api, ui | api→schema, ui→api |
-| Core → Extensions | core, ext1, ext2 | ext1→core, ext2→core |
-| Parallel features | auth, search | none (independent) |
+| Pattern                     | Tasks                         | Dependencies                 |
+| --------------------------- | ----------------------------- | ---------------------------- |
+| DB → API → UI               | schema, api, ui               | api→schema, ui→api           |
+| Core → Extensions           | core, ext1, ext2              | ext1→core, ext2→core         |
+| Parallel features           | auth, search                  | none (independent)           |
 | Validation depends on types | types-db, settings-validation | settings-validation→types-db |
 | Same file, complex edits    | feature-a, feature-b          | feature-b→feature-a          |
 
@@ -94,6 +94,7 @@ Before writing ANY tasks, answer these questions:
 **What happens:** All three tasks become READY simultaneously. Worker starts `api` before `schema` is done → build fails.
 
 **Correct version:**
+
 ```json
 {
   "tasks": [
@@ -384,6 +385,7 @@ Add unit tests to src/__tests__/auth/ following existing test patterns.
    - Can both tasks be worked on simultaneously without conflicts? → No dependency
 
    **Write out your dependency analysis explicitly:**
+
    ```
    Dependency Analysis:
    - Task "api" uses the schema from task "db" → api depends on db

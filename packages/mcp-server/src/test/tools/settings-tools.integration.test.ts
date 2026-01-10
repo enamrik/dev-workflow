@@ -10,6 +10,8 @@ import { createTestDatabase, type TestDatabase } from "../setup.js";
 import {
   MockGitHubCLI,
   SqliteProjectRepository,
+  SqliteTypeRepository,
+  TypeService,
   DEFAULT_COLUMN_MAPPING,
   ProviderRegistry,
   type Project,
@@ -33,6 +35,8 @@ async function createSettingsToolContext(
   const db = testDb.db as DbType;
   const projectRepository = new SqliteProjectRepository(db);
   const githubCLI = mockGitHubCLI ?? new MockGitHubCLI();
+  const typeRepository = new SqliteTypeRepository(db);
+  const typeService = new TypeService(typeRepository);
 
   // Create project if not provided
   const testProject =
@@ -48,6 +52,7 @@ async function createSettingsToolContext(
     githubCLI,
     gitRoot: TEST_GIT_ROOT,
     providerRegistry: ProviderRegistry.getInstance(),
+    typeService,
   };
 }
 
@@ -572,5 +577,234 @@ describe("update_settings - list_available_labels", () => {
     expect(content.supported).toBe(false);
     expect(content.labels).toEqual([]);
     expect(content.message).toContain("No project configured");
+  });
+});
+
+describe("update_settings - typeLabels validation", () => {
+  let testDb: TestDatabase;
+
+  beforeEach(() => {
+    testDb = createTestDatabase();
+  });
+
+  describe("enable_github with typeLabels", () => {
+    it("should accept valid typeLabels (uses default types when DB empty)", async () => {
+      // Arrange
+      const ctx = await createSettingsToolContext(testDb);
+
+      // Act - use default types (FEATURE, BUG, etc.)
+      const result = await handleUpdateSettings(ctx, {
+        action: "enable_github",
+        github: {
+          labels: {
+            typeLabels: {
+              FEATURE: "feat",
+              BUG: "bug-fix",
+            },
+          },
+        },
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.config.syncIssues.labels.typeLabels.FEATURE).toBe("feat");
+      expect(content.config.syncIssues.labels.typeLabels.BUG).toBe("bug-fix");
+    });
+
+    it("should reject invalid typeLabels", async () => {
+      // Arrange
+      const ctx = await createSettingsToolContext(testDb);
+
+      // Act - use an invalid type name
+      const result = await handleUpdateSettings(ctx, {
+        action: "enable_github",
+        github: {
+          labels: {
+            typeLabels: {
+              FEATURE: "feat",
+              INVALID_TYPE: "invalid",
+            },
+          },
+        },
+      });
+
+      // Assert
+      expect(result.isError).toBe(true);
+      const content = JSON.parse(result.content[0].text);
+      expect(content.error).toContain("Invalid type(s) in typeLabels");
+      expect(content.error).toContain("'INVALID_TYPE'");
+      expect(content.error).toContain("Valid types:");
+      expect(content.error).toContain("FEATURE");
+    });
+
+    it("should list multiple invalid types in error message", async () => {
+      // Arrange
+      const ctx = await createSettingsToolContext(testDb);
+
+      // Act - use multiple invalid type names
+      const result = await handleUpdateSettings(ctx, {
+        action: "enable_github",
+        github: {
+          labels: {
+            typeLabels: {
+              SPKE: "spike-typo", // typo of SPIKE
+              FEATUR: "feature-typo", // typo of FEATURE
+            },
+          },
+        },
+      });
+
+      // Assert
+      expect(result.isError).toBe(true);
+      const content = JSON.parse(result.content[0].text);
+      expect(content.error).toContain("'SPKE'");
+      expect(content.error).toContain("'FEATUR'");
+    });
+  });
+
+  describe("configure_github with typeLabels", () => {
+    let ctx: SettingsToolContext;
+
+    beforeEach(async () => {
+      ctx = await createSettingsToolContext(testDb);
+      // Enable GitHub sync first
+      await handleUpdateSettings(ctx, { action: "enable_github" });
+    });
+
+    it("should accept valid typeLabels via configure_github", async () => {
+      // Act
+      const result = await handleUpdateSettings(ctx, {
+        action: "configure_github",
+        github: {
+          labels: {
+            typeLabels: {
+              TASK: "chore",
+              ENHANCEMENT: "improvement",
+            },
+          },
+        },
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.config.syncIssues.labels.typeLabels.TASK).toBe("chore");
+      expect(content.config.syncIssues.labels.typeLabels.ENHANCEMENT).toBe("improvement");
+    });
+
+    it("should reject invalid typeLabels via configure_github", async () => {
+      // Act
+      const result = await handleUpdateSettings(ctx, {
+        action: "configure_github",
+        github: {
+          labels: {
+            typeLabels: {
+              NOT_A_TYPE: "invalid",
+            },
+          },
+        },
+      });
+
+      // Assert
+      expect(result.isError).toBe(true);
+      const content = JSON.parse(result.content[0].text);
+      expect(content.error).toContain("Invalid type(s) in typeLabels");
+      expect(content.error).toContain("'NOT_A_TYPE'");
+    });
+
+    it("should validate against database types when seeded", async () => {
+      // Arrange - seed a custom type in DB
+      const db = testDb.db as DbType;
+      const typeRepository = new SqliteTypeRepository(db);
+      typeRepository.create({
+        name: "CUSTOM",
+        displayName: "Custom",
+        description: "A custom type",
+        keywords: ["custom"],
+      });
+
+      // Re-create context with fresh TypeService to pick up seeded types
+      // Pass existing project to avoid UNIQUE constraint violation
+      const newCtx = await createSettingsToolContext(testDb, undefined, ctx.project);
+      await handleUpdateSettings(newCtx, { action: "enable_github" });
+
+      // Act - use the custom type
+      const result = await handleUpdateSettings(newCtx, {
+        action: "configure_github",
+        github: {
+          labels: {
+            typeLabels: {
+              CUSTOM: "custom-label",
+            },
+          },
+        },
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+    });
+
+    it("should reject default types when only custom types exist in DB", async () => {
+      // Arrange - seed ONLY custom types, no defaults
+      const db = testDb.db as DbType;
+      const typeRepository = new SqliteTypeRepository(db);
+      typeRepository.create({
+        name: "CUSTOM",
+        displayName: "Custom",
+        description: "A custom type",
+        keywords: ["custom"],
+      });
+
+      // Re-create context with fresh TypeService to pick up seeded types
+      // Pass existing project to avoid UNIQUE constraint violation
+      const newCtx = await createSettingsToolContext(testDb, undefined, ctx.project);
+      await handleUpdateSettings(newCtx, { action: "enable_github" });
+
+      // Act - try to use a default type that's not in the seeded DB
+      const result = await handleUpdateSettings(newCtx, {
+        action: "configure_github",
+        github: {
+          labels: {
+            typeLabels: {
+              FEATURE: "feature", // Not in DB when custom types are seeded
+            },
+          },
+        },
+      });
+
+      // Assert - should reject since only CUSTOM exists in DB
+      expect(result.isError).toBe(true);
+      const content = JSON.parse(result.content[0].text);
+      expect(content.error).toContain("Invalid type(s) in typeLabels");
+      expect(content.error).toContain("'FEATURE'");
+      expect(content.error).toContain("CUSTOM"); // Valid types should show CUSTOM
+    });
+
+    it("should allow mix of valid types", async () => {
+      // Act - mix of default types
+      const result = await handleUpdateSettings(ctx, {
+        action: "configure_github",
+        github: {
+          labels: {
+            typeLabels: {
+              FEATURE: "feat",
+              BUG: "bug",
+              ENHANCEMENT: "enhance",
+              TASK: "task",
+            },
+          },
+        },
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+    });
   });
 });
