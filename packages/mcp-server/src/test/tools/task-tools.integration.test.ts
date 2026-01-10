@@ -271,6 +271,113 @@ describe("Task Tools Integration", () => {
       expect(content.type).toBe("FEATURE");
       expect(content.labels).toEqual({ priority: "high", sprint: "sprint-1" });
     });
+
+    it("should return workerInfo when task is IN_PROGRESS with session", () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Task in progress",
+        status: "IN_PROGRESS",
+      });
+
+      // Simulate a task with sessionId (as would happen during load_task_session)
+      ctx.taskRepository.update(task.id, { sessionId: "test-session-123" });
+
+      const result = handleGetTask(ctx, { taskId: task.id });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.status).toBe("IN_PROGRESS");
+      expect(content.workerInfo).toBeDefined();
+      expect(content.workerInfo.sessionId).toBe("test-session-123");
+      // workerId will be null since no dispatch queue entry
+      expect(content.workerInfo.workerId).toBeNull();
+    });
+
+    it("should not return workerInfo when task is not IN_PROGRESS", () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Task in backlog",
+        status: "BACKLOG",
+      });
+
+      const result = handleGetTask(ctx, { taskId: task.id });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.status).toBe("BACKLOG");
+      expect(content.workerInfo).toBeUndefined();
+    });
+
+    it("should return prInfo when task has a PR", () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Task with PR",
+        status: "PR_REVIEW",
+      });
+
+      // Simulate a task with PR info
+      ctx.taskRepository.update(task.id, {
+        prNumber: 42,
+        prUrl: "https://github.com/test/repo/pull/42",
+        prStatus: "OPEN",
+      });
+
+      const result = handleGetTask(ctx, { taskId: task.id });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.prInfo).toBeDefined();
+      expect(content.prInfo.prNumber).toBe(42);
+      expect(content.prInfo.prUrl).toBe("https://github.com/test/repo/pull/42");
+      expect(content.prInfo.prStatus).toBe("OPEN");
+    });
+
+    it("should not return prInfo when task has no PR", () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Task without PR",
+        status: "IN_PROGRESS",
+      });
+
+      const result = handleGetTask(ctx, { taskId: task.id });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.prInfo).toBeUndefined();
+    });
+
+    it("should return both workerInfo and prInfo when applicable", () => {
+      const issue = createTestIssue(ctx.issueRepository);
+      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const task = createTestTask(ctx.taskRepository, plan.id, {
+        title: "Task with worker and PR",
+        status: "IN_PROGRESS",
+      });
+
+      // Simulate a task with both session and PR info
+      ctx.taskRepository.update(task.id, {
+        sessionId: "session-456",
+        prNumber: 99,
+        prUrl: "https://github.com/test/repo/pull/99",
+        prStatus: "DRAFT",
+      });
+
+      const result = handleGetTask(ctx, { taskId: task.id });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+
+      expect(content.workerInfo).toBeDefined();
+      expect(content.workerInfo.sessionId).toBe("session-456");
+
+      expect(content.prInfo).toBeDefined();
+      expect(content.prInfo.prNumber).toBe(99);
+      expect(content.prInfo.prStatus).toBe("DRAFT");
+    });
   });
 
   describe("handleListAvailableTasks", () => {
