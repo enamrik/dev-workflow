@@ -13,19 +13,18 @@ import {
   type ProjectRepository,
   type StatusColumnMapping,
   type ProviderRegistry,
+  type TypeService,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
 /**
  * Type for GitHub labels configuration (used in tool arguments)
+ *
+ * typeLabels is a Record<string, string> to support user-defined types.
+ * The keys are validated against active types in the database at runtime.
  */
 interface GitHubLabels {
-  typeLabels?: {
-    FEATURE?: string;
-    BUG?: string;
-    ENHANCEMENT?: string;
-    TASK?: string;
-  };
+  typeLabels?: Record<string, string>;
   customLabels?: string[];
 }
 
@@ -78,13 +77,10 @@ export const settingsToolDefinitions: ToolDefinition[] = [
               properties: {
                 typeLabels: {
                   type: "object",
-                  properties: {
-                    FEATURE: { type: "string" },
-                    BUG: { type: "string" },
-                    ENHANCEMENT: { type: "string" },
-                    TASK: { type: "string" },
-                  },
-                  description: "Maps issue types to GitHub labels",
+                  additionalProperties: { type: "string" },
+                  description:
+                    "Maps issue types to GitHub labels. Keys must be valid type names " +
+                    "(call list_types to see available types). Example: { FEATURE: 'feature', BUG: 'bug' }",
                 },
                 customLabels: {
                   type: "array",
@@ -138,6 +134,7 @@ export interface SettingsToolContext {
   githubCLI: GitHubCLI;
   gitRoot: string; // From env var, not database (machine-specific)
   providerRegistry: ProviderRegistry; // For validating available providers
+  typeService: TypeService; // For validating typeLabels against active types
 }
 
 /**
@@ -158,6 +155,38 @@ interface UpdateSettingsArgs {
     columnMapping?: Partial<StatusColumnMapping>;
   };
   resetColumnMapping?: boolean;
+}
+
+/**
+ * Validate typeLabels keys against active types in the database
+ *
+ * Returns null if all types are valid, error message if any are invalid.
+ */
+async function validateTypeLabels(
+  typeService: TypeService,
+  typeLabels: Record<string, string>
+): Promise<string | null> {
+  const providedTypes = Object.keys(typeLabels);
+  if (providedTypes.length === 0) {
+    return null;
+  }
+
+  // Get active types from database
+  const activeTypes = await typeService.getTypes();
+  // Cast to string since we're validating arbitrary user input against known type names
+  const validTypeNames = new Set<string>(activeTypes.map((t) => t.name));
+
+  // Find invalid types
+  const invalidTypes = providedTypes.filter((t) => !validTypeNames.has(t));
+
+  if (invalidTypes.length === 0) {
+    return null;
+  }
+
+  // Build helpful error message
+  const invalidList = invalidTypes.map((t) => `'${t}'`).join(", ");
+  const validList = Array.from(validTypeNames).sort().join(", ");
+  return `Invalid type(s) in typeLabels: ${invalidList}. Valid types: ${validList}`;
 }
 
 /**
@@ -340,7 +369,18 @@ async function handleEnableGitHub(
     }
   }
 
-  // Step 5: Build and save config with defaults for missing label config
+  // Step 5: Validate typeLabels against active types if provided
+  if (github?.labels?.typeLabels) {
+    const typeValidationError = await validateTypeLabels(
+      ctx.typeService,
+      github.labels.typeLabels as Record<string, string>
+    );
+    if (typeValidationError) {
+      return errorResponse(typeValidationError);
+    }
+  }
+
+  // Step 6: Build and save config with defaults for missing label config
   const syncConfig: GitHubIssueSyncConfig = {
     enabled: true,
     repoUrl: repoUrl ?? undefined,
@@ -454,6 +494,17 @@ async function handleConfigureGitHub(
       const validationError = validateGitHubUsername(github.assignee);
       if (validationError) {
         return errorResponse(validationError);
+      }
+    }
+
+    // Validate typeLabels against active types if provided
+    if (github.labels?.typeLabels) {
+      const typeValidationError = await validateTypeLabels(
+        ctx.typeService,
+        github.labels.typeLabels as Record<string, string>
+      );
+      if (typeValidationError) {
+        return errorResponse(typeValidationError);
       }
     }
 
