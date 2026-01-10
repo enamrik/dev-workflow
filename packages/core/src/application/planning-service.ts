@@ -197,8 +197,11 @@ export class PlanningService {
       tasks = this.createNewTasks(plan, newTaskDefs, issueLabels);
     }
 
-    // Reindex tasks to ensure sequential 1, 2, 3... for display
-    tasks = this.reindexTasks(plan.id);
+    // Renumber tasks to ensure sequential 1, 2, 3... when in PLANNED state
+    // Once activated (OPEN), task numbers become immutable
+    if (issue.status === "PLANNED") {
+      tasks = this.renumberTasks(plan.id);
+    }
 
     // Create snapshot after regeneration (captures new state)
     this.versioningService.createSnapshot(
@@ -504,31 +507,29 @@ export class PlanningService {
   }
 
   /**
-   * Reindex tasks for a plan to ensure sequential display indexes
+   * Renumber tasks for a plan to ensure sequential task numbers (1, 2, 3...)
    *
-   * Updates the `index` field (1, 2, 3...) for all non-deleted tasks
-   * ordered by their `order` field. This is called after task creation
-   * or plan regeneration to maintain clean display numbers.
-   *
-   * The `number` field is IMMUTABLE and used for URLs/permanent references.
-   * The `index` field is for display (e.g., #issue.[index/total]).
+   * Updates the `number` field for all non-deleted tasks ordered by their
+   * `order` field. This is only called when the issue is in PLANNED state.
+   * Once the issue is activated (moved to OPEN), task numbers become
+   * immutable to preserve URLs and permanent references.
    *
    * @param planId - Plan UUID
-   * @returns Updated tasks with sequential indexes
+   * @returns Updated tasks with sequential numbers
    */
-  private reindexTasks(planId: string): Task[] {
+  private renumberTasks(planId: string): Task[] {
     // Get all non-deleted tasks ordered by order
     const tasks = this.taskRepository.findByPlanId(planId, false);
 
-    // Update each task's index to be sequential
+    // Update each task's number to be sequential
     const updatedTasks: Task[] = [];
     for (let i = 0; i < tasks.length; i++) {
       const task = tasks[i]!;
-      const newIndex = i + 1; // 1-based index
+      const newNumber = i + 1; // 1-based numbering
 
-      // Only update if index has changed
-      if (task.index !== newIndex) {
-        const updated = this.taskRepository.update(task.id, { index: newIndex });
+      // Only update if number has changed
+      if (task.number !== newNumber) {
+        const updated = this.taskRepository.updateNumber(task.id, newNumber);
         updatedTasks.push(updated);
       } else {
         updatedTasks.push(task);
