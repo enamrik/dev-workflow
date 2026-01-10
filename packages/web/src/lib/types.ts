@@ -75,7 +75,7 @@ export interface Task {
   updatedAt: string;
   // Dependencies
   dependsOn?: string[];
-  // Worker info (only present for IN_PROGRESS tasks with active worker)
+  // Worker info (present when worker is in WORKING state for this task)
   workerId?: string;
   workerName?: string;
 }
