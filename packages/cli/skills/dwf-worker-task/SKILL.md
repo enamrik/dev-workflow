@@ -1,12 +1,27 @@
 ---
 name: dwf-worker-task
 description: Execute tasks - load, implement, create PR, and complete. Used by workers and for inline execution. Does NOT dispatch to workers. Auto-invoked for task execution after dispatch decision is made.
-allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:create_pr, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:log_task_progress, mcp:dev-workflow-tracker:get_task_execution_log
+allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:create_pr, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:log_task_progress, mcp:dev-workflow-tracker:get_task_execution_log, mcp:dev-workflow-tracker:end_worker_session
 ---
 
 # Worker Task Skill
 
 This skill handles task execution - loading tasks, implementing them, creating PRs, and completing them.
+
+## Your Mission (Workers Only)
+
+**If you are running as a worker process**, your mission is simple:
+
+> **Execute this task and call `end_worker_session()`. That is your terminal action.**
+> Everything you do is in service of reaching that call.
+
+The worker process that spawned you is waiting for `end_worker_session()` to signal completion. Until you call it, the worker cannot terminate cleanly.
+
+> ⚠️ **CRITICAL: `end_worker_session()` is your FINAL action.**
+>
+> - The worker process terminates immediately after this call
+> - NEVER output text, call tools, or do anything after it
+> - Think of it as `process.exit()` - there is no "after"
 
 **IMPORTANT:** This skill does NOT dispatch tasks to workers. It is used:
 
@@ -91,6 +106,8 @@ Tasks flow: PLANNED → BACKLOG → READY → IN_PROGRESS → PR_REVIEW → COMP
 | IN_PROGRESS | COMPLETED   | `complete_task` (main mode only)                                                                        |
 | PR_REVIEW   | COMPLETED   | `complete_task` (after PR merged)                                                                       |
 | Any         | ABANDONED   | `abandon_task_session`                                                                                  |
+| COMPLETED   | (terminal)  | `end_worker_session` (workers only - signals worker process to terminate)                               |
+| ABANDONED   | (terminal)  | `end_worker_session` (workers only - signals worker process to terminate)                               |
 
 ## Process
 
@@ -272,6 +289,24 @@ The `complete_task` response includes `allTasksComplete` boolean.
 | `true`             | Ask: "All tasks done. Close issue #N?" If yes → use `close_issue`       |
 | `false`            | Do NOT ask about closing - just report completion and suggest next task |
 
+### Terminal Action: end_worker_session (Workers Only)
+
+After completing or abandoning a task, call `end_worker_session()`:
+
+```typescript
+end_worker_session({
+  workerId: "your-worker-id", // From your worker prompt
+  taskId: "task-uuid", // The task you worked on
+});
+```
+
+**Complete Worker Flow:**
+
+1. Load task → implement → create PR → submit for review
+2. Wait for PR merge → `complete_task`
+3. If `allTasksComplete` → optionally `close_issue`
+4. **`end_worker_session()` ← TERMINAL (nothing after this)**
+
 ### To Abandon a Task
 
 1. **Confirm abandonment:**
@@ -285,6 +320,8 @@ The `complete_task` response includes `allTasksComplete` boolean.
 3. **Report and suggest:**
    - Show task is now ABANDONED
    - Suggest alternatives (different approach, re-plan issue)
+
+4. **(Workers only) Call `end_worker_session()`** - same terminal semantics apply
 
 ### To Pause an Issue
 
