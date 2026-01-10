@@ -523,9 +523,8 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
       this.state.currentClaudeProcess = claudeProcess;
 
       // Watch for task completion via claudeDone flag
+      // Worker waits indefinitely until Claude calls end_worker_session
       let sessionEnded = false;
-      let terminalStateDetectedAt: number | null = null;
-      const TERMINAL_STATE_TIMEOUT_MS = 30000; // 30 seconds fallback
 
       this.taskWatchInterval = setInterval(() => {
         if (!this.taskRepository || !this.dispatchQueueRepository) {
@@ -543,6 +542,7 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
         this.updateTitle();
 
         // Check for claudeDone flag from the dispatch queue
+        // This is the ONLY way the session should end - when Claude explicitly signals completion
         const queueEntry = this.dispatchQueueRepository.findByTaskId(taskId);
         if (queueEntry?.claudeDone) {
           if (!sessionEnded) {
@@ -557,44 +557,6 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
             console.log(term.green("\n✓ Claude signaled session complete via end_worker_session"));
             this.terminateSession(claudeProcess, task.status);
           }
-          return;
-        }
-
-        // Timeout fallback: if task is in terminal state but claudeDone not received
-        const isTerminal = task.status === "COMPLETED" || task.status === "ABANDONED";
-        if (isTerminal) {
-          if (terminalStateDetectedAt === null) {
-            terminalStateDetectedAt = Date.now();
-            console.log(
-              term.yellow(
-                `\n⏳ Task ${task.status} but waiting for end_worker_session (timeout in ${TERMINAL_STATE_TIMEOUT_MS / 1000}s)...`
-              )
-            );
-          } else {
-            const elapsed = Date.now() - terminalStateDetectedAt;
-            if (elapsed >= TERMINAL_STATE_TIMEOUT_MS) {
-              if (!sessionEnded) {
-                sessionEnded = true;
-
-                // Stop task watch
-                if (this.taskWatchInterval) {
-                  clearInterval(this.taskWatchInterval);
-                  this.taskWatchInterval = null;
-                }
-
-                console.log(
-                  term.yellow(
-                    `\n⚠ Timeout: Task ${task.status} but Claude did not call end_worker_session. ` +
-                      "Terminating session (Claude may have crashed or forgotten to call it)."
-                  )
-                );
-                this.terminateSession(claudeProcess, task.status);
-              }
-            }
-          }
-        } else {
-          // Reset timeout if task went back to non-terminal state
-          terminalStateDetectedAt = null;
         }
       }, 2000);
 
@@ -634,7 +596,7 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
 
   /**
    * Terminate the Claude session
-   * Called when claudeDone flag is received or timeout occurs
+   * Called when claudeDone flag is received (Claude called end_worker_session)
    */
   private terminateSession(claudeProcess: ChildProcess, finalStatus: string): void {
     console.log(term.green(`\n✓ Task ${finalStatus}! Terminating session...`));
