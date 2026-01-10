@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Fetch dispatch queue data from global database for worker info
-    // Build a map of taskId -> { workerId, workerName } for IN_PROGRESS tasks
+    // Build a map of taskId -> { workerId, workerName } for tasks with WORKING workers
     const workerByTaskId = new Map<string, { workerId: string; workerName: string | null }>();
     try {
       const dbPath = getGlobalDatabasePath();
@@ -97,10 +97,12 @@ export async function GET(request: NextRequest) {
               }
             }
 
-            // Enrich tasks with worker info for IN_PROGRESS tasks
+            // Enrich tasks with worker info when worker is in WORKING state
+            // This includes both IN_PROGRESS and PR_REVIEW tasks since workers
+            // continue working through the PR lifecycle
             const tasksWithWorker: TaskWithWorker[] = tasks.map((task) => {
               const workerInfo = workerByTaskId.get(task.id);
-              if (task.status === "IN_PROGRESS" && workerInfo) {
+              if (workerInfo) {
                 return {
                   ...task,
                   workerId: workerInfo.workerId,
