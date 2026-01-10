@@ -1,6 +1,7 @@
 ---
 type: ENHANCEMENT
 priority: MEDIUM
+description: Task for improving existing functionality
 labels: []
 ---
 

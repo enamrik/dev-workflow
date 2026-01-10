@@ -1,6 +1,7 @@
 ---
 type: TASK
 priority: MEDIUM
+description: Task for technical work, chores, or maintenance
 labels: []
 ---
 

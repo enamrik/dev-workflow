@@ -1,6 +1,7 @@
 ---
 type: ENHANCEMENT
 priority: MEDIUM
+description: Improvements to existing functionality
 labels: [enhancement]
 ---
 

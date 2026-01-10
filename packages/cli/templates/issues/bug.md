@@ -1,6 +1,7 @@
 ---
 type: BUG
 priority: HIGH
+description: Defects, crashes, or incorrect behavior
 labels: [bug]
 ---
 

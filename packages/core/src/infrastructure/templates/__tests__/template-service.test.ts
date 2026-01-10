@@ -14,15 +14,18 @@ import type { FileSystem } from "../../file-system/file-system.js";
 import { TemplateService, type TemplateServiceConfig } from "../template-service.js";
 
 // Valid template content for testing
-const makeTemplate = (type: string, priority: string = "MEDIUM") => `---
+const makeTemplate = (type: string, priority: string = "MEDIUM", description?: string) => {
+  const descriptionLine = description ? `description: ${description}\n` : "";
+  return `---
 type: ${type}
 priority: ${priority}
----
+${descriptionLine}---
 
 # ${type} Template
 
 Description goes here.
 `;
+};
 
 // Create a mock Dirent entry
 const mockDirent = (name: string, isFile: boolean = true): Dirent =>
@@ -592,6 +595,93 @@ describe("TemplateService", () => {
 
       expect(result.userTemplates).toHaveLength(1);
       expect(result.userTemplates[0]?.filename).toBe("feature.md");
+    });
+  });
+
+  describe("description field parsing", () => {
+    it("should parse description from frontmatter", async () => {
+      addTemplate(
+        config.localIssueTemplatesPath,
+        "feature.md",
+        makeTemplate("FEATURE", "MEDIUM", "New functionality that doesn't exist yet")
+      );
+
+      const result = await service.discoverTemplates();
+
+      expect(result.userTemplates).toHaveLength(1);
+      expect(result.userTemplates[0]?.metadata.description).toBe(
+        "New functionality that doesn't exist yet"
+      );
+    });
+
+    it("should handle missing description field", async () => {
+      addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
+
+      const result = await service.discoverTemplates();
+
+      expect(result.userTemplates).toHaveLength(1);
+      expect(result.userTemplates[0]?.metadata.description).toBeUndefined();
+    });
+
+    it("should handle empty description field", async () => {
+      addTemplate(
+        config.localIssueTemplatesPath,
+        "feature.md",
+        `---
+type: FEATURE
+priority: MEDIUM
+description:
+---
+
+# Feature Template
+`
+      );
+
+      const result = await service.discoverTemplates();
+
+      expect(result.userTemplates).toHaveLength(1);
+      expect(result.userTemplates[0]?.metadata.description).toBeUndefined();
+    });
+
+    it("should preserve description in getTemplate response", async () => {
+      addTemplate(
+        config.localIssueTemplatesPath,
+        "bug.md",
+        makeTemplate("BUG", "HIGH", "Defects, crashes, or incorrect behavior")
+      );
+
+      const result = await service.getTemplate("bug.md");
+
+      expect(result).not.toBeNull();
+      expect(result?.template.metadata.description).toBe("Defects, crashes, or incorrect behavior");
+    });
+
+    it("should preserve description in task templates", async () => {
+      addTemplate(
+        config.localTaskTemplatesPath,
+        "feature.md",
+        makeTemplate("FEATURE", "MEDIUM", "Task for implementing new functionality")
+      );
+
+      const result = await service.discoverTaskTemplates();
+
+      expect(result.userTemplates).toHaveLength(1);
+      expect(result.userTemplates[0]?.metadata.description).toBe(
+        "Task for implementing new functionality"
+      );
+    });
+
+    it("should preserve description in getTaskTemplateInfo response", async () => {
+      addTemplate(
+        config.globalTaskTemplatesPath,
+        "bug.md",
+        makeTemplate("BUG", "HIGH", "Task for fixing defects")
+      );
+
+      const result = await service.getTaskTemplateInfo("bug.md");
+
+      expect(result).not.toBeNull();
+      expect(result?.template.metadata.description).toBe("Task for fixing defects");
     });
   });
 });
