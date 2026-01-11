@@ -816,8 +816,15 @@ describe("Task Tools Integration", () => {
         status: "BACKLOG",
       });
 
-      // Add task to dispatch queue
+      // Register worker and add task to dispatch queue
+      const workerId = "test-worker-id";
+      repos.workerRepository.register(workerId, "test-session");
       repos.dispatchQueueRepository.enqueue(task.id);
+
+      // Worker claims the task (simulating what worker-runner does)
+      const claimed = repos.dispatchQueueRepository.claimTask(workerId);
+      expect(claimed).toBeTruthy();
+      expect(claimed?.taskId).toBe(task.id);
 
       // Add dispatch queue to context
       const ctxWithQueue = {
@@ -829,13 +836,15 @@ describe("Task Tools Integration", () => {
       const result = await handleLoadTaskSession(ctxWithQueue, {
         taskId: task.id,
         sessionId: "test-session",
-        workerId: "test-worker-id",
+        workerId,
         // mode defaults to "isolated"
       });
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(true);
-      expect(content.resumed).toBe(true);
+      // BACKLOG task is a fresh start, not resume (even when queued)
+      expect(content.resumed).toBe(false);
+      expect(content.task.status).toBe("IN_PROGRESS");
     });
 
     it("should resume non-queued IN_PROGRESS task by any session", async () => {
@@ -883,7 +892,7 @@ describe("Task Tools Integration", () => {
       expect(content.task.status).toBe("PR_REVIEW");
     });
 
-    it("should reject COMPLETED task", async () => {
+    it("should return gracefully for COMPLETED task with context", async () => {
       const issue = createTestIssue(ctx.issueRepository);
       const plan = createTestPlan(ctx.planRepository, issue.id);
       // Create task directly in COMPLETED status (bypassing state machine)
@@ -892,7 +901,7 @@ describe("Task Tools Integration", () => {
         status: "COMPLETED",
       });
 
-      // Try to start
+      // Try to load
       const result = await handleLoadTaskSession(ctx, {
         taskId: task.id,
         sessionId: "new-session",
@@ -900,11 +909,15 @@ describe("Task Tools Integration", () => {
       });
 
       const content = JSON.parse(result.content[0].text);
-      expect(content.success).toBe(false);
-      expect(content.error).toContain("COMPLETED");
+      // Graceful return instead of error - includes task and issue context
+      expect(content.success).toBe(true);
+      expect(content.task.status).toBe("COMPLETED");
+      expect(content.message).toContain("COMPLETED");
+      expect(content.message).toContain("No work needed");
+      expect(content.issueNumber).toBe(issue.number);
     });
 
-    it("should reject ABANDONED task", async () => {
+    it("should return gracefully for ABANDONED task with context", async () => {
       const issue = createTestIssue(ctx.issueRepository);
       const plan = createTestPlan(ctx.planRepository, issue.id);
       // Create task directly in ABANDONED status (bypassing state machine)
@@ -913,7 +926,7 @@ describe("Task Tools Integration", () => {
         status: "ABANDONED",
       });
 
-      // Try to start
+      // Try to load
       const result = await handleLoadTaskSession(ctx, {
         taskId: task.id,
         sessionId: "new-session",
@@ -921,8 +934,12 @@ describe("Task Tools Integration", () => {
       });
 
       const content = JSON.parse(result.content[0].text);
-      expect(content.success).toBe(false);
-      expect(content.error).toContain("ABANDONED");
+      // Graceful return instead of error - includes task and issue context
+      expect(content.success).toBe(true);
+      expect(content.task.status).toBe("ABANDONED");
+      expect(content.message).toContain("ABANDONED");
+      expect(content.message).toContain("No work needed");
+      expect(content.issueNumber).toBe(issue.number);
     });
 
     it("should start fresh for non-queued BACKLOG task", async () => {
@@ -941,7 +958,7 @@ describe("Task Tools Integration", () => {
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(true);
-      expect(content.resumed).toBeUndefined(); // Not resumed, fresh start
+      expect(content.resumed).toBe(false); // Not resumed, fresh start
       expect(content.startedAt).toBeDefined();
       expect(content.task.status).toBe("IN_PROGRESS");
     });
@@ -962,7 +979,7 @@ describe("Task Tools Integration", () => {
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(true);
-      expect(content.resumed).toBeUndefined(); // Not resumed, fresh start
+      expect(content.resumed).toBe(false); // Not resumed, fresh start
       expect(content.startedAt).toBeDefined();
       expect(content.task.status).toBe("IN_PROGRESS");
     });
