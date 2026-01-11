@@ -116,6 +116,21 @@ export {
   type ComputedStatusResult,
 } from "./application/issue-status-service.js";
 export { DependencyService } from "./application/dependency-service.js";
+export {
+  TaskService,
+  TaskServiceError,
+  type AbandonTaskResult,
+} from "./application/task-service.js";
+export {
+  IssueService,
+  IssueServiceError,
+  type CloseIssueResult,
+} from "./application/issue-service.js";
+export {
+  MilestoneService,
+  MilestoneServiceError,
+  type MilestoneWithStatus,
+} from "./application/milestone-service.js";
 
 // Infrastructure - Database
 export * from "./infrastructure/database/schema.js";
