@@ -175,10 +175,13 @@ Once I understand your requirements, I'll research and present a comparison.
 5. **Load the task session:**
    - Call `load_task_session` with task ID, session ID, and mode
    - This returns full context: task, issue, plan, worktree info
-   - If task is already IN_PROGRESS, it resumes the existing session
+   - Response includes `resumed: boolean` - check this field:
+     - `resumed: false` → Fresh start (BACKLOG/READY task)
+     - `resumed: true` → Resuming existing session (IN_PROGRESS/PR_REVIEW task)
+   - **If task is already COMPLETED or ABANDONED:** Response returns success with terminal state info (no error). Check `task.status` - if terminal, skip to "Terminal Task Recovery" below.
    - Review title, description, and acceptance criteria from the response
 
-6. **If resuming (task was already IN_PROGRESS):**
+6. **If resuming (`resumed: true`):**
    - Call `get_task_execution_log` to read previous session's progress
    - Review the logged entries to understand what was already done
    - Summarize the previous progress to the user before continuing
@@ -363,6 +366,28 @@ end_worker_session({
 ### To Pause an Issue
 
 Call `pause_issue` with issue number → moves all READY tasks to BACKLOG. Starting any task resumes work (BACKLOG → READY). Only affects READY tasks.
+
+### Terminal Task Recovery
+
+When `load_task_session` returns a task in COMPLETED or ABANDONED state, the response includes:
+
+| Field              | Description                                            |
+| ------------------ | ------------------------------------------------------ |
+| `success`          | Always `true` (not an error)                           |
+| `task`             | The task with terminal status                          |
+| `issue`            | Parent issue context                                   |
+| `plan`             | Plan context                                           |
+| `allTasksComplete` | Whether all tasks in the plan are in terminal state    |
+| `nextTask`         | Next available task in the same plan (if any)          |
+| `message`          | "Task is already COMPLETED/ABANDONED. No work needed." |
+
+**Recovery actions:**
+
+1. **If `nextTask` exists:** Offer to start the next task instead
+2. **If `allTasksComplete: true`:** Report that all tasks are done, offer to close the issue
+3. **If `allTasksComplete: false` and no `nextTask`:** Other tasks may be blocked or in progress by other sessions
+
+**Workers:** If task is already terminal, call `end_worker_session()` immediately - nothing to do.
 
 ## CRITICAL: Worktree Path (Isolated Mode)
 

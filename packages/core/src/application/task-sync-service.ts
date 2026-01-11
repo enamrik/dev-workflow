@@ -221,10 +221,7 @@ export class TaskSyncService {
       } catch (error) {
         // Fail fast - if any task fails, entire operation fails
         const errorMessage = error instanceof Error ? error.message : String(error);
-        throw new TaskSyncError(
-          `Failed to activate task ${task.number}: ${errorMessage}`,
-          error
-        );
+        throw new TaskSyncError(`Failed to activate task ${task.number}: ${errorMessage}`, error);
       }
     }
 
@@ -427,10 +424,7 @@ export class TaskSyncService {
         if (error instanceof TaskSyncError) {
           throw error;
         }
-        throw new TaskSyncError(
-          `Failed to add task to GitHub Project ${config.projectId}`,
-          error
-        );
+        throw new TaskSyncError(`Failed to add task to GitHub Project ${config.projectId}`, error);
       }
     }
 

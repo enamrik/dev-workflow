@@ -149,24 +149,34 @@ describe("TaskSessionService", () => {
       expect(session.task.status).toBe("IN_PROGRESS");
     });
 
-    it("should reject starting IN_PROGRESS tasks", async () => {
-      // Arrange: Create issue with plan and IN_PROGRESS task
+    it("should handle IN_PROGRESS tasks with startedAt as resume", async () => {
+      // Arrange: Create issue with plan and start a task normally
       const issue = createTestIssue(repos.issueRepository);
       const plan = createTestPlan(repos.planRepository, issue.id);
 
       const task1 = createTestTask(repos.taskRepository, plan.id, {
         title: "Task 1",
-        status: "IN_PROGRESS",
+        status: "BACKLOG",
       });
 
-      // Act & Assert: Should throw error
-      await expect(
-        taskSessionService.startTaskSession({
-          taskId: task1.id,
-          sessionId: "test-session-1",
-          mode: "main",
-        })
-      ).rejects.toThrow(/must be BACKLOG or READY/);
+      // Start the task first (sets startedAt)
+      await taskSessionService.startTaskSession({
+        taskId: task1.id,
+        sessionId: "test-session-1",
+        mode: "main",
+      });
+
+      // Act: Call startTaskSession again on the now IN_PROGRESS task
+      const session = await taskSessionService.startTaskSession({
+        taskId: task1.id,
+        sessionId: "test-session-2",
+        mode: "main",
+      });
+
+      // Assert: Should succeed as a resume (idempotent behavior)
+      expect(session.resumed).toBe(true);
+      expect(session.task.status).toBe("IN_PROGRESS");
+      expect(session.sessionId).toBe("test-session-2");
     });
   });
 

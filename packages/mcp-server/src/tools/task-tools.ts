@@ -21,6 +21,7 @@ import {
   type ProjectRepository,
   type GitHubCLI,
   type AvailableLabel,
+  type Task,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -362,13 +363,17 @@ export interface TaskToolContext {
 /**
  * Handle load_task_session tool call
  *
- * Loads a task for execution with full context. Starts or resumes the session.
+ * Idempotent task session loader - safe to call multiple times.
+ * Uses startedAt as the signal for "has work started":
+ * - startedAt is null → fresh start (create worktree, transition to IN_PROGRESS)
+ * - startedAt is set → resume (return existing context)
  *
- * Claiming rules:
- * - Queued tasks (in dispatch queue): Only workers (with workerId) can claim
- * - Non-queued IN_PROGRESS/PR_REVIEW: Resume by any session
- * - Non-queued BACKLOG/READY: Fresh start via startTaskSession()
- * - Non-queued COMPLETED/ABANDONED: Rejected
+ * Access control:
+ * - Queued tasks require worker with matching workerId
+ * - Workers must use isolated mode
+ *
+ * Terminal states (COMPLETED/ABANDONED) return gracefully with issue status
+ * and next task info, rather than erroring.
  *
  * Supports 3 modes:
  * - 'isolated' (default): creates worktree + branch for parallel work
@@ -386,7 +391,30 @@ export async function handleLoadTaskSession(
 ): Promise<ToolResponse> {
   const { taskId, sessionId, mode = "isolated", workerId } = args;
 
-  // Enforce isolated mode for workers
+  // Check if task exists
+  const task = ctx.taskRepository.findById(taskId);
+  if (!task) {
+    return errorResponse(`Task not found: ${taskId}`);
+  }
+
+  // Access control: queued tasks require worker with matching workerId
+  const queueEntry = ctx.dispatchQueueRepository?.findByTaskId(taskId);
+  if (queueEntry) {
+    if (!workerId) {
+      return errorResponse(
+        `Task is in dispatch queue and can only be claimed by a worker. ` +
+          `Start a worker to continue this task, or remove it from the queue first.`
+      );
+    }
+    if (queueEntry.workerId !== workerId) {
+      return errorResponse(
+        `Task queue mismatch: expected worker ${queueEntry.workerId ?? "(unclaimed)"}, got ${workerId}. ` +
+          `The task must be claimed by this worker before loading.`
+      );
+    }
+  }
+
+  // Access control: workers must use isolated mode
   if (workerId && mode !== "isolated") {
     return errorResponse(
       `Workers MUST use isolated mode. Got mode="${mode}" with workerId="${workerId}". ` +
@@ -394,150 +422,154 @@ export async function handleLoadTaskSession(
     );
   }
 
-  // Check if task exists
-  const existingTask = ctx.taskRepository.findById(taskId);
-  if (!existingTask) {
-    return errorResponse(`Task not found: ${taskId}`);
+  // Terminal states - return gracefully with context (not an error)
+  if (task.status === "COMPLETED" || task.status === "ABANDONED") {
+    return buildTerminalStateResponse(ctx, task);
   }
 
+  // Delegate to idempotent startTaskSession (handles both fresh start and resume)
+  const result = await ctx.taskSessionService.startTaskSession({
+    taskId,
+    sessionId,
+    mode,
+  });
+
+  // Build response
   const response: Record<string, unknown> = {
     success: true,
     sessionId,
+    task: result.task,
+    resumed: result.resumed,
+    startedAt: result.startedAt,
   };
 
-  // Check if task is in dispatch queue
-  const queueEntry = ctx.dispatchQueueRepository?.findByTaskId(taskId);
+  // Include worktree info if available
+  if (result.worktreePath) {
+    response.worktreePath = result.worktreePath;
+    response.branchName = result.branchName;
+  }
 
-  if (queueEntry) {
-    // Queued task - must be claimed by worker
-    if (!workerId) {
-      return errorResponse(
-        `Task is in dispatch queue and can only be claimed by a worker. ` +
-          `Start a worker to continue this task, or remove it from the queue first.`
-      );
+  // Include conflict warnings if any were detected (only on fresh start)
+  if (result.conflictWarnings && result.conflictWarnings.length > 0) {
+    response.conflictWarnings = result.conflictWarnings;
+    const taskPlan = ctx.planRepository.findById(result.task.planId);
+    const taskIssue = taskPlan ? ctx.issueRepository.findById(taskPlan.issueId) : null;
+    response.conflictWarningMessage = formatConflictWarnings(
+      result.conflictWarnings,
+      taskIssue?.number
+    );
+  }
+
+  // Sync to external project management provider
+  if (ctx.taskSyncService) {
+    try {
+      await ctx.taskSyncService.syncTaskStatus(taskId, result.task.status);
+    } catch (error) {
+      console.warn(`Failed to sync task status: ${error}`);
     }
 
-    // Worker claiming queued task - resume path for any status
-    response.task = existingTask;
-    response.resumed = true;
-
-    // Include existing worktree info if available
-    if (existingTask.worktreePath) {
-      response.worktreePath = existingTask.worktreePath;
-      response.branchName = existingTask.branchName;
-    }
-
-    // Update session tracking
-    const now = new Date().toISOString();
-    ctx.taskRepository.updateSessionInfo(taskId, sessionId, now, now);
-
-    // Sync status - let service decide if sync is needed (service handles checks internally)
-    if (ctx.taskSyncService) {
-      try {
-        await ctx.taskSyncService.syncTaskStatus(taskId, existingTask.status);
-      } catch (error) {
-        console.warn(`Failed to sync resumed task status: ${error}`);
-      }
-    }
-  } else if (existingTask.status === "IN_PROGRESS" || existingTask.status === "PR_REVIEW") {
-    // Non-queued IN_PROGRESS/PR_REVIEW - resume
-    response.task = existingTask;
-    response.resumed = true;
-
-    // Include existing worktree info if available
-    if (existingTask.worktreePath) {
-      response.worktreePath = existingTask.worktreePath;
-      response.branchName = existingTask.branchName;
-    }
-
-    // Update session tracking
-    const now = new Date().toISOString();
-    ctx.taskRepository.updateSessionInfo(taskId, sessionId, now, now);
-
-    // Sync status - let service decide if sync is needed (service handles checks internally)
-    if (ctx.taskSyncService) {
-      try {
-        await ctx.taskSyncService.syncTaskStatus(taskId, existingTask.status);
-      } catch (error) {
-        console.warn(`Failed to sync resumed task status: ${error}`);
-      }
-    }
-  } else if (existingTask.status === "BACKLOG" || existingTask.status === "READY") {
-    // Fresh start
-    const result = await ctx.taskSessionService.startTaskSession({
-      taskId,
-      sessionId,
-      mode,
-    });
-
-    response.task = result.task;
-    response.startedAt = result.startedAt;
-
-    // Include worktree info if created
-    if (result.worktreePath) {
-      response.worktreePath = result.worktreePath;
-      response.branchName = result.branchName;
-    }
-
-    // Include conflict warnings if any were detected
-    if (result.conflictWarnings && result.conflictWarnings.length > 0) {
-      response.conflictWarnings = result.conflictWarnings;
-      // Get issue number for #issue.task format in warning message
-      const taskPlan = ctx.planRepository.findById(result.task.planId);
-      const taskIssue = taskPlan ? ctx.issueRepository.findById(taskPlan.issueId) : null;
-      response.conflictWarningMessage = formatConflictWarnings(
-        result.conflictWarnings,
-        taskIssue?.number
-      );
-    }
-
-    // Sync to external project management provider (service handles "should I sync?" internally)
-    if (ctx.taskSyncService) {
-      try {
-        await ctx.taskSyncService.syncTaskStatus(taskId, "IN_PROGRESS");
-      } catch (error) {
-        // Log but don't fail - sync is best effort after local update
-        console.warn(`Failed to sync task status: ${error}`);
-      }
-
-      // Auto-assign the issue to the configured assignee (service handles internally)
+    // On fresh start only: auto-assign and sync siblings
+    if (!result.resumed) {
       try {
         await ctx.taskSyncService.assignIssue(taskId);
       } catch (error) {
-        // Log but don't fail - assignment is best effort
         console.warn(`Failed to auto-assign issue: ${error}`);
       }
 
       // Sync sibling tasks that transitioned from BACKLOG to READY
-      // When starting a task, all other BACKLOG tasks in the plan move to READY
-      if (result.task.planId) {
-        const siblingTasks = ctx.taskRepository.findByPlanId(result.task.planId);
-        for (const sibling of siblingTasks) {
-          if (sibling.id !== taskId && sibling.status === "READY") {
-            try {
-              await ctx.taskSyncService.syncTaskStatus(sibling.id, "READY");
-            } catch (error) {
-              console.warn(`Failed to sync sibling task READY status: ${error}`);
-            }
+      const siblingTasks = ctx.taskRepository.findByPlanId(result.task.planId);
+      for (const sibling of siblingTasks) {
+        if (sibling.id !== taskId && sibling.status === "READY") {
+          try {
+            await ctx.taskSyncService.syncTaskStatus(sibling.id, "READY");
+          } catch (error) {
+            console.warn(`Failed to sync sibling task READY status: ${error}`);
           }
         }
       }
     }
-  } else {
-    // COMPLETED/ABANDONED - reject
-    return errorResponse(
-      `Cannot start session for task in ${existingTask.status} status. ` +
-        `Only BACKLOG, READY, IN_PROGRESS, or PR_REVIEW tasks can be resumed.`
-    );
   }
 
-  // Load full context (same as get_task_for_session)
-  const task = response.task as {
-    planId: string;
-    dependsOn?: string[];
-    implementationPlan?: string;
-  };
+  // Load full context
+  return addTaskContext(ctx, response, result.task);
+}
 
+/**
+ * Build response for terminal state tasks (COMPLETED/ABANDONED)
+ *
+ * Returns similar shape to complete_task so callers know what to do next:
+ * - Workers: call end_worker_session and exit
+ * - Inline: inform user task is done, show next steps
+ */
+function buildTerminalStateResponse(ctx: TaskToolContext, task: Task): ToolResponse {
+  // Get issue status
+  const plan = ctx.planRepository.findById(task.planId);
+  const issue = plan ? ctx.issueRepository.findById(plan.issueId) : null;
+
+  // Check if all tasks are complete
+  const allTasks = ctx.taskRepository.findByPlanId(task.planId);
+  const activeTasks = allTasks.filter((t) => !t.isDeleted);
+  const terminalStatuses = ["COMPLETED", "ABANDONED"];
+  const allTasksComplete = activeTasks.every((t) => terminalStatuses.includes(t.status));
+
+  // Find next available task in the plan
+  const nextTask = findNextAvailableTaskInPlan(ctx, task.planId);
+
+  return successResponse({
+    success: true,
+    task,
+    issue,
+    plan,
+    // Key fields that signal "no work needed"
+    nextTask,
+    allTasksComplete,
+    issueNumber: issue?.number ?? null,
+    issueStatus: issue?.status ?? null,
+    message: `Task is already ${task.status}. No work needed.`,
+  });
+}
+
+/**
+ * Find the next available task in a plan (READY or BACKLOG)
+ */
+function findNextAvailableTaskInPlan(
+  ctx: TaskToolContext,
+  planId: string
+): { id: string; number: number; title: string; status: string } | null {
+  const tasks = ctx.taskRepository.findByPlanId(planId);
+
+  // Prefer READY tasks, then BACKLOG
+  const readyTask = tasks.find((t) => t.status === "READY" && !t.isDeleted);
+  if (readyTask) {
+    return {
+      id: readyTask.id,
+      number: readyTask.number,
+      title: readyTask.title,
+      status: readyTask.status,
+    };
+  }
+
+  const backlogTask = tasks.find((t) => t.status === "BACKLOG" && !t.isDeleted);
+  if (backlogTask) {
+    return {
+      id: backlogTask.id,
+      number: backlogTask.number,
+      title: backlogTask.title,
+      status: backlogTask.status,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Add full task context to response (issue, plan, dependencies)
+ */
+function addTaskContext(
+  ctx: TaskToolContext,
+  response: Record<string, unknown>,
+  task: Task
+): ToolResponse {
   // Get plan and issue
   const plan = ctx.planRepository.findById(task.planId);
   if (plan) {
@@ -552,7 +584,6 @@ export async function handleLoadTaskSession(
   if (task.dependsOn?.length) {
     const dependencies = ctx.taskRepository.findByIds(task.dependsOn);
     response.dependencies = dependencies.map((d) => {
-      // Resolve issue number via plan
       const depPlan = ctx.planRepository.findById(d.planId);
       const depIssue = depPlan ? ctx.issueRepository.findById(depPlan.issueId) : null;
       return {
@@ -567,10 +598,9 @@ export async function handleLoadTaskSession(
 
   // Find tasks that depend on this one
   const allPlanTasks = ctx.taskRepository.findByPlanId(task.planId);
-  const dependents = allPlanTasks.filter((t) => t.dependsOn?.includes(taskId));
+  const dependents = allPlanTasks.filter((t) => t.dependsOn?.includes(task.id));
   if (dependents.length > 0) {
     response.dependents = dependents.map((d) => {
-      // Resolve issue number via plan
       const depPlan = ctx.planRepository.findById(d.planId);
       const depIssue = depPlan ? ctx.issueRepository.findById(depPlan.issueId) : null;
       return {
