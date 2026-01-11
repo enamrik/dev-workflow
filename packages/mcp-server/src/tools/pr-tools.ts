@@ -14,6 +14,11 @@ import {
   type TaskSyncService,
   type SqliteDataSource,
   taskExecutionLogs,
+  type Project,
+  type DispatchQueueRepository,
+  TaskService,
+  IssueService,
+  getProjectManagementProvider,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -152,10 +157,12 @@ export const prToolDefinitions: ToolDefinition[] = [
  * Context required for PR tool handlers
  */
 export interface PRToolContext {
+  project: Project;
   githubCLI: GitHubCLI;
   issueRepository: SqliteIssueRepository;
   planRepository: SqlitePlanRepository;
   taskRepository: SqliteTaskRepository;
+  dispatchQueueRepository: DispatchQueueRepository;
   gitWorktreeService?: GitWorktreeService;
   taskSyncService?: TaskSyncService;
   /** Required for writing final log entry on task completion */
@@ -622,7 +629,7 @@ export async function handleCompleteTask(
     }
 
     // Check if all tasks are complete and maybe close issue
-    const issueStatus = checkAndMaybeCloseIssue(ctx, task.planId, autoCloseIssue);
+    const issueStatus = await checkAndMaybeCloseIssue(ctx, task.planId, autoCloseIssue);
 
     // Find next available task
     const nextTask = findNextAvailableTask(ctx, task.planId);
@@ -751,7 +758,7 @@ export async function handleCompleteTask(
   }
 
   // 9. Check if all tasks are complete and maybe close issue
-  const issueStatus = checkAndMaybeCloseIssue(ctx, task.planId, autoCloseIssue);
+  const issueStatus = await checkAndMaybeCloseIssue(ctx, task.planId, autoCloseIssue);
 
   // 10. Find next available task
   const nextTask = findNextAvailableTask(ctx, task.planId);
@@ -789,18 +796,18 @@ export async function handleCompleteTask(
 
 /**
  * Check if all tasks in a plan are in terminal state (COMPLETED or ABANDONED)
- * and optionally close the parent issue.
+ * and optionally close the parent issue using IssueService.
  *
  * Returns an object with:
  * - allTasksComplete: true if all tasks are in terminal state
  * - issueClosed: true if the issue was closed
  * - issueNumber: the issue number (for display)
  */
-function checkAndMaybeCloseIssue(
+async function checkAndMaybeCloseIssue(
   ctx: PRToolContext,
   planId: string,
   autoCloseIssue: boolean
-): { allTasksComplete: boolean; issueClosed: boolean; issueNumber: number | null } {
+): Promise<{ allTasksComplete: boolean; issueClosed: boolean; issueNumber: number | null }> {
   // Get all tasks in the plan (excluding deleted ones)
   const allTasks = ctx.taskRepository.findByPlanId(planId);
   const activeTasks = allTasks.filter((t) => !t.isDeleted);
@@ -823,7 +830,22 @@ function checkAndMaybeCloseIssue(
   // If autoCloseIssue is true and all tasks are complete, close the issue
   let issueClosed = false;
   if (autoCloseIssue && allTasksComplete && issue.status !== "CLOSED") {
-    ctx.issueRepository.update(issue.id, { status: "CLOSED" });
+    // Create services for orchestrated close operation
+    const provider = ctx.project.githubSync?.enabled
+      ? getProjectManagementProvider(ctx.project, { githubCLI: ctx.githubCLI })
+      : null;
+
+    const taskService = new TaskService(
+      ctx.taskRepository,
+      ctx.planRepository,
+      provider,
+      ctx.gitWorktreeService ?? null,
+      ctx.dispatchQueueRepository
+    );
+    const issueService = new IssueService(ctx.issueRepository, taskService, provider);
+
+    // Use IssueService.closeIssue for orchestrated close (syncs to external provider)
+    await issueService.closeIssue(issue.id, true, "claude-code");
     issueClosed = true;
   }
 

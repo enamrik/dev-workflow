@@ -545,6 +545,8 @@ Our `tsconfig.json` enforces maximum type safety:
 ❌ **Wrapper Modules** - modules with many unrelated exported functions (god modules)
 ❌ **Bypassing DataSourceProvider** - creating repositories directly instead of through factory methods, using `SqliteDrizzleDatabase` instead of `DrizzleDatabase`, only updating one schema
 ❌ **Bypassing DataSourceFactory** - calling `createSqlite()` or `createNeon()` directly, checking `isRemote()` before creating data source
+❌ **Bypassing Service Layer** - calling repository mutations directly from MCP tools, API routes, or CLI instead of through services
+❌ **Duplicated Logic Across Services** - implementing the same operation in multiple services instead of one service calling another
 
 ## Dependency Injection Patterns
 
@@ -657,6 +659,155 @@ async function runInit(options: InitOptions): Promise<void> {
 - Repositories are stateless (no caching of query results)
 - Each request/command creates its own repository instances
 - Same repository classes used across web, MCP, and CLI
+- **Repositories are for data access only** - they should NOT be called directly for mutations from MCP tools, API routes, or CLI commands
+
+### ⚠️ CRITICAL: Service Layer Pattern (Orchestration)
+
+**Services orchestrate multi-step flows.** They wrap repositories, external providers, and call other services to provide atomic, reusable operations. Presentation layers (MCP tools, API routes, CLI) call services - never repositories directly for mutations.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  MCP Tools / API Routes / CLI Commands                          │
+│  (Presentation Layer - NO direct repository mutations)          │
+└─────────────────────────────┬───────────────────────────────────┘
+                              │ calls
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Services (Application Layer)                                   │
+│  IssueService, TaskService, MilestoneService, etc.              │
+│  - Orchestrates multi-step operations                           │
+│  - Uses multiple repositories                                   │
+│  - Calls other services (to avoid duplicating logic)            │
+│  - Integrates with external providers (GitHub sync)             │
+└──────┬────────────────┬────────────────────────┬────────────────┘
+       │                │                        │
+       ▼                ▼                        ▼
+┌────────────┐   ┌────────────┐   ┌──────────────────────────────┐
+│ Repository │   │ Other      │   │  ProjectManagementProvider   │
+│            │   │ Services   │   │  (External Integration)      │
+└────────────┘   └────────────┘   └──────────────────────────────┘
+```
+
+**Key Principles:**
+
+1. **Services orchestrate flows** - Multi-step operations belong in services
+2. **Services can call other services** - To avoid duplicating logic across services
+3. **Rich domain models for shared behavior** - Intrinsic entity behavior goes in the domain model
+4. **Repositories are data access only** - No business logic, no orchestration
+
+**Service Calling Service (Avoiding Duplication):**
+
+```typescript
+// IssueService calls TaskService - avoids duplicating abandon logic
+class IssueService {
+  constructor(
+    private readonly issueRepository: IssueRepository,
+    private readonly taskService: TaskService,  // Service, not repository!
+    private readonly planRepository: PlanRepository,
+    private readonly provider: ProjectManagementProvider | null
+  ) {}
+
+  async closeIssue(issueId: string): Promise<Issue> {
+    const issue = this.issueRepository.findById(issueId);
+    if (!issue) throw new IssueNotFoundError(issueId);
+
+    // 1. Use TaskService for task operations (reuse, don't duplicate)
+    const plan = this.planRepository.findByIssueId(issueId);
+    if (plan) {
+      const tasks = this.taskRepository.findByPlanId(plan.id);
+      for (const task of tasks) {
+        if (!task.isTerminal()) {
+          await this.taskService.abandonTask(task.id);  // Calls TaskService!
+        }
+      }
+    }
+
+    // 2. Sync to external provider FIRST (atomicity)
+    if (this.provider && issue.githubSync?.githubIssueNumber) {
+      await this.provider.closeIssue(String(issue.githubSync.githubIssueNumber));
+    }
+
+    // 3. Update local database
+    return this.issueRepository.update(issueId, { status: "CLOSED" });
+  }
+}
+```
+
+**Rich Domain Model (Shared Behavior in Entity):**
+
+```typescript
+// When behavior is intrinsic to the entity, put it in the domain model
+class Task {
+  isTerminal(): boolean {
+    return ["COMPLETED", "ABANDONED"].includes(this.status);
+  }
+
+  canTransitionTo(newStatus: TaskStatus): boolean {
+    const allowed = VALID_TRANSITIONS[this.status];
+    return allowed?.includes(newStatus) ?? false;
+  }
+}
+
+// Service uses domain model behavior
+class TaskService {
+  async updateStatus(taskId: string, newStatus: TaskStatus): Promise<Task> {
+    const task = this.taskRepository.findById(taskId);
+    if (!task.canTransitionTo(newStatus)) {
+      throw new InvalidTransitionError(task.status, newStatus);
+    }
+    // ... proceed with update and sync
+  }
+}
+```
+
+**❌ NEVER DO THIS:**
+
+```typescript
+// BAD - Direct repository mutation from presentation layer
+async function handleCloseIssue(issueNumber: number) {
+  issueRepository.update(issue.id, { status: "CLOSED" });  // Bypasses service!
+}
+
+// BAD - Duplicating logic across services (should call TaskService instead)
+class IssueService {
+  closeIssue(id: string) {
+    // Duplicates TaskService.abandonTask logic
+    this.taskRepository.update(taskId, { status: "ABANDONED", abandonedAt: now });
+    if (this.provider) await this.provider.updateTask(...);
+  }
+}
+```
+
+**✅ ALWAYS DO THIS:**
+
+```typescript
+// GOOD - Presentation calls service
+async function handleCloseIssue(issueNumber: number) {
+  await issueService.closeIssue(issue.id);
+}
+
+// GOOD - Service calls service to reuse logic
+class IssueService {
+  async closeIssue(id: string) {
+    for (const task of tasks) {
+      await this.taskService.abandonTask(task.id);  // Reuse, don't duplicate
+    }
+  }
+}
+```
+
+**Required Services:**
+
+| Entity | Service | Responsibilities |
+|--------|---------|------------------|
+| Issue | `IssueService` | create, update, close (calls TaskService), delete, assignMilestone |
+| Task | `TaskService` | create, update, updateStatus, abandon, complete, submitForReview |
+| Milestone | `MilestoneService` | create, update, delete |
+| Plan | `PlanningService` | generate, regenerate (already exists) |
+
+**Service Location:** `packages/core/src/application/{entity}-service.ts`
+
+**DI Context Updates:** Both `McpDIContext` and `WebDIContext` must expose services for mutations.
 
 ### Soft Delete Convention
 
@@ -698,6 +849,8 @@ getNextTaskNumber(planId: string): number {
 - [ ] Infrastructure concerns separated
 - [ ] TypeScript strict mode compliant
 - [ ] **New tables/repositories follow DataSourceProvider pattern** (both schemas, factory methods, both implementations)
+- [ ] **Mutations go through services** (not direct repository calls from MCP/API/CLI)
+- [ ] **Services call services** (not duplicating logic - one service delegates to another)
 
 ## Testing GitHub Sync
 

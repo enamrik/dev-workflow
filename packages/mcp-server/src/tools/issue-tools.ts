@@ -22,6 +22,9 @@ import {
   type TypeService,
   type TemplateScope,
   type TemplateCategory,
+  TaskService,
+  IssueService,
+  getProjectManagementProvider,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 import { createSlimEnrichedTaskData } from "./task-tools.js";
@@ -1234,36 +1237,29 @@ export async function handleCloseIssue(
     return errorResponse(`Issue #${issueNumber} is already closed`);
   }
 
-  // Get the plan and tasks to validate they're all in terminal state
-  const plan = ctx.planRepository.findByIssueId(issue.id);
-  let nonTerminalTasks: { number: number; title: string; status: string }[] = [];
-  if (plan) {
-    const tasks = ctx.taskRepository.findByPlanId(plan.id);
-    nonTerminalTasks = tasks.filter(
-      (t) => !t.isDeleted && t.status !== "COMPLETED" && t.status !== "ABANDONED"
-    );
+  // Create services for orchestrated close operation
+  // Services call other services to avoid duplicating logic
+  const provider = (await ctx.githubSyncService.isEnabled())
+    ? getProjectManagementProvider(ctx.project, { githubCLI: ctx.githubCLI })
+    : null;
 
-    if (nonTerminalTasks.length > 0 && !force) {
-      const taskList = nonTerminalTasks
-        .map((t) => `  - Task ${t.number}: ${t.title} (${t.status})`)
-        .join("\n");
-      return errorResponse(
-        `Cannot close issue #${issueNumber}. The following tasks are not complete:\n${taskList}\n` +
-          "Use force=true to close anyway if the work is actually done."
-      );
-    }
-  }
+  const taskService = new TaskService(
+    ctx.taskRepository,
+    ctx.planRepository,
+    provider,
+    ctx.gitWorktreeService ?? null,
+    ctx.dispatchQueueRepository
+  );
 
-  // Close the GitHub issue first if synced
-  if ((await ctx.githubSyncService.isEnabled()) && issue.githubSync?.githubIssueNumber) {
-    try {
-      await ctx.githubSyncService.updateGitHubIssue(issue, { status: "CLOSED" });
-    } catch (error) {
-      return errorResponse(
-        `Failed to close GitHub issue: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
+  const issueService = new IssueService(
+    ctx.issueRepository,
+    taskService,
+    provider
+  );
+
+  // Use IssueService.closeIssue for orchestrated close
+  // This abandons incomplete tasks via TaskService (avoids duplicating logic)
+  const result = await issueService.closeIssue(issue.id, force, "claude-code");
 
   // For imported issues, also close the parent GitHub issue
   let parentIssueClosed = false;
@@ -1278,26 +1274,30 @@ export async function handleCloseIssue(
     }
   }
 
-  // Update issue status to CLOSED
-  const updatedIssue = ctx.issueRepository.update(issue.id, { status: "CLOSED" });
-
+  // Build response message
   let message = `Issue #${issueNumber} closed successfully`;
-  if (force && nonTerminalTasks.length > 0) {
-    message = `Issue #${issueNumber} force-closed (${nonTerminalTasks.length} task(s) were not in terminal state)`;
+  if (result.abandonedTasks.length > 0) {
+    message = `Issue #${issueNumber} closed. ${result.abandonedTasks.length} incomplete task(s) were abandoned.`;
+  }
+  if (force) {
+    message = `Issue #${issueNumber} force-closed (state drift recovery).`;
   }
   if (parentIssueClosed) {
-    message += `. Parent GitHub issue #${issue.sourceGitHubIssueNumber} also closed.`;
+    message += ` Parent GitHub issue #${issue.sourceGitHubIssueNumber} also closed.`;
   }
 
   return successResponse({
     message,
-    issue: updatedIssue,
+    issue: result.issue,
     forced: force,
+    abandonedTasks: result.abandonedTasks.map((abandonResult) => ({
+      number: abandonResult.task.number,
+      title: abandonResult.task.title,
+      previousStatus: abandonResult.task.status,
+      externalIssueClosed: abandonResult.externalIssueClosed,
+    })),
+    externalIssueClosed: result.externalIssueClosed,
     parentGitHubIssueClosed: parentIssueClosed ? issue.sourceGitHubIssueNumber : undefined,
-    skippedTasks:
-      force && nonTerminalTasks.length > 0
-        ? nonTerminalTasks.map((t) => ({ number: t.number, title: t.title, status: t.status }))
-        : undefined,
   });
 }
 

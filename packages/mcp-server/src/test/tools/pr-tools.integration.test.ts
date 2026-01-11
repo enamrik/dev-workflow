@@ -12,10 +12,12 @@ import {
   MockGitHubCLI,
   MockGitWorktreeService,
   SqliteProjectRepository,
+  SqliteDispatchQueueRepository,
   TaskSyncService,
   taskExecutionLogs,
   type SqliteDataSource,
   type ProjectManagementProvider,
+  type Project,
 } from "@dev-workflow/core";
 import {
   handleCreatePR,
@@ -91,6 +93,23 @@ function createMockProvider(): ProjectManagementProvider {
 }
 
 /**
+ * Create a test project for PRToolContext
+ */
+function createTestProject(): Project {
+  return {
+    id: TEST_PROJECT_ID,
+    name: "Test Project",
+    slug: "test-project-pr",
+    gitRootHash: "test-hash-123",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    githubSync: null,
+    isArchived: false,
+    archivedAt: null,
+  };
+}
+
+/**
  * Create a PRToolContext for testing
  */
 function createPRToolContext(
@@ -101,6 +120,7 @@ function createPRToolContext(
   const db = testDb.db as DbType;
   const repos = createRepositories(testDb.db, TEST_PROJECT_ID);
   const projectRepository = new SqliteProjectRepository(db);
+  const dispatchQueueRepository = new SqliteDispatchQueueRepository(db);
 
   const githubCLI = mockGitHubCLI ?? new MockGitHubCLI();
   const gitWorktreeService = mockGitWorktreeService ?? new MockGitWorktreeService();
@@ -116,10 +136,12 @@ function createPRToolContext(
   );
 
   return {
+    project: createTestProject(),
     githubCLI,
     issueRepository: repos.issueRepository,
     planRepository: repos.planRepository,
     taskRepository: repos.taskRepository,
+    dispatchQueueRepository,
     gitWorktreeService,
     taskSyncService,
     dbService: createMockDbService(db) as unknown as SqliteDataSource,
@@ -694,11 +716,15 @@ describe("submit_for_review", () => {
         project.id
       );
 
+      const dispatchQueueRepository = new SqliteDispatchQueueRepository(db);
+
       const ctx: PRToolContext = {
+        project,
         githubCLI: mockGitHubCLI,
         issueRepository: repos.issueRepository,
         planRepository: repos.planRepository,
         taskRepository: repos.taskRepository,
+        dispatchQueueRepository,
         gitWorktreeService: mockGitWorktreeService,
         taskSyncService,
         dbService: createMockDbService(db) as unknown as SqliteDataSource,

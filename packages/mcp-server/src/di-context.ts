@@ -318,10 +318,12 @@ export class McpDIContext {
     };
 
     const prToolContext: PRToolContext = {
-      githubCLI: new NodeGitHubCLI(),
+      project,
+      githubCLI,
       issueRepository,
       planRepository,
       taskRepository,
+      dispatchQueueRepository,
       gitWorktreeService,
       taskSyncService,
       dbService: dataSource,
