@@ -21,7 +21,8 @@ export function resolveGlobalTrackDir(): string {
  *
  * Storage architecture:
  * - Single global database: ~/.track/workflow.db (all projects share one DB)
- * - Per-project worktrees: ~/.track/<project-id>/worktrees/
+ * - Per-project data: ~/.track/projects/<project-id>/
+ * - Per-project worktrees: ~/.track/projects/<project-id>/worktrees/
  * - Local templates: ./.track/templates/issues/ and ./.track/templates/tasks/
  * - Global fallback templates: ~/.track/templates/issues/ and ~/.track/templates/tasks/
  *
@@ -65,7 +66,7 @@ export class TrackDirectoryResolver {
    * this resolver is only used for path resolution, not for git operations.
    */
   static fromProjectId(projectId: string): TrackDirectoryResolver {
-    const trackDir = path.join(resolveGlobalTrackDir(), projectId);
+    const trackDir = path.join(resolveGlobalTrackDir(), "projects", projectId);
     return new TrackDirectoryResolver(trackDir, projectId);
   }
 
@@ -118,10 +119,18 @@ export class TrackDirectoryResolver {
 
   /**
    * Get the base track directory for this project.
-   * Returns: $TRACK_DIR/<project-id>/ or ~/.track/<project-id>/
+   * Returns: $TRACK_DIR/projects/<project-id>/ or ~/.track/projects/<project-id>/
    */
   getTrackDirectory(): string {
-    return path.join(resolveGlobalTrackDir(), this.projectId);
+    return path.join(resolveGlobalTrackDir(), "projects", this.projectId);
+  }
+
+  /**
+   * Get the projects directory (parent of all project directories).
+   * Returns: $TRACK_DIR/projects/ or ~/.track/projects/
+   */
+  getProjectsDirectory(): string {
+    return path.join(resolveGlobalTrackDir(), "projects");
   }
 
   /**
@@ -220,21 +229,30 @@ export function createTrackDirectoryResolver(cwd: string = process.cwd()): Track
 }
 
 /**
- * List all project IDs in the global track directory.
- * Scans $TRACK_DIR or ~/.track/ for project directories.
+ * Get the projects directory path.
+ * Returns: $TRACK_DIR/projects/ or ~/.track/projects/
+ *
+ * @returns Full path to the projects directory
+ */
+export function getProjectsDirectory(): string {
+  return path.join(resolveGlobalTrackDir(), "projects");
+}
+
+/**
+ * List all project IDs in the projects directory.
+ * Scans $TRACK_DIR/projects/ or ~/.track/projects/ for project directories.
  *
  * @returns Array of project IDs
  */
 export async function listAllProjects(): Promise<string[]> {
-  const globalDir = resolveGlobalTrackDir();
+  const projectsDir = getProjectsDirectory();
   const fs = await import("node:fs/promises");
 
   try {
-    const entries = await fs.readdir(globalDir, { withFileTypes: true });
+    const entries = await fs.readdir(projectsDir, { withFileTypes: true });
     return entries
       .filter((entry) => entry.isDirectory())
       .filter((entry) => !entry.name.startsWith(".")) // Skip hidden directories
-      .filter((entry) => entry.name !== "worktrees") // Skip worktrees directory
       .map((entry) => entry.name);
   } catch {
     // Directory doesn't exist yet
@@ -249,7 +267,7 @@ export async function listAllProjects(): Promise<string[]> {
  * @returns Full path to project's track directory
  */
 export function getTrackDirectoryForProject(projectId: string): string {
-  return path.join(resolveGlobalTrackDir(), projectId);
+  return path.join(resolveGlobalTrackDir(), "projects", projectId);
 }
 
 /**

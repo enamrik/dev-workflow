@@ -105,10 +105,10 @@ describe("project-config-resolver", () => {
   });
 
   describe("getConfigPath", () => {
-    it("should return path to config.json for slug", () => {
+    it("should return path to config.json in projects directory for slug", () => {
       const result = getConfigPath("my-project-abc123");
 
-      expect(result).toBe(path.join(testTrackDir, "my-project-abc123", "config.json"));
+      expect(result).toBe(path.join(testTrackDir, "projects", "my-project-abc123", "config.json"));
     });
   });
 
@@ -150,7 +150,7 @@ describe("project-config-resolver", () => {
     });
 
     it("should throw CONFIG_INVALID for malformed JSON", async () => {
-      const configDir = path.join(testTrackDir, testSlug);
+      const configDir = path.join(testTrackDir, "projects", testSlug);
       await fs.mkdir(configDir, { recursive: true });
       await fs.writeFile(path.join(configDir, "config.json"), "not valid json");
 
@@ -164,7 +164,7 @@ describe("project-config-resolver", () => {
     });
 
     it("should throw CONFIG_INVALID for missing required fields", async () => {
-      const configDir = path.join(testTrackDir, testSlug);
+      const configDir = path.join(testTrackDir, "projects", testSlug);
       await fs.mkdir(configDir, { recursive: true });
       await fs.writeFile(
         path.join(configDir, "config.json"),
@@ -215,8 +215,8 @@ describe("project-config-resolver", () => {
         projectId: "uuid-a",
       });
 
-      // Create a directory without config.json
-      await fs.mkdir(path.join(testTrackDir, "no-config-dir"), { recursive: true });
+      // Create a directory without config.json in the projects directory
+      await fs.mkdir(path.join(testTrackDir, "projects", "no-config-dir"), { recursive: true });
 
       const result = await listConfiguredProjects();
 
@@ -231,8 +231,8 @@ describe("project-config-resolver", () => {
         projectId: "uuid-a",
       });
 
-      // Create a hidden directory with config.json
-      const hiddenDir = path.join(testTrackDir, ".hidden");
+      // Create a hidden directory with config.json in the projects directory
+      const hiddenDir = path.join(testTrackDir, "projects", ".hidden");
       await fs.mkdir(hiddenDir, { recursive: true });
       await fs.writeFile(
         path.join(hiddenDir, "config.json"),
@@ -259,6 +259,125 @@ describe("project-config-resolver", () => {
       expect(error.code).toBe("CONFIG_NOT_FOUND");
       expect(error.name).toBe("ProjectConfigError");
       expect(error.details).toEqual({ slug: "test" });
+    });
+  });
+
+  describe("migration from legacy location", () => {
+    const testSlug = "legacy-project-123456";
+    const testConfig = {
+      database: "file:./track/workflow.db",
+      gitRoot: "/Users/test/code/my-project",
+      projectId: "uuid-12345",
+    };
+
+    it("should migrate project from legacy location on resolveConfig", async () => {
+      // Create project at legacy location (~/.track/<slug>/)
+      const legacyDir = path.join(testTrackDir, testSlug);
+      await fs.mkdir(legacyDir, { recursive: true });
+      await fs.writeFile(path.join(legacyDir, "config.json"), JSON.stringify(testConfig));
+      // Also create a worktrees directory to verify whole dir is migrated
+      await fs.mkdir(path.join(legacyDir, "worktrees"), { recursive: true });
+      await fs.writeFile(path.join(legacyDir, "worktrees", "test.txt"), "test content");
+
+      // resolveConfig should migrate and return config
+      const result = await resolveConfig(testSlug);
+
+      // Verify config is returned correctly
+      expect(result.database).toBe(testConfig.database);
+      expect(result.gitRoot).toBe(testConfig.gitRoot);
+      expect(result.projectId).toBe(testConfig.projectId);
+      expect(result.slug).toBe(testSlug);
+
+      // Verify migration occurred - old location should not exist
+      const legacyExists = await fs
+        .access(legacyDir)
+        .then(() => true)
+        .catch(() => false);
+      expect(legacyExists).toBe(false);
+
+      // New location should exist with all content
+      const newDir = path.join(testTrackDir, "projects", testSlug);
+      const newExists = await fs
+        .access(newDir)
+        .then(() => true)
+        .catch(() => false);
+      expect(newExists).toBe(true);
+
+      // Worktrees directory should have been migrated
+      const worktreeContent = await fs.readFile(
+        path.join(newDir, "worktrees", "test.txt"),
+        "utf-8"
+      );
+      expect(worktreeContent).toBe("test content");
+    });
+
+    it("should prefer new location over legacy when both exist", async () => {
+      // Create project at both locations (shouldn't happen, but test edge case)
+      const legacyDir = path.join(testTrackDir, testSlug);
+      await fs.mkdir(legacyDir, { recursive: true });
+      await fs.writeFile(
+        path.join(legacyDir, "config.json"),
+        JSON.stringify({ ...testConfig, projectId: "legacy-uuid" })
+      );
+
+      const newDir = path.join(testTrackDir, "projects", testSlug);
+      await fs.mkdir(newDir, { recursive: true });
+      await fs.writeFile(
+        path.join(newDir, "config.json"),
+        JSON.stringify({ ...testConfig, projectId: "new-uuid" })
+      );
+
+      // resolveConfig should use new location
+      const result = await resolveConfig(testSlug);
+
+      expect(result.projectId).toBe("new-uuid");
+    });
+
+    it("should list projects from both legacy and new locations", async () => {
+      // Create project at new location
+      await writeConfig("new-project-123456", {
+        database: "file:./track/workflow.db",
+        gitRoot: "/path/new",
+        projectId: "uuid-new",
+      });
+
+      // Create project at legacy location
+      const legacyDir = path.join(testTrackDir, "legacy-project-654321");
+      await fs.mkdir(legacyDir, { recursive: true });
+      await fs.writeFile(
+        path.join(legacyDir, "config.json"),
+        JSON.stringify({
+          database: "file:./track/workflow.db",
+          gitRoot: "/path/legacy",
+          projectId: "uuid-legacy",
+        })
+      );
+
+      const result = await listConfiguredProjects();
+
+      expect(result).toHaveLength(2);
+      expect(result).toContain("new-project-123456");
+      expect(result).toContain("legacy-project-654321");
+    });
+
+    it("should not include system directories from legacy location", async () => {
+      // Create project at new location
+      await writeConfig("new-project-123456", {
+        database: "file:./track/workflow.db",
+        gitRoot: "/path/new",
+        projectId: "uuid-new",
+      });
+
+      // Create system directories at legacy location that should be skipped
+      await fs.mkdir(path.join(testTrackDir, "templates"), { recursive: true });
+      await fs.mkdir(path.join(testTrackDir, "config"), { recursive: true });
+
+      const result = await listConfiguredProjects();
+
+      expect(result).toHaveLength(1);
+      expect(result).toContain("new-project-123456");
+      expect(result).not.toContain("templates");
+      expect(result).not.toContain("config");
     });
   });
 });
