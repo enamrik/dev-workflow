@@ -58,18 +58,19 @@ if [ -f "$HOME/.track/workflow.db-shm" ]; then
 fi
 
 # Copy project config if it exists (exclude worktrees - they can be huge)
-if [ -d "$HOME/.track/$PROJECT_ID" ]; then
+# Project directories are now at ~/.track/projects/$PROJECT_ID/ (since PR #460)
+if [ -d "$HOME/.track/projects/$PROJECT_ID" ]; then
     echo "   Copying project config..."
-    mkdir -p ".track/$PROJECT_ID"
+    mkdir -p ".track/projects/$PROJECT_ID"
     # Copy each subdirectory except worktrees
-    for item in "$HOME/.track/$PROJECT_ID"/*; do
+    for item in "$HOME/.track/projects/$PROJECT_ID"/*; do
         base=$(basename "$item")
         if [ "$base" != "worktrees" ]; then
-            cp -R "$item" ".track/$PROJECT_ID/"
+            cp -R "$item" ".track/projects/$PROJECT_ID/"
         fi
     done
 else
-    echo "⚠️  Warning: No project config found at ~/.track/$PROJECT_ID"
+    echo "⚠️  Warning: No project config found at ~/.track/projects/$PROJECT_ID"
 fi
 
 echo ""

@@ -261,12 +261,16 @@ export class UpdateService {
         "--transport",
         "stdio",
         `--env=PROJECT_SLUG=${project.slug}`,
-        "dev-workflow-tracker",
-        "--",
-        "node",
-        cliPath,
-        "mcp",
       ];
+
+      // Pass TRACK_DIR for E2E test isolation - allows MCP server to use
+      // a temporary database instead of the global one
+      const trackDir = process.env["TRACK_DIR"];
+      if (trackDir) {
+        args.push(`--env=TRACK_DIR=${trackDir}`);
+      }
+
+      args.push("dev-workflow-tracker", "--", "node", cliPath, "mcp");
 
       // Re-register with local scope only (stored in ~/.claude.json)
       // Use spawnSync with array args to preserve argument boundaries
