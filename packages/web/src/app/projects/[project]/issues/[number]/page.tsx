@@ -17,6 +17,7 @@ import {
   Markdown,
   GitHubLink,
 } from "@/components/ui";
+import { IssueMoveToBacklogButton } from "@/components/issues";
 import type { Issue, Plan, Task, ComputedIssueStatus } from "@/lib/types";
 
 type TabId = "details" | "plan" | "tasks";
@@ -109,6 +110,11 @@ export default function IssueDetailPage({ params }: PageProps) {
               tooltip={`View on GitHub: ${issue.githubSync.githubUrl}`}
             />
           )}
+          <IssueMoveToBacklogButton
+            issue={issue}
+            projectSlug={projectSlug}
+            onSuccess={() => refetch()}
+          />
         </div>
       </div>
 
@@ -286,6 +292,11 @@ function computeIssueStatus(issue: Issue, plan: Plan | null, tasks: Task[]): Com
   // Explicitly closed issues stay CLOSED
   if (issue.status === "CLOSED") {
     return "CLOSED";
+  }
+
+  // PLANNED issues stay PLANNED
+  if (issue.status === "PLANNED") {
+    return "PLANNED";
   }
 
   // No plan means OPEN

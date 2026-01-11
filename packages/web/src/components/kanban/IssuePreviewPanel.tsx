@@ -16,6 +16,7 @@ import {
   Markdown,
   GitHubLink,
 } from "@/components/ui";
+import { IssueMoveToBacklogButton } from "@/components/issues";
 import type { Issue, Plan, Task, ComputedIssueStatus } from "@/lib/types";
 
 type TabId = "details" | "plan" | "tasks";
@@ -106,6 +107,7 @@ export function IssuePreviewPanel({ projectSlug, issueNumber, onClose }: IssuePr
               activeTab={activeTab}
               onTabChange={handleTabChange}
               projectSlug={projectSlug}
+              onRefetch={refetch}
             />
           )}
         </div>
@@ -119,6 +121,7 @@ interface IssuePreviewContentProps {
   activeTab: TabId;
   onTabChange: (tabId: string) => void;
   projectSlug: string;
+  onRefetch: () => void;
 }
 
 function IssuePreviewContent({
@@ -126,6 +129,7 @@ function IssuePreviewContent({
   activeTab,
   onTabChange,
   projectSlug,
+  onRefetch,
 }: IssuePreviewContentProps) {
   const { issue, plan, tasks } = data;
   const taskCounts = {
@@ -161,6 +165,7 @@ function IssuePreviewContent({
               tooltip={`View on GitHub: ${issue.githubSync.githubUrl}`}
             />
           )}
+          <IssueMoveToBacklogButton issue={issue} projectSlug={projectSlug} onSuccess={onRefetch} />
         </div>
       </div>
 
