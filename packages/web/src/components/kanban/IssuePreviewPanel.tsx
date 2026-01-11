@@ -53,7 +53,7 @@ export function IssuePreviewPanel({ projectSlug, issueNumber, onClose }: IssuePr
             <Link
               href={issueUrl}
               className="text-blue-600 hover:text-blue-800 font-medium"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
             >
               Issue #{issueNumber}
             </Link>
@@ -61,7 +61,7 @@ export function IssuePreviewPanel({ projectSlug, issueNumber, onClose }: IssuePr
             <Link
               href={issueUrl}
               className="text-sm text-gray-500 hover:text-gray-700"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
             >
               Open full page &rarr;
             </Link>

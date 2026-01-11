@@ -145,7 +145,7 @@ export function MilestoneDetailModal({ isOpen, onClose, data }: MilestoneDetailM
                       <Link
                         href={`/projects/${encodeURIComponent(milestone.projectSlug ?? milestone.projectId)}/issues/${issue.number}`}
                         className="text-blue-600 hover:underline font-medium"
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={(e: React.MouseEvent) => e.stopPropagation()}
                       >
                         #{issue.number}
                       </Link>

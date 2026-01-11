@@ -96,7 +96,7 @@ function TaskModalContent({
               <Link
                 href={issueUrl}
                 className="text-blue-600 hover:underline"
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e: React.MouseEvent) => e.stopPropagation()}
               >
                 {taskDisplay}
               </Link>
@@ -313,7 +313,7 @@ function CardContent({
           <Link
             href={issueUrl}
             className="text-blue-600 hover:underline"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
           >
             {taskDisplay}
           </Link>
