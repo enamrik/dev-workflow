@@ -5,6 +5,7 @@ import {
   SqlitePlanRepository,
   SqliteIssueRepository,
   SqliteProjectRepository,
+  SqliteWorkerRepository,
   type Issue,
   type Plan,
   type Project,
@@ -33,6 +34,16 @@ export interface KanbanTask {
 }
 
 /**
+ * Worker counts for display
+ */
+export interface WorkerCounts {
+  active: number;
+  idle: number;
+  dead: number;
+  total: number;
+}
+
+/**
  * Kanban board data grouped by status
  */
 export interface KanbanData {
@@ -42,6 +53,7 @@ export interface KanbanData {
     label: string;
     tasks: KanbanTask[];
   }[];
+  workers: WorkerCounts;
   lastUpdated: Date;
 }
 
@@ -49,6 +61,7 @@ export interface KanbanData {
  * Column configuration for display
  */
 const COLUMN_CONFIG: { status: TaskStatus; label: string }[] = [
+  { status: "PLANNED", label: "Planned" },
   { status: "READY", label: "Ready" },
   { status: "IN_PROGRESS", label: "In Progress" },
   { status: "PR_REVIEW", label: "PR Review" },
@@ -67,6 +80,7 @@ async function fetchKanbanData(dbPath: string, projectId: string): Promise<Kanba
     const issueRepo = new SqliteIssueRepository(db, projectId);
     const planRepo = new SqlitePlanRepository(db);
     const taskRepo = new SqliteTaskRepository(db);
+    const workerRepo = new SqliteWorkerRepository(db);
 
     // Get project
     const project = await projectRepo.findById(projectId);
@@ -74,9 +88,13 @@ async function fetchKanbanData(dbPath: string, projectId: string): Promise<Kanba
       return null;
     }
 
-    // Get all open issues (not closed)
-    const issues = issueRepo.findMany({ status: "OPEN" });
-    const allIssues = [...issues, ...issueRepo.findMany({ status: "IN_PROGRESS" })];
+    // Get all issues (including CLOSED for showing completed tasks)
+    const allIssues = [
+      ...issueRepo.findMany({ status: "PLANNED" }),
+      ...issueRepo.findMany({ status: "OPEN" }),
+      ...issueRepo.findMany({ status: "IN_PROGRESS" }),
+      ...issueRepo.findMany({ status: "CLOSED" }),
+    ];
 
     // Build map of planId -> issue for lookup
     const planToIssue = new Map<string, Issue>();
@@ -124,7 +142,7 @@ async function fetchKanbanData(dbPath: string, projectId: string): Promise<Kanba
     const columns = COLUMN_CONFIG.map(({ status, label }) => {
       let tasks = allTasks.filter((t) => t.status === status);
 
-      // For COMPLETED, only show last 5, sorted by completedAt desc
+      // For COMPLETED, only show last 20, sorted by completedAt desc
       if (status === "COMPLETED") {
         tasks = tasks
           .sort((a, b) => {
@@ -132,15 +150,36 @@ async function fetchKanbanData(dbPath: string, projectId: string): Promise<Kanba
             const bTime = b.completedAt ? new Date(b.completedAt).getTime() : 0;
             return bTime - aTime;
           })
-          .slice(0, 5);
+          .slice(0, 20);
       }
 
       return { status, label, tasks };
     });
 
+    // Get worker counts
+    const workersWithHealth = workerRepo.findAllWithHealth();
+    const workers: WorkerCounts = {
+      active: 0,
+      idle: 0,
+      dead: 0,
+      total: workersWithHealth.length,
+    };
+
+    for (const worker of workersWithHealth) {
+      if (!worker.isAlive) {
+        workers.dead++;
+      } else if (worker.status === "WORKING") {
+        workers.active++;
+      } else {
+        // IDLE or DRAINING
+        workers.idle++;
+      }
+    }
+
     return {
       project,
       columns,
+      workers,
       lastUpdated: new Date(),
     };
   } finally {
