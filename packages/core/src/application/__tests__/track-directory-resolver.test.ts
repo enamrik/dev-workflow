@@ -66,20 +66,20 @@ describe("track-directory-resolver", () => {
   });
 
   describe("getTrackDirectoryForProject", () => {
-    it("should return ~/.track/<projectId> when TRACK_DIR is not set", () => {
+    it("should return ~/.track/projects/<projectId> when TRACK_DIR is not set", () => {
       delete process.env["TRACK_DIR"];
 
       const result = getTrackDirectoryForProject("my-project-abc123");
 
-      expect(result).toBe(path.join(os.homedir(), ".track", "my-project-abc123"));
+      expect(result).toBe(path.join(os.homedir(), ".track", "projects", "my-project-abc123"));
     });
 
-    it("should return $TRACK_DIR/<projectId> when TRACK_DIR is set", () => {
+    it("should return $TRACK_DIR/projects/<projectId> when TRACK_DIR is set", () => {
       process.env["TRACK_DIR"] = "/custom/track/dir";
 
       const result = getTrackDirectoryForProject("my-project-abc123");
 
-      expect(result).toBe("/custom/track/dir/my-project-abc123");
+      expect(result).toBe("/custom/track/dir/projects/my-project-abc123");
     });
   });
 
@@ -107,24 +107,24 @@ describe("track-directory-resolver", () => {
     });
 
     describe("getTrackDirectory", () => {
-      it("should return ~/.track/<projectId> when TRACK_DIR is not set", () => {
+      it("should return ~/.track/projects/<projectId> when TRACK_DIR is not set", () => {
         delete process.env["TRACK_DIR"];
         const resolver = new TrackDirectoryResolver(gitRoot);
         const projectId = resolver.getProjectId();
 
         const result = resolver.getTrackDirectory();
 
-        expect(result).toBe(path.join(os.homedir(), ".track", projectId));
+        expect(result).toBe(path.join(os.homedir(), ".track", "projects", projectId));
       });
 
-      it("should return $TRACK_DIR/<projectId> when TRACK_DIR is set", () => {
+      it("should return $TRACK_DIR/projects/<projectId> when TRACK_DIR is set", () => {
         process.env["TRACK_DIR"] = "/custom/track/dir";
         const resolver = new TrackDirectoryResolver(gitRoot);
         const projectId = resolver.getProjectId();
 
         const result = resolver.getTrackDirectory();
 
-        expect(result).toBe(path.join("/custom/track/dir", projectId));
+        expect(result).toBe(path.join("/custom/track/dir", "projects", projectId));
       });
     });
 
@@ -155,7 +155,7 @@ describe("track-directory-resolver", () => {
 
         const result = resolver.getTrackDirectory();
 
-        expect(result).toBe("/custom/track/dir/test-project-123456");
+        expect(result).toBe("/custom/track/dir/projects/test-project-123456");
       });
     });
   });

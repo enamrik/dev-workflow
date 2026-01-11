@@ -97,37 +97,132 @@ export type ProjectConfigErrorCode =
 // =============================================================================
 
 /**
- * Get the config file path for a project slug
+ * Get the config file path for a project slug (new location)
  *
  * @param slug - Project slug (e.g., "dev-workflow-b9bccf")
- * @returns Path to ~/.track/<slug>/config.json
+ * @returns Path to ~/.track/projects/<slug>/config.json
  */
 export function getConfigPath(slug: string): string {
+  return path.join(resolveGlobalTrackDir(), "projects", slug, "config.json");
+}
+
+/**
+ * Get the legacy config file path for a project slug (old location)
+ *
+ * @param slug - Project slug (e.g., "dev-workflow-b9bccf")
+ * @returns Path to ~/.track/<slug>/config.json (legacy location)
+ */
+export function getLegacyConfigPath(slug: string): string {
   return path.join(resolveGlobalTrackDir(), slug, "config.json");
 }
 
 /**
+ * Get the projects directory path
+ *
+ * @returns Path to ~/.track/projects/
+ */
+export function getProjectsDirectory(): string {
+  return path.join(resolveGlobalTrackDir(), "projects");
+}
+
+/**
+ * Migrate a project from the old location (~/.track/<slug>/) to the new location (~/.track/projects/<slug>/)
+ *
+ * This is an atomic operation using fs.rename() which works on the same filesystem.
+ * If the project is already at the new location, this is a no-op.
+ *
+ * @param slug - Project slug (e.g., "dev-workflow-b9bccf")
+ * @returns True if migration occurred, false if already at new location
+ */
+async function migrateProjectDirectory(slug: string): Promise<boolean> {
+  const oldDir = path.join(resolveGlobalTrackDir(), slug);
+  const newDir = path.join(resolveGlobalTrackDir(), "projects", slug);
+
+  // Check if old directory exists
+  try {
+    await fs.access(oldDir);
+  } catch {
+    // Old directory doesn't exist, no migration needed
+    return false;
+  }
+
+  // Check if new directory already exists (shouldn't happen, but be safe)
+  try {
+    await fs.access(newDir);
+    // New directory exists - migration may have been partial, skip
+    return false;
+  } catch {
+    // New directory doesn't exist, proceed with migration
+  }
+
+  // Ensure the projects directory exists
+  const projectsDir = getProjectsDirectory();
+  await fs.mkdir(projectsDir, { recursive: true });
+
+  // Perform atomic move
+  try {
+    await fs.rename(oldDir, newDir);
+    return true;
+  } catch (error) {
+    // If rename fails (e.g., cross-filesystem), throw error
+    // In practice, ~/.track is always on the same filesystem
+    throw new ProjectConfigError(
+      `Failed to migrate project directory from ${oldDir} to ${newDir}: ${(error as Error).message}`,
+      "CONFIG_INVALID",
+      { oldDir, newDir, error }
+    );
+  }
+}
+
+/**
  * Read and parse a project's config.json
+ *
+ * Automatically migrates projects from the old location (~/.track/<slug>/)
+ * to the new location (~/.track/projects/<slug>/) on first access.
  *
  * @param slug - Project slug (e.g., "dev-workflow-b9bccf")
  * @returns Resolved project configuration
  * @throws ProjectConfigError if config doesn't exist or is invalid
  */
 export async function resolveConfig(slug: string): Promise<ResolvedConfig> {
-  const configPath = getConfigPath(slug);
+  const newConfigPath = getConfigPath(slug);
+  const legacyConfigPath = getLegacyConfigPath(slug);
 
-  // Read config file
-  let content: string;
+  // Check if config exists at new location
+  let configPath = newConfigPath;
+  let content: string | null = null;
+
   try {
-    content = await fs.readFile(configPath, "utf-8");
+    content = await fs.readFile(newConfigPath, "utf-8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new ProjectConfigError(`Config not found for project: ${slug}`, "CONFIG_NOT_FOUND", {
-        configPath,
-        slug,
-      });
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
     }
-    throw error;
+    // Not found at new location, check legacy location
+  }
+
+  // If not at new location, check legacy and migrate
+  if (content === null) {
+    try {
+      // Check if legacy config exists
+      await fs.access(legacyConfigPath);
+
+      // Migrate the entire project directory atomically
+      await migrateProjectDirectory(slug);
+
+      // Now read from new location (after migration)
+      content = await fs.readFile(newConfigPath, "utf-8");
+      configPath = newConfigPath;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new ProjectConfigError(`Config not found for project: ${slug}`, "CONFIG_NOT_FOUND", {
+          configPath: newConfigPath,
+          legacyConfigPath,
+          slug,
+        });
+      }
+      throw error;
+    }
   }
 
   // Parse JSON
@@ -370,10 +465,11 @@ export async function writeConfig(
   slug: string,
   config: Omit<ProjectConfig, "resolvedDatabase">
 ): Promise<void> {
-  const configDir = path.join(resolveGlobalTrackDir(), slug);
+  const projectsDir = getProjectsDirectory();
+  const configDir = path.join(projectsDir, slug);
   const configPath = path.join(configDir, "config.json");
 
-  // Ensure directory exists
+  // Ensure projects directory and project directory exist
   await fs.mkdir(configDir, { recursive: true });
 
   // Write config with pretty formatting
@@ -394,20 +490,51 @@ export async function writeConfig(
 /**
  * List all configured project slugs
  *
- * Scans ~/.track/ for directories containing config.json
+ * Scans ~/.track/projects/ for directories containing config.json.
+ * Also checks legacy location (~/.track/) for backward compatibility during migration.
  *
  * @returns Array of project slugs
  */
 export async function listConfiguredProjects(): Promise<string[]> {
-  const trackDir = resolveGlobalTrackDir();
+  const projectsDir = getProjectsDirectory();
+  const slugs: string[] = [];
 
+  // Scan new location (~/.track/projects/)
   try {
-    const entries = await fs.readdir(trackDir, { withFileTypes: true });
-    const slugs: string[] = [];
+    const entries = await fs.readdir(projectsDir, { withFileTypes: true });
 
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       if (entry.name.startsWith(".")) continue;
+
+      // Check if config.json exists
+      const configPath = path.join(projectsDir, entry.name, "config.json");
+      try {
+        await fs.access(configPath);
+        slugs.push(entry.name);
+      } catch {
+        // No config.json, skip
+      }
+    }
+  } catch {
+    // Projects directory doesn't exist yet
+  }
+
+  // Also scan legacy location (~/.track/) for unmigrated projects
+  // These will be migrated on first access via resolveConfig()
+  const trackDir = resolveGlobalTrackDir();
+  try {
+    const entries = await fs.readdir(trackDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith(".")) continue;
+      // Skip known non-project directories
+      if (entry.name === "projects" || entry.name === "templates" || entry.name === "config") {
+        continue;
+      }
+      // Skip if already found in new location
+      if (slugs.includes(entry.name)) continue;
 
       // Check if config.json exists
       const configPath = path.join(trackDir, entry.name, "config.json");
@@ -418,12 +545,11 @@ export async function listConfiguredProjects(): Promise<string[]> {
         // No config.json, skip
       }
     }
-
-    return slugs;
   } catch {
     // Track directory doesn't exist
-    return [];
   }
+
+  return slugs;
 }
 
 /**
