@@ -52,6 +52,7 @@ export {
   getTrackDirectoryForProject,
   getGlobalDatabasePath,
   resolveGlobalTrackDir,
+  getProjectsDirectory,
 } from "./application/track-directory-resolver.js";
 export {
   resolveConfig,
