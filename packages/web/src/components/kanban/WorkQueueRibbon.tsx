@@ -148,7 +148,7 @@ function IssueCard({ item, onIssueClick }: IssueCardProps) {
             <Link
               href={issueUrl}
               className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
             >
               #{item.issue.number}
             </Link>{" "}

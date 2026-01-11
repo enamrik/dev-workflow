@@ -1079,6 +1079,20 @@ program
     }
   });
 
+program
+  .command("board")
+  .description("Display a live terminal Kanban board of tasks (refreshes automatically)")
+  .option("-i, --interval <seconds>", "Refresh interval in seconds", "3")
+  .action(async (options: { interval: string }) => {
+    const { runBoard } = await import("./commands/board.js");
+    const interval = parseInt(options.interval, 10);
+    if (isNaN(interval) || interval < 1) {
+      console.error("❌ Interval must be a positive integer");
+      process.exit(1);
+    }
+    await runBoard({ interval });
+  });
+
 // Backup command with subcommands
 const backupCmd = program.command("backup").description("Backup and restore workflow database");
 

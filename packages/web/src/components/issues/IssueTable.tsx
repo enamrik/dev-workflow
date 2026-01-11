@@ -118,7 +118,7 @@ function IssueCard({ item }: IssueCardProps) {
             <Link
               href={boardUrl}
               className="flex-1"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
               title="View tasks on board"
             >
               <ProgressBar
@@ -142,7 +142,7 @@ function IssueCard({ item }: IssueCardProps) {
           <Link
             href={issueUrl}
             className="text-blue-600 hover:underline text-sm"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
           >
             View Plan
           </Link>
