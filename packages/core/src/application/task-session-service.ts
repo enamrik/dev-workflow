@@ -48,6 +48,8 @@ export interface TaskSession {
   task: Task;
   sessionId: string;
   startedAt: string;
+  /** True if this was a resume of an existing session, false if fresh start */
+  resumed: boolean;
   /** Path to worktree if created for isolated execution */
   worktreePath?: string;
   /** Git branch name if worktree was created */
@@ -106,15 +108,16 @@ export class TaskSessionService {
   }
 
   /**
-   * Start a new session for a task
+   * Start or resume a session for a task (idempotent)
    *
-   * Workflow:
-   * 1. Validate task is available (not locked by another session)
-   * 2. Based on mode:
-   *    - 'isolated': Create worktree + branch
-   *    - 'branch': Create branch only, checkout in main repo
-   *    - 'main': No branch, work directly on main
-   * 3. Update task status to IN_PROGRESS with session info
+   * This method is idempotent - safe to call multiple times:
+   * - Only transitions status if BACKLOG/READY (skips if already IN_PROGRESS/PR_REVIEW)
+   * - Only creates worktree if isolated mode AND worktree doesn't exist
+   * - Always updates session tracking
+   *
+   * Throws for terminal states (COMPLETED/ABANDONED) - caller should handle those.
+   *
+   * @returns TaskSession with `resumed: true` if task was already started, `false` if fresh start
    */
   async startTaskSession(request: StartTaskSessionRequest): Promise<TaskSession> {
     const { taskId, sessionId, mode = "isolated" } = request;
@@ -125,64 +128,71 @@ export class TaskSessionService {
       throw new Error(`Task not found: ${taskId}`);
     }
 
-    // Only BACKLOG or READY tasks can be started
-    if (task.status !== "BACKLOG" && task.status !== "READY") {
+    // Terminal states - reject (caller should handle these gracefully)
+    if (task.status === "COMPLETED" || task.status === "ABANDONED") {
       throw new Error(
-        `Task must be BACKLOG or READY to start session. Current status: ${task.status}`
+        `Cannot start session for task in terminal state: ${task.status}. ` +
+          "Task is already done."
       );
     }
 
-    // Check if dependencies are satisfied
-    if (!this.dependencyService.areDependenciesSatisfied(task)) {
-      const blockingTasks = this.dependencyService.getBlockingDependencies(task);
-      throw new DependencyNotSatisfiedError(
-        taskId,
-        task.title,
-        blockingTasks.map((t) => {
-          // Resolve issue number for each blocking task
-          const blockingPlan = this.planRepository.findById(t.planId);
-          const blockingIssue = blockingPlan
-            ? this.issueRepository.findById(blockingPlan.issueId)
-            : null;
-          return {
-            id: t.id,
-            number: t.number,
-            title: t.title,
-            status: t.status,
-            issueNumber: blockingIssue?.number ?? null,
-          };
-        })
-      );
-    }
-
-    // Check if task is available (not locked by another session)
-    if (!this.isTaskAvailableSync(task)) {
-      throw new Error(`Task is already in progress by session: ${task.sessionId}`);
-    }
+    // Determine if this is a fresh start or resume
+    // Resume if: startedAt is set, OR status is already IN_PROGRESS/PR_REVIEW
+    // (handles inconsistent states where task was created directly without proper flow)
+    const isResume =
+      (task.startedAt !== undefined && task.startedAt !== null) ||
+      task.status === "IN_PROGRESS" ||
+      task.status === "PR_REVIEW";
 
     const now = new Date().toISOString();
     const issueNumber = this.getIssueNumberForTask(taskId);
 
-    // Run conflict detection if service available (non-blocking)
+    // For fresh starts only: validate dependencies and run conflict detection
     let conflictWarnings: ConflictWarning[] | undefined;
-    if (this.conflictDetectionService) {
-      try {
-        const result = this.conflictDetectionService.detectConflicts(taskId);
-        if (result.hasConflicts) {
-          conflictWarnings = result.warnings;
+    if (!isResume) {
+      // Check if dependencies are satisfied
+      if (!this.dependencyService.areDependenciesSatisfied(task)) {
+        const blockingTasks = this.dependencyService.getBlockingDependencies(task);
+        throw new DependencyNotSatisfiedError(
+          taskId,
+          task.title,
+          blockingTasks.map((t) => {
+            // Resolve issue number for each blocking task
+            const blockingPlan = this.planRepository.findById(t.planId);
+            const blockingIssue = blockingPlan
+              ? this.issueRepository.findById(blockingPlan.issueId)
+              : null;
+            return {
+              id: t.id,
+              number: t.number,
+              title: t.title,
+              status: t.status,
+              issueNumber: blockingIssue?.number ?? null,
+            };
+          })
+        );
+      }
+
+      // Run conflict detection if service available (non-blocking)
+      if (this.conflictDetectionService) {
+        try {
+          const result = this.conflictDetectionService.detectConflicts(taskId);
+          if (result.hasConflicts) {
+            conflictWarnings = result.warnings;
+          }
+        } catch {
+          // Conflict detection failures should not block task start
+          console.warn(`Conflict detection failed for task ${taskId}`);
         }
-      } catch {
-        // Conflict detection failures should not block task start
-        console.warn(`Conflict detection failed for task ${taskId}`);
       }
     }
 
-    // Setup based on execution mode
-    let worktreePath: string | undefined;
-    let branchName: string | undefined;
+    // Setup worktree/branch based on execution mode (only if doesn't exist)
+    let worktreePath: string | undefined = task.worktreePath;
+    let branchName: string | undefined = task.branchName;
 
-    if (mode === "isolated") {
-      // Isolated mode: create worktree + branch
+    if (mode === "isolated" && !worktreePath) {
+      // Isolated mode: create worktree + branch (only if not already created)
       if (!this.gitWorktreeService) {
         throw new Error(
           "GitWorktreeService is required for 'isolated' mode. " +
@@ -201,8 +211,8 @@ export class TaskSessionService {
 
       // Update task with worktree info
       this.taskRepository.updateWorktreeInfo(taskId, worktreePath, branchName);
-    } else if (mode === "branch") {
-      // Branch mode: create branch only, checkout in main repo
+    } else if (mode === "branch" && !branchName) {
+      // Branch mode: create branch only, checkout in main repo (only if not already created)
       if (!this.gitWorktreeService) {
         throw new Error(
           "GitWorktreeService is required for 'branch' mode. " +
@@ -226,29 +236,32 @@ export class TaskSessionService {
     }
     // mode === "main": no branch, no worktree - work directly on main
 
-    // Transition all BACKLOG tasks in this plan to READY
-    // This happens when any task in the plan is first started
-    const allPlanTasks = this.taskRepository.findByPlanId(task.planId);
-    for (const planTask of allPlanTasks) {
-      if (planTask.status === "BACKLOG" && planTask.id !== taskId) {
-        this.taskRepository.updateStatus(
-          planTask.id,
-          "READY",
-          sessionId,
-          "Plan activated - task moved from BACKLOG to READY"
-        );
+    // Only for fresh starts: transition status and activate plan
+    if (!isResume) {
+      // Transition all BACKLOG tasks in this plan to READY
+      // This happens when any task in the plan is first started
+      const allPlanTasks = this.taskRepository.findByPlanId(task.planId);
+      for (const planTask of allPlanTasks) {
+        if (planTask.status === "BACKLOG" && planTask.id !== taskId) {
+          this.taskRepository.updateStatus(
+            planTask.id,
+            "READY",
+            sessionId,
+            "Plan activated - task moved from BACKLOG to READY"
+          );
+        }
       }
+
+      // Update task status to IN_PROGRESS
+      this.taskRepository.updateStatus(taskId, "IN_PROGRESS", sessionId, "Started session");
     }
 
-    // Update task status to IN_PROGRESS and set session info
-    this.taskRepository.updateStatus(taskId, "IN_PROGRESS", sessionId, "Started session");
-
-    // Update session tracking
+    // Always update session tracking (idempotent)
     this.taskRepository.updateSessionInfo(
       taskId,
       sessionId,
-      now, // sessionStartedAt
-      now // lastSessionActivityAt
+      isResume ? undefined : now, // Only set sessionStartedAt on fresh start
+      now // Always update lastSessionActivityAt
     );
 
     // Get final task state
@@ -257,17 +270,26 @@ export class TaskSessionService {
       throw new Error(`Failed to retrieve updated task: ${taskId}`);
     }
 
-    // Emit session started event for real-time UI updates
-    this.eventBus.emit("task:session_started", {
-      taskId,
-      sessionId,
-      issueNumber,
-    });
+    // Emit appropriate event for real-time UI updates
+    if (isResume) {
+      this.eventBus.emit("task:session_resumed", {
+        taskId,
+        sessionId,
+        issueNumber,
+      });
+    } else {
+      this.eventBus.emit("task:session_started", {
+        taskId,
+        sessionId,
+        issueNumber,
+      });
+    }
 
     return {
       task: finalTask,
       sessionId,
-      startedAt: now,
+      startedAt: finalTask.startedAt ?? now,
+      resumed: isResume,
       worktreePath,
       branchName,
       conflictWarnings,
@@ -463,6 +485,7 @@ export class TaskSessionService {
       task,
       sessionId: task.sessionId,
       startedAt: task.sessionStartedAt,
+      resumed: true, // If there's an active session, it's by definition a resumed state
     };
   }
 

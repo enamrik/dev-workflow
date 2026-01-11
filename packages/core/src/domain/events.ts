@@ -18,6 +18,7 @@ export type DomainEventType =
   | "task:status_changed"
   | "task:deleted"
   | "task:session_started"
+  | "task:session_resumed"
   | "task:session_completed"
   | "task:session_abandoned"
   | "snapshot:created"
@@ -58,6 +59,11 @@ export interface DomainEventPayload {
   };
   "task:deleted": { taskId: string; planId: string; issueNumber: number };
   "task:session_started": {
+    taskId: string;
+    sessionId: string;
+    issueNumber: number;
+  };
+  "task:session_resumed": {
     taskId: string;
     sessionId: string;
     issueNumber: number;
