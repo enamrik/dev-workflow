@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   DbSourceProvider,
   BoardQueryService,
+  GlobalDbWorkerQueueDb,
   type Project,
   type TaskStatus,
   type BoardTask,
@@ -46,6 +47,7 @@ async function fetchKanbanData(dbPath: string, projectId: string): Promise<Kanba
   const sourceProvider = new DbSourceProvider();
   const source = sourceProvider.getOrCreate({ connectionString: dbPath });
   const client = source.createClient(projectId);
+  const workerQueueDb = new GlobalDbWorkerQueueDb();
 
   try {
     // Get project first (projects is a global repo on source)
@@ -54,8 +56,8 @@ async function fetchKanbanData(dbPath: string, projectId: string): Promise<Kanba
       return null;
     }
 
-    // Create BoardQueryService with DbClient
-    const boardService = new BoardQueryService(client);
+    // Create BoardQueryService with DbClient and worker queue
+    const boardService = new BoardQueryService(client, workerQueueDb);
 
     const boardData = boardService.getBoardData();
 
@@ -93,6 +95,7 @@ async function fetchKanbanData(dbPath: string, projectId: string): Promise<Kanba
     };
   } finally {
     source.close();
+    workerQueueDb.close();
   }
 }
 
