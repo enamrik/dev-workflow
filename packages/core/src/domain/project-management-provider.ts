@@ -13,7 +13,7 @@
  */
 
 import type { Issue } from "./issue.js";
-import type { Task } from "./task.js";
+import type { Task, TaskStatus } from "./task.js";
 
 // =============================================================================
 // Sync State Types
@@ -342,6 +342,82 @@ export interface ProjectManagementProvider {
    * Examples: "GitHub", "Jira", "Linear", "Asana"
    */
   readonly displayName: string;
+
+  // ===========================================================================
+  // Configuration
+  // ===========================================================================
+
+  /**
+   * Check if the provider is enabled for sync operations
+   *
+   * Returns false if sync is disabled or not configured.
+   * When disabled, sync operations will no-op gracefully.
+   */
+  isEnabled(): boolean;
+
+  /**
+   * Check if a project board is configured for this provider
+   */
+  hasProjectBoard(): boolean;
+
+  /**
+   * Get the configured assignee for auto-assignment, if any
+   */
+  getAssignee(): string | undefined;
+
+  /**
+   * Get custom labels to add to all created issues
+   */
+  getCustomLabels(): string[];
+
+  /**
+   * Get the column name for a task status
+   *
+   * Uses internally configured column mapping to translate task status
+   * to the appropriate project board column name.
+   *
+   * @param status - The task status to map
+   * @returns The column name for the status
+   */
+  getColumnForStatus(status: TaskStatus): string;
+
+  /**
+   * Get the project ID if configured
+   */
+  getProjectId(): string | undefined;
+
+  /**
+   * Get the label-to-field mapping for project custom fields
+   *
+   * Returns the mapping from task label keys to project field IDs.
+   * Returns undefined if no mapping is configured.
+   */
+  getLabelFieldMapping(): Record<string, string> | undefined;
+
+  // ===========================================================================
+  // High-Level Operations (use internal config)
+  // ===========================================================================
+
+  /**
+   * Move a project item to the column for the given status
+   *
+   * Uses internal projectId and column mapping.
+   * No-ops if itemId is null/undefined or no project configured.
+   *
+   * @param itemId - The project item ID (will be remoteProjectItemId after rename)
+   * @param status - The status to move to
+   */
+  moveItemToStatusColumn(itemId: string | null | undefined, status: TaskStatus): Promise<void>;
+
+  /**
+   * Assign an issue to the configured assignee
+   *
+   * Uses internal assignee configuration.
+   * No-ops if no assignee configured.
+   *
+   * @param issueRef - External issue reference (will be remoteIssueNumber after rename)
+   */
+  assignIssueToConfiguredUser(issueRef: string): Promise<void>;
 
   // ===========================================================================
   // Authentication & Validation

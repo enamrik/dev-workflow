@@ -28,6 +28,7 @@ import {
   type Project,
   resolveGlobalTrackDir,
   getGlobalDatabasePath,
+  resolveConfig,
   // New services for Service Layer Pattern
   IssueService,
   TaskService,
@@ -143,22 +144,18 @@ export class McpDIContext {
    * Create a new McpDIContext from a project slug.
    *
    * This is an async factory method because it needs to:
-   * 1. Read config from environment variables (PROJECT_SLUG, GIT_ROOT)
+   * 1. Read config from ~/.track/projects/{slug}/config.json
    * 2. Create database connection
    * 3. Load project from database by slug
    *
    * @param projectSlug - The project slug (e.g., "dev-workflow-b9bccf")
-   * @throws Error if GIT_ROOT not set or project not found
+   * @throws Error if config not found or project not found
    */
   static async create(projectSlug: string): Promise<McpDIContext> {
-    // Get gitRoot from environment variable (set by CLI when registering MCP)
-    const gitRoot = process.env["GIT_ROOT"];
-    if (!gitRoot) {
-      throw new Error(
-        "GIT_ROOT environment variable is required. " +
-          "Run 'dev-workflow init' to register the MCP server correctly."
-      );
-    }
+    // Resolve config from ~/.track/projects/{slug}/config.json
+    // This contains gitRoot, database path, and other project settings
+    const resolvedConfig = await resolveConfig(projectSlug);
+    const gitRoot = resolvedConfig.gitRoot;
 
     // Database is global at ~/.track/workflow.db
     const databasePath = getGlobalDatabasePath();
@@ -193,7 +190,8 @@ export class McpDIContext {
     const globalTrackDir = resolveGlobalTrackDir();
 
     // Track directory for project-specific data (worktrees, etc.) in global location
-    const trackDirectory = path.join(globalTrackDir, project.slug);
+    // Must include "projects" subdirectory to match migration in TrackDirectoryResolver
+    const trackDirectory = path.join(globalTrackDir, "projects", project.slug);
 
     // Template paths follow cascading resolution
     const templateConfig: TemplateServiceConfig = {

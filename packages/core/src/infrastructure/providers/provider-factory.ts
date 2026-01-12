@@ -88,8 +88,7 @@ export class GitHubProviderFactory implements ProviderFactory {
 
     // Factory extracts project.githubSync internally - callers don't need to know
     // which field contains the provider config
-    const projectId = project.githubSync?.projectId;
-    return new GitHubProjectManagementProvider(deps.githubCLI, projectId);
+    return new GitHubProjectManagementProvider(deps.githubCLI, project.githubSync ?? null);
   }
 
   canCreate(deps: ProviderDependencies): boolean {

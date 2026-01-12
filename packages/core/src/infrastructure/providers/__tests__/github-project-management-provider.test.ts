@@ -44,10 +44,16 @@ function createMockIssue(githubIssueNumber: number | null): Issue {
 describe("GitHubProjectManagementProvider", () => {
   let mockGitHubCLI: MockGitHubCLI;
   let provider: GitHubProjectManagementProvider;
+  let enabledProvider: GitHubProjectManagementProvider;
 
   beforeEach(() => {
     mockGitHubCLI = new MockGitHubCLI();
-    provider = new GitHubProjectManagementProvider(mockGitHubCLI);
+    // Provider with null config (disabled) - for testing low-level operations
+    provider = new GitHubProjectManagementProvider(mockGitHubCLI, null);
+    // Provider with enabled config - for testing entity-level operations that check isEnabled()
+    enabledProvider = new GitHubProjectManagementProvider(mockGitHubCLI, {
+      enabled: true,
+    });
   });
 
   // ===========================================================================
@@ -199,14 +205,14 @@ describe("GitHubProjectManagementProvider", () => {
   describe("closeIssue", () => {
     it("should close issue without comment", async () => {
       // Create an issue first
-      await provider.createIssue({
+      await enabledProvider.createIssue({
         title: "Test",
         body: "Body",
         labels: [],
       });
 
       const issue = createMockIssue(1);
-      await expect(provider.closeIssue(issue)).resolves.not.toThrow();
+      await expect(enabledProvider.closeIssue(issue)).resolves.not.toThrow();
 
       const calls = mockGitHubCLI.getCallsTo("closeIssue");
       expect(calls.length).toBe(1);
@@ -215,14 +221,14 @@ describe("GitHubProjectManagementProvider", () => {
 
     it("should close issue with comment", async () => {
       // Create an issue first
-      await provider.createIssue({
+      await enabledProvider.createIssue({
         title: "Test",
         body: "Body",
         labels: [],
       });
 
       const issue = createMockIssue(1);
-      await expect(provider.closeIssue(issue, "Closing comment")).resolves.not.toThrow();
+      await expect(enabledProvider.closeIssue(issue, "Closing comment")).resolves.not.toThrow();
 
       const calls = mockGitHubCLI.getCallsTo("closeIssueWithComment");
       expect(calls.length).toBe(1);
@@ -231,6 +237,15 @@ describe("GitHubProjectManagementProvider", () => {
 
     it("should no-op when issue has no githubSync", async () => {
       const issue = createMockIssue(null);
+      await expect(enabledProvider.closeIssue(issue)).resolves.not.toThrow();
+
+      const calls = mockGitHubCLI.getCallsTo("closeIssue");
+      expect(calls.length).toBe(0);
+    });
+
+    it("should no-op when provider is disabled", async () => {
+      const issue = createMockIssue(1);
+      // Using the disabled provider
       await expect(provider.closeIssue(issue)).resolves.not.toThrow();
 
       const calls = mockGitHubCLI.getCallsTo("closeIssue");
@@ -240,10 +255,10 @@ describe("GitHubProjectManagementProvider", () => {
 
   describe("reopenIssue", () => {
     it("should reopen a closed issue", async () => {
-      // Create and close an issue
-      await provider.createIssue({ title: "Test", body: "Body", labels: [] });
+      // Create and close an issue using enabled provider
+      await enabledProvider.createIssue({ title: "Test", body: "Body", labels: [] });
       const issue = createMockIssue(1);
-      await provider.closeIssue(issue);
+      await enabledProvider.closeIssue(issue);
 
       await expect(provider.reopenIssue("1")).resolves.not.toThrow();
 
@@ -569,7 +584,8 @@ describe("GitHubProjectManagementProvider", () => {
 
       try {
         const issue = createMockIssue(1);
-        await provider.closeIssue(issue);
+        // Use enabledProvider so it doesn't no-op
+        await enabledProvider.closeIssue(issue);
         expect.fail("Should have thrown");
       } catch (error) {
         const providerError = error as ProjectManagementProviderError;

@@ -12,14 +12,15 @@ import {
   createTestIssue,
   createTestPlan,
   createTestTask,
+  createMockProvider,
 } from "../helpers.js";
 import {
   MockGitHubCLI,
   MockGitWorktreeService,
   TaskSyncService,
   taskExecutionLogs,
-  type ProjectManagementProvider,
   type Project,
+  type ProjectManagementProvider,
   IssueService,
   TaskService,
   PlanService,
@@ -33,56 +34,6 @@ import {
 } from "../../tools/pr-tools.js";
 
 const TEST_PROJECT_ID = "test-project-pr";
-
-/**
- * Create a minimal mock provider for testing
- */
-function createLocalMockProvider(): ProjectManagementProvider {
-  return {
-    providerId: "mock",
-    displayName: "Mock Provider",
-    checkAuth: async () => ({ authenticated: true }),
-    checkRepository: async () => ({ accessible: true }),
-    createIssue: async () => ({
-      id: "1",
-      numericId: 1,
-      url: "https://example.com/1",
-      nodeId: "mock_1",
-      title: "Mock",
-      body: "",
-      state: "OPEN",
-      labels: [],
-    }),
-    updateIssue: async () => ({
-      id: "1",
-      numericId: 1,
-      url: "https://example.com/1",
-      nodeId: "mock_1",
-      title: "Mock",
-      body: "",
-      state: "OPEN",
-      labels: [],
-    }),
-    closeIssue: async () => {},
-    closeIssueByTask: async () => {},
-    reopenIssue: async () => {},
-    getIssue: async () => null,
-    searchIssues: async () => [],
-    ensureLabelsExist: async () => {},
-    addToProject: async () => ({ success: true, itemId: "mock_item" }),
-    moveToColumn: async () => {},
-    checkProject: async () => true,
-    getProjectDetails: async () => null,
-    getProjectStatusField: async () => null,
-    getProjectFields: async () => [],
-    setProjectItemField: async () => ({ success: true }),
-    clearProjectItemField: async () => ({ success: true }),
-    getAvailableLabels: async () => ({ supported: true, labels: [] }),
-    linkParentChild: async () => {},
-    addComment: async () => {},
-    assignIssue: async () => {},
-  };
-}
 
 /**
  * Create a test project for PRToolContext
@@ -119,7 +70,7 @@ async function createPRToolContext(
 
   const githubCLI = mockGitHubCLI ?? new MockGitHubCLI();
   const gitWorktreeService = mockGitWorktreeService ?? new MockGitWorktreeService();
-  const mockProvider = createLocalMockProvider();
+  const mockProvider = createMockProvider();
 
   const taskSyncService = new TaskSyncService(testDb.source, mockProvider, project.id);
 
@@ -730,10 +681,10 @@ describe("submit_for_review", () => {
       const client = createClientForProject(testDb, project.id);
 
       // Create a mock provider that tracks calls using vitest spies
-      const moveToColumnMock = vi.fn().mockResolvedValue(undefined);
+      const moveItemToStatusColumnMock = vi.fn().mockResolvedValue(undefined);
       const mockProvider: ProjectManagementProvider = {
-        ...createLocalMockProvider(),
-        moveToColumn: moveToColumnMock,
+        ...createMockProvider(),
+        moveItemToStatusColumn: moveItemToStatusColumnMock,
       };
       const taskSyncService = new TaskSyncService(testDb.source, mockProvider, project.id);
 
@@ -784,10 +735,10 @@ describe("submit_for_review", () => {
       expect(result.isError).toBeFalsy();
 
       // Verify the column move was attempted via the provider
-      expect(moveToColumnMock).toHaveBeenCalledWith(
+      // Service calls high-level method with status, provider handles column lookup
+      expect(moveItemToStatusColumnMock).toHaveBeenCalledWith(
         "PVTI_test_item_123",
-        "PVT_test_project",
-        "In Review"
+        "PR_REVIEW"
       );
     });
   });

@@ -211,8 +211,21 @@ export function createMockProvider(
   const base: ProjectManagementProvider = {
     providerId: "mock",
     displayName: "Mock Provider",
+    // Configuration methods
+    isEnabled: () => true,
+    hasProjectBoard: () => false,
+    getAssignee: () => undefined,
+    getCustomLabels: () => [],
+    getColumnForStatus: () => "Backlog",
+    getProjectId: () => undefined,
+    getLabelFieldMapping: () => undefined,
+    // High-level operations
+    moveItemToStatusColumn: async () => {},
+    assignIssueToConfiguredUser: async () => {},
+    // Auth/Validation
     checkAuth: async () => ({ authenticated: true }),
     checkRepository: async () => ({ accessible: true }),
+    // Issue operations
     createIssue: async () => ({
       id: "mock-1",
       numericId: 1,
@@ -239,6 +252,7 @@ export function createMockProvider(
     getIssue: async () => null,
     searchIssues: async () => [],
     ensureLabelsExist: async () => {},
+    // Project operations
     addToProject: async () => ({ success: true, itemId: "mock_item" }),
     moveToColumn: async () => {},
     checkProject: async () => true,

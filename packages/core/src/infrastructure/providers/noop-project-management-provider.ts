@@ -20,7 +20,7 @@ import type {
   AvailableLabelsResult,
 } from "../../domain/project-management-provider.js";
 import type { Issue } from "../../domain/issue.js";
-import type { Task } from "../../domain/task.js";
+import type { Task, TaskStatus } from "../../domain/task.js";
 
 /**
  * NoOpProjectManagementProvider - Does nothing
@@ -31,6 +31,53 @@ import type { Task } from "../../domain/task.js";
 export class NoOpProjectManagementProvider implements ProjectManagementProvider {
   readonly providerId = "noop";
   readonly displayName = "None";
+
+  // ===========================================================================
+  // Configuration Methods - always disabled/empty
+  // ===========================================================================
+
+  isEnabled(): boolean {
+    return false;
+  }
+
+  hasProjectBoard(): boolean {
+    return false;
+  }
+
+  getAssignee(): string | undefined {
+    return undefined;
+  }
+
+  getCustomLabels(): string[] {
+    return [];
+  }
+
+  getColumnForStatus(_status: TaskStatus): string {
+    return "Backlog";
+  }
+
+  getProjectId(): string | undefined {
+    return undefined;
+  }
+
+  getLabelFieldMapping(): Record<string, string> | undefined {
+    return undefined;
+  }
+
+  // ===========================================================================
+  // High-Level Operations - no-op
+  // ===========================================================================
+
+  async moveItemToStatusColumn(
+    _itemId: string | null | undefined,
+    _status: TaskStatus
+  ): Promise<void> {
+    // No-op
+  }
+
+  async assignIssueToConfiguredUser(_issueRef: string): Promise<void> {
+    // No-op
+  }
 
   // Auth/Validation - always "works" (nothing to check)
   async checkAuth(): Promise<AuthResult> {

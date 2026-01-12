@@ -71,7 +71,7 @@ async function createIssueToolContext(testDb: TestDatabase): Promise<{
 
   // Mock GitHub services (disabled)
   const mockGitHubCLI = new MockGitHubCLI();
-  const mockProvider = new GitHubProjectManagementProvider(mockGitHubCLI);
+  const mockProvider = new GitHubProjectManagementProvider(mockGitHubCLI, null);
 
   // Dispatch service uses DbSource (global), other services use DbClient (project-scoped)
   const dispatchService = new DispatchService(testDb.source);
