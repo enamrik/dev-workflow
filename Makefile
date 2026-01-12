@@ -154,8 +154,8 @@ prep:
 	@echo "Step 5/6: Integration tests..."
 	@pnpm test:integration
 	@echo ""
-	@echo "Step 6/6: E2E tests..."
-	@pnpm test:e2e
+	@echo "Step 6/6: E2E tests... (skipped - run 'make test-e2e' separately)"
+	@# @pnpm test:e2e
 	@echo ""
 	@echo "✅ All checks passed! Ready to push."
 
