@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ProjectsResolver, DbSourceProvider, WebDIContext } from "@/server";
 import type { Issue, Plan, Task } from "@dev-workflow/core";
-import {
-  getGlobalDatabasePath,
-  BoardQueryService,
-  type WorkerTaskAssignment,
-} from "@dev-workflow/core";
+import { GlobalDbWorkerQueueDb, type WorkerTaskAssignment } from "@dev-workflow/core";
 
 export const dynamic = "force-dynamic";
 
@@ -35,23 +31,36 @@ interface CompletedTaskWithContext extends Task {
 }
 
 /**
- * Get worker assignments from global database using BoardQueryService
+ * Get worker assignments from worker queue database
+ *
+ * Queries the separate worker queue database (~/.track/worker-queue.db) to find
+ * which workers are currently working on which tasks.
  */
-async function getGlobalWorkerAssignments(
-  sourceProvider: DbSourceProvider
-): Promise<Map<string, WorkerTaskAssignment>> {
-  try {
-    const dbPath = getGlobalDatabasePath();
-    const source = sourceProvider.getOrCreate({ connectionString: `sqlite://${dbPath}` });
-    await source.provision();
-    const dbClient = source.createClient("global");
+function getWorkerAssignments(): Map<string, WorkerTaskAssignment> {
+  const assignments = new Map<string, WorkerTaskAssignment>();
+  let workerQueueDb: GlobalDbWorkerQueueDb | null = null;
 
-    // Create BoardQueryService with the DbClient
-    const globalBoardService = new BoardQueryService(dbClient);
-    return globalBoardService.getWorkerAssignments();
+  try {
+    workerQueueDb = new GlobalDbWorkerQueueDb();
+    const entries = workerQueueDb.findAllEntriesWithHealth();
+
+    for (const entry of entries) {
+      // Only include entries where a worker is actively working
+      if (entry.workerId && entry.status === "WORKING") {
+        assignments.set(entry.taskId, {
+          taskId: entry.taskId,
+          workerId: entry.workerId,
+          workerName: entry.workerName ?? null,
+        });
+      }
+    }
+
+    return assignments;
   } catch {
-    // Continue without worker info if global db is inaccessible
-    return new Map();
+    // Continue without worker info if worker queue db is inaccessible
+    return assignments;
+  } finally {
+    workerQueueDb?.close();
   }
 }
 
@@ -69,8 +78,8 @@ export async function GET(request: NextRequest) {
       projects = projects.filter((p) => p.projectId === projectFilter || p.slug === projectFilter);
     }
 
-    // Get worker assignments from global database
-    const workerAssignments = await getGlobalWorkerAssignments(sourceProvider);
+    // Get worker assignments from worker queue database
+    const workerAssignments = getWorkerAssignments();
 
     const issuesWithTasks: IssueWithTasks[] = [];
     const completedTasks: CompletedTaskWithContext[] = [];
