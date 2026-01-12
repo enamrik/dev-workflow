@@ -19,6 +19,7 @@ import { randomUUID } from "node:crypto";
 import {
   DbSourceProvider,
   ProjectsResolver,
+  DependencyService,
   type WorkerQueueDb,
   type DbSource,
   type WorkerStatus,
@@ -413,8 +414,99 @@ export class ClaudeWorkerService {
       return;
     }
 
-    // TODO: If auto-claim is enabled, we'd need to query across all projects
-    // For now, auto-claim only works via the dispatch queue
+    // If auto-claim is enabled and queue is empty, look for READY tasks
+    if (this.config.autoClaim) {
+      // tryAutoClaimReadyTask handles everything: enqueue, claim, work
+      // Returns the task if claimed, null if nothing available
+      await this.tryAutoClaimReadyTask();
+    }
+  }
+
+  /**
+   * Try to auto-claim a READY task with satisfied dependencies
+   *
+   * Scans all configured projects for READY tasks that:
+   * 1. Have all dependencies satisfied (COMPLETED or ABANDONED)
+   * 2. Are not already claimed by another session
+   * 3. Are not already in the dispatch queue
+   *
+   * When a task is auto-claimed, it's added to the dispatch queue so the
+   * claudeDone mechanism works correctly (end_worker_session sets claudeDone
+   * flag which the worker polls for to know when to terminate).
+   *
+   * Based on the original tryAutoClaimTask from commit 38eea40, adapted for
+   * multi-project architecture with separate worker queue database.
+   *
+   * @returns The claimed task, or null if none available
+   */
+  private async tryAutoClaimReadyTask(): Promise<Task | null> {
+    // Get all configured projects
+    const projects = await this.projectsResolver.getAllProjects();
+
+    for (const projectInfo of projects) {
+      try {
+        const source = this.sourceProvider.getOrCreate(projectInfo.sourceInfo);
+        const client = source.createClient(projectInfo.projectId);
+
+        // Create DependencyService for this project
+        const dependencyService = new DependencyService(client);
+
+        // Find READY tasks
+        const readyTasks = client.tasks.findMany({ status: "READY" });
+
+        for (const task of readyTasks) {
+          // Skip if already in dispatch queue
+          const existing = this.queue.findByTaskId(task.id);
+          if (existing) {
+            continue;
+          }
+
+          // Skip if already claimed by another session
+          if (task.sessionId) {
+            continue;
+          }
+
+          // Skip if dependencies are not satisfied
+          if (!dependencyService.areDependenciesSatisfied(task)) {
+            continue;
+          }
+
+          // Found a claimable task - add to dispatch queue and claim atomically
+          // First, enqueue the task (idempotent - returns existing if already queued)
+          this.queue.enqueue(task.id, projectInfo.slug);
+
+          // Then claim it from the queue using the standard mechanism
+          const claim = this.queue.claimTask(
+            this.state.workerId,
+            this.config.staleThresholdSeconds
+          );
+
+          // Verify we claimed the exact task we dispatched (race condition check)
+          if (!claim || claim.taskId !== task.id) {
+            // Lost the race or got a different task, try the next one
+            continue;
+          }
+
+          console.log(
+            term.cyan(`Auto-claimed: ${task.title} (project: ${projectInfo.slug})`)
+          );
+
+          // Stop polling while working
+          if (this.pollInterval) {
+            clearInterval(this.pollInterval);
+            this.pollInterval = null;
+          }
+
+          await this.workOnTask(claim.taskId, claim.projectSlug, "auto-claim");
+          return task;
+        }
+      } catch (error) {
+        // Skip projects that can't be accessed
+        console.error(term.dim(`Failed to check project ${projectInfo.slug}: ${error}`));
+      }
+    }
+
+    return null;
   }
 
   /**
