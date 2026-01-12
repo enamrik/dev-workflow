@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createTestDatabase } from "../../__tests__/setup.js";
-import { ProjectService, ProjectError, type GitOperations } from "../project-service.js";
+import { ProjectService, ProjectError } from "../project-service.js";
+import type { GitOperations } from "../git-operations.js";
 import type { GitHubIssueSyncConfig } from "../../infrastructure/database/schema.js";
 
 /**
@@ -8,8 +9,12 @@ import type { GitHubIssueSyncConfig } from "../../infrastructure/database/schema
  */
 function createMockGitOperations(overrides: Partial<GitOperations> = {}): GitOperations {
   return {
-    getInitialCommitHash: vi.fn().mockResolvedValue("abc123def456"),
-    isGitRepository: vi.fn().mockResolvedValue(true),
+    getInitialCommitHash: vi.fn().mockReturnValue("abc123def456"),
+    isGitRepository: vi.fn().mockReturnValue(true),
+    findGitRoot: vi.fn().mockReturnValue("/mock/git/root"),
+    isWorktree: vi.fn().mockReturnValue(false),
+    readSlugFromGitConfig: vi.fn().mockReturnValue(null),
+    writeSlugToGitConfig: vi.fn(),
     ...overrides,
   };
 }
@@ -65,7 +70,7 @@ describe("ProjectService", () => {
 
     it("should throw ProjectError for non-git directory", async () => {
       mockGitOps = createMockGitOperations({
-        isGitRepository: vi.fn().mockResolvedValue(false),
+        isGitRepository: vi.fn().mockReturnValue(false),
       });
       service = new ProjectService(testDb.source, mockGitOps);
 
@@ -77,7 +82,9 @@ describe("ProjectService", () => {
 
     it("should throw ProjectError when git command fails", async () => {
       mockGitOps = createMockGitOperations({
-        getInitialCommitHash: vi.fn().mockRejectedValue(new Error("Git error")),
+        getInitialCommitHash: vi.fn().mockImplementation(() => {
+          throw new Error("Git error");
+        }),
       });
       service = new ProjectService(testDb.source, mockGitOps);
 
@@ -87,14 +94,14 @@ describe("ProjectService", () => {
     it("should differentiate between different repositories", async () => {
       // First repo
       mockGitOps = createMockGitOperations({
-        getInitialCommitHash: vi.fn().mockResolvedValue("hash-repo-1"),
+        getInitialCommitHash: vi.fn().mockReturnValue("hash-repo-1"),
       });
       service = new ProjectService(testDb.source, mockGitOps);
       const project1 = await service.getOrCreateProject("/path/to/repo1");
 
       // Second repo (different hash)
       mockGitOps = createMockGitOperations({
-        getInitialCommitHash: vi.fn().mockResolvedValue("hash-repo-2"),
+        getInitialCommitHash: vi.fn().mockReturnValue("hash-repo-2"),
       });
       service = new ProjectService(testDb.source, mockGitOps);
       const project2 = await service.getOrCreateProject("/path/to/repo2");
@@ -141,14 +148,14 @@ describe("ProjectService", () => {
     it("should return all projects", async () => {
       // Create first project
       mockGitOps = createMockGitOperations({
-        getInitialCommitHash: vi.fn().mockResolvedValue("hash1"),
+        getInitialCommitHash: vi.fn().mockReturnValue("hash1"),
       });
       service = new ProjectService(testDb.source, mockGitOps);
       await service.getOrCreateProject("/path/to/project1");
 
       // Create second project
       mockGitOps = createMockGitOperations({
-        getInitialCommitHash: vi.fn().mockResolvedValue("hash2"),
+        getInitialCommitHash: vi.fn().mockReturnValue("hash2"),
       });
       service = new ProjectService(testDb.source, mockGitOps);
       await service.getOrCreateProject("/path/to/project2");

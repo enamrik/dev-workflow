@@ -64,12 +64,8 @@ export {
   type TaskSyncResult,
   type IssueSyncResult,
 } from "./application/task-sync-service.js";
-export {
-  ProjectService,
-  ProjectError,
-  NodeGitOperations,
-  type GitOperations,
-} from "./application/project-service.js";
+export { ProjectService, ProjectError } from "./application/project-service.js";
+export { GitOperations } from "./application/git-operations.js";
 export { BackupService } from "./application/backup-service.js";
 export {
   MergeService,
@@ -123,16 +119,12 @@ export {
   resolveConfig,
   loadAllConfigs,
   resolveConfigFromGit,
-  isWorktree,
-  findGitRoot,
-  writeSlugToGitConfig,
-  readSlugFromGitConfig,
   writeConfig,
+  getConfigPath,
   ProjectConfigError,
   type ProjectConfig,
-  type ResolvedConfig,
   type ProjectConfigErrorCode,
-} from "./application/project-config-resolver.js";
+} from "./application/projects-resolver.js";
 
 // Infrastructure - Database
 export * from "./infrastructure/database/schema.js";

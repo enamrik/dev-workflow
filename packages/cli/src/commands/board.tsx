@@ -60,7 +60,7 @@ export async function runBoard(options: BoardOptions = {}): Promise<void> {
   // Start the Ink app
   const { waitUntilExit } = render(
     <BoardApp
-      dbPath={config.resolvedDatabase}
+      dbPath={config.database}
       projectId={config.projectId}
       intervalMs={intervalMs}
     />

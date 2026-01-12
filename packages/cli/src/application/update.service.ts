@@ -8,7 +8,7 @@ import {
   TrackDirectoryResolver,
   DbSourceProvider,
   ProjectService,
-  NodeGitOperations,
+  GitOperations,
   runSqliteMigrations,
   resolveGlobalTrackDir,
   type Project,
@@ -42,7 +42,8 @@ export class UpdateService {
     private readonly fileSystem: FileSystem,
     private readonly workingDirectory: string,
     private readonly packageRoot: string,
-    private readonly resolver: TrackDirectoryResolver
+    private readonly resolver: TrackDirectoryResolver,
+    private readonly databaseConnectionString: string
   ) {}
 
   /**
@@ -54,12 +55,11 @@ export class UpdateService {
    * @returns The registered project
    */
   async registerProject(): Promise<Project> {
-    const dbPath = this.resolver.getDatabasePath();
     const sourceProvider = new DbSourceProvider();
-    const source = sourceProvider.getOrCreate({ connectionString: dbPath });
+    const source = sourceProvider.getOrCreate({ connectionString: this.databaseConnectionString });
 
     try {
-      const gitOps = new NodeGitOperations();
+      const gitOps = new GitOperations();
       const projectService = new ProjectService(source, gitOps);
 
       this.project = await projectService.getOrCreateProject(this.workingDirectory);

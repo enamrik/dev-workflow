@@ -24,11 +24,8 @@ import {
   WorkerService,
   DispatchService,
   getGlobalDatabasePath,
-  isWorktree,
-  writeSlugToGitConfig,
+  GitOperations,
   writeConfig,
-  findGitRoot,
-  readSlugFromGitConfig,
   resolveConfig,
   resolveConfigFromGit,
   ProjectConfigError,
@@ -84,8 +81,11 @@ async function runInit(options: InitOptions = {}): Promise<void> {
     }
   }
 
+  // Create git operations helper
+  const gitOps = new GitOperations();
+
   // Check if running from a worktree
-  if (isWorktree(workingDirectory)) {
+  if (gitOps.isWorktree(workingDirectory)) {
     console.error("❌ Cannot run init from a git worktree.");
     console.error("   Run this command from the main repository, not a worktree.");
     console.error("\n   To find your main repo:");
@@ -112,7 +112,7 @@ async function runInit(options: InitOptions = {}): Promise<void> {
 
   // Create resolver to get global track directory path
   const resolver = createTrackDirectoryResolver(workingDirectory);
-  const gitRoot = findGitRoot(workingDirectory);
+  const gitRoot = gitOps.findGitRoot(workingDirectory);
   const slug = resolver.getProjectId(); // e.g., "dev-workflow-b9bccf"
 
   // Determine database connection string based on options
@@ -120,14 +120,16 @@ async function runInit(options: InitOptions = {}): Promise<void> {
   if (options.url) {
     databaseConnectionString = options.url;
   } else if (options.local) {
-    databaseConnectionString = "file:./.track/workflow.db";
+    // Local mode: store in .track/workflow.db relative to git root
+    const localDbPath = path.resolve(gitRoot, ".track/workflow.db");
+    databaseConnectionString = `sqlite://${localDbPath}`;
   } else {
     // Default: global SQLite database (respects TRACK_DIR env var)
-    databaseConnectionString = `file://${getGlobalDatabasePath()}`;
+    databaseConnectionString = `sqlite://${getGlobalDatabasePath()}`;
   }
 
   // Check if this project was previously initialized (slug exists in .git/config)
-  const existingSlug = readSlugFromGitConfig(gitRoot);
+  const existingSlug = gitOps.readSlugFromGitConfig(gitRoot);
   let existingConfig: Awaited<ReturnType<typeof resolveConfig>> | null = null;
 
   if (existingSlug) {
@@ -206,11 +208,13 @@ async function runInit(options: InitOptions = {}): Promise<void> {
       }
 
       // Update slug in .git/config (in case repo moved)
-      writeSlugToGitConfig(gitRoot, slug);
+      gitOps.writeSlugToGitConfig(gitRoot, slug);
       console.log(`✓ Updated project slug in .git/config`);
 
       // Update config.json with current gitRoot (handles repo move scenario)
-      await writeConfig(slug, {
+      await writeConfig({
+        slug,
+        name: existingProject.name,
         database: databaseConnectionString,
         gitRoot,
         projectId: existingProject.id,
@@ -284,11 +288,13 @@ async function runInit(options: InitOptions = {}): Promise<void> {
     console.log(`✓ Registered project: ${project.name} (${project.id.slice(0, 8)}...)`);
 
     // Write slug to .git/config for future lookups
-    writeSlugToGitConfig(gitRoot, slug);
+    gitOps.writeSlugToGitConfig(gitRoot, slug);
     console.log(`✓ Wrote project slug to .git/config (${slug})`);
 
-    // Write config.json to ~/.track/<slug>/
-    await writeConfig(slug, {
+    // Write config.json to ~/.track/projects/<slug>/
+    await writeConfig({
+      slug,
+      name: project.name,
       database: databaseConnectionString,
       gitRoot,
       projectId: project.id,
@@ -362,7 +368,13 @@ async function runUpdate(): Promise<void> {
   // Create a resolver from the config (gitRoot + slug)
   const resolver = new TrackDirectoryResolver(config.gitRoot, config.slug);
 
-  const updater = new UpdateService(fileSystem, workingDirectory, packageRoot, resolver);
+  const updater = new UpdateService(
+    fileSystem,
+    workingDirectory,
+    packageRoot,
+    resolver,
+    config.database
+  );
 
   try {
     // Config exists, so project is initialized - proceed with update
@@ -550,6 +562,7 @@ async function runUnarchive(): Promise<void> {
   const fileSystem = new NodeFileSystem();
   const workingDirectory = process.cwd();
   const packageRoot = getPackageRoot();
+  const gitOps = new GitOperations();
 
   // For unarchive, config.json might not exist yet (that's the point of unarchiving)
   // So we use the resolver to compute the slug, then check for archived project
@@ -562,7 +575,7 @@ async function runUnarchive(): Promise<void> {
   }
 
   // Check for worktree
-  if (isWorktree(workingDirectory)) {
+  if (gitOps.isWorktree(workingDirectory)) {
     console.error("❌ Cannot run unarchive from a git worktree.");
     console.error("   Run this command from the main repository.");
     process.exit(1);
