@@ -1157,9 +1157,19 @@ export async function handleUpdateIssue(
     );
   }
 
+  // Explicitly pick only allowed fields - status changes must go through close_issue
+  const allowedUpdates: typeof updates = {};
+  if (updates.title !== undefined) allowedUpdates.title = updates.title;
+  if (updates.description !== undefined) allowedUpdates.description = updates.description;
+  if (updates.acceptanceCriteria !== undefined)
+    allowedUpdates.acceptanceCriteria = updates.acceptanceCriteria;
+  if (updates.type !== undefined) allowedUpdates.type = updates.type;
+  if (updates.priority !== undefined) allowedUpdates.priority = updates.priority;
+  if (updates.labels !== undefined) allowedUpdates.labels = updates.labels;
+
   // TODO: External sync for update operations should be added to ProjectManagementProvider
   // For now, we only update locally
-  const result = ctx.planningService.updateIssue(issue.id, updates, regeneratePlan);
+  const result = ctx.planningService.updateIssue(issue.id, allowedUpdates, regeneratePlan);
 
   return successResponse(result);
 }
