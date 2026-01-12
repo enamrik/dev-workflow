@@ -5,7 +5,10 @@
  * Uses in-memory SQLite for isolation and mocked external dependencies.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import * as os from "node:os";
+import * as path from "node:path";
+import * as fs from "node:fs";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
 import { createClientForProject, createNoOpProvider } from "../helpers.js";
 import {
@@ -18,7 +21,7 @@ import {
   TaskService,
   PlanService,
   MilestoneService,
-  DispatchService,
+  GlobalDbWorkerQueueDb,
   type DbClient,
 } from "@dev-workflow/core";
 import {
@@ -37,7 +40,10 @@ const TEST_PROJECT_ID = "test-project-integration";
 /**
  * Create a full IssueToolContext for testing
  */
-async function createIssueToolContext(testDb: TestDatabase): Promise<{
+async function createIssueToolContext(
+  testDb: TestDatabase,
+  workerQueueDb: GlobalDbWorkerQueueDb
+): Promise<{
   ctx: IssueToolContext;
   client: DbClient;
 }> {
@@ -73,8 +79,6 @@ async function createIssueToolContext(testDb: TestDatabase): Promise<{
   const mockGitHubCLI = new MockGitHubCLI();
   const mockProvider = new GitHubProjectManagementProvider(mockGitHubCLI, null);
 
-  // Dispatch service uses DbSource (global), other services use DbClient (project-scoped)
-  const dispatchService = new DispatchService(testDb.source);
   const planService = new PlanService(client);
   const taskService = new TaskService(client, noOpProvider, null);
   const issueService = new IssueService(client, taskService, noOpProvider);
@@ -87,7 +91,7 @@ async function createIssueToolContext(testDb: TestDatabase): Promise<{
       planService,
       taskService,
       milestoneService,
-      dispatchService,
+      workerQueueDb,
       templateService: mockTemplateService,
       planningService,
       projectManagementProvider: mockProvider,
@@ -101,12 +105,32 @@ describe("Issue Tools Integration", () => {
   let testDb: TestDatabase;
   let ctx: IssueToolContext;
   let client: DbClient;
+  let workerQueueDbPath: string;
+  let workerQueueDb: GlobalDbWorkerQueueDb;
 
   beforeEach(async () => {
     testDb = createTestDatabase();
-    const result = await createIssueToolContext(testDb);
+
+    // Create a temporary worker queue database for testing
+    workerQueueDbPath = path.join(
+      os.tmpdir(),
+      `test-worker-queue-${Date.now()}-${crypto.randomUUID()}.db`
+    );
+    workerQueueDb = new GlobalDbWorkerQueueDb(workerQueueDbPath);
+
+    const result = await createIssueToolContext(testDb, workerQueueDb);
     ctx = result.ctx;
     client = result.client;
+  });
+
+  afterEach(() => {
+    workerQueueDb.close();
+    try {
+      fs.unlinkSync(workerQueueDbPath);
+    } catch {
+      // Ignore cleanup errors
+    }
+    testDb.cleanup();
   });
 
   describe("handleCreateIssue", () => {

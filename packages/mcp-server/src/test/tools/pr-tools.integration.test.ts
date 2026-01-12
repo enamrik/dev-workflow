@@ -736,10 +736,7 @@ describe("submit_for_review", () => {
 
       // Verify the column move was attempted via the provider
       // Service calls high-level method with status, provider handles column lookup
-      expect(moveItemToStatusColumnMock).toHaveBeenCalledWith(
-        "PVTI_test_item_123",
-        "PR_REVIEW"
-      );
+      expect(moveItemToStatusColumnMock).toHaveBeenCalledWith("PVTI_test_item_123", "PR_REVIEW");
     });
   });
 });

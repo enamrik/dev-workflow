@@ -19,7 +19,7 @@ import {
   type TaskService,
   type PlanService,
   type MilestoneService,
-  type DispatchService,
+  type WorkerQueueDb,
   type ProjectManagementProvider,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
@@ -522,8 +522,8 @@ export interface IssueToolContext {
   taskService: TaskService;
   /** Milestone service for milestone lookups */
   milestoneService: MilestoneService;
-  /** Dispatch service for queue operations */
-  dispatchService: DispatchService;
+  /** Worker queue for dispatch operations */
+  workerQueueDb: WorkerQueueDb;
   templateService: TemplateService;
   planningService: PlanningService;
   /** Project management provider for external sync */
@@ -672,7 +672,7 @@ export function handleGetIssue(
           summary: plan.summary,
           approach: plan.approach,
           estimatedComplexity: plan.estimatedComplexity,
-          tasks: tasks.map((t) => createSlimEnrichedTaskData(t, ctx.dispatchService)),
+          tasks: tasks.map((t) => createSlimEnrichedTaskData(t, ctx.workerQueueDb)),
         },
       });
     }
@@ -801,7 +801,7 @@ export async function handleDeleteIssue(
     let deletedTaskCount = 0;
     for (const task of tasks) {
       // Remove from dispatch queue (if present)
-      ctx.dispatchService.remove(task.id);
+      ctx.workerQueueDb.remove(task.id);
 
       // Soft-delete the task
       try {

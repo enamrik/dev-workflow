@@ -18,7 +18,7 @@ import {
   type IssueService,
   type TaskService,
   type PlanService,
-  type DispatchService,
+  type WorkerQueueDb,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -354,7 +354,7 @@ export interface TaskToolContext {
   source?: DbSource;
   githubCLI?: GitHubCLI;
   /** Optional - for enriching task data with worker info */
-  dispatchService?: DispatchService;
+  workerQueueDb?: WorkerQueueDb;
 }
 
 /**
@@ -395,7 +395,7 @@ export async function handleLoadTaskSession(
   }
 
   // Access control: queued tasks require worker with matching workerId
-  const queueEntry = ctx.dispatchService?.findByTaskId(taskId);
+  const queueEntry = ctx.workerQueueDb?.findByTaskId(taskId);
   if (queueEntry) {
     if (!workerId) {
       return errorResponse(
@@ -753,7 +753,7 @@ export interface SlimEnrichedTaskData {
  * PR info comes from task fields: prNumber, prUrl, prStatus
  *
  * @param task - The task to enrich
- * @param dispatchService - Optional service for looking up worker info
+ * @param workerQueueDb - Optional service for looking up worker info
  * @returns The enriched task data
  */
 export function enrichTaskData(
@@ -782,7 +782,7 @@ export function enrichTaskData(
     createdAt: string;
     updatedAt: string;
   },
-  dispatchService?: DispatchService
+  workerQueueDb?: WorkerQueueDb
 ): EnrichedTaskData {
   const enriched: EnrichedTaskData = {
     id: task.id,
@@ -811,8 +811,8 @@ export function enrichTaskData(
   if (hasActiveSession) {
     // Look up worker ID from dispatch queue
     let workerId: string | null = null;
-    if (dispatchService) {
-      const queueEntry = dispatchService.findByTaskId(task.id);
+    if (workerQueueDb) {
+      const queueEntry = workerQueueDb.findByTaskId(task.id);
       workerId = queueEntry?.workerId ?? null;
     }
 
@@ -838,7 +838,7 @@ export function enrichTaskData(
  * Create slim enriched task data for get_issue response.
  *
  * @param task - The task to create slim data for
- * @param dispatchService - Optional service for looking up worker info
+ * @param workerQueueDb - Optional service for looking up worker info
  * @returns Slim enriched task data
  */
 export function createSlimEnrichedTaskData(
@@ -854,7 +854,7 @@ export function createSlimEnrichedTaskData(
     prUrl?: string | null;
     prStatus?: string | null;
   },
-  dispatchService?: DispatchService
+  workerQueueDb?: WorkerQueueDb
 ): SlimEnrichedTaskData {
   const slim: SlimEnrichedTaskData = {
     id: task.id,
@@ -870,8 +870,8 @@ export function createSlimEnrichedTaskData(
   if (hasActiveSession) {
     // Look up worker ID from dispatch queue
     let workerId: string | null = null;
-    if (dispatchService) {
-      const queueEntry = dispatchService.findByTaskId(task.id);
+    if (workerQueueDb) {
+      const queueEntry = workerQueueDb.findByTaskId(task.id);
       workerId = queueEntry?.workerId ?? null;
     }
 
@@ -935,7 +935,7 @@ export function handleGetTask(
   }
 
   // Return enriched task data with worker and PR info
-  const enriched = enrichTaskData(task, ctx.dispatchService);
+  const enriched = enrichTaskData(task, ctx.workerQueueDb);
   return successResponse(enriched);
 }
 

@@ -29,6 +29,8 @@ import {
   resolveConfig,
   resolveConfigFromGit,
   ProjectConfigError,
+  GlobalDbWorkerQueueDb,
+  ProjectsResolver,
 } from "@dev-workflow/core";
 
 /**
@@ -1089,10 +1091,17 @@ program
   .option("--name <name>", "Worker name (auto-generates worker-1, worker-2, etc. if not provided)")
   .option("--auto-claim", "Automatically claim READY tasks when dependencies complete")
   .action(async (options: { name?: string; autoClaim?: boolean }) => {
-    const worker = new ClaudeWorkerService({ name: options.name, autoClaim: options.autoClaim });
-
     try {
-      await worker.initialize();
+      // Create worker dependencies
+      const queue = new GlobalDbWorkerQueueDb();
+      const sourceProvider = new DbSourceProvider();
+      const projectsResolver = new ProjectsResolver();
+
+      const worker = new ClaudeWorkerService(queue, sourceProvider, projectsResolver, {
+        name: options.name,
+        autoClaim: options.autoClaim,
+      });
+
       await worker.start();
     } catch (error) {
       console.error("Error running Claude worker:", error);

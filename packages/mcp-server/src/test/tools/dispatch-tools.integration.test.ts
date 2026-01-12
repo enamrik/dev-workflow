@@ -4,14 +4,11 @@
  * Tests MCP tool handlers for worker dispatch operations.
  */
 
+import * as os from "node:os";
+import * as path from "node:path";
+import * as fs from "node:fs";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import {
-  DispatchService,
-  WorkerService,
-  TaskService,
-  type DbClient,
-  type DbSource,
-} from "@dev-workflow/core";
+import { TaskService, GlobalDbWorkerQueueDb, type DbClient } from "@dev-workflow/core";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
 import { createTestIssue, createTestPlan, createTestTask, createNoOpProvider } from "../helpers.js";
 import {
@@ -24,27 +21,37 @@ import {
 describe("Dispatch Tools Integration", () => {
   let testDb: TestDatabase;
   let client: DbClient;
-  let source: DbSource;
   let ctx: DispatchToolContext;
+  let workerQueueDbPath: string;
+  let workerQueueDb: GlobalDbWorkerQueueDb;
 
   beforeEach(() => {
     testDb = createTestDatabase();
     client = testDb.client;
-    source = testDb.source;
 
-    // Create services - worker/dispatch use DbSource (global), taskService uses DbClient (project-scoped)
-    const dispatchService = new DispatchService(source);
-    const workerService = new WorkerService(source);
+    // Create a temporary worker queue database for testing with unique path
+    workerQueueDbPath = path.join(
+      os.tmpdir(),
+      `test-worker-queue-${Date.now()}-${crypto.randomUUID()}.db`
+    );
+    workerQueueDb = new GlobalDbWorkerQueueDb(workerQueueDbPath);
+
     const taskService = new TaskService(client, createNoOpProvider(), null);
 
     ctx = {
-      dispatchService,
+      workerQueueDb,
       taskService,
-      workerService,
+      projectSlug: "test-project",
     };
   });
 
   afterEach(() => {
+    workerQueueDb.close();
+    try {
+      fs.unlinkSync(workerQueueDbPath);
+    } catch {
+      // Ignore cleanup errors
+    }
     testDb.cleanup();
   });
 
@@ -72,10 +79,10 @@ describe("Dispatch Tools Integration", () => {
     });
 
     it("should return registered workers with their status", () => {
-      // Register workers
-      client.workers.register("worker-1", "worker-1");
-      client.workers.register("worker-2", "worker-2");
-      client.workers.updateStatus("worker-2", "WORKING");
+      // Register workers using workerQueueDb
+      workerQueueDb.registerWorker("worker-1", "worker-1");
+      workerQueueDb.registerWorker("worker-2", "worker-2");
+      workerQueueDb.updateStatus("worker-2", "WORKING");
 
       const result = handleGetDispatchStatus(ctx);
 
@@ -109,8 +116,8 @@ describe("Dispatch Tools Integration", () => {
         status: "BACKLOG",
       });
 
-      // Enqueue task
-      client.dispatchQueue.enqueue(task.id);
+      // Enqueue task using workerQueueDb
+      workerQueueDb.enqueue(task.id, "test-project");
 
       const result = handleGetDispatchStatus(ctx);
 
@@ -135,12 +142,12 @@ describe("Dispatch Tools Integration", () => {
         status: "BACKLOG",
       });
 
-      // Register worker
-      client.workers.register("worker-1", "worker-1");
+      // Register worker using workerQueueDb
+      workerQueueDb.registerWorker("worker-1", "worker-1");
 
-      // Enqueue and claim task
-      client.dispatchQueue.enqueue(task.id);
-      client.dispatchQueue.claimTask("worker-1");
+      // Enqueue and claim task using workerQueueDb
+      workerQueueDb.enqueue(task.id, "test-project");
+      workerQueueDb.claimTask("worker-1");
 
       const result = handleGetDispatchStatus(ctx);
 
@@ -217,10 +224,10 @@ describe("Dispatch Tools Integration", () => {
         status: "BACKLOG",
       });
 
-      // Register worker and dispatch task
-      client.workers.register("worker-1", "worker-1");
-      client.dispatchQueue.enqueue(task.id);
-      client.dispatchQueue.claimTask("worker-1");
+      // Register worker and dispatch task using workerQueueDb
+      workerQueueDb.registerWorker("worker-1", "worker-1");
+      workerQueueDb.enqueue(task.id, "test-project");
+      workerQueueDb.claimTask("worker-1");
 
       // Dispatch again (already queued and claimed)
       const result = handleDispatchTask(ctx, { taskId: task.id });
@@ -276,10 +283,10 @@ describe("Dispatch Tools Integration", () => {
         status: "BACKLOG",
       });
 
-      // Register worker and claim task
-      client.workers.register("worker-1", "worker-1");
-      client.dispatchQueue.enqueue(task.id);
-      client.dispatchQueue.claimTask("worker-1");
+      // Register worker and claim task using workerQueueDb
+      workerQueueDb.registerWorker("worker-1", "worker-1");
+      workerQueueDb.enqueue(task.id, "test-project");
+      workerQueueDb.claimTask("worker-1");
 
       const result = handleEndWorkerSession(ctx, {
         workerId: "worker-1",
@@ -292,8 +299,8 @@ describe("Dispatch Tools Integration", () => {
       expect(content.terminated).toBe(true);
       expect(content.alreadyDone).toBe(false);
 
-      // Verify claudeDone is set
-      const entry = client.dispatchQueue.findByTaskId(task.id);
+      // Verify claudeDone is set using workerQueueDb
+      const entry = workerQueueDb.findByTaskId(task.id);
       expect(entry?.claudeDone).toBe(true);
     });
 
@@ -306,10 +313,10 @@ describe("Dispatch Tools Integration", () => {
         status: "BACKLOG",
       });
 
-      // Register worker and claim task
-      client.workers.register("worker-1", "worker-1");
-      client.dispatchQueue.enqueue(task.id);
-      client.dispatchQueue.claimTask("worker-1");
+      // Register worker and claim task using workerQueueDb
+      workerQueueDb.registerWorker("worker-1", "worker-1");
+      workerQueueDb.enqueue(task.id, "test-project");
+      workerQueueDb.claimTask("worker-1");
 
       // Try to end with wrong worker ID
       const result = handleEndWorkerSession(ctx, {

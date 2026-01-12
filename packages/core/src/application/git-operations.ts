@@ -28,7 +28,9 @@ export class GitOperations {
       }
       return commits[0]!;
     } catch (error) {
-      throw new Error(`Failed to get initial commit: ${error instanceof Error ? error.message : "Unknown error"}`);
+      throw new Error(
+        `Failed to get initial commit: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
     }
   }
 

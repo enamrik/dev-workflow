@@ -1,8 +1,12 @@
 /**
  * Dispatch-related MCP tools for worker task assignment
+ *
+ * These tools use the global WorkerQueueDb (~/.track/worker-queue.db) for
+ * worker registration and task dispatch. This is separate from the tracking
+ * database to allow workers to run from any directory.
  */
 
-import type { DispatchService, TaskService, WorkerService } from "@dev-workflow/core";
+import type { TaskService, WorkerQueueDb } from "@dev-workflow/core";
 import { DEFAULT_HEARTBEAT_THRESHOLD_SECONDS } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -67,11 +71,14 @@ export const dispatchToolDefinitions: ToolDefinition[] = [
 
 /**
  * Context required for dispatch tool handlers
+ *
+ * Uses WorkerQueueDb directly instead of per-project services.
+ * The projectSlug is needed for enqueue operations.
  */
 export interface DispatchToolContext {
-  dispatchService: DispatchService;
+  workerQueueDb: WorkerQueueDb;
   taskService: TaskService;
-  workerService: WorkerService;
+  projectSlug: string;
 }
 
 /**
@@ -107,7 +114,7 @@ export function handleDispatchTask(
   const workerSummary = getWorkerSummary(context);
 
   // Check if already queued
-  const existing = context.dispatchService.findByTaskId(taskId);
+  const existing = context.workerQueueDb.findByTaskId(taskId);
   if (existing) {
     // Get the queue entry with health info and claiming worker if any
     const queueEntry = getQueueEntryWithWorker(context, taskId);
@@ -121,8 +128,8 @@ export function handleDispatchTask(
     });
   }
 
-  // Add to queue
-  context.dispatchService.enqueue(taskId);
+  // Add to queue with projectSlug for worker to resolve the tracking database
+  context.workerQueueDb.enqueue(taskId, context.projectSlug);
 
   // Get the queue entry with health info
   const queueEntry = getQueueEntryWithWorker(context, taskId);
@@ -173,16 +180,7 @@ interface QueueEntryWithWorker {
  * Get worker summary counts (alive workers only)
  */
 function getWorkerSummary(context: DispatchToolContext): WorkerSummary {
-  const workersWithHealth = context.workerService.findAllWithHealth(
-    DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
-  );
-  const aliveWorkers = workersWithHealth.filter((w) => w.isAlive);
-  return {
-    total: aliveWorkers.length,
-    idle: aliveWorkers.filter((w) => w.status === "IDLE").length,
-    working: aliveWorkers.filter((w) => w.status === "WORKING").length,
-    draining: aliveWorkers.filter((w) => w.status === "DRAINING").length,
-  };
+  return context.workerQueueDb.getWorkerSummary(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
 }
 
 /**
@@ -192,7 +190,9 @@ function getQueueEntryWithWorker(
   context: DispatchToolContext,
   taskId: string
 ): QueueEntryWithWorker {
-  const entries = context.dispatchService.findAllWithHealth(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
+  const entries = context.workerQueueDb.findAllEntriesWithHealth(
+    DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
+  );
   const entry = entries.find((e) => e.taskId === taskId);
 
   if (!entry) {
@@ -212,7 +212,9 @@ function getQueueEntryWithWorker(
   // If claimed, get the worker details
   let claimedByWorker = null;
   if (entry.workerId) {
-    const workers = context.workerService.findAllWithHealth(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
+    const workers = context.workerQueueDb.findAllWorkersWithHealth(
+      DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
+    );
     const worker = workers.find((w) => w.id === entry.workerId);
     if (worker) {
       claimedByWorker = {
@@ -269,7 +271,7 @@ interface DispatchStatus {
  * Used by both dispatch_task and get_dispatch_status for consistency
  */
 function getDispatchStatus(context: DispatchToolContext): DispatchStatus {
-  const workersWithHealth = context.workerService.findAllWithHealth(
+  const workersWithHealth = context.workerQueueDb.findAllWorkersWithHealth(
     DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
   );
 
@@ -283,17 +285,11 @@ function getDispatchStatus(context: DispatchToolContext): DispatchStatus {
     currentTaskId: w.currentTaskId,
   }));
 
-  // Calculate worker summary (only alive workers)
-  const aliveWorkers = workersWithHealth.filter((w) => w.isAlive);
-  const workerSummary = {
-    total: aliveWorkers.length,
-    idle: aliveWorkers.filter((w) => w.status === "IDLE").length,
-    working: aliveWorkers.filter((w) => w.status === "WORKING").length,
-    draining: aliveWorkers.filter((w) => w.status === "DRAINING").length,
-  };
+  // Get worker summary (only alive workers)
+  const workerSummary = context.workerQueueDb.getWorkerSummary(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
 
   // Get dispatch queue
-  const queueEntries = context.dispatchService.findAllWithHealth(
+  const queueEntries = context.workerQueueDb.findAllEntriesWithHealth(
     DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
   );
   const queue = queueEntries.map((e) => ({
@@ -307,7 +303,7 @@ function getDispatchStatus(context: DispatchToolContext): DispatchStatus {
   }));
 
   // Queue stats
-  const queueStats = context.dispatchService.getQueueStats(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
+  const queueStats = context.workerQueueDb.getQueueStats(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
 
   return { workers, workerSummary, queue, queueStats };
 }
@@ -351,7 +347,7 @@ export function handleEndWorkerSession(
   }
 
   // Find the queue entry
-  const entry = context.dispatchService.findByTaskId(taskId);
+  const entry = context.workerQueueDb.findByTaskId(taskId);
   if (!entry) {
     return errorResponse(
       `Task is not in the dispatch queue: ${taskId}. ` +
@@ -377,7 +373,7 @@ export function handleEndWorkerSession(
   }
 
   // Set the claudeDone flag
-  const updated = context.dispatchService.setClaudeDone(taskId, workerId);
+  const updated = context.workerQueueDb.setClaudeDone(taskId, workerId);
   if (!updated) {
     return errorResponse("Failed to set claudeDone flag. The queue entry may have been modified.");
   }

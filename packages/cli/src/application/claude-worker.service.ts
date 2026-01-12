@@ -4,25 +4,28 @@
  * Manages a Claude Code worker that polls for tasks from the dispatch queue.
  * Workers self-register, send heartbeats, and claim tasks atomically.
  *
- * Task info is displayed in the terminal title bar, which works in any terminal
- * including inside tmux panes.
+ * Architecture:
+ * - WorkerQueueDb: Worker registration and dispatch queue (separate from tracking)
+ * - DbSourceProvider: Connects to tracking databases per project
+ * - ProjectsResolver: Resolves project config (gitRoot, sourceInfo) by slug
+ *
+ * The worker can run from any directory. When a task is claimed, the queue
+ * entry contains projectSlug, which is used to resolve the project's tracking
+ * database and gitRoot.
  */
 
 import { spawn, ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
   DbSourceProvider,
-  runSqliteMigrations,
-  getGlobalDatabasePath,
-  resolveConfig,
+  ProjectsResolver,
+  type WorkerQueueDb,
   type DbSource,
-  type DbClient,
   type WorkerStatus,
   type Task,
   issues,
   plans,
   tasks,
-  dispatchQueue,
   sql,
 } from "@dev-workflow/core";
 
@@ -75,6 +78,7 @@ export interface WorkerState {
   workerName: string;
   status: WorkerStatus;
   currentTaskId: string | null;
+  currentProjectSlug: string | null;
   currentClaudeProcess: ChildProcess | null;
 }
 
@@ -93,16 +97,19 @@ export interface WorkerState {
  * 5. Handles graceful shutdown (DRAINING status)
  */
 export class ClaudeWorkerService {
-  private sourceProvider: DbSourceProvider | null = null;
-  private source: DbSource | null = null;
-  // Cache client per project for task/plan lookups
-  private projectClients: Map<string, DbClient> = new Map();
+  private readonly queue: WorkerQueueDb;
+  private readonly sourceProvider: DbSourceProvider;
+  private readonly projectsResolver: ProjectsResolver;
+
+  // Current project's tracking db (set when working on a task)
+  private currentSource: DbSource | null = null;
 
   private state: WorkerState = {
     workerId: randomUUID(),
     workerName: "",
     status: "IDLE",
     currentTaskId: null,
+    currentProjectSlug: null,
     currentClaudeProcess: null,
   };
 
@@ -113,7 +120,15 @@ export class ClaudeWorkerService {
 
   private readonly config: Required<WorkerConfig>;
 
-  constructor(config: WorkerConfig = {}) {
+  constructor(
+    queue: WorkerQueueDb,
+    sourceProvider: DbSourceProvider,
+    projectsResolver: ProjectsResolver,
+    config: WorkerConfig = {}
+  ) {
+    this.queue = queue;
+    this.sourceProvider = sourceProvider;
+    this.projectsResolver = projectsResolver;
     this.config = {
       name: config.name ?? "",
       heartbeatIntervalMs: config.heartbeatIntervalMs ?? 5000,
@@ -136,59 +151,14 @@ export class ClaudeWorkerService {
   }
 
   /**
-   * Get or create a project-scoped client
-   */
-  private getProjectClient(projectId: string): DbClient | null {
-    if (!this.source) {
-      return null;
-    }
-    let client = this.projectClients.get(projectId);
-    if (!client) {
-      client = this.source.createClient(projectId);
-      this.projectClients.set(projectId, client);
-    }
-    return client;
-  }
-
-  /**
-   * Find a task by ID, looking up the project from the issue
-   */
-  private findTaskById(taskId: string): Task | null {
-    if (!this.source) {
-      return null;
-    }
-    // We need to query tasks directly - use raw query to find the task and its project
-    const db = this.source.getDb();
-    const result = db
-      .select()
-      .from(issues)
-      .innerJoin(dispatchQueue, sql`${dispatchQueue.taskId} = ${taskId}`)
-      .limit(1)
-      .all();
-
-    if (result.length === 0) {
-      return null;
-    }
-
-    const projectId = result[0]?.issues.projectId;
-    if (!projectId) {
-      return null;
-    }
-
-    const client = this.getProjectClient(projectId);
-    return client?.tasks.findById(taskId) ?? null;
-  }
-
-  /**
    * Update terminal title based on current state
-   * Format: worker | #issue.task [N/M] - title | status
    */
   private updateTitle(): void {
     let title: string;
 
     if (this.state.status === "DRAINING") {
       title = `${this.state.workerName} | draining...`;
-    } else if (this.state.currentTaskId) {
+    } else if (this.state.currentTaskId && this.currentSource) {
       const task = this.findTaskById(this.state.currentTaskId);
       const issueNumber = this.getIssueNumber(this.state.currentTaskId);
       const totalTasks = task ? this.getTotalTaskCount(task.planId) : null;
@@ -206,62 +176,96 @@ export class ClaudeWorkerService {
     this.setTerminalTitle(title);
   }
 
+  // ==========================================================================
+  // Task Resolution Helpers (use current tracking db)
+  // ==========================================================================
+
+  /**
+   * Find a task by ID in the current tracking database
+   */
+  private findTaskById(taskId: string): Task | null {
+    if (!this.currentSource || !this.state.currentProjectSlug) {
+      return null;
+    }
+
+    // Get project info to get projectId
+    try {
+      const projectInfo = this.projectsResolver.getProjectBySlugSync(this.state.currentProjectSlug);
+      if (!projectInfo) return null;
+
+      const client = this.currentSource.createClient(projectInfo.projectId);
+      return client.tasks.findById(taskId) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Get issue number for a task
+   */
+  private getIssueNumber(taskId: string): number | null {
+    if (!this.currentSource) {
+      return null;
+    }
+
+    const db = this.currentSource.getDb();
+    const result = db
+      .select({ number: issues.number })
+      .from(tasks)
+      .innerJoin(plans, sql`${plans.id} = ${tasks.planId}`)
+      .innerJoin(issues, sql`${issues.id} = ${plans.issueId}`)
+      .where(sql`${tasks.id} = ${taskId}`)
+      .get();
+
+    return result?.number ?? null;
+  }
+
   /**
    * Get the total number of tasks for a plan
    */
   private getTotalTaskCount(planId: string): number | null {
-    // This is trickier - we need to find which project the plan belongs to
-    // For now, iterate through cached clients
-    for (const client of this.projectClients.values()) {
-      const tasks = client.tasks.findByPlanId(planId);
-      if (tasks.length > 0) {
-        return tasks.length;
-      }
+    if (!this.currentSource || !this.state.currentProjectSlug) {
+      return null;
     }
-    return null;
+
+    try {
+      const projectInfo = this.projectsResolver.getProjectBySlugSync(this.state.currentProjectSlug);
+      if (!projectInfo) return null;
+
+      const client = this.currentSource.createClient(projectInfo.projectId);
+      const planTasks = client.tasks.findByPlanId(planId);
+      return planTasks.length > 0 ? planTasks.length : null;
+    } catch {
+      return null;
+    }
   }
 
   // ==========================================================================
-  // Database & Initialization
+  // Lifecycle
   // ==========================================================================
-
-  /**
-   * Initialize the worker: connect to database and set up repositories
-   */
-  async initialize(): Promise<void> {
-    const dbPath = getGlobalDatabasePath();
-    runSqliteMigrations(dbPath);
-    this.sourceProvider = new DbSourceProvider();
-    this.source = this.sourceProvider.getOrCreate({ connectionString: dbPath });
-    // DependencyService needs a client for project-scoped operations
-    // We'll create it lazily when needed
-  }
 
   /**
    * Start the worker: register, start heartbeat, and begin polling
    */
   async start(): Promise<void> {
-    if (!this.source) {
-      throw new Error("Worker not initialized. Call initialize() first.");
-    }
-
     // Determine worker name
     if (this.config.name) {
       this.state.workerName = this.config.name;
     } else {
-      this.state.workerName = this.source.workers.getNextWorkerName();
+      this.state.workerName = this.queue.getNextWorkerName();
     }
 
     // Check for existing claim (resume after reconnect)
-    const existingClaim = this.source.dispatchQueue.findClaimByWorker(this.state.workerId);
+    const existingClaim = this.queue.findClaimByWorker(this.state.workerId);
     if (existingClaim) {
       console.log(`Resuming existing claim: ${existingClaim.taskId}`);
       this.state.currentTaskId = existingClaim.taskId;
+      this.state.currentProjectSlug = existingClaim.projectSlug;
       this.state.status = "WORKING";
     }
 
     // Register worker with process ID (for killing stale workers)
-    this.source.workers.register(this.state.workerId, this.state.workerName, process.pid);
+    this.queue.registerWorker(this.state.workerId, this.state.workerName, process.pid);
     const autoClaimSuffix = this.config.autoClaim ? " [auto-claim enabled]" : "";
     console.log(
       `Worker registered: ${this.state.workerName} (${this.state.workerId.slice(0, 8)}...)${autoClaimSuffix}`
@@ -277,8 +281,8 @@ export class ClaudeWorkerService {
     this.startHeartbeat();
 
     // Start working or polling
-    if (this.state.currentTaskId) {
-      await this.workOnTask(this.state.currentTaskId);
+    if (this.state.currentTaskId && this.state.currentProjectSlug) {
+      await this.workOnTask(this.state.currentTaskId, this.state.currentProjectSlug);
     } else {
       this.startPolling();
     }
@@ -302,9 +306,9 @@ export class ClaudeWorkerService {
     }
 
     // Set DRAINING status
-    if (this.source && this.state.currentTaskId) {
+    if (this.state.currentTaskId) {
       this.state.status = "DRAINING";
-      this.source!.workers.updateStatus(this.state.workerId, "DRAINING");
+      this.queue.updateStatus(this.state.workerId, "DRAINING");
       console.log("Status: DRAINING (finishing current task)");
       this.updateTitle();
 
@@ -330,77 +334,16 @@ export class ClaudeWorkerService {
     }
 
     // Unregister worker
-    if (this.source) {
-      this.source!.workers.unregister(this.state.workerId);
-      console.log("Worker unregistered");
-    }
+    this.queue.unregisterWorker(this.state.workerId);
+    console.log("Worker unregistered");
 
-    // Close database
-    if (this.source) {
-      this.sourceProvider!.closeAll();
-    }
+    // Close queue database
+    this.queue.close();
+
+    // Close source provider
+    this.sourceProvider.closeAll();
 
     console.log("Shutdown complete");
-  }
-
-  // ==========================================================================
-  // Task Resolution Helpers
-  // ==========================================================================
-
-  /**
-   * Get issue number for a task by looking up the plan and issue
-   */
-  private getIssueNumber(taskId: string): number | null {
-    if (!this.source) {
-      return null;
-    }
-
-    const db = this.source.getDb();
-    const result = db
-      .select({ number: issues.number })
-      .from(tasks)
-      .innerJoin(plans, sql`${plans.id} = ${tasks.planId}`)
-      .innerJoin(issues, sql`${issues.id} = ${plans.issueId}`)
-      .where(sql`${tasks.id} = ${taskId}`)
-      .get();
-
-    return result?.number ?? null;
-  }
-
-  /**
-   * Get the project git root path for a task
-   */
-  private async getProjectPath(taskId: string): Promise<string | null> {
-    if (!this.source) {
-      return null;
-    }
-
-    const db = this.source.getDb();
-
-    const issueResult = db
-      .select({ projectId: issues.projectId })
-      .from(tasks)
-      .innerJoin(plans, sql`${plans.id} = ${tasks.planId}`)
-      .innerJoin(issues, sql`${issues.id} = ${plans.issueId}`)
-      .where(sql`${tasks.id} = ${taskId}`)
-      .get();
-
-    if (!issueResult?.projectId) {
-      return null;
-    }
-
-    const project = await this.source.projects.findById(issueResult.projectId);
-    if (!project) {
-      return null;
-    }
-
-    try {
-      const config = await resolveConfig(project.slug);
-      return config.gitRoot;
-    } catch {
-      console.error(`Failed to resolve project config for slug: ${project.slug}`);
-      return null;
-    }
   }
 
   // ==========================================================================
@@ -425,10 +368,7 @@ export class ClaudeWorkerService {
    */
   private startHeartbeat(): void {
     this.heartbeatInterval = setInterval(() => {
-      if (this.source) {
-        // Update heartbeat with PID (in case PID somehow changed, though unlikely)
-        this.source!.workers.updateHeartbeat(this.state.workerId, process.pid);
-      }
+      this.queue.updateHeartbeat(this.state.workerId, process.pid);
     }, this.config.heartbeatIntervalMs);
   }
 
@@ -452,21 +392,16 @@ export class ClaudeWorkerService {
   }
 
   /**
-   * Try to claim a task from the dispatch queue, or auto-claim if enabled
+   * Try to claim a task from the dispatch queue
    */
   private async tryClaimTask(): Promise<void> {
-    if (!this.source) {
-      return;
-    }
-
-    // First, try to claim from the dispatch queue (priority)
-    const claim = this.source!.dispatchQueue.claimTask(
-      this.state.workerId,
-      this.config.staleThresholdSeconds
-    );
+    // Try to claim from the dispatch queue
+    const claim = this.queue.claimTask(this.state.workerId, this.config.staleThresholdSeconds);
 
     if (claim) {
-      console.log(term.green(`Claimed from queue: ${claim.taskId}`));
+      console.log(
+        term.green(`Claimed from queue: ${claim.taskId} (project: ${claim.projectSlug})`)
+      );
 
       // Stop polling while working
       if (this.pollInterval) {
@@ -474,130 +409,42 @@ export class ClaudeWorkerService {
         this.pollInterval = null;
       }
 
-      await this.workOnTask(claim.taskId, "queue");
+      await this.workOnTask(claim.taskId, claim.projectSlug, "queue");
       return;
     }
 
-    // If no queued task and auto-claim is enabled, try to find a READY task
-    if (this.config.autoClaim) {
-      const autoClaimedTask = await this.tryAutoClaimTask();
-      if (autoClaimedTask) {
-        console.log(term.cyan(`Auto-claimed: ${autoClaimedTask.id}`));
-
-        // Stop polling while working
-        if (this.pollInterval) {
-          clearInterval(this.pollInterval);
-          this.pollInterval = null;
-        }
-
-        await this.workOnTask(autoClaimedTask.id, "auto-claim");
-      }
-    }
-  }
-
-  /**
-   * Try to auto-claim a READY task with satisfied dependencies
-   *
-   * Scans for READY tasks that:
-   * 1. Have all dependencies satisfied (COMPLETED or ABANDONED)
-   * 2. Are not already claimed by another session
-   * 3. Are not already in the dispatch queue
-   *
-   * When a task is auto-claimed, it's added to the dispatch queue so the
-   * claudeDone mechanism works correctly (end_worker_session sets claudeDone
-   * flag which the worker polls for to know when to terminate).
-   *
-   * @returns The claimed task, or null if none available
-   */
-  private async tryAutoClaimTask(): Promise<Task | null> {
-    if (!this.source) {
-      return null;
-    }
-
-    // Get all task IDs currently in the dispatch queue
-    const db = this.source.getDb();
-
-    // Find READY tasks that are not already in the dispatch queue and have no session
-    const readyTasks = db
-      .select()
-      .from(tasks)
-      .where(sql`${tasks.status} = 'READY' AND ${tasks.isDeleted} = 0`)
-      .all() as Task[];
-    const queuedTaskIds = new Set(
-      db
-        .select({ taskId: dispatchQueue.taskId })
-        .from(dispatchQueue)
-        .all()
-        .map((r) => r.taskId)
-    );
-
-    // Filter for claimable tasks
-    for (const task of readyTasks) {
-      // Skip if already in dispatch queue
-      if (queuedTaskIds.has(task.id)) {
-        continue;
-      }
-
-      // Skip if already claimed by another session
-      if (task.sessionId) {
-        continue;
-      }
-
-      // Skip if dependencies are not satisfied
-      // Dependencies are satisfied when all dependent tasks are COMPLETED or ABANDONED
-      if (task.dependsOn && task.dependsOn.length > 0) {
-        const depTasks = db
-          .select()
-          .from(tasks)
-          .where(sql`${tasks.id} IN (${task.dependsOn.map((id) => `'${id}'`).join(",")})`)
-          .all() as Task[];
-
-        const allSatisfied =
-          depTasks.length === task.dependsOn.length &&
-          depTasks.every((d) => d.status === "COMPLETED" || d.status === "ABANDONED");
-
-        if (!allSatisfied) {
-          continue;
-        }
-      }
-
-      // Found a claimable task - add to dispatch queue and claim atomically
-      // First, enqueue the task (idempotent - returns existing if already queued)
-      this.source!.dispatchQueue.enqueue(task.id);
-
-      // Then claim it from the queue using the standard mechanism
-      const claim = this.source!.dispatchQueue.claimTask(
-        this.state.workerId,
-        this.config.staleThresholdSeconds
-      );
-
-      if (!claim || claim.taskId !== task.id) {
-        // Lost the race or got a different task, try the next one
-        continue;
-      }
-
-      // Return the task (status will be updated by load_task_session when Claude runs)
-      return this.findTaskById(task.id);
-    }
-
-    return null;
+    // TODO: If auto-claim is enabled, we'd need to query across all projects
+    // For now, auto-claim only works via the dispatch queue
   }
 
   /**
    * Work on a claimed task by spawning a Claude process
    *
    * @param taskId - ID of the task to work on
+   * @param projectSlug - Project slug from queue entry
    * @param claimSource - How the task was claimed: 'queue' or 'auto-claim'
    */
-  private async workOnTask(taskId: string, claimSource: ClaimSource = "queue"): Promise<void> {
-    if (!this.source) {
+  private async workOnTask(
+    taskId: string,
+    projectSlug: string,
+    claimSource: ClaimSource = "queue"
+  ): Promise<void> {
+    // Resolve project config
+    let projectInfo;
+    try {
+      projectInfo = await this.projectsResolver.getProjectBySlug(projectSlug);
+    } catch (error) {
+      console.error(`Failed to resolve project: ${projectSlug}`, error);
+      await this.releaseTask(taskId);
       return;
     }
 
-    // Update state
+    // Connect to tracking database
+    this.currentSource = this.sourceProvider.getOrCreate(projectInfo.sourceInfo);
     this.state.currentTaskId = taskId;
+    this.state.currentProjectSlug = projectSlug;
     this.state.status = "WORKING";
-    this.source!.workers.updateStatus(this.state.workerId, "WORKING");
+    this.queue.updateStatus(this.state.workerId, "WORKING");
     this.updateTitle();
 
     // Get task details
@@ -613,22 +460,13 @@ export class ClaudeWorkerService {
     const sourceLabel = claimSource === "auto-claim" ? " (auto-claimed)" : "";
 
     console.log(`Working on task #${issueNumber}.${taskNumber}: ${task.title}${sourceLabel}`);
-
-    // Get project path for cwd
-    const projectPath = await this.getProjectPath(taskId);
-    if (!projectPath) {
-      console.error(`Could not resolve project path for task: ${taskId}`);
-      await this.releaseTask(taskId);
-      return;
-    }
-
-    console.log(`Project path: ${projectPath}`);
+    console.log(`Project: ${projectSlug} (${projectInfo.gitRoot})`);
 
     // Build the prompt for Claude
     const prompt = this.buildClaudePrompt(taskId, issueNumber, taskNumber);
 
-    // Spawn Claude process
-    await this.spawnClaudeSession(taskId, prompt, projectPath);
+    // Spawn Claude process with project gitRoot as cwd
+    await this.spawnClaudeSession(taskId, prompt, projectInfo.gitRoot);
   }
 
   /**
@@ -689,10 +527,6 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
       let sessionEnded = false;
 
       this.taskWatchInterval = setInterval(() => {
-        if (!this.source) {
-          return;
-        }
-
         const task = this.findTaskById(taskId);
         if (!task) {
           console.log(term.red("\nTask no longer exists, ending session..."));
@@ -704,8 +538,7 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
         this.updateTitle();
 
         // Check for claudeDone flag from the dispatch queue
-        // This is the ONLY way the session should end - when Claude explicitly signals completion
-        const queueEntry = this.source!.dispatchQueue.findByTaskId(taskId);
+        const queueEntry = this.queue.findByTaskId(taskId);
         if (queueEntry?.claudeDone) {
           if (!sessionEnded) {
             sessionEnded = true;
@@ -758,7 +591,6 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
 
   /**
    * Terminate the Claude session
-   * Called when claudeDone flag is received (Claude called end_worker_session)
    */
   private terminateSession(claudeProcess: ChildProcess, finalStatus: string): void {
     console.log(term.green(`\n✓ Task ${finalStatus}! Terminating session...`));
@@ -772,36 +604,30 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
 
   /**
    * Release a task from the dispatch queue and return to polling
-   *
-   * Only removes from queue if task is in terminal state.
-   * If task is still in progress, leaves it in WORKING status - staleness
-   * mechanism will allow another worker to reclaim if this worker dies.
    */
   private async releaseTask(taskId: string): Promise<void> {
-    if (this.source) {
-      const task = this.findTaskById(taskId);
-      const isTerminal = task?.status === "COMPLETED" || task?.status === "ABANDONED";
+    const task = this.findTaskById(taskId);
+    const isTerminal = task?.status === "COMPLETED" || task?.status === "ABANDONED";
 
-      if (isTerminal) {
-        this.source!.dispatchQueue.remove(taskId);
-        console.log(`Task ${task?.status}, removed from queue: ${taskId}`);
-      } else {
-        // Leave in queue as WORKING - staleness will allow re-claim if worker dies
-        console.log(
-          `Task ${task?.status ?? "unknown"}, leaving in queue for potential re-claim: ${taskId}`
-        );
-      }
+    if (isTerminal) {
+      this.queue.remove(taskId);
+      console.log(`Task ${task?.status}, removed from queue: ${taskId}`);
+    } else {
+      // Leave in queue as WORKING - staleness will allow re-claim if worker dies
+      console.log(
+        `Task ${task?.status ?? "unknown"}, leaving in queue for potential re-claim: ${taskId}`
+      );
     }
 
     // Reset state
     this.state.currentTaskId = null;
+    this.state.currentProjectSlug = null;
+    this.currentSource = null;
 
     // Only reset to IDLE if not draining
     if (this.state.status !== "DRAINING") {
       this.state.status = "IDLE";
-      if (this.source) {
-        this.source!.workers.updateStatus(this.state.workerId, "IDLE");
-      }
+      this.queue.updateStatus(this.state.workerId, "IDLE");
     }
 
     this.updateTitle();
