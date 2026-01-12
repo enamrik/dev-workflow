@@ -16,11 +16,6 @@ import type { Task, TaskStatus } from "../domain/task.js";
 import type { Issue } from "../domain/issue.js";
 import type { GitHubSyncState } from "../domain/github.js";
 import type { ProjectManagementProvider } from "../domain/project-management-provider.js";
-import {
-  DEFAULT_COLUMN_MAPPING,
-  type GitHubIssueSyncConfig,
-  type LabelFieldMapping,
-} from "../infrastructure/database/schema.js";
 import type { DbClient } from "../domain/db-client.js";
 import type { DbSource } from "../domain/db-source.js";
 import type { TemplateService } from "../infrastructure/templates/template-service.js";
@@ -94,9 +89,9 @@ export class TaskSyncService {
   private readonly db: DbClient;
 
   constructor(
-    private readonly source: DbSource,
+    source: DbSource,
     private readonly provider: ProjectManagementProvider,
-    private readonly projectId: string,
+    projectId: string,
     private readonly templateService?: TemplateService,
     private readonly typeService?: TypeService
   ) {
@@ -104,19 +99,10 @@ export class TaskSyncService {
   }
 
   /**
-   * Get fresh GitHub sync config from the database
+   * Check if sync is currently enabled
    */
-  private async getConfig(): Promise<GitHubIssueSyncConfig | null> {
-    const project = await this.source.projects.findById(this.projectId);
-    return project?.githubSync ?? null;
-  }
-
-  /**
-   * Check if GitHub sync is currently enabled
-   */
-  async isEnabled(): Promise<boolean> {
-    const config = await this.getConfig();
-    return config?.enabled ?? false;
+  isEnabled(): boolean {
+    return this.provider.isEnabled();
   }
 
   /**
@@ -176,8 +162,8 @@ export class TaskSyncService {
       };
     }
 
-    const config = await this.getConfig();
     const results: TaskActivationResult[] = [];
+    const syncEnabled = this.provider.isEnabled();
 
     // Check if this is an imported issue
     const isImportedIssue = issue.sourceGitHubIssueNumber !== undefined;
@@ -185,7 +171,7 @@ export class TaskSyncService {
     // Process each PLANNED task
     for (const task of plannedTasks) {
       try {
-        if (config?.enabled) {
+        if (syncEnabled) {
           let syncState: GitHubSyncState;
 
           if (isImportedIssue) {
@@ -212,10 +198,10 @@ export class TaskSyncService {
           taskId: task.id,
           taskNumber: task.number,
           success: true,
-          githubIssueNumber: config?.enabled
+          githubIssueNumber: syncEnabled
             ? (this.db.tasks.findById(task.id)?.githubSync?.githubIssueNumber ?? undefined)
             : undefined,
-          githubUrl: config?.enabled
+          githubUrl: syncEnabled
             ? (this.db.tasks.findById(task.id)?.githubSync?.githubUrl ?? undefined)
             : undefined,
         });
@@ -286,43 +272,35 @@ export class TaskSyncService {
       throw new TaskSyncError(`Parent GitHub issue #${parentIssueNumber} not found`);
     }
 
-    const config = (await this.getConfig())!;
+    const projectId = this.provider.getProjectId();
 
     // Add to project if configured
     let projectItemId: string | null = null;
-    if (config.projectId && parentIssue.nodeId) {
+    if (projectId && parentIssue.nodeId) {
       try {
-        const result = await this.provider.addToProject(parentIssue.nodeId, config.projectId);
+        const result = await this.provider.addToProject(parentIssue.nodeId, projectId);
 
         if (!result.success || !result.itemId) {
           throw new TaskSyncError(
-            result.error ??
-              `Project association returned empty item ID for project ${config.projectId}`
+            result.error ?? `Project association returned empty item ID for project ${projectId}`
           );
         }
 
         projectItemId = result.itemId;
 
         // Move to Backlog column
-        await this.provider.moveToColumn(projectItemId, config.projectId, "Backlog");
+        await this.provider.moveToColumn(projectItemId, projectId, "Backlog");
 
         // Sync task labels to project custom fields (if mapping configured)
-        if (config.labelFieldMapping && task.labels) {
-          await this.syncLabelsToProjectFields(
-            projectItemId,
-            config.projectId,
-            task.labels,
-            config.labelFieldMapping
-          );
+        const labelFieldMapping = this.provider.getLabelFieldMapping();
+        if (labelFieldMapping && task.labels) {
+          await this.syncLabelsToProjectFields(projectItemId, projectId, task.labels, labelFieldMapping);
         }
       } catch (error) {
         if (error instanceof TaskSyncError) {
           throw error;
         }
-        throw new TaskSyncError(
-          `Failed to add parent issue to GitHub Project ${config.projectId}`,
-          error
-        );
+        throw new TaskSyncError(`Failed to add parent issue to GitHub Project ${projectId}`, error);
       }
     }
 
@@ -373,8 +351,7 @@ export class TaskSyncService {
    * @returns The GitHub sync state for the task
    */
   async createGitHubIssueForTask(issue: Issue, task: Task): Promise<GitHubSyncState> {
-    const config = await this.getConfig();
-    if (!config?.enabled) {
+    if (!this.provider.isEnabled()) {
       throw new TaskSyncError("GitHub sync is not enabled");
     }
 
@@ -386,7 +363,7 @@ export class TaskSyncService {
     const body = await this.buildTaskBody(issue, task);
 
     // Build labels using task type (for GitHub label mapping)
-    const labels = await this.buildLabels(config, task.type);
+    const labels = await this.buildLabels(task.type);
 
     // Ensure labels exist on the repo
     await this.provider.ensureLabelsExist(labels);
@@ -395,37 +372,33 @@ export class TaskSyncService {
     const externalIssue = await this.provider.createIssue({ title, body, labels });
 
     // Add to project if configured
+    const projectId = this.provider.getProjectId();
     let projectItemId: string | null = null;
-    if (config.projectId && externalIssue.nodeId) {
+    if (projectId && externalIssue.nodeId) {
       try {
-        const result = await this.provider.addToProject(externalIssue.nodeId, config.projectId);
+        const result = await this.provider.addToProject(externalIssue.nodeId, projectId);
 
         if (!result.success || !result.itemId) {
           throw new TaskSyncError(
-            result.error ??
-              `Project association returned empty item ID for project ${config.projectId}`
+            result.error ?? `Project association returned empty item ID for project ${projectId}`
           );
         }
 
         projectItemId = result.itemId;
 
         // Move to Backlog column (initial status for activated tasks)
-        await this.provider.moveToColumn(projectItemId, config.projectId, "Backlog");
+        await this.provider.moveToColumn(projectItemId, projectId, "Backlog");
 
         // Sync task labels to project custom fields (if mapping configured)
-        if (config.labelFieldMapping && task.labels) {
-          await this.syncLabelsToProjectFields(
-            projectItemId,
-            config.projectId,
-            task.labels,
-            config.labelFieldMapping
-          );
+        const labelFieldMapping = this.provider.getLabelFieldMapping();
+        if (labelFieldMapping && task.labels) {
+          await this.syncLabelsToProjectFields(projectItemId, projectId, task.labels, labelFieldMapping);
         }
       } catch (error) {
         if (error instanceof TaskSyncError) {
           throw error;
         }
-        throw new TaskSyncError(`Failed to add task to GitHub Project ${config.projectId}`, error);
+        throw new TaskSyncError(`Failed to add task to GitHub Project ${projectId}`, error);
       }
     }
 
@@ -459,38 +432,18 @@ export class TaskSyncService {
       return;
     }
 
-    const config = await this.getConfig();
-    if (!config?.enabled) {
-      return;
-    }
-
-    let syncError: string | null = null;
-
-    // Handle terminal states - close the GitHub issue (provider handles sync check internally)
+    // Handle terminal states - close the GitHub issue
     if (newStatus === "COMPLETED" || newStatus === "ABANDONED") {
       await this.provider.closeIssueByTask(task);
     }
 
-    // Move in project kanban if configured
-    if (config.projectId && task.githubSync.projectItemId) {
-      const columnName = this.getColumnNameForStatus(config, newStatus);
-      try {
-        await this.provider.moveToColumn(
-          task.githubSync.projectItemId,
-          config.projectId,
-          columnName
-        );
-      } catch (error) {
-        syncError = `Failed to move to column ${columnName}: ${error instanceof Error ? error.message : String(error)}`;
-        console.warn(syncError);
-      }
-    }
+    // Move in project kanban - provider handles null itemId and errors gracefully
+    await this.provider.moveItemToStatusColumn(task.githubSync.projectItemId, newStatus);
 
-    // Update sync state - record any errors
+    // Update sync state
     this.db.tasks.updateGitHubSync(taskId, {
       ...task.githubSync,
       lastSyncedAt: new Date().toISOString(),
-      lastSyncError: syncError,
     });
   }
 
@@ -505,24 +458,15 @@ export class TaskSyncService {
   async assignIssue(taskId: string): Promise<void> {
     const task = this.db.tasks.findById(taskId);
     if (!task?.githubSync?.githubIssueNumber) {
-      // Task doesn't have GitHub sync - nothing to do
       return;
     }
-
-    const config = await this.getConfig();
-    if (!config?.enabled || !config.assignee) {
-      // No assignee configured - nothing to do
-      return;
-    }
-
-    const githubNumber = task.githubSync.githubIssueNumber;
 
     try {
-      await this.provider.assignIssue(String(githubNumber), config.assignee);
+      await this.provider.assignIssueToConfiguredUser(String(task.githubSync.githubIssueNumber));
     } catch (error) {
       // Log but don't fail - assignment is best effort
       console.warn(
-        `Failed to assign GitHub issue #${githubNumber} to ${config.assignee}: ${error instanceof Error ? error.message : String(error)}`
+        `Failed to assign issue: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
@@ -535,11 +479,6 @@ export class TaskSyncService {
    * @param taskIds - Array of task UUIDs that were abandoned
    */
   async closeAbandonedTaskIssues(taskIds: string[]): Promise<void> {
-    const config = await this.getConfig();
-    if (!config?.enabled) {
-      return;
-    }
-
     for (const taskId of taskIds) {
       const task = this.db.tasks.findById(taskId);
       if (task?.githubSync?.githubIssueNumber) {
@@ -600,22 +539,6 @@ export class TaskSyncService {
       };
     }
 
-    const config = await this.getConfig();
-    if (!config?.enabled) {
-      return {
-        success: false,
-        issueNumber,
-        tasksProcessed: 0,
-        created: [],
-        linked: [],
-        verified: [],
-        skipped: [],
-        errors: [
-          { taskId: "", taskNumber: 0, action: "skipped", error: "GitHub sync is not enabled" },
-        ],
-      };
-    }
-
     const plan = this.db.plans.findByIssueId(issue.id);
     if (!plan) {
       return {
@@ -672,13 +595,7 @@ export class TaskSyncService {
 
     for (const task of tasksToSync) {
       try {
-        const result = await this.syncTask(
-          issue,
-          task,
-          tasksToSync.length,
-          isImportedIssue,
-          config
-        );
+        const result = await this.syncTask(issue, task, tasksToSync.length, isImportedIssue);
 
         switch (result.action) {
           case "created":
@@ -724,15 +641,13 @@ export class TaskSyncService {
    * @param task - The task to sync
    * @param totalTaskCount - Total number of tasks being synced (for imported issue logic)
    * @param isImportedIssue - Whether the issue was imported from GitHub
-   * @param config - GitHub sync config
    * @returns Sync result for this task
    */
   private async syncTask(
     issue: Issue,
     task: Task,
     totalTaskCount: number,
-    isImportedIssue: boolean,
-    config: GitHubIssueSyncConfig
+    isImportedIssue: boolean
   ): Promise<TaskSyncResult> {
     // Case 1: Task already has GitHub sync - verify it exists
     if (task.githubSync?.githubIssueNumber) {
@@ -740,7 +655,7 @@ export class TaskSyncService {
 
       if (existingIssue) {
         // Issue exists - verify project state and return verified
-        await this.ensureProjectState(task, config);
+        await this.ensureProjectState(task);
 
         return {
           taskId: task.id,
@@ -774,7 +689,7 @@ export class TaskSyncService {
 
     if (matchingIssue) {
       // Found existing issue - link it
-      const syncState = await this.linkExistingGitHubIssue(matchingIssue, task, config);
+      const syncState = await this.linkExistingGitHubIssue(matchingIssue, task);
       this.db.tasks.updateGitHubSync(task.id, syncState);
 
       return {
@@ -797,11 +712,8 @@ export class TaskSyncService {
 
     this.db.tasks.updateGitHubSync(task.id, syncState);
 
-    // Move to correct column based on current task status
-    if (syncState.projectItemId && config.projectId) {
-      const columnName = this.getColumnNameForStatus(config, task.status);
-      await this.provider.moveToColumn(syncState.projectItemId, config.projectId, columnName);
-    }
+    // Move to correct column based on current task status - provider handles null gracefully
+    await this.provider.moveItemToStatusColumn(syncState.projectItemId, task.status);
 
     return {
       taskId: task.id,
@@ -817,33 +729,32 @@ export class TaskSyncService {
    *
    * @param externalIssue - The existing external issue data
    * @param task - The task to link
-   * @param config - GitHub sync config
    * @returns The GitHub sync state for the task
    */
   private async linkExistingGitHubIssue(
     externalIssue: { id: string; numericId?: number; url: string; nodeId?: string },
-    task: Task,
-    config: GitHubIssueSyncConfig
+    task: Task
   ): Promise<GitHubSyncState> {
     // Add to project if configured
+    const projectId = this.provider.getProjectId();
     let projectItemId: string | null = null;
-    if (config.projectId && externalIssue.nodeId) {
+    if (projectId && externalIssue.nodeId) {
       try {
-        const result = await this.provider.addToProject(externalIssue.nodeId, config.projectId);
+        const result = await this.provider.addToProject(externalIssue.nodeId, projectId);
 
         // Move to correct column based on task status
         if (result.success && result.itemId) {
           projectItemId = result.itemId;
-          const columnName = this.getColumnNameForStatus(config, task.status);
-          await this.provider.moveToColumn(projectItemId, config.projectId, columnName);
+          await this.provider.moveItemToStatusColumn(projectItemId, task.status);
 
           // Sync task labels to project custom fields (if mapping configured)
-          if (config.labelFieldMapping && task.labels) {
+          const labelFieldMapping = this.provider.getLabelFieldMapping();
+          if (labelFieldMapping && task.labels) {
             await this.syncLabelsToProjectFields(
               projectItemId,
-              config.projectId,
+              projectId,
               task.labels,
-              config.labelFieldMapping
+              labelFieldMapping
             );
           }
         }
@@ -870,10 +781,10 @@ export class TaskSyncService {
    * Ensure a task's GitHub issue is in the correct project state
    *
    * @param task - The task with existing GitHub sync
-   * @param config - GitHub sync config
    */
-  private async ensureProjectState(task: Task, config: GitHubIssueSyncConfig): Promise<void> {
-    if (!config.projectId || !task.githubSync) {
+  private async ensureProjectState(task: Task): Promise<void> {
+    const projectId = this.provider.getProjectId();
+    if (!projectId || !task.githubSync) {
       return;
     }
 
@@ -882,7 +793,7 @@ export class TaskSyncService {
       try {
         const result = await this.provider.addToProject(
           task.githubSync.githubNodeId,
-          config.projectId
+          projectId
         );
 
         if (result.success && result.itemId) {
@@ -894,16 +805,16 @@ export class TaskSyncService {
           });
 
           // Move to correct column
-          const columnName = this.getColumnNameForStatus(config, task.status);
-          await this.provider.moveToColumn(result.itemId, config.projectId, columnName);
+          await this.provider.moveItemToStatusColumn(result.itemId, task.status);
 
           // Sync task labels to project custom fields (if mapping configured)
-          if (config.labelFieldMapping && task.labels) {
+          const labelFieldMapping = this.provider.getLabelFieldMapping();
+          if (labelFieldMapping && task.labels) {
             await this.syncLabelsToProjectFields(
               result.itemId,
-              config.projectId,
+              projectId,
               task.labels,
-              config.labelFieldMapping
+              labelFieldMapping
             );
           }
         }
@@ -914,16 +825,16 @@ export class TaskSyncService {
       }
     } else if (task.githubSync.projectItemId) {
       // Already has project item - ensure correct column and labels
-      const columnName = this.getColumnNameForStatus(config, task.status);
-      await this.provider.moveToColumn(task.githubSync.projectItemId, config.projectId, columnName);
+      await this.provider.moveItemToStatusColumn(task.githubSync.projectItemId, task.status);
 
       // Sync task labels to project custom fields (if mapping configured)
-      if (config.labelFieldMapping && task.labels) {
+      const labelFieldMapping = this.provider.getLabelFieldMapping();
+      if (labelFieldMapping && task.labels) {
         await this.syncLabelsToProjectFields(
           task.githubSync.projectItemId,
-          config.projectId,
+          projectId,
           task.labels,
-          config.labelFieldMapping
+          labelFieldMapping
         );
       }
     }
@@ -1025,11 +936,10 @@ export class TaskSyncService {
    * Uses TypeService to look up the remote label for the task type.
    * Falls back to lowercase type name if no explicit remoteLabel is configured.
    *
-   * @param config - GitHub sync config (for custom labels)
    * @param taskType - The task's type (e.g., "FEATURE", "BUG")
    * @returns Array of labels to apply to the GitHub issue
    */
-  private async buildLabels(config: GitHubIssueSyncConfig, taskType: string): Promise<string[]> {
+  private async buildLabels(taskType: string): Promise<string[]> {
     const labels: string[] = [];
 
     // Look up the remote label for this task type via TypeService
@@ -1054,31 +964,14 @@ export class TaskSyncService {
 
     labels.push(typeLabel);
 
-    // Add custom labels from config
-    if (config.labels?.customLabels) {
-      labels.push(...config.labels.customLabels);
-    }
+    // Add custom labels from provider config
+    const customLabels = this.provider.getCustomLabels();
+    labels.push(...customLabels);
 
     // Add a "task" label to distinguish task issues from regular issues
     labels.push("task");
 
     return labels;
-  }
-
-  /**
-   * Get the column name for a task status using configured mapping
-   *
-   * @param config - GitHub sync config with optional column mapping
-   * @param status - The task status to map
-   * @returns The column name for the status
-   */
-  private getColumnNameForStatus(config: GitHubIssueSyncConfig, status: TaskStatus): string {
-    const configuredMapping = config.columnMapping ?? {};
-    const columnMapping: Record<TaskStatus, string> = {
-      ...DEFAULT_COLUMN_MAPPING,
-      ...configuredMapping,
-    };
-    return columnMapping[status];
   }
 
   /**
@@ -1099,7 +992,7 @@ export class TaskSyncService {
     projectItemId: string,
     projectId: string,
     labels: Record<string, string> | undefined | null,
-    labelFieldMapping: LabelFieldMapping
+    labelFieldMapping: Record<string, string>
   ): Promise<void> {
     if (!labels || Object.keys(labels).length === 0) {
       return;

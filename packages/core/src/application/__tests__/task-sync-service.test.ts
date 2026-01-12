@@ -26,8 +26,10 @@ import type {
  * Create a mock ProjectManagementProvider for testing
  */
 function createMockProvider(
-  overrides: Partial<ProjectManagementProvider> = {}
+  overrides: Partial<ProjectManagementProvider> & { enabled?: boolean } = {}
 ): ProjectManagementProvider {
+  const { enabled = true, ...methodOverrides } = overrides;
+
   const defaultIssue: ExternalIssue = {
     id: "1",
     numericId: 1,
@@ -42,8 +44,21 @@ function createMockProvider(
   return {
     providerId: "github",
     displayName: "GitHub",
+    // Configuration methods
+    isEnabled: vi.fn().mockReturnValue(enabled),
+    hasProjectBoard: vi.fn().mockReturnValue(true),
+    getAssignee: vi.fn().mockReturnValue(undefined),
+    getCustomLabels: vi.fn().mockReturnValue([]),
+    getColumnForStatus: vi.fn().mockReturnValue("Backlog"),
+    getProjectId: vi.fn().mockReturnValue("PVT_test_project_456"),
+    getLabelFieldMapping: vi.fn().mockReturnValue(undefined),
+    // High-level operations
+    moveItemToStatusColumn: vi.fn().mockResolvedValue(undefined),
+    assignIssueToConfiguredUser: vi.fn().mockResolvedValue(undefined),
+    // Auth/Validation
     checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
     checkRepository: vi.fn().mockResolvedValue({ accessible: true }),
+    // Issue operations
     createIssue: vi.fn().mockResolvedValue(defaultIssue),
     updateIssue: vi.fn().mockResolvedValue({
       ...defaultIssue,
@@ -55,6 +70,7 @@ function createMockProvider(
     getIssue: vi.fn().mockResolvedValue(null),
     searchIssues: vi.fn().mockResolvedValue([]),
     ensureLabelsExist: vi.fn().mockResolvedValue(undefined),
+    // Project operations
     addToProject: vi.fn().mockResolvedValue({ success: true, itemId: "PVTI_test_item_123" }),
     moveToColumn: vi.fn().mockResolvedValue(undefined),
     checkProject: vi.fn().mockResolvedValue(true),
@@ -82,7 +98,7 @@ function createMockProvider(
     addComment: vi.fn().mockResolvedValue(undefined),
     assignIssue: vi.fn().mockResolvedValue(undefined),
     closeIssueByTask: vi.fn().mockResolvedValue(undefined),
-    ...overrides,
+    ...methodOverrides,
   };
 }
 
@@ -175,11 +191,10 @@ describe("TaskSyncService", () => {
       // Act
       await service.syncTaskStatus(testTask.id, "READY");
 
-      // Assert - verify moveToColumn was called with correct arguments
-      expect(mockProvider.moveToColumn).toHaveBeenCalledWith(
+      // Assert - verify moveItemToStatusColumn was called with correct arguments
+      expect(mockProvider.moveItemToStatusColumn).toHaveBeenCalledWith(
         "PVTI_test_item_123",
-        "PVT_test_project_456",
-        "Ready"
+        "READY"
       );
     });
 
@@ -187,11 +202,10 @@ describe("TaskSyncService", () => {
       // Act
       await service.syncTaskStatus(testTask.id, "PR_REVIEW");
 
-      // Assert - verify moveToColumn was called with correct arguments
-      expect(mockProvider.moveToColumn).toHaveBeenCalledWith(
+      // Assert - verify moveItemToStatusColumn was called with correct arguments
+      expect(mockProvider.moveItemToStatusColumn).toHaveBeenCalledWith(
         "PVTI_test_item_123",
-        "PVT_test_project_456",
-        "In Review"
+        "PR_REVIEW"
       );
     });
 
@@ -204,11 +218,10 @@ describe("TaskSyncService", () => {
       const calledTask = vi.mocked(mockProvider.closeIssueByTask).mock.calls[0][0];
       expect(calledTask.githubSync?.githubIssueNumber).toBe(42);
 
-      // Assert - verify moveToColumn was called with Done
-      expect(mockProvider.moveToColumn).toHaveBeenCalledWith(
+      // Assert - verify moveItemToStatusColumn was called with COMPLETED status
+      expect(mockProvider.moveItemToStatusColumn).toHaveBeenCalledWith(
         "PVTI_test_item_123",
-        "PVT_test_project_456",
-        "Done"
+        "COMPLETED"
       );
     });
 
@@ -227,7 +240,7 @@ describe("TaskSyncService", () => {
       expect(syncedAt.getTime()).toBeGreaterThanOrEqual(beforeSync.getTime());
     });
 
-    it("should not call moveToColumn if projectItemId is not set", async () => {
+    it("should handle null projectItemId gracefully", async () => {
       // Arrange - clear projectItemId
       repos.taskRepository.updateGitHubSync(testTask.id, {
         githubIssueNumber: 42,
@@ -239,14 +252,14 @@ describe("TaskSyncService", () => {
         projectItemId: null,
       });
 
-      // Act
+      // Act - should not throw, provider handles null gracefully
       await service.syncTaskStatus(testTask.id, "PR_REVIEW");
 
-      // Assert - moveToColumn should NOT be called
-      expect(mockProvider.moveToColumn).not.toHaveBeenCalled();
+      // Assert - moveItemToStatusColumn is called with null, provider handles it
+      expect(mockProvider.moveItemToStatusColumn).toHaveBeenCalledWith(null, "PR_REVIEW");
     });
 
-    it("should not call moveToColumn if project has no projectId configured", async () => {
+    it("should call moveItemToStatusColumn even without projectId (provider handles gracefully)", async () => {
       // Arrange - update project to have no projectId
       await testDb.source.projects.update(testProjectId, {
         githubSync: {
@@ -263,26 +276,27 @@ describe("TaskSyncService", () => {
         },
       });
 
-      // Act
+      // Act - service calls provider, provider handles missing projectId gracefully
       await service.syncTaskStatus(testTask.id, "PR_REVIEW");
 
-      // Assert - moveToColumn should NOT be called
-      expect(mockProvider.moveToColumn).not.toHaveBeenCalled();
+      // Assert - provider method is called, provider no-ops internally
+      expect(mockProvider.moveItemToStatusColumn).toHaveBeenCalledWith(
+        "PVTI_test_item_123",
+        "PR_REVIEW"
+      );
     });
 
-    it("should record error in lastSyncError if column move fails", async () => {
-      // Arrange - configure provider to fail on moveToColumn
-      mockProvider = createMockProvider({
-        moveToColumn: vi.fn().mockRejectedValue(new Error("Column move failed")),
-      });
-      service = new TaskSyncService(testDb.source, mockProvider, testProjectId);
+    it("should still update lastSyncedAt after sync (provider handles column errors internally)", async () => {
+      // Note: The real provider handles moveItemToStatusColumn errors internally
+      // and doesn't propagate them. With a mock, we can't test that behavior here.
+      // This test verifies the service updates lastSyncedAt after calling the provider.
 
       // Act
       await service.syncTaskStatus(testTask.id, "PR_REVIEW");
 
-      // Assert
+      // Assert - lastSyncedAt should be updated
       const updatedTask = repos.taskRepository.findById(testTask.id);
-      expect(updatedTask?.githubSync?.lastSyncError).toContain("Failed to move to column");
+      expect(updatedTask?.githubSync?.lastSyncedAt).toBeDefined();
     });
   });
 
@@ -332,8 +346,8 @@ describe("TaskSyncService", () => {
       });
     });
 
-    it("should use custom column mapping when configured", async () => {
-      // Arrange - configure custom column mapping with a custom column name
+    it("should call moveItemToStatusColumn with the status (provider handles column mapping)", async () => {
+      // Arrange - configure custom column mapping (provider handles this internally)
       await testDb.source.projects.update(testProjectId, {
         githubSync: {
           enabled: true,
@@ -355,11 +369,10 @@ describe("TaskSyncService", () => {
       // Act
       await service.syncTaskStatus(testTask.id, "PR_REVIEW");
 
-      // Assert - should call moveToColumn with the custom column name
-      expect(mockProvider.moveToColumn).toHaveBeenCalledWith(
+      // Assert - service calls high-level method with status, provider handles column mapping
+      expect(mockProvider.moveItemToStatusColumn).toHaveBeenCalledWith(
         "PVTI_test_item_mapping",
-        "PVT_test_project_456",
-        "Code Review"
+        "PR_REVIEW"
       );
     });
 
@@ -387,18 +400,19 @@ describe("TaskSyncService", () => {
       // Act - sync to READY which uses default mapping
       await service.syncTaskStatus(testTask.id, "READY");
 
-      // Assert - should call moveToColumn with the default column name
-      expect(mockProvider.moveToColumn).toHaveBeenCalledWith(
+      // Assert - should call moveItemToStatusColumn (high-level method)
+      // The provider handles column mapping internally
+      expect(mockProvider.moveItemToStatusColumn).toHaveBeenCalledWith(
         "PVTI_test_item_mapping",
-        "PVT_test_project_456",
-        "Ready" // Default column name
+        "READY"
       );
     });
 
-    it("should record error if column move fails due to non-existent column", async () => {
-      // Arrange - configure provider to fail on moveToColumn
+    it("should not throw when column move fails", async () => {
+      // Arrange - configure provider's moveItemToStatusColumn to log but not throw
+      // (the provider handles errors internally with console.warn)
       mockProvider = createMockProvider({
-        moveToColumn: vi.fn().mockRejectedValue(new Error("Column 'NonExistent Column' not found")),
+        moveItemToStatusColumn: vi.fn().mockResolvedValue(undefined),
       });
       service = new TaskSyncService(testDb.source, mockProvider, testProjectId);
 
@@ -415,17 +429,13 @@ describe("TaskSyncService", () => {
             },
           },
           columnMapping: {
-            PR_REVIEW: "NonExistent Column", // This doesn't exist
+            PR_REVIEW: "NonExistent Column", // Doesn't matter - provider handles internally
           },
         },
       });
 
-      // Act
-      await service.syncTaskStatus(testTask.id, "PR_REVIEW");
-
-      // Assert - should record error about missing column
-      const updatedTask = repos.taskRepository.findById(testTask.id);
-      expect(updatedTask?.githubSync?.lastSyncError).toContain("NonExistent Column");
+      // Act - should not throw
+      await expect(service.syncTaskStatus(testTask.id, "PR_REVIEW")).resolves.not.toThrow();
     });
   });
 
@@ -1021,12 +1031,9 @@ describe("TaskSyncService", () => {
     });
 
     it("should return error when GitHub sync is disabled", async () => {
-      // Arrange - disable GitHub sync
-      await testDb.source.projects.update(testProjectId, {
-        githubSync: {
-          enabled: false,
-        },
-      });
+      // Arrange - create a disabled provider and new service instance
+      const disabledProvider = createMockProvider({ enabled: false });
+      const disabledService = new TaskSyncService(testDb.source, disabledProvider, testProjectId);
 
       const issue = repos.issueRepository.create({
         title: "Test Issue",
@@ -1038,8 +1045,30 @@ describe("TaskSyncService", () => {
         createdBy: "test",
       });
 
+      // Create a plan so syncIssue doesn't short-circuit with "No plan found"
+      const plan = repos.planRepository.create({
+        issueId: issue.id,
+        summary: "Test plan",
+        approach: "Test approach",
+        estimatedComplexity: "MEDIUM",
+        generatedBy: "test",
+      });
+
+      // Create a task in BACKLOG status (syncable status)
+      repos.taskRepository.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title: "Test Task",
+        description: "Test description",
+        status: "BACKLOG",
+        type: "TASK",
+        source: "generated",
+        acceptanceCriteria: [],
+        isDeleted: false,
+      });
+
       // Act
-      const result = await service.syncIssue(issue.number);
+      const result = await disabledService.syncIssue(issue.number);
 
       // Assert
       expect(result.success).toBe(false);

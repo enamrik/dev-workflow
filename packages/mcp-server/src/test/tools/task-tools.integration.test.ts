@@ -39,18 +39,42 @@ import {
  * Tracking for mock provider calls
  */
 interface MockProviderCalls {
-  assignIssue: Array<{ issueRef: string; assignee: string }>;
+  assignIssueToConfiguredUser: Array<{ issueRef: string }>;
 }
 
 /**
  * Create a minimal mock provider for testing
  */
-function createLocalMockProvider(calls?: MockProviderCalls): ProjectManagementProvider {
+function createLocalMockProvider(
+  calls?: MockProviderCalls,
+  config?: { enabled?: boolean; assignee?: string }
+): ProjectManagementProvider {
+  const enabled = config?.enabled ?? true;
+  const assignee = config?.assignee;
+
   return {
     providerId: "mock",
     displayName: "Mock Provider",
+    // Configuration methods
+    isEnabled: () => enabled,
+    hasProjectBoard: () => false,
+    getAssignee: () => assignee,
+    getCustomLabels: () => [],
+    getColumnForStatus: () => "Backlog",
+    getProjectId: () => undefined,
+    getLabelFieldMapping: () => undefined,
+    // High-level operations
+    moveItemToStatusColumn: async () => {},
+    assignIssueToConfiguredUser: async (issueRef: string) => {
+      // Only track calls if there's an assignee (like real provider behavior)
+      if (calls && assignee) {
+        calls.assignIssueToConfiguredUser.push({ issueRef });
+      }
+    },
+    // Auth/Validation
     checkAuth: async () => ({ authenticated: true }),
     checkRepository: async () => ({ accessible: true }),
+    // Issue operations
     createIssue: async () => ({
       id: "1",
       numericId: 1,
@@ -77,6 +101,7 @@ function createLocalMockProvider(calls?: MockProviderCalls): ProjectManagementPr
     getIssue: async () => null,
     searchIssues: async () => [],
     ensureLabelsExist: async () => {},
+    // Project operations
     addToProject: async () => ({ success: true, itemId: "mock_item" }),
     moveToColumn: async () => {},
     checkProject: async () => true,
@@ -88,11 +113,7 @@ function createLocalMockProvider(calls?: MockProviderCalls): ProjectManagementPr
     getAvailableLabels: async () => ({ supported: true, labels: [] }),
     linkParentChild: async () => {},
     addComment: async () => {},
-    assignIssue: async (issueRef: string, assignee: string) => {
-      if (calls) {
-        calls.assignIssue.push({ issueRef, assignee });
-      }
-    },
+    assignIssue: async () => {},
   };
 }
 
@@ -131,7 +152,7 @@ async function createTaskToolContext(
 
   // Mock services
   const mockGitWorktreeService = new MockGitWorktreeService();
-  const mockProvider = createLocalMockProvider(options?.mockProviderCalls);
+  const mockProvider = createLocalMockProvider(options?.mockProviderCalls, options?.githubSync);
 
   const conflictDetectionService = new ConflictDetectionService(client);
 
@@ -597,7 +618,7 @@ describe("Task Tools Integration", () => {
   describe("handleLoadTaskSession - auto-assignment", () => {
     it("should auto-assign GitHub issue when assignee is configured", async () => {
       // Track mock provider calls
-      const mockCalls: MockProviderCalls = { assignIssue: [] };
+      const mockCalls: MockProviderCalls = { assignIssueToConfiguredUser: [] };
       const testDbWithAssignee = createTestDatabase();
       const { ctx: ctxWithAssignee, client: clientWithAssignee } = await createTaskToolContext(
         testDbWithAssignee,
@@ -638,17 +659,16 @@ describe("Task Tools Integration", () => {
 
       expect(result.isError).toBeUndefined();
 
-      // Verify assignIssue was called with correct parameters
-      expect(mockCalls.assignIssue.length).toBe(1);
-      expect(mockCalls.assignIssue[0]).toEqual({
+      // Verify assignIssueToConfiguredUser was called with correct parameters
+      expect(mockCalls.assignIssueToConfiguredUser.length).toBe(1);
+      expect(mockCalls.assignIssueToConfiguredUser[0]).toEqual({
         issueRef: "42",
-        assignee: "testuser",
       });
     });
 
     it("should not assign when no assignee is configured", async () => {
       // Track mock provider calls
-      const mockCalls: MockProviderCalls = { assignIssue: [] };
+      const mockCalls: MockProviderCalls = { assignIssueToConfiguredUser: [] };
       const testDbNoAssignee = createTestDatabase();
       const { ctx: ctxNoAssignee, client: clientNoAssignee } = await createTaskToolContext(
         testDbNoAssignee,
@@ -690,12 +710,12 @@ describe("Task Tools Integration", () => {
       expect(result.isError).toBeUndefined();
 
       // Verify assignIssue was NOT called
-      expect(mockCalls.assignIssue.length).toBe(0);
+      expect(mockCalls.assignIssueToConfiguredUser.length).toBe(0);
     });
 
     it("should not assign when GitHub sync is disabled", async () => {
       // Track mock provider calls
-      const mockCalls: MockProviderCalls = { assignIssue: [] };
+      const mockCalls: MockProviderCalls = { assignIssueToConfiguredUser: [] };
       const testDbDisabled = createTestDatabase();
       // No githubSync option - sync is disabled by default
       const { ctx: ctxDisabled, client: clientDisabled } = await createTaskToolContext(
@@ -734,12 +754,12 @@ describe("Task Tools Integration", () => {
       expect(result.isError).toBeUndefined();
 
       // Verify assignIssue was NOT called (sync is disabled)
-      expect(mockCalls.assignIssue.length).toBe(0);
+      expect(mockCalls.assignIssueToConfiguredUser.length).toBe(0);
     });
 
     it("should not assign when task has no GitHub issue linked", async () => {
       // Track mock provider calls
-      const mockCalls: MockProviderCalls = { assignIssue: [] };
+      const mockCalls: MockProviderCalls = { assignIssueToConfiguredUser: [] };
       const testDbNoSync = createTestDatabase();
       const { ctx: ctxNoSync, client: clientNoSync } = await createTaskToolContext(testDbNoSync, {
         mockProviderCalls: mockCalls,
@@ -769,7 +789,7 @@ describe("Task Tools Integration", () => {
       expect(result.isError).toBeUndefined();
 
       // Verify assignIssue was NOT called (no GitHub issue linked)
-      expect(mockCalls.assignIssue.length).toBe(0);
+      expect(mockCalls.assignIssueToConfiguredUser.length).toBe(0);
     });
   });
 

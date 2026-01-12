@@ -6,13 +6,17 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
-import { createClientForProject, createTestIssue, createNoOpProvider } from "../helpers.js";
+import {
+  createClientForProject,
+  createTestIssue,
+  createNoOpProvider,
+  createMockProvider,
+} from "../helpers.js";
 import {
   PlanningService,
   VersioningService,
   TaskSyncService,
   TypeService,
-  type ProjectManagementProvider,
   IssueService,
   TaskService,
   PlanService,
@@ -50,51 +54,7 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<{
   const planningService = new PlanningService(client, versioningService);
 
   // TaskSyncService (disabled - no GitHub sync in tests)
-  // Create a minimal mock provider for testing
-  const mockProvider: ProjectManagementProvider = {
-    providerId: "mock",
-    displayName: "Mock Provider",
-    checkAuth: async () => ({ authenticated: true }),
-    checkRepository: async () => ({ accessible: true }),
-    createIssue: async () => ({
-      id: "1",
-      numericId: 1,
-      url: "https://example.com/1",
-      nodeId: "mock_1",
-      title: "Mock",
-      body: "",
-      state: "OPEN",
-      labels: [],
-    }),
-    updateIssue: async () => ({
-      id: "1",
-      numericId: 1,
-      url: "https://example.com/1",
-      nodeId: "mock_1",
-      title: "Mock",
-      body: "",
-      state: "OPEN",
-      labels: [],
-    }),
-    closeIssue: async () => {},
-    closeIssueByTask: async () => {},
-    reopenIssue: async () => {},
-    getIssue: async () => null,
-    searchIssues: async () => [],
-    ensureLabelsExist: async () => {},
-    addToProject: async () => ({ success: true, itemId: "mock_item" }),
-    moveToColumn: async () => {},
-    checkProject: async () => true,
-    getProjectDetails: async () => null,
-    getProjectStatusField: async () => null,
-    getProjectFields: async () => [],
-    setProjectItemField: async () => ({ success: true }),
-    clearProjectItemField: async () => ({ success: true }),
-    getAvailableLabels: async () => ({ supported: true, labels: [] }),
-    linkParentChild: async () => {},
-    addComment: async () => {},
-    assignIssue: async () => {},
-  };
+  const mockProvider = createMockProvider();
   const taskSyncService = new TaskSyncService(testDb.source, mockProvider, project.id);
 
   // TypeService for type validation (backed by database - types are global)

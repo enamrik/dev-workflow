@@ -29,10 +29,11 @@ import type {
   AvailableLabelsResult,
 } from "../../domain/project-management-provider.js";
 import type { Issue } from "../../domain/issue.js";
-import type { Task } from "../../domain/task.js";
+import type { Task, TaskStatus } from "../../domain/task.js";
 import { ProjectManagementProviderError } from "../../domain/project-management-provider.js";
 import type { GitHubCLI } from "../github/github-cli.js";
 import type { GitHubIssueData } from "../../domain/github.js";
+import { DEFAULT_COLUMN_MAPPING, type GitHubIssueSyncConfig } from "../database/schema.js";
 
 /**
  * GitHubProjectManagementProvider - Implements ProjectManagementProvider using GitHubCLI
@@ -51,8 +52,90 @@ export class GitHubProjectManagementProvider implements ProjectManagementProvide
 
   constructor(
     private readonly githubCLI: GitHubCLI,
-    private readonly configuredProjectId?: string
+    private readonly config: GitHubIssueSyncConfig | null
   ) {}
+
+  // ===========================================================================
+  // Configuration Methods
+  // ===========================================================================
+
+  isEnabled(): boolean {
+    return this.config?.enabled ?? false;
+  }
+
+  hasProjectBoard(): boolean {
+    return !!this.config?.projectId;
+  }
+
+  getAssignee(): string | undefined {
+    return this.config?.assignee;
+  }
+
+  getCustomLabels(): string[] {
+    return this.config?.labels?.customLabels ?? [];
+  }
+
+  getColumnForStatus(status: TaskStatus): string {
+    const configuredMapping = this.config?.columnMapping ?? {};
+    const columnMapping: Record<TaskStatus, string> = {
+      ...DEFAULT_COLUMN_MAPPING,
+      ...configuredMapping,
+    };
+    return columnMapping[status];
+  }
+
+  getProjectId(): string | undefined {
+    return this.config?.projectId;
+  }
+
+  getLabelFieldMapping(): Record<string, string> | undefined {
+    return this.config?.labelFieldMapping;
+  }
+
+  // ===========================================================================
+  // High-Level Operations (use internal config)
+  // ===========================================================================
+
+  async moveItemToStatusColumn(
+    itemId: string | null | undefined,
+    status: TaskStatus
+  ): Promise<void> {
+    if (!this.isEnabled()) {
+      return;
+    }
+
+    if (!itemId) {
+      return;
+    }
+
+    const projectId = this.config?.projectId;
+    if (!projectId) {
+      return;
+    }
+
+    const columnName = this.getColumnForStatus(status);
+    try {
+      await this.moveToColumn(itemId, projectId, columnName);
+    } catch (error) {
+      // Log but don't throw - column move is best-effort
+      console.warn(
+        `Failed to move to column: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async assignIssueToConfiguredUser(issueRef: string): Promise<void> {
+    if (!this.isEnabled()) {
+      return;
+    }
+
+    const assignee = this.config?.assignee;
+    if (!assignee) {
+      return;
+    }
+
+    await this.assignIssue(issueRef, assignee);
+  }
 
   // ===========================================================================
   // Authentication & Validation
@@ -144,7 +227,9 @@ export class GitHubProjectManagementProvider implements ProjectManagementProvide
   }
 
   async closeIssue(issue: Issue, comment?: string): Promise<void> {
-    // Provider abstraction pattern: extract ref internally, no-op if not synced
+    if (!this.isEnabled()) {
+      return;
+    }
     const issueNumber = issue.githubSync?.githubIssueNumber;
     if (!issueNumber) {
       return;
@@ -153,7 +238,9 @@ export class GitHubProjectManagementProvider implements ProjectManagementProvide
   }
 
   async closeIssueByTask(task: Task, comment?: string): Promise<void> {
-    // Provider abstraction pattern: extract ref internally, no-op if not synced
+    if (!this.isEnabled()) {
+      return;
+    }
     const issueNumber = task.githubSync?.githubIssueNumber;
     if (!issueNumber) {
       return;
@@ -608,7 +695,7 @@ export class GitHubProjectManagementProvider implements ProjectManagementProvide
 
   async getAvailableLabels(): Promise<AvailableLabelsResult> {
     // Use internally configured projectId
-    const projectId = this.configuredProjectId;
+    const projectId = this.config?.projectId;
     if (!projectId) {
       return {
         supported: false,
