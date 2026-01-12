@@ -17,38 +17,27 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => mockSearchParams,
 }));
 
-// Mock data sources
-const mockSources = [
-  {
-    id: "src-1",
-    name: "Global Database",
-    connectionString: "file:///path/to/db",
-    resolvedPath: "/path/to/db",
-    type: "global" as const,
-  },
-];
-
 // Mock useProjects hook
 const mockProjects = [
   {
     id: "proj-1",
     name: "Project 1",
+    slug: "project-1",
     trackDirectory: "/path/1",
     gitRoot: "/git/1",
-    sourceId: "src-1",
   },
   {
     id: "proj-2",
     name: "Project 2",
+    slug: "project-2",
     trackDirectory: "/path/2",
     gitRoot: "/git/2",
-    sourceId: "src-1",
   },
 ];
 
 vi.mock("../hooks", () => ({
   useProjects: () => ({
-    data: { sources: mockSources, projects: mockProjects },
+    data: { projects: mockProjects },
     isLoading: false,
   }),
   useUrlState: () => {

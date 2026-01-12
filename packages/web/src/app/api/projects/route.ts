@@ -1,29 +1,43 @@
 import { NextResponse } from "next/server";
-import { ProjectsResolver } from "@/server";
+import { ProjectsResolver, DbSourceProvider } from "@/server";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/projects
  *
- * Returns all projects grouped by data source.
- * Response format: { sources: Source[], projects: ProjectInfo[] }
- *
- * The UI uses this to:
- * 1. Show a source dropdown (which database to view)
- * 2. Show a project dropdown filtered by selected source
+ * Returns all available projects with their GitHub sync configuration.
+ * Projects are identified by unique slugs, regardless of data source.
  */
 export async function GET() {
+  const sourceProvider = new DbSourceProvider();
   try {
-    const registry = new ProjectsResolver();
-    const sources = await registry.getAllSources();
-    const projects = sources.flatMap((s) => s.projects);
+    const resolver = new ProjectsResolver();
+    const projects = await resolver.getAllProjects();
+
+    // Enrich projects with database data (githubSync)
+    const enrichedProjects = await resolver.enrichWithDbData(projects, async (sourceInfo) => {
+      const source = sourceProvider.getOrCreate(sourceInfo);
+      await source.provision();
+      return source;
+    });
+
+    // Map ProjectInfo to frontend Project type (projectId -> id)
+    const mappedProjects = enrichedProjects.map((p) => ({
+      id: p.projectId,
+      name: p.name,
+      slug: p.slug,
+      gitRoot: p.gitRoot,
+      githubSync: p.githubSync ?? null,
+    }));
+
     return NextResponse.json({
-      sources: sources.map((s) => s.sourceInfo),
-      projects,
+      projects: mappedProjects,
     });
   } catch (error) {
     console.error("Error fetching projects:", error);
     return NextResponse.json({ error: "Failed to fetch projects" }, { status: 500 });
+  } finally {
+    sourceProvider.closeAll();
   }
 }

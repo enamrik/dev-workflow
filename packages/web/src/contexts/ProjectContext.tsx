@@ -2,16 +2,12 @@
 
 import { createContext, useContext, useCallback, useMemo, useEffect } from "react";
 import { useProjects, useUrlState } from "@/hooks";
-import type { Project, DataSource } from "@/lib/types";
+import type { Project } from "@/lib/types";
 
 interface ProjectContextValue {
   /** Selected project ID (empty string = all projects) */
   projectId: string;
   setProjectId: (projectId: string) => void;
-  /** Selected source ID (for API filtering - derived from selected project) */
-  sourceId: string;
-  /** All available data sources */
-  sources: DataSource[];
   /** All projects */
   allProjects: Project[];
   isLoading: boolean;
@@ -23,18 +19,8 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const { data, isLoading } = useProjects();
   const { state, setProperty } = useUrlState();
 
-  // Extract sources and projects from data
-  const sources = data?.sources ?? [];
   const allProjects = data?.projects ?? [];
-
   const projectId = state.project ?? "";
-
-  // Derive sourceId from selected project (for API filtering)
-  const sourceId = useMemo(() => {
-    if (!projectId) return sources[0]?.id ?? "";
-    const project = allProjects.find((p) => p.id === projectId);
-    return project?.sourceId ?? sources[0]?.id ?? "";
-  }, [projectId, allProjects, sources]);
 
   const setProjectId = useCallback(
     (newProjectId: string) => {
@@ -56,12 +42,10 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     () => ({
       projectId,
       setProjectId,
-      sourceId,
-      sources,
       allProjects,
       isLoading,
     }),
-    [projectId, setProjectId, sourceId, sources, allProjects, isLoading]
+    [projectId, setProjectId, allProjects, isLoading]
   );
 
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;

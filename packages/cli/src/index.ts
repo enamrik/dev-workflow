@@ -20,9 +20,6 @@ import {
   TrackDirectoryResolver,
   createTrackDirectoryResolver,
   DbSourceProvider,
-  runSqliteMigrations,
-  WorkerService,
-  DispatchService,
   getGlobalDatabasePath,
   GitOperations,
   writeConfig,
@@ -854,35 +851,18 @@ async function runUIUninstall(): Promise<void> {
 }
 
 async function runWorkers(): Promise<void> {
-  const dbPath = getGlobalDatabasePath();
-
-  if (!fs.existsSync(dbPath)) {
-    console.error("❌ Global database not found.");
-    console.error("   Run: dev-workflow init");
-    process.exit(1);
-  }
-
-  // Ensure migrations are run
-  runSqliteMigrations(dbPath);
-
-  // Create DbSource for unified repository access
-  // Workers and dispatch queue are global (not project-scoped)
-  const sourceProvider = new DbSourceProvider();
-  const source = sourceProvider.getOrCreate({ connectionString: dbPath });
-
-  // Create services for worker operations
-  const workerService = new WorkerService(source);
-  const dispatchService = new DispatchService(source);
+  // Workers and dispatch queue use a separate database (~/.track/worker-queue.db)
+  const workerQueueDb = new GlobalDbWorkerQueueDb();
 
   try {
     // Get workers with health info
-    const workers = workerService.findAllWithHealth();
+    const workers = workerQueueDb.findAllWorkersWithHealth();
 
     // Get queue stats
-    const queueStats = dispatchService.getQueueStats();
+    const queueStats = workerQueueDb.getQueueStats();
 
     // Get queue entries for details
-    const queueEntries = dispatchService.findAllWithHealth();
+    const queueEntries = workerQueueDb.findAllEntriesWithHealth();
 
     console.log("Workers:");
     console.log("========\n");
@@ -923,7 +903,7 @@ async function runWorkers(): Promise<void> {
     console.error("Error listing workers:", error);
     process.exit(1);
   } finally {
-    source.close();
+    workerQueueDb.close();
   }
 }
 

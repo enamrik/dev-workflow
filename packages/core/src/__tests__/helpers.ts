@@ -46,8 +46,6 @@ export function getRepositories(client: DbClient) {
     taskRepository: client.tasks,
     snapshotRepository: client.snapshots,
     milestoneRepository: client.milestones,
-    workerRepository: client.workers,
-    dispatchQueueRepository: client.dispatchQueue,
     executionLogRepository: client.executionLogs,
   };
 }

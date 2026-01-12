@@ -234,28 +234,6 @@ export const globalSettings = pgTable("global_settings", {
 });
 
 /**
- * Workers table schema (PostgreSQL)
- */
-export const workers = pgTable("workers", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  status: text("status").notNull().default("IDLE"),
-  lastHeartbeat: text("last_heartbeat").notNull(),
-  pid: integer("pid"),
-  createdAt: text("created_at").notNull(),
-});
-
-/**
- * Dispatch queue table schema (PostgreSQL)
- */
-export const dispatchQueue = pgTable("dispatch_queue", {
-  taskId: text("task_id").primaryKey(),
-  workerId: text("worker_id"),
-  claimedAt: text("claimed_at"),
-  createdAt: text("created_at").notNull(),
-});
-
-/**
  * Types table schema (PostgreSQL)
  *
  * Global type definitions (not project-scoped).
@@ -284,8 +262,6 @@ export type TaskExecutionLogRow = typeof taskExecutionLogs.$inferSelect;
 export type MilestoneRow = typeof milestones.$inferSelect;
 export type ProjectRow = typeof projects.$inferSelect;
 export type GlobalSettingsRow = typeof globalSettings.$inferSelect;
-export type WorkerRow = typeof workers.$inferSelect;
-export type DispatchQueueRow = typeof dispatchQueue.$inferSelect;
 export type TypeRow = typeof types.$inferSelect;
 
 // Type inference for INSERT operations
@@ -298,6 +274,4 @@ export type NewTaskExecutionLog = typeof taskExecutionLogs.$inferInsert;
 export type NewMilestone = typeof milestones.$inferInsert;
 export type NewProject = typeof projects.$inferInsert;
 export type NewGlobalSettings = typeof globalSettings.$inferInsert;
-export type NewWorker = typeof workers.$inferInsert;
-export type NewDispatchQueueEntry = typeof dispatchQueue.$inferInsert;
 export type NewType = typeof types.$inferInsert;

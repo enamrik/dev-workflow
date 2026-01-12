@@ -13,6 +13,7 @@ import type { Issue } from "../domain/issue.js";
 import type { Plan } from "../domain/plan.js";
 import type { Task, TaskStatus } from "../domain/task.js";
 import type { DbClient } from "../domain/db-client.js";
+import type { WorkerQueueDb } from "../domain/worker-queue-db.js";
 
 /**
  * Issue with its plan, tasks, and optional milestone info
@@ -106,7 +107,10 @@ const COLUMN_CONFIG: { status: TaskStatus; label: string }[] = [
  * BoardQueryService - Provides unified board query logic
  */
 export class BoardQueryService {
-  constructor(private readonly db: DbClient) {}
+  constructor(
+    private readonly db: DbClient,
+    private readonly workerQueueDb?: WorkerQueueDb
+  ) {}
 
   /**
    * Get active issues (not CLOSED) with their plans and tasks
@@ -165,11 +169,11 @@ export class BoardQueryService {
   getWorkerAssignments(): Map<string, WorkerTaskAssignment> {
     const assignments = new Map<string, WorkerTaskAssignment>();
 
-    if (!this.db.dispatchQueue) {
+    if (!this.workerQueueDb) {
       return assignments;
     }
 
-    const entries = this.db.dispatchQueue.findAllWithHealth();
+    const entries = this.workerQueueDb.findAllEntriesWithHealth();
     for (const entry of entries) {
       if (entry.workerId && entry.status === "WORKING") {
         assignments.set(entry.taskId, {
@@ -196,11 +200,11 @@ export class BoardQueryService {
       total: 0,
     };
 
-    if (!this.db.workers) {
+    if (!this.workerQueueDb) {
       return counts;
     }
 
-    const workers = this.db.workers.findAllWithHealth();
+    const workers = this.workerQueueDb.findAllWorkersWithHealth();
     counts.total = workers.length;
 
     for (const worker of workers) {

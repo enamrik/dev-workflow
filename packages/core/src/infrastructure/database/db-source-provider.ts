@@ -42,8 +42,6 @@ import { DrizzleDbClient } from "./drizzle-db-client.js";
 import { DrizzleProjectRepository } from "../repositories/project-repository.js";
 import { DrizzleTypeRepository } from "../repositories/type-repository.js";
 import { DrizzleGlobalSettingsRepository } from "../repositories/global-settings-repository.js";
-import { DrizzleWorkerRepository } from "../repositories/worker-repository.js";
-import { DrizzleDispatchQueueRepository } from "../repositories/dispatch-queue-repository.js";
 import { DEFAULT_TYPE_DEFINITIONS } from "../../domain/type-definition.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -157,8 +155,6 @@ export class DbSourceProvider {
     const projects = new DrizzleProjectRepository(drizzleDb);
     const types = new DrizzleTypeRepository(drizzleDb);
     const globalSettings = new DrizzleGlobalSettingsRepository(drizzleDb);
-    const workers = new DrizzleWorkerRepository(drizzleDb);
-    const dispatchQueue = new DrizzleDispatchQueueRepository(drizzleDb);
 
     return {
       provision: async () => {
@@ -172,8 +168,6 @@ export class DbSourceProvider {
       projects,
       types,
       globalSettings,
-      workers,
-      dispatchQueue,
 
       getDb: () => drizzleDb,
 
@@ -201,8 +195,6 @@ export class DbSourceProvider {
     const projects = new DrizzleProjectRepository(drizzleDb);
     const types = new DrizzleTypeRepository(drizzleDb);
     const globalSettings = new DrizzleGlobalSettingsRepository(drizzleDb);
-    const workers = new DrizzleWorkerRepository(drizzleDb);
-    const dispatchQueue = new DrizzleDispatchQueueRepository(drizzleDb);
 
     return {
       provision: async () => {
@@ -216,8 +208,6 @@ export class DbSourceProvider {
       projects,
       types,
       globalSettings,
-      workers,
-      dispatchQueue,
 
       getDb: () => drizzleDb,
 

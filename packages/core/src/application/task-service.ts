@@ -15,6 +15,7 @@ import type { Task, TaskStatus, PRStatus, TaskRepository } from "../domain/task.
 import type { ProjectManagementProvider } from "../domain/project-management-provider.js";
 import type { GitWorktreeService } from "../infrastructure/git/git-worktree-service.js";
 import type { DbClient } from "../domain/db-client.js";
+import type { WorkerQueueDb } from "../domain/worker-queue-db.js";
 import { isValidStatusTransition, getAllowedTransitions } from "../domain/task.js";
 
 /**
@@ -54,7 +55,8 @@ export class TaskService {
   constructor(
     private readonly db: DbClient,
     private readonly provider: ProjectManagementProvider,
-    private readonly gitWorktreeService: GitWorktreeService | null
+    private readonly gitWorktreeService: GitWorktreeService | null,
+    private readonly workerQueueDb?: WorkerQueueDb
   ) {}
 
   /**
@@ -169,9 +171,9 @@ export class TaskService {
     };
 
     // 1. Remove from dispatch queue if present
-    if (this.db.dispatchQueue) {
+    if (this.workerQueueDb) {
       try {
-        this.db.dispatchQueue.remove(taskId);
+        this.workerQueueDb.remove(taskId);
         result.removedFromQueue = true;
       } catch {
         // Queue removal is best-effort

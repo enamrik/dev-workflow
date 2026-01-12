@@ -168,8 +168,6 @@ export {
   type GlobalSettingsRepository,
   type SettingKey,
 } from "./infrastructure/repositories/global-settings-repository.js";
-export { DrizzleWorkerRepository } from "./infrastructure/repositories/worker-repository.js";
-export { DrizzleDispatchQueueRepository } from "./infrastructure/repositories/dispatch-queue-repository.js";
 export { DrizzleTypeRepository } from "./infrastructure/repositories/type-repository.js";
 export { DrizzleExecutionLogRepository } from "./infrastructure/repositories/execution-log-repository.js";
 

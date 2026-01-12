@@ -19,8 +19,6 @@ import { DrizzleDbClient } from "../infrastructure/database/drizzle-db-client.js
 import { DrizzleProjectRepository } from "../infrastructure/repositories/project-repository.js";
 import { DrizzleTypeRepository } from "../infrastructure/repositories/type-repository.js";
 import { DrizzleGlobalSettingsRepository } from "../infrastructure/repositories/global-settings-repository.js";
-import { DrizzleWorkerRepository } from "../infrastructure/repositories/worker-repository.js";
-import { DrizzleDispatchQueueRepository } from "../infrastructure/repositories/dispatch-queue-repository.js";
 
 /** Default project ID for tests */
 const TEST_PROJECT_ID = "test-project-abc123";
@@ -79,8 +77,6 @@ export function createTestDatabase(projectId: string = TEST_PROJECT_ID): TestDat
   const projects = new DrizzleProjectRepository(drizzleDb);
   const types = new DrizzleTypeRepository(drizzleDb);
   const globalSettings = new DrizzleGlobalSettingsRepository(drizzleDb);
-  const workers = new DrizzleWorkerRepository(drizzleDb);
-  const dispatchQueue = new DrizzleDispatchQueueRepository(drizzleDb);
 
   // Create DbSource
   const source: DbSource = {
@@ -90,8 +86,6 @@ export function createTestDatabase(projectId: string = TEST_PROJECT_ID): TestDat
     projects,
     types,
     globalSettings,
-    workers,
-    dispatchQueue,
     getDb: () => drizzleDb,
     createClient: (pid: string) => new DrizzleDbClient(drizzleDb, pid),
     close: () => sqlite.close(),

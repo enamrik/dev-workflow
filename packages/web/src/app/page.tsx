@@ -38,7 +38,7 @@ export default function BoardPage() {
 }
 
 function BoardPageContent() {
-  const { projectId, sourceId, isLoading: projectsLoading } = useProjectContext();
+  const { projectId, isLoading: projectsLoading } = useProjectContext();
   const { state, setProperty } = useUrlState();
   const [previewTarget, setPreviewTarget] = useState<PreviewTarget | null>(null);
 
@@ -61,7 +61,7 @@ function BoardPageContent() {
     refetch,
   } = useTasks({
     project: projectId || undefined,
-    source: sourceId || undefined,
+    // Don't filter by source when project is already selected - it's redundant
   });
 
   const issuesWithTasks = tasksResponse?.issuesWithTasks ?? [];

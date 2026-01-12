@@ -23,13 +23,10 @@ function SettingsPageContent() {
   // Enable URL state persistence
   useUrlState();
 
-  const { projectId, allProjects, sources, sourceId } = useProjectContext();
+  const { projectId, allProjects } = useProjectContext();
 
   // Find the selected project
   const selectedProject = allProjects.find((p) => p.id === projectId);
-
-  // Find the selected source
-  const selectedSource = sources.find((s) => s.id === sourceId);
 
   if (!selectedProject) {
     return (
@@ -122,9 +119,9 @@ function SettingsPageContent() {
         )}
       </Card>
 
-      {/* Datasource Section */}
+      {/* Project Info Section */}
       <Card>
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Datasource</h2>
+        <h2 className="text-lg font-semibold text-gray-800 mb-4">Project Info</h2>
 
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
           <div>
@@ -142,24 +139,6 @@ function SettingsPageContent() {
                 {selectedProject.gitRoot}
               </dd>
             </div>
-          )}
-          {selectedSource && (
-            <>
-              <div>
-                <dt className="text-sm text-gray-500">Source Type</dt>
-                <dd className="text-sm text-gray-900 mt-1 capitalize">{selectedSource.type}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Source Name</dt>
-                <dd className="text-sm text-gray-900 mt-1">{selectedSource.name}</dd>
-              </div>
-              <div className="sm:col-span-2">
-                <dt className="text-sm text-gray-500">Database Path</dt>
-                <dd className="text-sm text-gray-900 mt-1 font-mono break-all">
-                  {selectedSource.resolvedPath}
-                </dd>
-              </div>
-            </>
           )}
         </dl>
       </Card>

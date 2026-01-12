@@ -38,7 +38,7 @@ function IssuesPageContent() {
 
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { projectId, sourceId, isLoading: projectsLoading } = useProjectContext();
+  const { projectId, isLoading: projectsLoading } = useProjectContext();
   const showClosed = searchParams.get("showClosed") === "true";
   const searchQuery = searchParams.get("q") ?? "";
   const currentPage = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
@@ -51,7 +51,6 @@ function IssuesPageContent() {
     refetch,
   } = useIssues({
     project: projectId || undefined,
-    source: sourceId || undefined,
   });
 
   const isLoading = projectsLoading || issuesLoading;
