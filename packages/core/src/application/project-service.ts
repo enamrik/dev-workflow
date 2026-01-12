@@ -9,97 +9,7 @@ import * as path from "node:path";
 import type { Project, UpdateProjectData } from "../domain/project.js";
 import type { DbSource } from "../domain/db-source.js";
 import type { GitHubIssueSyncConfig } from "../infrastructure/database/schema.js";
-
-/**
- * Interface for git operations needed by ProjectService
- *
- * Allows mocking git commands for testing.
- */
-export interface GitOperations {
-  /**
-   * Get the SHA of the initial commit (first commit in the repo)
-   *
-   * @param gitRoot - Path to git repository root
-   * @returns SHA of the initial commit
-   * @throws Error if not a git repository or no commits exist
-   */
-  getInitialCommitHash(gitRoot: string): Promise<string>;
-
-  /**
-   * Check if a directory is a git repository
-   *
-   * @param dirPath - Directory to check
-   * @returns true if the directory is a git repository
-   */
-  isGitRepository(dirPath: string): Promise<boolean>;
-}
-
-/**
- * Node.js implementation of GitOperations
- *
- * Uses child_process to run git commands.
- */
-export class NodeGitOperations implements GitOperations {
-  async getInitialCommitHash(gitRoot: string): Promise<string> {
-    const { spawn } = await import("node:child_process");
-
-    return new Promise((resolve, reject) => {
-      const git = spawn("git", ["rev-list", "--max-parents=0", "HEAD"], {
-        cwd: gitRoot,
-      });
-
-      let stdout = "";
-      let stderr = "";
-
-      git.stdout.on("data", (data) => {
-        stdout += data.toString();
-      });
-
-      git.stderr.on("data", (data) => {
-        stderr += data.toString();
-      });
-
-      git.on("close", (code) => {
-        if (code !== 0) {
-          reject(new Error(`Failed to get initial commit: ${stderr.trim() || "Unknown error"}`));
-          return;
-        }
-
-        // The command may return multiple commits if there are multiple root commits (e.g., after a merge)
-        // We take the first one
-        const commits = stdout.trim().split("\n").filter(Boolean);
-        if (commits.length === 0) {
-          reject(new Error("No commits found in repository"));
-          return;
-        }
-
-        resolve(commits[0]!);
-      });
-
-      git.on("error", (err) => {
-        reject(new Error(`Failed to run git command: ${err.message}`));
-      });
-    });
-  }
-
-  async isGitRepository(dirPath: string): Promise<boolean> {
-    const { spawn } = await import("node:child_process");
-
-    return new Promise((resolve) => {
-      const git = spawn("git", ["rev-parse", "--git-dir"], {
-        cwd: dirPath,
-      });
-
-      git.on("close", (code) => {
-        resolve(code === 0);
-      });
-
-      git.on("error", () => {
-        resolve(false);
-      });
-    });
-  }
-}
+import { GitOperations } from "./git-operations.js";
 
 /**
  * Error thrown when project operations fail
@@ -146,13 +56,12 @@ export class ProjectService {
    */
   async getOrCreateProject(gitRoot: string): Promise<Project> {
     // Verify it's a git repository
-    const isRepo = await this.gitOperations.isGitRepository(gitRoot);
-    if (!isRepo) {
+    if (!this.gitOperations.isGitRepository(gitRoot)) {
       throw new ProjectError(`Not a git repository: ${gitRoot}`);
     }
 
     // Get the stable identifier
-    const gitRootHash = await this.gitOperations.getInitialCommitHash(gitRoot);
+    const gitRootHash = this.gitOperations.getInitialCommitHash(gitRoot);
 
     // Look up existing project
     const existing = await this.source.projects.findByGitRootHash(gitRootHash);

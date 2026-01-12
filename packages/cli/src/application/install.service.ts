@@ -1,12 +1,11 @@
 import * as path from "node:path";
-import * as os from "node:os";
 import { execSync, spawnSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
   TrackDirectoryResolver,
   DbSourceProvider,
   ProjectService,
-  NodeGitOperations,
+  GitOperations,
   runSqliteMigrations,
   DEFAULT_TYPE_DEFINITIONS,
   type Project,
@@ -33,50 +32,24 @@ export class InstallService {
     private readonly resolver: TrackDirectoryResolver,
     databaseConnectionString: string
   ) {
-    // Store as sqlite: format for DbClientProvider
-    this.databaseConnectionString = this.normalizeConnectionString(databaseConnectionString);
+    this.validateConnectionString(databaseConnectionString);
+    this.databaseConnectionString = databaseConnectionString;
   }
 
   /**
-   * Set the database connection string.
-   * Use this when re-initializing and the connection string changes.
+   * Validate connection string format.
+   * Expected: sqlite:///path or postgres://...
    */
-  setDatabaseConnectionString(connectionString: string): void {
-    this.databaseConnectionString = this.normalizeConnectionString(connectionString);
-  }
-
-  /**
-   * Normalize connection string to format expected by DbClientProvider.
-   * Converts file: URLs to sqlite: format and resolves relative paths.
-   */
-  private normalizeConnectionString(connectionString: string): string {
-    // postgres:// passes through unchanged
-    if (connectionString.startsWith("postgres")) {
-      return connectionString;
+  private validateConnectionString(connectionString: string): void {
+    if (
+      connectionString.startsWith("postgres") ||
+      connectionString.startsWith("sqlite:")
+    ) {
+      return;
     }
-
-    // Already sqlite: format
-    if (connectionString.startsWith("sqlite:")) {
-      return connectionString;
-    }
-
-    // file:///absolute/path -> sqlite:///absolute/path
-    if (connectionString.startsWith("file:///")) {
-      let absolutePath = connectionString.slice(7); // "file://" is 7 chars
-      if (absolutePath.startsWith("/~")) {
-        absolutePath = path.join(os.homedir(), absolutePath.slice(2));
-      }
-      return `sqlite://${absolutePath}`;
-    }
-
-    // file:./relative/path -> resolve and convert to sqlite:///absolute/path
-    if (connectionString.startsWith("file:")) {
-      const relativePath = connectionString.slice(5); // "file:" is 5 chars
-      const absolutePath = path.resolve(this.resolver.getGitRoot(), relativePath);
-      return `sqlite://${absolutePath}`;
-    }
-
-    throw new InstallError(`Invalid connection string format: ${connectionString}`);
+    throw new InstallError(
+      `Invalid connection string format: ${connectionString}. Expected sqlite:///path or postgres://...`
+    );
   }
 
   /**
@@ -121,7 +94,7 @@ export class InstallService {
     });
 
     try {
-      const gitOps = new NodeGitOperations();
+      const gitOps = new GitOperations();
       const projectService = new ProjectService(source, gitOps);
 
       this.project = await projectService.getOrCreateProject(this.workingDirectory);
@@ -477,10 +450,10 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
     });
 
     try {
-      const gitOps = new NodeGitOperations();
+      const gitOps = new GitOperations();
 
       // Get gitRootHash for current directory
-      const gitRootHash = await gitOps.getInitialCommitHash(this.workingDirectory);
+      const gitRootHash = gitOps.getInitialCommitHash(this.workingDirectory);
 
       // Look up by gitRootHash
       return await source.projects.findByGitRootHash(gitRootHash);

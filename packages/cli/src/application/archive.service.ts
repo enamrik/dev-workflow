@@ -2,7 +2,7 @@ import {
   TrackDirectoryResolver,
   DbSourceProvider,
   NodeGitWorktreeService,
-  NodeGitOperations,
+  GitOperations,
   resolveConfig,
   type Project,
 } from "@dev-workflow/core";
@@ -231,10 +231,10 @@ export class ArchiveService {
     const source = sourceProvider.getOrCreate({ connectionString: dbPath });
 
     try {
-      const gitOps = new NodeGitOperations();
+      const gitOps = new GitOperations();
 
       // Look up by gitRootHash (first commit hash)
-      const gitRootHash = await gitOps.getInitialCommitHash(this.workingDirectory);
+      const gitRootHash = gitOps.getInitialCommitHash(this.workingDirectory);
       return await source.projects.findByGitRootHash(gitRootHash);
     } finally {
       sourceProvider.closeAll();
@@ -306,10 +306,10 @@ export class ArchiveService {
     const source = sourceProvider.getOrCreate({ connectionString: dbPath });
 
     try {
-      const gitOps = new NodeGitOperations();
+      const gitOps = new GitOperations();
 
       // Get gitRootHash for current directory
-      const gitRootHash = await gitOps.getInitialCommitHash(this.workingDirectory);
+      const gitRootHash = gitOps.getInitialCommitHash(this.workingDirectory);
 
       // Look up by gitRootHash
       const project = await source.projects.findByGitRootHash(gitRootHash);
