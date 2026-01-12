@@ -33,10 +33,10 @@ import {
   IssueService,
   TaskService,
   MilestoneService,
-  WorkerService,
-  DispatchService,
   PlanService,
   MergeService,
+  // Global worker queue (separate from tracking database)
+  GlobalDbWorkerQueueDb,
 } from "@dev-workflow/core";
 
 import type {
@@ -240,9 +240,10 @@ export class McpDIContext {
 
     // Entity services (Service Layer Pattern)
     const planService = new PlanService(dbClient);
-    // Worker and Dispatch services use DbSource (global repos), not DbClient
-    const workerService = new WorkerService(dbSource);
-    const dispatchService = new DispatchService(dbSource);
+
+    // Worker queue uses a separate global database (~/.track/worker-queue.db)
+    // This is independent of the tracking database
+    const workerQueueDb = new GlobalDbWorkerQueueDb();
 
     const taskService = new TaskService(dbClient, projectManagementProvider, gitWorktreeService);
 
@@ -264,7 +265,7 @@ export class McpDIContext {
       planService,
       taskService,
       milestoneService,
-      dispatchService,
+      workerQueueDb,
       templateService,
       planningService,
       projectManagementProvider,
@@ -288,7 +289,7 @@ export class McpDIContext {
       issueService,
       planService,
       taskService,
-      dispatchService,
+      workerQueueDb,
       taskSessionService,
       taskManagementService,
       conflictDetectionService,
@@ -343,9 +344,9 @@ export class McpDIContext {
     };
 
     const dispatchToolContext: DispatchToolContext = {
-      dispatchService,
+      workerQueueDb,
       taskService,
-      workerService,
+      projectSlug,
     };
 
     return new McpDIContext(

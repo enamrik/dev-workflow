@@ -4,7 +4,10 @@
  * Tests actual MCP tool handlers with real database operations.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import * as os from "node:os";
+import * as path from "node:path";
+import * as fs from "node:fs";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
 import {
   createClientForProject,
@@ -22,7 +25,7 @@ import {
   IssueService,
   TaskService,
   PlanService,
-  DispatchService,
+  GlobalDbWorkerQueueDb,
   type DbClient,
 } from "@dev-workflow/core";
 import {
@@ -128,10 +131,12 @@ interface TestTaskToolContext extends TaskToolContext {
  * Create a TaskToolContext for testing
  *
  * @param testDb - The test database
+ * @param workerQueueDb - Worker queue database for dispatch operations
  * @param options - Options including mock provider calls and GitHub sync config
  */
 async function createTaskToolContext(
   testDb: TestDatabase,
+  workerQueueDb: GlobalDbWorkerQueueDb,
   options?: {
     mockProviderCalls?: MockProviderCalls;
     githubSync?: {
@@ -166,8 +171,6 @@ async function createTaskToolContext(
 
   const taskSyncService = new TaskSyncService(testDb.source, mockProvider, projectId);
 
-  // Dispatch service uses DbSource (global), other services use DbClient (project-scoped)
-  const dispatchService = new DispatchService(testDb.source);
   const planService = new PlanService(client);
   const taskService = new TaskService(client, mockProvider, mockGitWorktreeService);
   const issueService = new IssueService(client, taskService, mockProvider);
@@ -178,7 +181,7 @@ async function createTaskToolContext(
       issueService,
       planService,
       taskService,
-      dispatchService,
+      workerQueueDb,
       taskSessionService,
       taskManagementService,
       conflictDetectionService,
@@ -193,12 +196,32 @@ describe("Task Tools Integration", () => {
   let testDb: TestDatabase;
   let ctx: TaskToolContext;
   let client: DbClient;
+  let workerQueueDbPath: string;
+  let workerQueueDb: GlobalDbWorkerQueueDb;
 
   beforeEach(async () => {
     testDb = createTestDatabase();
-    const result = await createTaskToolContext(testDb);
+
+    // Create a temporary worker queue database for testing
+    workerQueueDbPath = path.join(
+      os.tmpdir(),
+      `test-worker-queue-${Date.now()}-${crypto.randomUUID()}.db`
+    );
+    workerQueueDb = new GlobalDbWorkerQueueDb(workerQueueDbPath);
+
+    const result = await createTaskToolContext(testDb, workerQueueDb);
     ctx = result.ctx;
     client = result.client;
+  });
+
+  afterEach(() => {
+    workerQueueDb.close();
+    try {
+      fs.unlinkSync(workerQueueDbPath);
+    } catch {
+      // Ignore cleanup errors
+    }
+    testDb.cleanup();
   });
 
   describe("handleGetTask", () => {
@@ -620,244 +643,353 @@ describe("Task Tools Integration", () => {
       // Track mock provider calls
       const mockCalls: MockProviderCalls = { assignIssueToConfiguredUser: [] };
       const testDbWithAssignee = createTestDatabase();
-      const { ctx: ctxWithAssignee, client: clientWithAssignee } = await createTaskToolContext(
-        testDbWithAssignee,
-        {
-          mockProviderCalls: mockCalls,
-          githubSync: {
-            enabled: true,
-            assignee: "testuser",
-          },
-        }
+      const queueDbPath = path.join(
+        os.tmpdir(),
+        `test-worker-queue-${Date.now()}-${crypto.randomUUID()}.db`
       );
+      const queueDb = new GlobalDbWorkerQueueDb(queueDbPath);
 
-      // Create task with GitHub sync info
-      const issue = createTestIssue(clientWithAssignee.issues);
-      const plan = createTestPlan(clientWithAssignee.plans, issue.id);
-      const task = createTestTask(clientWithAssignee.tasks, plan.id, {
-        title: "Task with GitHub",
-        status: "BACKLOG",
-      });
+      try {
+        const { ctx: ctxWithAssignee, client: clientWithAssignee } = await createTaskToolContext(
+          testDbWithAssignee,
+          queueDb,
+          {
+            mockProviderCalls: mockCalls,
+            githubSync: {
+              enabled: true,
+              assignee: "testuser",
+            },
+          }
+        );
 
-      // Add GitHub sync state to the task
-      clientWithAssignee.tasks.updateGitHubSync(task.id, {
-        githubIssueNumber: 42,
-        githubUrl: "https://github.com/test/repo/issues/42",
-        githubNodeId: "I_test_42",
-        syncStatus: "SYNCED",
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: null,
-        projectItemId: null,
-      });
+        // Create task with GitHub sync info
+        const issue = createTestIssue(clientWithAssignee.issues);
+        const plan = createTestPlan(clientWithAssignee.plans, issue.id);
+        const task = createTestTask(clientWithAssignee.tasks, plan.id, {
+          title: "Task with GitHub",
+          status: "BACKLOG",
+        });
 
-      // Start the task
-      const result = await handleLoadTaskSession(ctxWithAssignee, {
-        taskId: task.id,
-        sessionId: "test-session",
-        mode: "main", // Use main mode to skip worktree creation
-      });
+        // Add GitHub sync state to the task
+        clientWithAssignee.tasks.updateGitHubSync(task.id, {
+          githubIssueNumber: 42,
+          githubUrl: "https://github.com/test/repo/issues/42",
+          githubNodeId: "I_test_42",
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          projectItemId: null,
+        });
 
-      expect(result.isError).toBeUndefined();
+        // Start the task
+        const result = await handleLoadTaskSession(ctxWithAssignee, {
+          taskId: task.id,
+          sessionId: "test-session",
+          mode: "main", // Use main mode to skip worktree creation
+        });
 
-      // Verify assignIssueToConfiguredUser was called with correct parameters
-      expect(mockCalls.assignIssueToConfiguredUser.length).toBe(1);
-      expect(mockCalls.assignIssueToConfiguredUser[0]).toEqual({
-        issueRef: "42",
-      });
+        expect(result.isError).toBeUndefined();
+
+        // Verify assignIssueToConfiguredUser was called with correct parameters
+        expect(mockCalls.assignIssueToConfiguredUser.length).toBe(1);
+        expect(mockCalls.assignIssueToConfiguredUser[0]).toEqual({
+          issueRef: "42",
+        });
+      } finally {
+        queueDb.close();
+        try {
+          fs.unlinkSync(queueDbPath);
+        } catch {
+          // Ignore cleanup errors
+        }
+        testDbWithAssignee.cleanup();
+      }
     });
 
     it("should not assign when no assignee is configured", async () => {
       // Track mock provider calls
       const mockCalls: MockProviderCalls = { assignIssueToConfiguredUser: [] };
       const testDbNoAssignee = createTestDatabase();
-      const { ctx: ctxNoAssignee, client: clientNoAssignee } = await createTaskToolContext(
-        testDbNoAssignee,
-        {
-          mockProviderCalls: mockCalls,
-          githubSync: {
-            enabled: true,
-            // No assignee configured
-          },
-        }
+      const queueDbPath = path.join(
+        os.tmpdir(),
+        `test-worker-queue-${Date.now()}-${crypto.randomUUID()}.db`
       );
+      const queueDb = new GlobalDbWorkerQueueDb(queueDbPath);
 
-      // Create task with GitHub sync info
-      const issue = createTestIssue(clientNoAssignee.issues);
-      const plan = createTestPlan(clientNoAssignee.plans, issue.id);
-      const task = createTestTask(clientNoAssignee.tasks, plan.id, {
-        title: "Task with GitHub",
-        status: "BACKLOG",
-      });
+      try {
+        const { ctx: ctxNoAssignee, client: clientNoAssignee } = await createTaskToolContext(
+          testDbNoAssignee,
+          queueDb,
+          {
+            mockProviderCalls: mockCalls,
+            githubSync: {
+              enabled: true,
+              // No assignee configured
+            },
+          }
+        );
 
-      // Add GitHub sync state to the task
-      clientNoAssignee.tasks.updateGitHubSync(task.id, {
-        githubIssueNumber: 42,
-        githubUrl: "https://github.com/test/repo/issues/42",
-        githubNodeId: "I_test_42",
-        syncStatus: "SYNCED",
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: null,
-        projectItemId: null,
-      });
+        // Create task with GitHub sync info
+        const issue = createTestIssue(clientNoAssignee.issues);
+        const plan = createTestPlan(clientNoAssignee.plans, issue.id);
+        const task = createTestTask(clientNoAssignee.tasks, plan.id, {
+          title: "Task with GitHub",
+          status: "BACKLOG",
+        });
 
-      // Start the task
-      const result = await handleLoadTaskSession(ctxNoAssignee, {
-        taskId: task.id,
-        sessionId: "test-session",
-        mode: "main",
-      });
+        // Add GitHub sync state to the task
+        clientNoAssignee.tasks.updateGitHubSync(task.id, {
+          githubIssueNumber: 42,
+          githubUrl: "https://github.com/test/repo/issues/42",
+          githubNodeId: "I_test_42",
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          projectItemId: null,
+        });
 
-      expect(result.isError).toBeUndefined();
+        // Start the task
+        const result = await handleLoadTaskSession(ctxNoAssignee, {
+          taskId: task.id,
+          sessionId: "test-session",
+          mode: "main",
+        });
 
-      // Verify assignIssue was NOT called
-      expect(mockCalls.assignIssueToConfiguredUser.length).toBe(0);
+        expect(result.isError).toBeUndefined();
+
+        // Verify assignIssue was NOT called
+        expect(mockCalls.assignIssueToConfiguredUser.length).toBe(0);
+      } finally {
+        queueDb.close();
+        try {
+          fs.unlinkSync(queueDbPath);
+        } catch {
+          // Ignore cleanup errors
+        }
+        testDbNoAssignee.cleanup();
+      }
     });
 
     it("should not assign when GitHub sync is disabled", async () => {
       // Track mock provider calls
       const mockCalls: MockProviderCalls = { assignIssueToConfiguredUser: [] };
       const testDbDisabled = createTestDatabase();
-      // No githubSync option - sync is disabled by default
-      const { ctx: ctxDisabled, client: clientDisabled } = await createTaskToolContext(
-        testDbDisabled,
-        {
-          mockProviderCalls: mockCalls,
-        }
+      const queueDbPath = path.join(
+        os.tmpdir(),
+        `test-worker-queue-${Date.now()}-${crypto.randomUUID()}.db`
       );
+      const queueDb = new GlobalDbWorkerQueueDb(queueDbPath);
 
-      // Create task with GitHub sync info (simulating a previously synced task)
-      const issue = createTestIssue(clientDisabled.issues);
-      const plan = createTestPlan(clientDisabled.plans, issue.id);
-      const task = createTestTask(clientDisabled.tasks, plan.id, {
-        title: "Task with GitHub",
-        status: "BACKLOG",
-      });
+      try {
+        // No githubSync option - sync is disabled by default
+        const { ctx: ctxDisabled, client: clientDisabled } = await createTaskToolContext(
+          testDbDisabled,
+          queueDb,
+          {
+            mockProviderCalls: mockCalls,
+          }
+        );
 
-      // Add GitHub sync state to the task
-      clientDisabled.tasks.updateGitHubSync(task.id, {
-        githubIssueNumber: 42,
-        githubUrl: "https://github.com/test/repo/issues/42",
-        githubNodeId: "I_test_42",
-        syncStatus: "SYNCED",
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: null,
-        projectItemId: null,
-      });
+        // Create task with GitHub sync info (simulating a previously synced task)
+        const issue = createTestIssue(clientDisabled.issues);
+        const plan = createTestPlan(clientDisabled.plans, issue.id);
+        const task = createTestTask(clientDisabled.tasks, plan.id, {
+          title: "Task with GitHub",
+          status: "BACKLOG",
+        });
 
-      // Start the task
-      const result = await handleLoadTaskSession(ctxDisabled, {
-        taskId: task.id,
-        sessionId: "test-session",
-        mode: "main",
-      });
+        // Add GitHub sync state to the task
+        clientDisabled.tasks.updateGitHubSync(task.id, {
+          githubIssueNumber: 42,
+          githubUrl: "https://github.com/test/repo/issues/42",
+          githubNodeId: "I_test_42",
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          projectItemId: null,
+        });
 
-      expect(result.isError).toBeUndefined();
+        // Start the task
+        const result = await handleLoadTaskSession(ctxDisabled, {
+          taskId: task.id,
+          sessionId: "test-session",
+          mode: "main",
+        });
 
-      // Verify assignIssue was NOT called (sync is disabled)
-      expect(mockCalls.assignIssueToConfiguredUser.length).toBe(0);
+        expect(result.isError).toBeUndefined();
+
+        // Verify assignIssue was NOT called (sync is disabled)
+        expect(mockCalls.assignIssueToConfiguredUser.length).toBe(0);
+      } finally {
+        queueDb.close();
+        try {
+          fs.unlinkSync(queueDbPath);
+        } catch {
+          // Ignore cleanup errors
+        }
+        testDbDisabled.cleanup();
+      }
     });
 
     it("should not assign when task has no GitHub issue linked", async () => {
       // Track mock provider calls
       const mockCalls: MockProviderCalls = { assignIssueToConfiguredUser: [] };
       const testDbNoSync = createTestDatabase();
-      const { ctx: ctxNoSync, client: clientNoSync } = await createTaskToolContext(testDbNoSync, {
-        mockProviderCalls: mockCalls,
-        githubSync: {
-          enabled: true,
-          assignee: "testuser",
-        },
-      });
+      const queueDbPath = path.join(
+        os.tmpdir(),
+        `test-worker-queue-${Date.now()}-${crypto.randomUUID()}.db`
+      );
+      const queueDb = new GlobalDbWorkerQueueDb(queueDbPath);
 
-      // Create task WITHOUT GitHub sync info
-      const issue = createTestIssue(clientNoSync.issues);
-      const plan = createTestPlan(clientNoSync.plans, issue.id);
-      const task = createTestTask(clientNoSync.tasks, plan.id, {
-        title: "Task without GitHub",
-        status: "BACKLOG",
-      });
+      try {
+        const { ctx: ctxNoSync, client: clientNoSync } = await createTaskToolContext(
+          testDbNoSync,
+          queueDb,
+          {
+            mockProviderCalls: mockCalls,
+            githubSync: {
+              enabled: true,
+              assignee: "testuser",
+            },
+          }
+        );
 
-      // Don't add GitHub sync state - task has no linked GitHub issue
+        // Create task WITHOUT GitHub sync info
+        const issue = createTestIssue(clientNoSync.issues);
+        const plan = createTestPlan(clientNoSync.plans, issue.id);
+        const task = createTestTask(clientNoSync.tasks, plan.id, {
+          title: "Task without GitHub",
+          status: "BACKLOG",
+        });
 
-      // Start the task
-      const result = await handleLoadTaskSession(ctxNoSync, {
-        taskId: task.id,
-        sessionId: "test-session",
-        mode: "main",
-      });
+        // Don't add GitHub sync state - task has no linked GitHub issue
 
-      expect(result.isError).toBeUndefined();
+        // Start the task
+        const result = await handleLoadTaskSession(ctxNoSync, {
+          taskId: task.id,
+          sessionId: "test-session",
+          mode: "main",
+        });
 
-      // Verify assignIssue was NOT called (no GitHub issue linked)
-      expect(mockCalls.assignIssueToConfiguredUser.length).toBe(0);
+        expect(result.isError).toBeUndefined();
+
+        // Verify assignIssue was NOT called (no GitHub issue linked)
+        expect(mockCalls.assignIssueToConfiguredUser.length).toBe(0);
+      } finally {
+        queueDb.close();
+        try {
+          fs.unlinkSync(queueDbPath);
+        } catch {
+          // Ignore cleanup errors
+        }
+        testDbNoSync.cleanup();
+      }
     });
   });
 
   describe("handleLoadTaskSession - claiming rules", () => {
     it("should reject queued task without workerId", async () => {
       const testDbQueue = createTestDatabase();
-      const { ctx: ctxQueue, client: clientQueue } = await createTaskToolContext(testDbQueue);
+      const queueDbPath = path.join(
+        os.tmpdir(),
+        `test-worker-queue-${Date.now()}-${crypto.randomUUID()}.db`
+      );
+      const queueDb = new GlobalDbWorkerQueueDb(queueDbPath);
 
-      // Create task
-      const issue = createTestIssue(clientQueue.issues);
-      const plan = createTestPlan(clientQueue.plans, issue.id);
-      const task = createTestTask(clientQueue.tasks, plan.id, {
-        title: "Queued Task",
-        status: "BACKLOG",
-      });
+      try {
+        const { ctx: ctxQueue, client: clientQueue } = await createTaskToolContext(
+          testDbQueue,
+          queueDb
+        );
 
-      // Add task to dispatch queue
-      clientQueue.dispatchQueue.enqueue(task.id);
+        // Create task
+        const issue = createTestIssue(clientQueue.issues);
+        const plan = createTestPlan(clientQueue.plans, issue.id);
+        const task = createTestTask(clientQueue.tasks, plan.id, {
+          title: "Queued Task",
+          status: "BACKLOG",
+        });
 
-      // Try to start without workerId
-      const result = await handleLoadTaskSession(ctxQueue, {
-        taskId: task.id,
-        sessionId: "test-session",
-        mode: "main",
-      });
+        // Add task to dispatch queue (uses workerQueueDb)
+        queueDb.enqueue(task.id, "test-project");
 
-      // Should fail with error about needing a worker
-      const content = JSON.parse(result.content[0].text);
-      expect(content.success).toBe(false);
-      expect(content.error).toContain("dispatch queue");
-      expect(content.error).toContain("worker");
+        // Try to start without workerId
+        const result = await handleLoadTaskSession(ctxQueue, {
+          taskId: task.id,
+          sessionId: "test-session",
+          mode: "main",
+        });
+
+        // Should fail with error about needing a worker
+        const content = JSON.parse(result.content[0].text);
+        expect(content.success).toBe(false);
+        expect(content.error).toContain("dispatch queue");
+        expect(content.error).toContain("worker");
+      } finally {
+        queueDb.close();
+        try {
+          fs.unlinkSync(queueDbPath);
+        } catch {
+          // Ignore cleanup errors
+        }
+        testDbQueue.cleanup();
+      }
     });
 
     it("should allow worker to claim queued task", async () => {
       const testDbQueue = createTestDatabase();
-      const { ctx: ctxQueue, client: clientQueue } = await createTaskToolContext(testDbQueue);
+      const queueDbPath = path.join(
+        os.tmpdir(),
+        `test-worker-queue-${Date.now()}-${crypto.randomUUID()}.db`
+      );
+      const queueDb = new GlobalDbWorkerQueueDb(queueDbPath);
 
-      // Create task
-      const issue = createTestIssue(clientQueue.issues);
-      const plan = createTestPlan(clientQueue.plans, issue.id);
-      const task = createTestTask(clientQueue.tasks, plan.id, {
-        title: "Queued Task",
-        status: "BACKLOG",
-      });
+      try {
+        const { ctx: ctxQueue, client: clientQueue } = await createTaskToolContext(
+          testDbQueue,
+          queueDb
+        );
 
-      // Register worker and add task to dispatch queue
-      const workerId = "test-worker-id";
-      clientQueue.workers.register(workerId, "test-session");
-      clientQueue.dispatchQueue.enqueue(task.id);
+        // Create task
+        const issue = createTestIssue(clientQueue.issues);
+        const plan = createTestPlan(clientQueue.plans, issue.id);
+        const task = createTestTask(clientQueue.tasks, plan.id, {
+          title: "Queued Task",
+          status: "BACKLOG",
+        });
 
-      // Worker claims the task (simulating what worker-runner does)
-      const claimed = clientQueue.dispatchQueue.claimTask(workerId);
-      expect(claimed).toBeTruthy();
-      expect(claimed?.taskId).toBe(task.id);
+        // Register worker and add task to dispatch queue (uses workerQueueDb)
+        const workerId = "test-worker-id";
+        queueDb.registerWorker(workerId, "test-worker");
+        queueDb.enqueue(task.id, "test-project");
 
-      // Start with workerId (isolated mode is enforced for workers)
-      const result = await handleLoadTaskSession(ctxQueue, {
-        taskId: task.id,
-        sessionId: "test-session",
-        workerId,
-        // mode defaults to "isolated"
-      });
+        // Worker claims the task (simulating what worker-runner does)
+        const claimed = queueDb.claimTask(workerId);
+        expect(claimed).toBeTruthy();
+        expect(claimed?.taskId).toBe(task.id);
 
-      const content = JSON.parse(result.content[0].text);
-      expect(content.success).toBe(true);
-      // BACKLOG task is a fresh start, not resume (even when queued)
-      expect(content.resumed).toBe(false);
-      expect(content.task.status).toBe("IN_PROGRESS");
+        // Start with workerId (isolated mode is enforced for workers)
+        const result = await handleLoadTaskSession(ctxQueue, {
+          taskId: task.id,
+          sessionId: "test-session",
+          workerId,
+          // mode defaults to "isolated"
+        });
+
+        const content = JSON.parse(result.content[0].text);
+        expect(content.success).toBe(true);
+        // BACKLOG task is a fresh start, not resume (even when queued)
+        expect(content.resumed).toBe(false);
+        expect(content.task.status).toBe("IN_PROGRESS");
+      } finally {
+        queueDb.close();
+        try {
+          fs.unlinkSync(queueDbPath);
+        } catch {
+          // Ignore cleanup errors
+        }
+        testDbQueue.cleanup();
+      }
     });
 
     it("should resume non-queued IN_PROGRESS task by any session", async () => {

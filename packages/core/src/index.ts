@@ -21,6 +21,7 @@ export * from "./domain/errors.js";
 export * from "./domain/backup.js";
 export * from "./domain/type-definition.js";
 export * from "./domain/worker.js";
+export * from "./domain/worker-queue-db.js";
 export * from "./domain/execution-log.js";
 export * from "./domain/drizzle-db.js";
 export * from "./domain/db-client.js";
@@ -226,6 +227,12 @@ export {
 
 // Infrastructure - Events
 export { EventBus, type DomainEventListener } from "./infrastructure/events/event-bus.js";
+
+// Infrastructure - Worker Queue
+export {
+  GlobalDbWorkerQueueDb,
+  getWorkerQueueDbPath,
+} from "./infrastructure/worker-queue/index.js";
 
 // Infrastructure - Port Management
 export {

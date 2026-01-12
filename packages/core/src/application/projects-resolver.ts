@@ -70,7 +70,6 @@ export interface ProjectConfig {
   readonly projectId: string;
 }
 
-
 // =============================================================================
 // Error Classes
 // =============================================================================
@@ -587,6 +586,23 @@ export class ProjectsResolver {
       }
     }
 
+    return configToProjectInfo(config);
+  }
+
+  /**
+   * Get a project by slug (synchronous version)
+   *
+   * This method only works if the project config is already cached.
+   * Call ensureScanned() or getProjectBySlug() first to populate the cache.
+   *
+   * @param slug - Project slug (e.g., "dev-workflow-b9bccf")
+   * @returns ProjectInfo with sourceInfo, or null if not cached
+   */
+  getProjectBySlugSync(slug: string): ProjectInfo | null {
+    const config = this.configBySlug.get(slug);
+    if (!config) {
+      return null;
+    }
     return configToProjectInfo(config);
   }
 

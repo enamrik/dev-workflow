@@ -294,7 +294,12 @@ export class TaskSyncService {
         // Sync task labels to project custom fields (if mapping configured)
         const labelFieldMapping = this.provider.getLabelFieldMapping();
         if (labelFieldMapping && task.labels) {
-          await this.syncLabelsToProjectFields(projectItemId, projectId, task.labels, labelFieldMapping);
+          await this.syncLabelsToProjectFields(
+            projectItemId,
+            projectId,
+            task.labels,
+            labelFieldMapping
+          );
         }
       } catch (error) {
         if (error instanceof TaskSyncError) {
@@ -392,7 +397,12 @@ export class TaskSyncService {
         // Sync task labels to project custom fields (if mapping configured)
         const labelFieldMapping = this.provider.getLabelFieldMapping();
         if (labelFieldMapping && task.labels) {
-          await this.syncLabelsToProjectFields(projectItemId, projectId, task.labels, labelFieldMapping);
+          await this.syncLabelsToProjectFields(
+            projectItemId,
+            projectId,
+            task.labels,
+            labelFieldMapping
+          );
         }
       } catch (error) {
         if (error instanceof TaskSyncError) {
@@ -791,10 +801,7 @@ export class TaskSyncService {
     // If no project item ID, try to add to project
     if (!task.githubSync.projectItemId && task.githubSync.githubNodeId) {
       try {
-        const result = await this.provider.addToProject(
-          task.githubSync.githubNodeId,
-          projectId
-        );
+        const result = await this.provider.addToProject(task.githubSync.githubNodeId, projectId);
 
         if (result.success && result.itemId) {
           // Update task with project item ID

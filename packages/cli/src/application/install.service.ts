@@ -41,10 +41,7 @@ export class InstallService {
    * Expected: sqlite:///path or postgres://...
    */
   private validateConnectionString(connectionString: string): void {
-    if (
-      connectionString.startsWith("postgres") ||
-      connectionString.startsWith("sqlite:")
-    ) {
+    if (connectionString.startsWith("postgres") || connectionString.startsWith("sqlite:")) {
       return;
     }
     throw new InstallError(
