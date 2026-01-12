@@ -7,10 +7,12 @@
 
 import {
   getGlobalDatabasePath,
-  DataSourceFactory,
-  SqliteGlobalSettingsRepository,
+  DbSourceProvider,
   BackupService,
   S3BackupProvider,
+  checkpointSqliteDatabase,
+  runSqliteMigrations,
+  type DbSource,
   type BackupConfig,
   type S3BackupConfig,
   type BackupMetadata,
@@ -18,7 +20,6 @@ import {
   type RestoreResult,
   type ValidationResult,
   type CreateBucketResult,
-  type SqliteDataSource,
 } from "@dev-workflow/core";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -44,25 +45,24 @@ export interface ListBackupsResult {
  * BackupConfigService - Manages backup configuration and operations
  */
 export class BackupConfigService {
-  private dbService: SqliteDataSource | null = null;
-  private settingsRepository: SqliteGlobalSettingsRepository | null = null;
+  private sourceProvider: DbSourceProvider | null = null;
+  private source: DbSource | null = null;
   private backupService: BackupService | null = null;
 
   /**
    * Initialize the database connection
    */
   private async initialize(): Promise<void> {
-    if (this.dbService) {
+    if (this.source) {
       return;
     }
 
     const databasePath = getGlobalDatabasePath();
-    this.dbService = await DataSourceFactory.createSqlite(databasePath);
-    this.dbService.runMigrations();
+    runSqliteMigrations(databasePath);
 
-    const db = this.dbService.getDb();
-    this.settingsRepository = new SqliteGlobalSettingsRepository(db);
-    this.backupService = new BackupService(this.settingsRepository);
+    this.sourceProvider = new DbSourceProvider();
+    this.source = this.sourceProvider.getOrCreate({ connectionString: databasePath });
+    this.backupService = new BackupService(this.source);
   }
 
   /**
@@ -78,7 +78,7 @@ export class BackupConfigService {
    */
   async getConfig(): Promise<BackupConfig | null> {
     await this.initialize();
-    return this.settingsRepository!.getBackupConfig();
+    return this.source!.globalSettings.getBackupConfig();
   }
 
   /**
@@ -97,7 +97,7 @@ export class BackupConfigService {
     };
 
     try {
-      this.settingsRepository!.setBackupConfig(config);
+      this.source!.globalSettings.setBackupConfig(config);
       return {
         success: true,
         message: "Backup configured successfully",
@@ -136,7 +136,7 @@ export class BackupConfigService {
     await this.initialize();
 
     try {
-      this.settingsRepository!.deleteBackupConfig();
+      this.source!.globalSettings.deleteBackupConfig();
       return {
         success: true,
         message: "Backup configuration removed",
@@ -158,10 +158,11 @@ export class BackupConfigService {
   async backup(): Promise<BackupResult> {
     await this.initialize();
 
-    // Checkpoint WAL to ensure backup includes all pending writes
-    this.dbService!.checkpoint();
-
     const databasePath = getGlobalDatabasePath();
+
+    // Checkpoint WAL to ensure backup includes all pending writes
+    checkpointSqliteDatabase(databasePath);
+
     return this.backupService!.backup(databasePath);
   }
 
@@ -273,10 +274,10 @@ export class BackupConfigService {
    * Close database connection
    */
   close(): void {
-    if (this.dbService) {
-      this.dbService.close();
-      this.dbService = null;
-      this.settingsRepository = null;
+    if (this.sourceProvider) {
+      this.sourceProvider.closeAll();
+      this.sourceProvider = null;
+      this.source = null;
       this.backupService = null;
     }
   }

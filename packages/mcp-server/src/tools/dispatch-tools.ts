@@ -2,7 +2,7 @@
  * Dispatch-related MCP tools for worker task assignment
  */
 
-import type { DispatchQueueRepository, TaskRepository, WorkerRepository } from "@dev-workflow/core";
+import type { DispatchService, TaskService, WorkerService } from "@dev-workflow/core";
 import { DEFAULT_HEARTBEAT_THRESHOLD_SECONDS } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -69,9 +69,9 @@ export const dispatchToolDefinitions: ToolDefinition[] = [
  * Context required for dispatch tool handlers
  */
 export interface DispatchToolContext {
-  dispatchQueueRepository: DispatchQueueRepository;
-  taskRepository: TaskRepository;
-  workerRepository: WorkerRepository;
+  dispatchService: DispatchService;
+  taskService: TaskService;
+  workerService: WorkerService;
 }
 
 /**
@@ -91,7 +91,7 @@ export function handleDispatchTask(
   }
 
   // Verify task exists
-  const task = context.taskRepository.findById(taskId);
+  const task = context.taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
@@ -107,7 +107,7 @@ export function handleDispatchTask(
   const workerSummary = getWorkerSummary(context);
 
   // Check if already queued
-  const existing = context.dispatchQueueRepository.findByTaskId(taskId);
+  const existing = context.dispatchService.findByTaskId(taskId);
   if (existing) {
     // Get the queue entry with health info and claiming worker if any
     const queueEntry = getQueueEntryWithWorker(context, taskId);
@@ -122,7 +122,7 @@ export function handleDispatchTask(
   }
 
   // Add to queue
-  context.dispatchQueueRepository.enqueue(taskId);
+  context.dispatchService.enqueue(taskId);
 
   // Get the queue entry with health info
   const queueEntry = getQueueEntryWithWorker(context, taskId);
@@ -173,7 +173,7 @@ interface QueueEntryWithWorker {
  * Get worker summary counts (alive workers only)
  */
 function getWorkerSummary(context: DispatchToolContext): WorkerSummary {
-  const workersWithHealth = context.workerRepository.findAllWithHealth(
+  const workersWithHealth = context.workerService.findAllWithHealth(
     DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
   );
   const aliveWorkers = workersWithHealth.filter((w) => w.isAlive);
@@ -192,9 +192,7 @@ function getQueueEntryWithWorker(
   context: DispatchToolContext,
   taskId: string
 ): QueueEntryWithWorker {
-  const entries = context.dispatchQueueRepository.findAllWithHealth(
-    DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
-  );
+  const entries = context.dispatchService.findAllWithHealth(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
   const entry = entries.find((e) => e.taskId === taskId);
 
   if (!entry) {
@@ -214,7 +212,7 @@ function getQueueEntryWithWorker(
   // If claimed, get the worker details
   let claimedByWorker = null;
   if (entry.workerId) {
-    const workers = context.workerRepository.findAllWithHealth(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
+    const workers = context.workerService.findAllWithHealth(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
     const worker = workers.find((w) => w.id === entry.workerId);
     if (worker) {
       claimedByWorker = {
@@ -271,7 +269,7 @@ interface DispatchStatus {
  * Used by both dispatch_task and get_dispatch_status for consistency
  */
 function getDispatchStatus(context: DispatchToolContext): DispatchStatus {
-  const workersWithHealth = context.workerRepository.findAllWithHealth(
+  const workersWithHealth = context.workerService.findAllWithHealth(
     DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
   );
 
@@ -295,7 +293,7 @@ function getDispatchStatus(context: DispatchToolContext): DispatchStatus {
   };
 
   // Get dispatch queue
-  const queueEntries = context.dispatchQueueRepository.findAllWithHealth(
+  const queueEntries = context.dispatchService.findAllWithHealth(
     DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
   );
   const queue = queueEntries.map((e) => ({
@@ -309,9 +307,7 @@ function getDispatchStatus(context: DispatchToolContext): DispatchStatus {
   }));
 
   // Queue stats
-  const queueStats = context.dispatchQueueRepository.getQueueStats(
-    DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
-  );
+  const queueStats = context.dispatchService.getQueueStats(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
 
   return { workers, workerSummary, queue, queueStats };
 }
@@ -349,13 +345,13 @@ export function handleEndWorkerSession(
   }
 
   // Verify task exists
-  const task = context.taskRepository.findById(taskId);
+  const task = context.taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
 
   // Find the queue entry
-  const entry = context.dispatchQueueRepository.findByTaskId(taskId);
+  const entry = context.dispatchService.findByTaskId(taskId);
   if (!entry) {
     return errorResponse(
       `Task is not in the dispatch queue: ${taskId}. ` +
@@ -381,7 +377,7 @@ export function handleEndWorkerSession(
   }
 
   // Set the claudeDone flag
-  const updated = context.dispatchQueueRepository.setClaudeDone(taskId, workerId);
+  const updated = context.dispatchService.setClaudeDone(taskId, workerId);
   if (!updated) {
     return errorResponse("Failed to set claudeDone flag. The queue entry may have been modified.");
   }

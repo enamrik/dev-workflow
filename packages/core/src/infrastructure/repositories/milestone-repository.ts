@@ -1,20 +1,21 @@
 import { eq, max, and, asc } from "drizzle-orm";
 import { milestones, MilestoneRow } from "../database/schema.js";
 import type { Milestone, MilestoneRepository, MilestoneFilters } from "../../domain/milestone.js";
-import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
+import type { DrizzleDb } from "../../domain/drizzle-db.js";
 
 /**
- * SQLite implementation of MilestoneRepository
+ * Drizzle implementation of MilestoneRepository
  *
  * Uses Drizzle ORM for type-safe queries.
  * Follows Repository pattern from DDD.
+ * Works with any Drizzle-supported database dialect.
  *
  * The repository is scoped to a specific project via projectId.
  * All queries automatically filter by this project.
  */
-export class SqliteMilestoneRepository implements MilestoneRepository {
+export class DrizzleMilestoneRepository implements MilestoneRepository {
   constructor(
-    private readonly db: SqliteDrizzleDatabase,
+    private readonly db: DrizzleDb,
     private readonly projectId: string
   ) {}
 

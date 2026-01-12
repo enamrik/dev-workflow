@@ -9,18 +9,13 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
 import {
   MockGitHubCLI,
-  SqliteProjectRepository,
-  SqliteTypeRepository,
   TypeService,
   DEFAULT_COLUMN_MAPPING,
   ProviderRegistry,
   type Project,
 } from "@dev-workflow/core";
 import { handleUpdateSettings, type SettingsToolContext } from "../../tools/settings-tools.js";
-import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import * as schema from "@dev-workflow/core/schema";
 
-type DbType = BetterSQLite3Database<typeof schema>;
 const TEST_GIT_ROOT_HASH = "abc123def456";
 const TEST_GIT_ROOT = "/test/repo";
 
@@ -32,23 +27,20 @@ async function createSettingsToolContext(
   mockGitHubCLI?: MockGitHubCLI,
   project?: Project
 ): Promise<SettingsToolContext> {
-  const db = testDb.db as DbType;
-  const projectRepository = new SqliteProjectRepository(db);
   const githubCLI = mockGitHubCLI ?? new MockGitHubCLI();
-  const typeRepository = new SqliteTypeRepository(db);
-  const typeService = new TypeService(typeRepository);
+  const typeService = new TypeService(testDb.source.types);
 
   // Create project if not provided
   const testProject =
     project ??
-    (await projectRepository.create({
+    (await testDb.source.projects.create({
       name: "test-project",
       gitRootHash: TEST_GIT_ROOT_HASH,
     }));
 
   return {
     project: testProject,
-    projectRepository,
+    source: testDb.source,
     githubCLI,
     gitRoot: TEST_GIT_ROOT,
     providerRegistry: ProviderRegistry.getInstance(),
@@ -229,7 +221,7 @@ describe("update_settings - configure_column_mapping", () => {
       });
 
       // Assert - verify persisted in database
-      const project = await ctx.projectRepository.findById(ctx.project.id);
+      const project = await ctx.source.projects.findById(ctx.project.id);
       expect(project?.githubSync?.columnMapping).toEqual({ PR_REVIEW: "Review" });
     });
   });
@@ -352,7 +344,7 @@ describe("update_settings - assignee configuration", () => {
       expect(content.config.syncIssues.assignee).toBe("octocat");
 
       // Verify persisted in database
-      const project = await ctx.projectRepository.findById(ctx.project.id);
+      const project = await ctx.source.projects.findById(ctx.project.id);
       expect(project?.githubSync?.assignee).toBe("octocat");
     });
 
@@ -447,7 +439,7 @@ describe("update_settings - assignee configuration", () => {
       expect(content.config.syncIssues.assignee).toBeUndefined();
 
       // Verify in database
-      const project = await ctx.projectRepository.findById(ctx.project.id);
+      const project = await ctx.source.projects.findById(ctx.project.id);
       expect(project?.githubSync?.assignee).toBeUndefined();
     });
 
@@ -465,7 +457,7 @@ describe("update_settings - assignee configuration", () => {
       });
 
       // Assert - assignee should still be there
-      const project = await ctx.projectRepository.findById(ctx.project.id);
+      const project = await ctx.source.projects.findById(ctx.project.id);
       expect(project?.githubSync?.assignee).toBe("existinguser");
     });
 
@@ -717,9 +709,7 @@ describe("update_settings - typeLabels validation", () => {
 
     it("should validate against database types when seeded", async () => {
       // Arrange - seed a custom type in DB
-      const db = testDb.db as DbType;
-      const typeRepository = new SqliteTypeRepository(db);
-      typeRepository.create({
+      testDb.source.types.create({
         name: "CUSTOM",
         displayName: "Custom",
         description: "A custom type",
@@ -751,9 +741,7 @@ describe("update_settings - typeLabels validation", () => {
 
     it("should reject default types when only custom types exist in DB", async () => {
       // Arrange - seed ONLY custom types, no defaults
-      const db = testDb.db as DbType;
-      const typeRepository = new SqliteTypeRepository(db);
-      typeRepository.create({
+      testDb.source.types.create({
         name: "CUSTOM",
         displayName: "Custom",
         description: "A custom type",

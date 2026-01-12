@@ -2,20 +2,21 @@ import { eq, max, and, sql, like, or } from "drizzle-orm";
 import { issues, IssueRow } from "../database/schema.js";
 import type { Issue, IssueFilters, IssueRepository } from "../../domain/issue.js";
 import type { GitHubSyncState, GitHubSyncStatus } from "../../domain/github.js";
-import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
+import type { DrizzleDb } from "../../domain/drizzle-db.js";
 
 /**
- * SQLite implementation of IssueRepository
+ * Drizzle implementation of IssueRepository
  *
  * Uses Drizzle ORM for type-safe queries and automatic JSON serialization.
  * Follows Repository pattern from DDD.
+ * Works with any Drizzle-supported database dialect.
  *
  * The repository is scoped to a specific project via projectId.
  * All queries automatically filter by this project.
  */
-export class SqliteIssueRepository implements IssueRepository {
+export class DrizzleIssueRepository implements IssueRepository {
   constructor(
-    private readonly db: SqliteDrizzleDatabase,
+    private readonly db: DrizzleDb,
     private readonly projectId: string
   ) {}
 

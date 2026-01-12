@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createTestDatabase, type TestDatabase } from "../../__tests__/setup.js";
-import { createRepositories } from "../../__tests__/helpers.js";
+import { getRepositories } from "../../__tests__/helpers.js";
 import { MockFileSystem } from "../../__tests__/mocks/mock-file-system.js";
 import { TaskSyncService } from "../task-sync-service.js";
 import {
@@ -81,24 +81,24 @@ function createMockProvider(
     linkParentChild: vi.fn().mockResolvedValue(undefined),
     addComment: vi.fn().mockResolvedValue(undefined),
     assignIssue: vi.fn().mockResolvedValue(undefined),
+    closeIssueByTask: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
 
 describe("TaskSyncService", () => {
   let testDb: TestDatabase;
-  let repos: ReturnType<typeof createRepositories>;
+  let repos: ReturnType<typeof getRepositories>;
   let mockProvider: ProjectManagementProvider;
   let testProjectId: string;
   let service: TaskSyncService;
 
   beforeEach(async () => {
     testDb = createTestDatabase();
-    repos = createRepositories(testDb.db);
     mockProvider = createMockProvider();
 
     // Create a project with GitHub sync enabled (including projectId for column moves)
-    const project = await repos.projectRepository.create({
+    const project = await testDb.source.projects.create({
       name: "Test Project",
       gitRootHash: "abc123",
       githubSync: {
@@ -116,14 +116,11 @@ describe("TaskSyncService", () => {
     });
     testProjectId = project.id;
 
-    service = new TaskSyncService(
-      repos.taskRepository,
-      repos.issueRepository,
-      repos.planRepository,
-      mockProvider,
-      repos.projectRepository,
-      testProjectId
-    );
+    // Create a client scoped to this project for the repos
+    const projectClient = testDb.source.createClient(testProjectId);
+    repos = getRepositories(projectClient);
+
+    service = new TaskSyncService(testDb.source, mockProvider, testProjectId);
   });
 
   describe("syncTaskStatus", () => {
@@ -202,8 +199,10 @@ describe("TaskSyncService", () => {
       // Act
       await service.syncTaskStatus(testTask.id, "COMPLETED");
 
-      // Assert - verify closeIssue was called
-      expect(mockProvider.closeIssue).toHaveBeenCalledWith("42");
+      // Assert - verify closeIssueByTask was called with the task
+      expect(mockProvider.closeIssueByTask).toHaveBeenCalled();
+      const calledTask = vi.mocked(mockProvider.closeIssueByTask).mock.calls[0][0];
+      expect(calledTask.githubSync?.githubIssueNumber).toBe(42);
 
       // Assert - verify moveToColumn was called with Done
       expect(mockProvider.moveToColumn).toHaveBeenCalledWith(
@@ -249,7 +248,7 @@ describe("TaskSyncService", () => {
 
     it("should not call moveToColumn if project has no projectId configured", async () => {
       // Arrange - update project to have no projectId
-      await repos.projectRepository.update(testProjectId, {
+      await testDb.source.projects.update(testProjectId, {
         githubSync: {
           enabled: true,
           // No projectId!
@@ -276,14 +275,7 @@ describe("TaskSyncService", () => {
       mockProvider = createMockProvider({
         moveToColumn: vi.fn().mockRejectedValue(new Error("Column move failed")),
       });
-      service = new TaskSyncService(
-        repos.taskRepository,
-        repos.issueRepository,
-        repos.planRepository,
-        mockProvider,
-        repos.projectRepository,
-        testProjectId
-      );
+      service = new TaskSyncService(testDb.source, mockProvider, testProjectId);
 
       // Act
       await service.syncTaskStatus(testTask.id, "PR_REVIEW");
@@ -342,7 +334,7 @@ describe("TaskSyncService", () => {
 
     it("should use custom column mapping when configured", async () => {
       // Arrange - configure custom column mapping with a custom column name
-      await repos.projectRepository.update(testProjectId, {
+      await testDb.source.projects.update(testProjectId, {
         githubSync: {
           enabled: true,
           projectId: "PVT_test_project_456",
@@ -373,7 +365,7 @@ describe("TaskSyncService", () => {
 
     it("should use default mapping for unmapped statuses when custom mapping is partial", async () => {
       // Arrange - configure partial custom column mapping
-      await repos.projectRepository.update(testProjectId, {
+      await testDb.source.projects.update(testProjectId, {
         githubSync: {
           enabled: true,
           projectId: "PVT_test_project_456",
@@ -408,16 +400,9 @@ describe("TaskSyncService", () => {
       mockProvider = createMockProvider({
         moveToColumn: vi.fn().mockRejectedValue(new Error("Column 'NonExistent Column' not found")),
       });
-      service = new TaskSyncService(
-        repos.taskRepository,
-        repos.issueRepository,
-        repos.planRepository,
-        mockProvider,
-        repos.projectRepository,
-        testProjectId
-      );
+      service = new TaskSyncService(testDb.source, mockProvider, testProjectId);
 
-      await repos.projectRepository.update(testProjectId, {
+      await testDb.source.projects.update(testProjectId, {
         githubSync: {
           enabled: true,
           projectId: "PVT_test_project_456",
@@ -496,14 +481,7 @@ describe("TaskSyncService", () => {
           return Promise.resolve(null);
         }),
       });
-      service = new TaskSyncService(
-        repos.taskRepository,
-        repos.issueRepository,
-        repos.planRepository,
-        mockProvider,
-        repos.projectRepository,
-        testProjectId
-      );
+      service = new TaskSyncService(testDb.source, mockProvider, testProjectId);
 
       // Act
       const result = await service.activatePlannedTasks(issue.id);
@@ -612,14 +590,7 @@ describe("TaskSyncService", () => {
         }),
         linkParentChild: vi.fn().mockResolvedValue(undefined),
       });
-      service = new TaskSyncService(
-        repos.taskRepository,
-        repos.issueRepository,
-        repos.planRepository,
-        mockProvider,
-        repos.projectRepository,
-        testProjectId
-      );
+      service = new TaskSyncService(testDb.source, mockProvider, testProjectId);
 
       // Act
       const result = await service.activatePlannedTasks(issue.id);
@@ -761,14 +732,7 @@ describe("TaskSyncService", () => {
           return Promise.resolve(null);
         }),
       });
-      service = new TaskSyncService(
-        repos.taskRepository,
-        repos.issueRepository,
-        repos.planRepository,
-        mockProvider,
-        repos.projectRepository,
-        testProjectId
-      );
+      service = new TaskSyncService(testDb.source, mockProvider, testProjectId);
 
       // Act
       const result = await service.syncIssue(issue.number);
@@ -876,14 +840,7 @@ describe("TaskSyncService", () => {
           },
         ]),
       });
-      service = new TaskSyncService(
-        repos.taskRepository,
-        repos.issueRepository,
-        repos.planRepository,
-        mockProvider,
-        repos.projectRepository,
-        testProjectId
-      );
+      service = new TaskSyncService(testDb.source, mockProvider, testProjectId);
 
       // Act
       const result = await service.syncIssue(issue.number);
@@ -955,14 +912,7 @@ describe("TaskSyncService", () => {
           return Promise.resolve(createdIssues.get(ref) ?? null);
         }),
       });
-      service = new TaskSyncService(
-        repos.taskRepository,
-        repos.issueRepository,
-        repos.planRepository,
-        mockProvider,
-        repos.projectRepository,
-        testProjectId
-      );
+      service = new TaskSyncService(testDb.source, mockProvider, testProjectId);
 
       // Act - first sync
       const result1 = await service.syncIssue(issue.number);
@@ -1072,7 +1022,7 @@ describe("TaskSyncService", () => {
 
     it("should return error when GitHub sync is disabled", async () => {
       // Arrange - disable GitHub sync
-      await repos.projectRepository.update(testProjectId, {
+      await testDb.source.projects.update(testProjectId, {
         githubSync: {
           enabled: false,
         },
@@ -1158,14 +1108,7 @@ describe("TaskSyncService", () => {
           return Promise.resolve(null);
         }),
       });
-      service = new TaskSyncService(
-        repos.taskRepository,
-        repos.issueRepository,
-        repos.planRepository,
-        mockProvider,
-        repos.projectRepository,
-        testProjectId
-      );
+      service = new TaskSyncService(testDb.source, mockProvider, testProjectId);
 
       // Act
       const result = await service.syncIssue(issue.number);
@@ -1216,11 +1159,8 @@ labels: []
 
       // Create service WITH template service
       const serviceWithTemplates = new TaskSyncService(
-        repos.taskRepository,
-        repos.issueRepository,
-        repos.planRepository,
+        testDb.source,
         mockProvider,
-        repos.projectRepository,
         testProjectId,
         templateService
       );
@@ -1299,11 +1239,8 @@ labels: []
 
       // Create service WITH template service (but no matching templates)
       const serviceWithTemplates = new TaskSyncService(
-        repos.taskRepository,
-        repos.issueRepository,
-        repos.planRepository,
+        testDb.source,
         mockProvider,
-        repos.projectRepository,
         testProjectId,
         templateService
       );
@@ -1415,7 +1352,7 @@ labels: []
     it("should use task.type for GitHub label via TypeService", async () => {
       // Arrange - create TypeService with repository that has custom types
       // Seed types in the test database
-      repos.typeRepository.seedTypes([
+      testDb.source.types.seedTypes([
         { name: "FEATURE", displayName: "Feature", description: "New functionality" },
         { name: "BUG", displayName: "Bug", description: "Something broken" },
         {
@@ -1425,15 +1362,12 @@ labels: []
         },
         { name: "TASK", displayName: "Task", description: "Technical work" },
       ]);
-      const typeService = new TypeService(repos.typeRepository);
+      const typeService = new TypeService(testDb.source.types);
 
       // Create service WITH typeService
       const serviceWithTypes = new TaskSyncService(
-        repos.taskRepository,
-        repos.issueRepository,
-        repos.planRepository,
+        testDb.source,
         mockProvider,
-        repos.projectRepository,
         testProjectId,
         undefined, // no templateService
         typeService
@@ -1487,18 +1421,15 @@ labels: []
 
     it("should use different label for FEATURE type task", async () => {
       // Arrange - create TypeService with repository
-      repos.typeRepository.seedTypes([
+      testDb.source.types.seedTypes([
         { name: "FEATURE", displayName: "Feature", description: "New functionality" },
         { name: "TASK", displayName: "Task", description: "Technical work" },
       ]);
-      const typeService = new TypeService(repos.typeRepository);
+      const typeService = new TypeService(testDb.source.types);
 
       const serviceWithTypes = new TaskSyncService(
-        repos.taskRepository,
-        repos.issueRepository,
-        repos.planRepository,
+        testDb.source,
         mockProvider,
-        repos.projectRepository,
         testProjectId,
         undefined,
         typeService
@@ -1594,15 +1525,12 @@ labels: []
 
     it("should use default TypeService labels when no types in database", async () => {
       // Arrange - create TypeService with empty repository (uses defaults)
-      // Note: repos.typeRepository is empty, so TypeService will fall back to defaults
-      const typeService = new TypeService(repos.typeRepository);
+      // Note: testDb.source.types is empty, so TypeService will fall back to defaults
+      const typeService = new TypeService(testDb.source.types);
 
       const serviceWithTypes = new TaskSyncService(
-        repos.taskRepository,
-        repos.issueRepository,
-        repos.planRepository,
+        testDb.source,
         mockProvider,
-        repos.projectRepository,
         testProjectId,
         undefined,
         typeService

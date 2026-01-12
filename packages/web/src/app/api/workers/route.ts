@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
-import { DataSourceRegistry, WebDIContext } from "@/server";
+import { ProjectsResolver, DbSourceProvider, WebDIContext } from "@/server";
 import {
-  SqliteWorkerRepository,
-  SqliteDispatchQueueRepository,
-  DataSourceFactory,
   getGlobalDatabasePath,
-  type SqliteDataSource,
+  WorkerService,
+  DispatchService,
   type WorkerWithHealth,
   type DispatchQueueEntryWithHealth,
 } from "@dev-workflow/core";
@@ -47,21 +45,24 @@ interface TaskDetails {
 
 async function lookupTaskDetails(
   taskId: string,
-  projects: { id: string; slug: string }[],
-  registry: DataSourceRegistry
+  projects: { projectId: string; slug: string }[],
+  sourceProvider: DbSourceProvider
 ): Promise<TaskDetails | null> {
+  const resolver = new ProjectsResolver();
   for (const project of projects) {
     try {
-      const context = await WebDIContext.createFromProjectInfo(project, registry);
-      const task = context.taskRepository.findById(taskId);
+      const projectInfo = await resolver.getProjectBySlug(project.slug);
+      const context = await WebDIContext.createFromProjectInfo(projectInfo, sourceProvider);
+      // Use services for lookups
+      const task = context.taskService.findById(taskId);
 
       if (task) {
-        const plan = context.planRepository.findById(task.planId);
+        const plan = context.planService.findById(task.planId);
         if (plan) {
-          const issue = context.issueRepository.findById(plan.issueId);
+          const issue = context.issueService.findById(plan.issueId);
           if (issue) {
             // Get total task count for the plan
-            const allTasks = context.taskRepository.findByPlanId(plan.id);
+            const allTasks = context.taskService.findByPlanId(plan.id);
             return {
               taskNumber: task.number,
               issueNumber: issue.number,
@@ -80,27 +81,28 @@ async function lookupTaskDetails(
 }
 
 export async function GET() {
+  const sourceProvider = new DbSourceProvider();
   try {
     // Workers are GLOBAL - connect directly to the global database
     // This ensures workers show up even if no projects are configured
     const dbPath = getGlobalDatabasePath();
-    const dataSource = (await DataSourceFactory.createSqlite(dbPath)) as SqliteDataSource;
-    const db = dataSource.getDb();
+    const source = sourceProvider.getOrCreate({ connectionString: `sqlite://${dbPath}` });
+    await source.provision();
 
-    const workerRepository = new SqliteWorkerRepository(db);
-    const dispatchQueueRepository = new SqliteDispatchQueueRepository(db);
+    // Create services for global worker/dispatch operations (using source, not client)
+    const workerService = new WorkerService(source);
+    const dispatchService = new DispatchService(source);
 
-    const workers = workerRepository.findAllWithHealth();
-    const queueEntries = dispatchQueueRepository.findAllWithHealth();
-    const stats = dispatchQueueRepository.getQueueStats();
+    const workers = workerService.findAllWithHealth();
+    const queueEntries = dispatchService.findAllWithHealth();
+    const stats = dispatchService.getQueueStats();
 
     // Try to get project info for enrichment, but don't fail if unavailable
-    let projects: { id: string; slug: string }[] = [];
-    let registry: DataSourceRegistry | null = null;
+    let projects: { projectId: string; slug: string }[] = [];
     try {
-      registry = new DataSourceRegistry();
-      const result = await registry.getSourcesWithProjects();
-      projects = result.projects;
+      const resolver = new ProjectsResolver();
+      const sources = await resolver.getAllSources();
+      projects = sources.flatMap((s) => s.projects);
     } catch {
       // Projects unavailable, continue without enrichment
     }
@@ -108,7 +110,10 @@ export async function GET() {
     // Enrich queue entries with task details
     const enrichedQueue: DispatchQueueEntryWithDetails[] = [];
     for (const entry of queueEntries) {
-      const details = registry ? await lookupTaskDetails(entry.taskId, projects, registry) : null;
+      const details =
+        projects.length > 0
+          ? await lookupTaskDetails(entry.taskId, projects, sourceProvider)
+          : null;
       enrichedQueue.push({
         ...entry,
         taskNumber: details?.taskNumber,
@@ -121,8 +126,8 @@ export async function GET() {
     // Enrich workers with task details
     const enrichedWorkers: WorkerWithTaskDetails[] = [];
     for (const worker of workers) {
-      if (worker.currentTaskId && registry) {
-        const details = await lookupTaskDetails(worker.currentTaskId, projects, registry);
+      if (worker.currentTaskId && projects.length > 0) {
+        const details = await lookupTaskDetails(worker.currentTaskId, projects, sourceProvider);
         enrichedWorkers.push({
           ...worker,
           taskNumber: details?.taskNumber,
@@ -145,5 +150,7 @@ export async function GET() {
   } catch (error) {
     console.error("Error fetching worker data:", error);
     return NextResponse.json({ error: "Failed to fetch worker data" }, { status: 500 });
+  } finally {
+    sourceProvider.closeAll();
   }
 }

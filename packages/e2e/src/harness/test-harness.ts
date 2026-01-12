@@ -11,7 +11,15 @@
  */
 
 import { execSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  existsSync,
+  writeFileSync,
+  readFileSync,
+  mkdirSync,
+  realpathSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -50,7 +58,9 @@ export class E2ETestHarness {
     this.skipSampleProject = options.skipSampleProject ?? false;
 
     // Create temp directory for this test run
-    this.testDir = mkdtempSync(join(tmpdir(), "dev-workflow-e2e-"));
+    // Use realpathSync to resolve symlinks (e.g., /var -> /private/var on macOS)
+    // This ensures the path matches what Claude CLI uses when registering MCP servers
+    this.testDir = realpathSync(mkdtempSync(join(tmpdir(), "dev-workflow-e2e-")));
     // Use isolated .track directory within the test directory
     this.trackDir = join(this.testDir, ".track");
     // dbPath will be updated in setup() after we know the project ID
@@ -67,6 +77,33 @@ export class E2ETestHarness {
       // Ensure we don't inherit any existing DATABASE_PATH
       DATABASE_PATH: undefined,
     };
+  }
+
+  /**
+   * Get path to MCP config file for passing to Claude via --mcp-config
+   * Creates a JSON file in the test directory with the MCP server configuration
+   * This ensures Claude can find the MCP server even in test environments
+   */
+  getMcpConfig(): string {
+    const cliPath = this.getCliPath();
+    const config = {
+      mcpServers: {
+        "dev-workflow-tracker": {
+          type: "stdio",
+          command: "node",
+          args: [cliPath, "mcp"],
+          env: {
+            PROJECT_SLUG: this.projectId,
+            GIT_ROOT: this.testDir,
+            TRACK_DIR: this.trackDir,
+          },
+        },
+      },
+    };
+    // Write to a file to avoid shell escaping issues
+    const configPath = join(this.testDir, ".mcp-test-config.json");
+    writeFileSync(configPath, JSON.stringify(config, null, 2));
+    return configPath;
   }
 
   /**

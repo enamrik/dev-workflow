@@ -15,6 +15,7 @@
 import type { Issue, IssueRepository, IssueStatus } from "../domain/issue.js";
 import type { ProjectManagementProvider } from "../domain/project-management-provider.js";
 import type { TaskService, AbandonTaskResult } from "./task-service.js";
+import type { DbClient } from "../domain/db-client.js";
 
 /**
  * Error thrown when issue operation fails
@@ -53,10 +54,50 @@ export interface CloseIssueResult {
  */
 export class IssueService {
   constructor(
-    private readonly issueRepository: IssueRepository,
+    private readonly db: DbClient,
     private readonly taskService: TaskService,
-    private readonly provider: ProjectManagementProvider | null
+    private readonly provider: ProjectManagementProvider
   ) {}
+
+  // ============================================================================
+  // Read Operations (delegating to repository)
+  // ============================================================================
+
+  /**
+   * Find an issue by ID
+   *
+   * @returns Issue or null if not found
+   */
+  findById(issueId: string, includeDeleted = false): Issue | null {
+    return this.db.issues.findById(issueId, includeDeleted);
+  }
+
+  /**
+   * Find an issue by number
+   *
+   * @returns Issue or null if not found
+   */
+  findByNumber(number: number): Issue | null {
+    return this.db.issues.findByNumber(number);
+  }
+
+  /**
+   * Find many issues with optional filtering
+   */
+  findMany(options: Parameters<IssueRepository["findMany"]>[0]): Issue[] {
+    return this.db.issues.findMany(options);
+  }
+
+  /**
+   * Get the next issue number
+   */
+  getNextIssueNumber(): number {
+    return this.db.issues.getNextIssueNumber();
+  }
+
+  // ============================================================================
+  // Get Operations (throw if not found)
+  // ============================================================================
 
   /**
    * Get an issue by ID
@@ -64,7 +105,7 @@ export class IssueService {
    * @throws IssueServiceError if issue not found
    */
   getIssue(issueId: string): Issue {
-    const issue = this.issueRepository.findById(issueId);
+    const issue = this.db.issues.findById(issueId);
     if (!issue) {
       throw new IssueServiceError(`Issue not found: ${issueId}`, "NOT_FOUND");
     }
@@ -77,7 +118,7 @@ export class IssueService {
    * @throws IssueServiceError if issue not found
    */
   getIssueByNumber(number: number): Issue {
-    const issue = this.issueRepository.findByNumber(number);
+    const issue = this.db.issues.findByNumber(number);
     if (!issue) {
       throw new IssueServiceError(`Issue #${number} not found`, "NOT_FOUND");
     }
@@ -101,11 +142,7 @@ export class IssueService {
    * @returns Result including abandoned tasks and sync status
    * @throws IssueServiceError if issue not found or already closed
    */
-  async closeIssue(
-    issueId: string,
-    force = false,
-    closedBy?: string
-  ): Promise<CloseIssueResult> {
+  async closeIssue(issueId: string, force = false, closedBy?: string): Promise<CloseIssueResult> {
     const issue = this.getIssue(issueId);
 
     // Already closed
@@ -146,20 +183,12 @@ export class IssueService {
       }
     }
 
-    // 2. Close external issue if synced (do this BEFORE local update for atomicity)
-    if (this.provider && issue.githubSync?.githubIssueNumber) {
-      try {
-        await this.provider.closeIssue(String(issue.githubSync.githubIssueNumber));
-        result.externalIssueClosed = true;
-      } catch (error) {
-        console.warn(
-          `Failed to close external issue: ${error instanceof Error ? error.message : String(error)}`
-        );
-      }
-    }
+    // 2. Close external issue (provider handles sync check internally, no-ops if not synced)
+    await this.provider.closeIssue(issue);
+    result.externalIssueClosed = !!issue.githubSync?.githubIssueNumber;
 
     // 3. Update local issue status
-    const updatedIssue = this.issueRepository.update(issueId, { status: "CLOSED" as IssueStatus });
+    const updatedIssue = this.db.issues.update(issueId, { status: "CLOSED" as IssueStatus });
 
     result.issue = updatedIssue;
     return result;
@@ -192,6 +221,66 @@ export class IssueService {
 
     // Verify issue exists
     this.getIssue(issueId);
-    return this.issueRepository.update(issueId, { status: newStatus });
+    return this.db.issues.update(issueId, { status: newStatus });
+  }
+
+  // ============================================================================
+  // Write Operations
+  // ============================================================================
+
+  /**
+   * Create a new issue
+   */
+  create(data: Parameters<IssueRepository["create"]>[0]): Issue {
+    return this.db.issues.create(data);
+  }
+
+  /**
+   * Update an issue
+   */
+  update(issueId: string, updates: Parameters<IssueRepository["update"]>[1]): Issue {
+    return this.db.issues.update(issueId, updates);
+  }
+
+  /**
+   * Soft delete an issue
+   */
+  delete(issueId: string, deletedBy = "system"): Issue {
+    return this.db.issues.delete(issueId, deletedBy);
+  }
+
+  /**
+   * Restore a soft-deleted issue
+   */
+  restore(issueId: string): Issue {
+    return this.db.issues.restore(issueId);
+  }
+
+  /**
+   * Assign an issue to a milestone
+   */
+  assignToMilestone(issueId: string, milestoneId: string): Issue {
+    return this.db.issues.update(issueId, { milestoneId });
+  }
+
+  /**
+   * Remove an issue from its milestone
+   */
+  removeFromMilestone(issueId: string): Issue {
+    return this.db.issues.update(issueId, { milestoneId: undefined });
+  }
+
+  /**
+   * Search issues by keyword in title or description
+   */
+  search(query: string): Pick<Issue, "id" | "number" | "title" | "status" | "type" | "priority">[] {
+    return this.db.issues.search(query);
+  }
+
+  /**
+   * Get count of issues by status
+   */
+  getStatusCounts(): Record<string, number> {
+    return this.db.issues.getStatusCounts();
   }
 }

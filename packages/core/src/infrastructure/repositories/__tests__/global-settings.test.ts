@@ -1,16 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDatabase } from "../../../__tests__/setup.js";
-import { createRepositories } from "../../../__tests__/helpers.js";
 import { SettingKeys } from "../global-settings-repository.js";
 import type { BackupConfig } from "../../database/schema.js";
 
 describe("SqliteGlobalSettingsRepository", () => {
   let testDb: ReturnType<typeof createTestDatabase>;
-  let repos: ReturnType<typeof createRepositories>;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    repos = createRepositories(testDb.db);
   });
 
   afterEach(() => {
@@ -19,13 +16,13 @@ describe("SqliteGlobalSettingsRepository", () => {
 
   describe("get/set", () => {
     it("should return null for non-existent key", () => {
-      const value = repos.globalSettingsRepository.get(SettingKeys.BACKUP_CONFIG);
+      const value = testDb.source.globalSettings.get(SettingKeys.BACKUP_CONFIG);
       expect(value).toBeNull();
     });
 
     it("should set and get a string value", () => {
-      repos.globalSettingsRepository.set(SettingKeys.BACKUP_CONFIG, "test-value");
-      const value = repos.globalSettingsRepository.get<string>(SettingKeys.BACKUP_CONFIG);
+      testDb.source.globalSettings.set(SettingKeys.BACKUP_CONFIG, "test-value");
+      const value = testDb.source.globalSettings.get<string>(SettingKeys.BACKUP_CONFIG);
       expect(value).toBe("test-value");
     });
 
@@ -40,38 +37,38 @@ describe("SqliteGlobalSettingsRepository", () => {
         retentionCount: 20,
       };
 
-      repos.globalSettingsRepository.set(SettingKeys.BACKUP_CONFIG, config);
-      const retrieved = repos.globalSettingsRepository.get<BackupConfig>(SettingKeys.BACKUP_CONFIG);
+      testDb.source.globalSettings.set(SettingKeys.BACKUP_CONFIG, config);
+      const retrieved = testDb.source.globalSettings.get<BackupConfig>(SettingKeys.BACKUP_CONFIG);
 
       expect(retrieved).toEqual(config);
     });
 
     it("should update an existing value", () => {
-      repos.globalSettingsRepository.set(SettingKeys.BACKUP_CONFIG, "initial-value");
-      repos.globalSettingsRepository.set(SettingKeys.BACKUP_CONFIG, "updated-value");
+      testDb.source.globalSettings.set(SettingKeys.BACKUP_CONFIG, "initial-value");
+      testDb.source.globalSettings.set(SettingKeys.BACKUP_CONFIG, "updated-value");
 
-      const value = repos.globalSettingsRepository.get<string>(SettingKeys.BACKUP_CONFIG);
+      const value = testDb.source.globalSettings.get<string>(SettingKeys.BACKUP_CONFIG);
       expect(value).toBe("updated-value");
     });
   });
 
   describe("delete", () => {
     it("should delete an existing setting", () => {
-      repos.globalSettingsRepository.set(SettingKeys.BACKUP_CONFIG, "test-value");
-      repos.globalSettingsRepository.delete(SettingKeys.BACKUP_CONFIG);
+      testDb.source.globalSettings.set(SettingKeys.BACKUP_CONFIG, "test-value");
+      testDb.source.globalSettings.delete(SettingKeys.BACKUP_CONFIG);
 
-      const value = repos.globalSettingsRepository.get(SettingKeys.BACKUP_CONFIG);
+      const value = testDb.source.globalSettings.get(SettingKeys.BACKUP_CONFIG);
       expect(value).toBeNull();
     });
 
     it("should not throw when deleting non-existent key", () => {
-      expect(() => repos.globalSettingsRepository.delete(SettingKeys.BACKUP_CONFIG)).not.toThrow();
+      expect(() => testDb.source.globalSettings.delete(SettingKeys.BACKUP_CONFIG)).not.toThrow();
     });
   });
 
   describe("getBackupConfig", () => {
     it("should return null when not configured", () => {
-      const config = repos.globalSettingsRepository.getBackupConfig();
+      const config = testDb.source.globalSettings.getBackupConfig();
       expect(config).toBeNull();
     });
 
@@ -86,8 +83,8 @@ describe("SqliteGlobalSettingsRepository", () => {
         retentionCount: 10,
       };
 
-      repos.globalSettingsRepository.setBackupConfig(config);
-      const retrieved = repos.globalSettingsRepository.getBackupConfig();
+      testDb.source.globalSettings.setBackupConfig(config);
+      const retrieved = testDb.source.globalSettings.getBackupConfig();
 
       expect(retrieved).toEqual(config);
     });
@@ -105,8 +102,8 @@ describe("SqliteGlobalSettingsRepository", () => {
         retentionCount: 15,
       };
 
-      repos.globalSettingsRepository.setBackupConfig(config);
-      const retrieved = repos.globalSettingsRepository.getBackupConfig();
+      testDb.source.globalSettings.setBackupConfig(config);
+      const retrieved = testDb.source.globalSettings.getBackupConfig();
 
       expect(retrieved?.s3.profile).toBe("my-aws-profile");
       expect(retrieved?.s3.bucket).toBe("my-backup-bucket");
@@ -126,8 +123,8 @@ describe("SqliteGlobalSettingsRepository", () => {
         retentionCount: 20,
       };
 
-      repos.globalSettingsRepository.setBackupConfig(config);
-      const retrieved = repos.globalSettingsRepository.getBackupConfig();
+      testDb.source.globalSettings.setBackupConfig(config);
+      const retrieved = testDb.source.globalSettings.getBackupConfig();
 
       expect(retrieved?.s3.endpoint).toBe("https://account.r2.cloudflarestorage.com");
       expect(retrieved?.s3.accessKeyId).toBe("my-access-key");
@@ -146,11 +143,11 @@ describe("SqliteGlobalSettingsRepository", () => {
         retentionCount: 20,
       };
 
-      repos.globalSettingsRepository.setBackupConfig(config);
-      expect(repos.globalSettingsRepository.getBackupConfig()).not.toBeNull();
+      testDb.source.globalSettings.setBackupConfig(config);
+      expect(testDb.source.globalSettings.getBackupConfig()).not.toBeNull();
 
-      repos.globalSettingsRepository.deleteBackupConfig();
-      expect(repos.globalSettingsRepository.getBackupConfig()).toBeNull();
+      testDb.source.globalSettings.deleteBackupConfig();
+      expect(testDb.source.globalSettings.getBackupConfig()).toBeNull();
     });
   });
 });

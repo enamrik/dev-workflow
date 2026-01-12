@@ -61,6 +61,8 @@ export interface Issue {
  */
 export interface IssueFilters {
   status?: IssueStatus;
+  /** Exclude issues with these statuses */
+  excludeStatuses?: IssueStatus[];
   type?: IssueType;
   /** Filter by milestone */
   milestoneId?: string;
@@ -154,4 +156,21 @@ export interface IssueRepository {
    * @returns The restored issue
    */
   restore(id: string): Issue;
+
+  /**
+   * Search issues by keyword in title or description
+   *
+   * Case-insensitive search, limited to 10 results.
+   *
+   * @param query - Search query string
+   * @returns Array of matching issues (slim version)
+   */
+  search(query: string): Pick<Issue, "id" | "number" | "title" | "status" | "type" | "priority">[];
+
+  /**
+   * Get count of issues by status
+   *
+   * @returns Record of status to count
+   */
+  getStatusCounts(): Record<string, number>;
 }

@@ -8,6 +8,38 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { GitHubProjectManagementProvider } from "../github-project-management-provider.js";
 import { ProjectManagementProviderError } from "../../../domain/project-management-provider.js";
 import { MockGitHubCLI } from "../../../__tests__/mocks/mock-github-cli.js";
+import type { Issue } from "../../../domain/issue.js";
+
+/**
+ * Create a minimal Issue object for testing closeIssue
+ */
+function createMockIssue(githubIssueNumber: number | null): Issue {
+  return {
+    id: "test-issue-id",
+    projectId: "test-project",
+    number: 1,
+    title: "Test Issue",
+    description: "Test description",
+    type: "FEATURE",
+    status: "OPEN",
+    priority: "MEDIUM",
+    acceptanceCriteria: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    isDeleted: false,
+    githubSync: githubIssueNumber
+      ? {
+          githubIssueNumber,
+          githubUrl: `https://github.com/test/repo/issues/${githubIssueNumber}`,
+          githubNodeId: `I_test_${githubIssueNumber}`,
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          projectItemId: null,
+        }
+      : undefined,
+  };
+}
 
 describe("GitHubProjectManagementProvider", () => {
   let mockGitHubCLI: MockGitHubCLI;
@@ -173,7 +205,8 @@ describe("GitHubProjectManagementProvider", () => {
         labels: [],
       });
 
-      await expect(provider.closeIssue("1")).resolves.not.toThrow();
+      const issue = createMockIssue(1);
+      await expect(provider.closeIssue(issue)).resolves.not.toThrow();
 
       const calls = mockGitHubCLI.getCallsTo("closeIssue");
       expect(calls.length).toBe(1);
@@ -188,11 +221,20 @@ describe("GitHubProjectManagementProvider", () => {
         labels: [],
       });
 
-      await expect(provider.closeIssue("1", "Closing comment")).resolves.not.toThrow();
+      const issue = createMockIssue(1);
+      await expect(provider.closeIssue(issue, "Closing comment")).resolves.not.toThrow();
 
       const calls = mockGitHubCLI.getCallsTo("closeIssueWithComment");
       expect(calls.length).toBe(1);
       expect(calls[0].args).toEqual([1, "Closing comment"]);
+    });
+
+    it("should no-op when issue has no githubSync", async () => {
+      const issue = createMockIssue(null);
+      await expect(provider.closeIssue(issue)).resolves.not.toThrow();
+
+      const calls = mockGitHubCLI.getCallsTo("closeIssue");
+      expect(calls.length).toBe(0);
     });
   });
 
@@ -200,7 +242,8 @@ describe("GitHubProjectManagementProvider", () => {
     it("should reopen a closed issue", async () => {
       // Create and close an issue
       await provider.createIssue({ title: "Test", body: "Body", labels: [] });
-      await provider.closeIssue("1");
+      const issue = createMockIssue(1);
+      await provider.closeIssue(issue);
 
       await expect(provider.reopenIssue("1")).resolves.not.toThrow();
 
@@ -525,7 +568,8 @@ describe("GitHubProjectManagementProvider", () => {
       mockGitHubCLI.setConfig({ errors: { closeIssue: causeError } });
 
       try {
-        await provider.closeIssue("1");
+        const issue = createMockIssue(1);
+        await provider.closeIssue(issue);
         expect.fail("Should have thrown");
       } catch (error) {
         const providerError = error as ProjectManagementProviderError;

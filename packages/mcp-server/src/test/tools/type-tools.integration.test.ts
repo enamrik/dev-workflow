@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { TypeService, SqliteTypeRepository } from "@dev-workflow/core";
+import { TypeService } from "@dev-workflow/core";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
 import { handleListTypes, type TypeToolContext } from "../../tools/type-tools.js";
 
@@ -17,9 +17,8 @@ let testDb: TestDatabase;
 /**
  * Create a TypeToolContext for testing
  */
-function createTypeToolContext(db: TestDatabase["db"]): TypeToolContext {
-  const typeRepository = new SqliteTypeRepository(db);
-  const typeService = new TypeService(typeRepository);
+function createTypeToolContext(testDb: TestDatabase): TypeToolContext {
+  const typeService = new TypeService(testDb.source.types);
 
   return {
     typeService,
@@ -37,7 +36,7 @@ describe("Type Tools Integration", () => {
 
   describe("handleListTypes", () => {
     it("should return default types when database is empty", async () => {
-      const ctx = createTypeToolContext(testDb.db);
+      const ctx = createTypeToolContext(testDb);
 
       const result = await handleListTypes(ctx);
 
@@ -56,16 +55,15 @@ describe("Type Tools Integration", () => {
     });
 
     it("should return database types when seeded", async () => {
-      // Seed types
-      const typeRepository = new SqliteTypeRepository(testDb.db);
-      typeRepository.create({
+      // Seed types using testDb.source.types
+      testDb.source.types.create({
         name: "CUSTOM",
         displayName: "Custom",
         description: "Custom type for testing",
         keywords: ["custom"],
       });
 
-      const ctx = createTypeToolContext(testDb.db);
+      const ctx = createTypeToolContext(testDb);
       const result = await handleListTypes(ctx);
 
       const content = JSON.parse(result.content[0].text);
@@ -76,7 +74,7 @@ describe("Type Tools Integration", () => {
     });
 
     it("should include name, description, and remoteLabel for each type", async () => {
-      const ctx = createTypeToolContext(testDb.db);
+      const ctx = createTypeToolContext(testDb);
 
       const result = await handleListTypes(ctx);
 
@@ -99,7 +97,7 @@ describe("Type Tools Integration", () => {
     });
 
     it("should include helpful message about usage", async () => {
-      const ctx = createTypeToolContext(testDb.db);
+      const ctx = createTypeToolContext(testDb);
 
       const result = await handleListTypes(ctx);
 

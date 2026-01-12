@@ -11,19 +11,20 @@ import {
   isWorkerAlive,
   getHeartbeatAge,
 } from "../../domain/worker.js";
-import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
+import type { DrizzleDb } from "../../domain/drizzle-db.js";
 
 /** Threshold for cleaning up dead workers on registration (1 hour) */
 const DEAD_WORKER_CLEANUP_THRESHOLD_SECONDS = 3600;
 
 /**
- * SQLite implementation of WorkerRepository
+ * Drizzle implementation of WorkerRepository
  *
  * Manages worker registration, heartbeats, and lifecycle.
  * Workers are global (not project-scoped).
+ * Works with any Drizzle-supported database dialect.
  */
-export class SqliteWorkerRepository implements WorkerRepository {
-  constructor(private readonly db: SqliteDrizzleDatabase) {}
+export class DrizzleWorkerRepository implements WorkerRepository {
+  constructor(private readonly db: DrizzleDb) {}
 
   register(id: string, name: string, pid?: number): Worker {
     // Clean up workers that have been dead for over an hour

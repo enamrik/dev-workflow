@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
-  createRepositories,
+  getRepositories,
   createTestIssue,
   createTestPlan,
   createTestTask,
@@ -16,13 +16,13 @@ import { createTestDatabase } from "../../__tests__/setup.js";
 
 describe("TaskManagementService", () => {
   let testDb: ReturnType<typeof createTestDatabase>;
-  let repos: ReturnType<typeof createRepositories>;
+  let repos: ReturnType<typeof getRepositories>;
   let services: ReturnType<typeof createServices>;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    repos = createRepositories(testDb.db);
-    services = createServices(repos);
+    repos = getRepositories(testDb.client);
+    services = createServices(testDb.client);
   });
 
   afterEach(() => {

@@ -7,15 +7,13 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
-import { createRepositories, createServices } from "../helpers.js";
+import { createServices } from "../helpers.js";
 import {
-  SqliteIssueRepository,
-  SqlitePlanRepository,
-  SqliteTaskRepository,
   VersioningService,
   PlanningService,
   TaskManagementService,
   TaskSessionService,
+  type DbClient,
   type IssueType,
   type IssuePriority,
   type IssueStatus,
@@ -37,7 +35,7 @@ interface ToolResult {
  * Simulate create_issue tool
  */
 function createIssueTool(
-  issueRepository: SqliteIssueRepository,
+  client: DbClient,
   params: {
     title: string;
     description: string;
@@ -46,7 +44,7 @@ function createIssueTool(
     acceptanceCriteria?: string[];
   }
 ): ToolResult {
-  const issue = issueRepository.create({
+  const issue = client.issues.create({
     title: params.title,
     description: params.description,
     type: params.type ?? "FEATURE",
@@ -71,13 +69,10 @@ function createIssueTool(
 /**
  * Simulate get_issue tool
  */
-function getIssueTool(
-  issueRepository: SqliteIssueRepository,
-  params: { id?: string; number?: number }
-): ToolResult {
+function getIssueTool(client: DbClient, params: { id?: string; number?: number }): ToolResult {
   const issue = params.id
-    ? issueRepository.findById(params.id)
-    : issueRepository.findByNumber(params.number!);
+    ? client.issues.findById(params.id)
+    : client.issues.findByNumber(params.number!);
 
   if (!issue) {
     return { success: false, error: "Issue not found" };
@@ -90,10 +85,10 @@ function getIssueTool(
  * Simulate list_issues tool
  */
 function listIssuesTool(
-  issueRepository: SqliteIssueRepository,
+  client: DbClient,
   params: { status?: IssueStatus; type?: IssueType }
 ): ToolResult {
-  const issues = issueRepository.findMany({
+  const issues = client.issues.findMany({
     status: params.status,
     type: params.type,
   });
@@ -106,7 +101,7 @@ function listIssuesTool(
  */
 async function generatePlanTool(
   planningService: PlanningService,
-  issueRepository: SqliteIssueRepository,
+  client: DbClient,
   params: {
     issueId?: string;
     issueNumber?: number;
@@ -124,7 +119,7 @@ async function generatePlanTool(
 ): Promise<ToolResult> {
   let resolvedIssueId = params.issueId;
   if (!resolvedIssueId && params.issueNumber) {
-    const issue = issueRepository.findByNumber(params.issueNumber);
+    const issue = client.issues.findByNumber(params.issueNumber);
     if (!issue) {
       return { success: false, error: `Issue not found: #${params.issueNumber}` };
     }
@@ -147,11 +142,11 @@ async function generatePlanTool(
  * Simulate update_task_status tool
  */
 function updateTaskStatusTool(
-  taskRepository: SqliteTaskRepository,
+  client: DbClient,
   params: { taskId: string; status: TaskStatus; notes?: string }
 ): ToolResult {
   try {
-    const updatedTask = taskRepository.updateStatus(
+    const updatedTask = client.tasks.updateStatus(
       params.taskId,
       params.status,
       "test",
@@ -227,12 +222,9 @@ function revertToSnapshotTool(
 
 describe("MCP Tool: create_issue", () => {
   let testDb: TestDatabase;
-  let issueRepository: SqliteIssueRepository;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const repos = createRepositories(testDb.db);
-    issueRepository = repos.issueRepository;
   });
 
   afterEach(() => {
@@ -240,7 +232,7 @@ describe("MCP Tool: create_issue", () => {
   });
 
   it("should create issue with minimal parameters", () => {
-    const result = createIssueTool(issueRepository, {
+    const result = createIssueTool(testDb.client, {
       title: "Test Issue",
       description: "Test description",
     });
@@ -253,13 +245,13 @@ describe("MCP Tool: create_issue", () => {
     expect(issue.number).toBe(1);
 
     // Verify in database
-    const dbIssue = issueRepository.findByNumber(1);
+    const dbIssue = testDb.client.issues.findByNumber(1);
     expect(dbIssue).toBeDefined();
     expect(dbIssue?.title).toBe("Test Issue");
   });
 
   it("should create issue with all parameters", () => {
-    const result = createIssueTool(issueRepository, {
+    const result = createIssueTool(testDb.client, {
       title: "Full Issue",
       description: "Full description",
       type: "BUG",
@@ -274,20 +266,20 @@ describe("MCP Tool: create_issue", () => {
     expect(issue.priority).toBe("HIGH");
 
     // Verify in database
-    const dbIssue = issueRepository.findByNumber(1);
+    const dbIssue = testDb.client.issues.findByNumber(1);
     expect(dbIssue?.acceptanceCriteria).toEqual(["AC1", "AC2"]);
   });
 
   it("should auto-increment issue numbers", () => {
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Issue 1",
       description: "Desc 1",
     });
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Issue 2",
       description: "Desc 2",
     });
-    const result = createIssueTool(issueRepository, {
+    const result = createIssueTool(testDb.client, {
       title: "Issue 3",
       description: "Desc 3",
     });
@@ -299,12 +291,9 @@ describe("MCP Tool: create_issue", () => {
 
 describe("MCP Tool: get_issue", () => {
   let testDb: TestDatabase;
-  let issueRepository: SqliteIssueRepository;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const repos = createRepositories(testDb.db);
-    issueRepository = repos.issueRepository;
   });
 
   afterEach(() => {
@@ -312,12 +301,12 @@ describe("MCP Tool: get_issue", () => {
   });
 
   it("should get issue by number", () => {
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Test Issue",
       description: "Test description",
     });
 
-    const result = getIssueTool(issueRepository, { number: 1 });
+    const result = getIssueTool(testDb.client, { number: 1 });
 
     expect(result.success).toBe(true);
     const issue = result.issue as { title: string };
@@ -325,19 +314,19 @@ describe("MCP Tool: get_issue", () => {
   });
 
   it("should get issue by id", () => {
-    const createResult = createIssueTool(issueRepository, {
+    const createResult = createIssueTool(testDb.client, {
       title: "Test Issue",
       description: "Test description",
     });
     const createdIssue = createResult.issue as { id: string };
 
-    const result = getIssueTool(issueRepository, { id: createdIssue.id });
+    const result = getIssueTool(testDb.client, { id: createdIssue.id });
 
     expect(result.success).toBe(true);
   });
 
   it("should return error for non-existent issue", () => {
-    const result = getIssueTool(issueRepository, { number: 99999 });
+    const result = getIssueTool(testDb.client, { number: 99999 });
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("Issue not found");
@@ -346,18 +335,11 @@ describe("MCP Tool: get_issue", () => {
 
 describe("MCP Tool: generate_plan", () => {
   let testDb: TestDatabase;
-  let issueRepository: SqliteIssueRepository;
-  let planRepository: SqlitePlanRepository;
-  let taskRepository: SqliteTaskRepository;
   let planningService: PlanningService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const repos = createRepositories(testDb.db);
-    issueRepository = repos.issueRepository;
-    planRepository = repos.planRepository;
-    taskRepository = repos.taskRepository;
-    const services = createServices(repos);
+    const services = createServices(testDb.client);
     planningService = services.planningService;
   });
 
@@ -367,12 +349,12 @@ describe("MCP Tool: generate_plan", () => {
 
   it("should generate plan with tasks", async () => {
     // Create an issue first
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Test Issue",
       description: "Test description",
     });
 
-    const result = await generatePlanTool(planningService, issueRepository, {
+    const result = await generatePlanTool(planningService, testDb.client, {
       issueNumber: 1,
       summary: "Test plan summary",
       approach: "Test approach",
@@ -387,20 +369,20 @@ describe("MCP Tool: generate_plan", () => {
     expect(result.success).toBe(true);
 
     // Verify plan in database
-    const issue = issueRepository.findByNumber(1);
-    const plan = planRepository.findByIssueId(issue!.id);
+    const issue = testDb.client.issues.findByNumber(1);
+    const plan = testDb.client.plans.findByIssueId(issue!.id);
     expect(plan).toBeDefined();
     expect(plan?.summary).toBe("Test plan summary");
 
     // Verify tasks in database (tasks start in PLANNED until issue is activated)
-    const tasks = taskRepository.findByPlanId(plan!.id);
+    const tasks = testDb.client.tasks.findByPlanId(plan!.id);
     expect(tasks).toHaveLength(3);
     expect(tasks[0]?.title).toBe("Task 1");
     expect(tasks[0]?.status).toBe("PLANNED");
   });
 
   it("should return error for non-existent issue", async () => {
-    const result = await generatePlanTool(planningService, issueRepository, {
+    const result = await generatePlanTool(planningService, testDb.client, {
       issueNumber: 99999,
       summary: "Test",
       approach: "Test",
@@ -417,18 +399,11 @@ describe("MCP Tool: generate_plan", () => {
 
 describe("MCP Tool: update_task_status", () => {
   let testDb: TestDatabase;
-  let issueRepository: SqliteIssueRepository;
-  let taskRepository: SqliteTaskRepository;
-  let planRepository: SqlitePlanRepository;
   let planningService: PlanningService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const repos = createRepositories(testDb.db);
-    issueRepository = repos.issueRepository;
-    taskRepository = repos.taskRepository;
-    planRepository = repos.planRepository;
-    const services = createServices(repos);
+    const services = createServices(testDb.client);
     planningService = services.planningService;
   });
 
@@ -438,11 +413,11 @@ describe("MCP Tool: update_task_status", () => {
 
   it("should update task status to IN_PROGRESS", async () => {
     // Setup: create issue with plan and tasks
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Test Issue",
       description: "Test description",
     });
-    await generatePlanTool(planningService, issueRepository, {
+    await generatePlanTool(planningService, testDb.client, {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
@@ -452,16 +427,16 @@ describe("MCP Tool: update_task_status", () => {
       estimatedComplexity: "LOW",
     });
 
-    const issue = issueRepository.findByNumber(1);
-    const plan = planRepository.findByIssueId(issue!.id);
-    const tasks = taskRepository.findByPlanId(plan!.id);
+    const issue = testDb.client.issues.findByNumber(1);
+    const plan = testDb.client.plans.findByIssueId(issue!.id);
+    const tasks = testDb.client.tasks.findByPlanId(plan!.id);
     const taskId = tasks[0]!.id;
 
     // Tasks start in PLANNED, move to BACKLOG first to simulate activation
-    taskRepository.updateStatus(taskId, "BACKLOG");
+    testDb.client.tasks.updateStatus(taskId, "BACKLOG");
 
     // Update status
-    const result = updateTaskStatusTool(taskRepository, {
+    const result = updateTaskStatusTool(testDb.client, {
       taskId,
       status: "IN_PROGRESS",
     });
@@ -469,18 +444,18 @@ describe("MCP Tool: update_task_status", () => {
     expect(result.success).toBe(true);
 
     // Verify in database
-    const updatedTask = taskRepository.findById(taskId);
+    const updatedTask = testDb.client.tasks.findById(taskId);
     expect(updatedTask?.status).toBe("IN_PROGRESS");
     expect(updatedTask?.startedAt).toBeDefined();
   });
 
   it("should update task status to COMPLETED", async () => {
     // Setup
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Test Issue",
       description: "Test description",
     });
-    await generatePlanTool(planningService, issueRepository, {
+    await generatePlanTool(planningService, testDb.client, {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
@@ -490,15 +465,15 @@ describe("MCP Tool: update_task_status", () => {
       estimatedComplexity: "LOW",
     });
 
-    const issue = issueRepository.findByNumber(1);
-    const plan = planRepository.findByIssueId(issue!.id);
-    const tasks = taskRepository.findByPlanId(plan!.id);
+    const issue = testDb.client.issues.findByNumber(1);
+    const plan = testDb.client.plans.findByIssueId(issue!.id);
+    const tasks = testDb.client.tasks.findByPlanId(plan!.id);
     const taskId = tasks[0]!.id;
 
     // Tasks start in PLANNED, move through BACKLOG to IN_PROGRESS
-    taskRepository.updateStatus(taskId, "BACKLOG");
-    updateTaskStatusTool(taskRepository, { taskId, status: "IN_PROGRESS" });
-    const result = updateTaskStatusTool(taskRepository, {
+    testDb.client.tasks.updateStatus(taskId, "BACKLOG");
+    updateTaskStatusTool(testDb.client, { taskId, status: "IN_PROGRESS" });
+    const result = updateTaskStatusTool(testDb.client, {
       taskId,
       status: "COMPLETED",
     });
@@ -506,7 +481,7 @@ describe("MCP Tool: update_task_status", () => {
     expect(result.success).toBe(true);
 
     // Verify in database
-    const updatedTask = taskRepository.findById(taskId);
+    const updatedTask = testDb.client.tasks.findById(taskId);
     expect(updatedTask?.status).toBe("COMPLETED");
     expect(updatedTask?.completedAt).toBeDefined();
   });
@@ -514,19 +489,12 @@ describe("MCP Tool: update_task_status", () => {
 
 describe("MCP Tool: delete_task", () => {
   let testDb: TestDatabase;
-  let issueRepository: SqliteIssueRepository;
-  let taskRepository: SqliteTaskRepository;
-  let planRepository: SqlitePlanRepository;
   let planningService: PlanningService;
   let taskManagementService: TaskManagementService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const repos = createRepositories(testDb.db);
-    issueRepository = repos.issueRepository;
-    taskRepository = repos.taskRepository;
-    planRepository = repos.planRepository;
-    const services = createServices(repos);
+    const services = createServices(testDb.client);
     planningService = services.planningService;
     taskManagementService = services.taskManagementService;
   });
@@ -537,11 +505,11 @@ describe("MCP Tool: delete_task", () => {
 
   it("should soft delete a PLANNED task", async () => {
     // Setup: Create issue with plan and task (tasks start in PLANNED status)
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Test Issue",
       description: "Test description",
     });
-    await generatePlanTool(planningService, issueRepository, {
+    await generatePlanTool(planningService, testDb.client, {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
@@ -556,9 +524,9 @@ describe("MCP Tool: delete_task", () => {
       estimatedComplexity: "LOW",
     });
 
-    const issue = issueRepository.findByNumber(1);
-    const plan = planRepository.findByIssueId(issue!.id);
-    const tasks = taskRepository.findByPlanId(plan!.id);
+    const issue = testDb.client.issues.findByNumber(1);
+    const plan = testDb.client.plans.findByIssueId(issue!.id);
+    const tasks = testDb.client.tasks.findByPlanId(plan!.id);
     const taskId = tasks[0]!.id;
 
     // Tasks start in PLANNED status - they can be deleted in this state
@@ -575,17 +543,17 @@ describe("MCP Tool: delete_task", () => {
     expect(deletedTask.deletedAt).toBeDefined();
 
     // Task should not appear in findByPlanId (excludes deleted)
-    const remainingTasks = taskRepository.findByPlanId(plan!.id);
+    const remainingTasks = testDb.client.tasks.findByPlanId(plan!.id);
     expect(remainingTasks).toHaveLength(0);
   });
 
   it("should not delete BACKLOG task (immutable after plan activation)", async () => {
     // Setup
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Test Issue",
       description: "Test description",
     });
-    await generatePlanTool(planningService, issueRepository, {
+    await generatePlanTool(planningService, testDb.client, {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
@@ -600,13 +568,13 @@ describe("MCP Tool: delete_task", () => {
       estimatedComplexity: "LOW",
     });
 
-    const issue = issueRepository.findByNumber(1);
-    const plan = planRepository.findByIssueId(issue!.id);
-    const tasks = taskRepository.findByPlanId(plan!.id);
+    const issue = testDb.client.issues.findByNumber(1);
+    const plan = testDb.client.plans.findByIssueId(issue!.id);
+    const tasks = testDb.client.tasks.findByPlanId(plan!.id);
     const taskId = tasks[0]!.id;
 
     // Simulate plan activation: move task from PLANNED to BACKLOG
-    taskRepository.updateStatus(taskId, "BACKLOG");
+    testDb.client.tasks.updateStatus(taskId, "BACKLOG");
 
     // Try to delete - should fail because task is past PLANNED status
     const result = deleteTaskTool(taskManagementService, { taskId });
@@ -618,11 +586,11 @@ describe("MCP Tool: delete_task", () => {
 
   it("should not delete IN_PROGRESS task", async () => {
     // Setup
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Test Issue",
       description: "Test description",
     });
-    await generatePlanTool(planningService, issueRepository, {
+    await generatePlanTool(planningService, testDb.client, {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
@@ -637,14 +605,14 @@ describe("MCP Tool: delete_task", () => {
       estimatedComplexity: "LOW",
     });
 
-    const issue = issueRepository.findByNumber(1);
-    const plan = planRepository.findByIssueId(issue!.id);
-    const tasks = taskRepository.findByPlanId(plan!.id);
+    const issue = testDb.client.issues.findByNumber(1);
+    const plan = testDb.client.plans.findByIssueId(issue!.id);
+    const tasks = testDb.client.tasks.findByPlanId(plan!.id);
     const taskId = tasks[0]!.id;
 
     // Tasks start in PLANNED, move through BACKLOG to IN_PROGRESS
-    taskRepository.updateStatus(taskId, "BACKLOG");
-    taskRepository.updateStatus(taskId, "IN_PROGRESS", "test");
+    testDb.client.tasks.updateStatus(taskId, "BACKLOG");
+    testDb.client.tasks.updateStatus(taskId, "IN_PROGRESS", "test");
 
     // Try to delete
     const result = deleteTaskTool(taskManagementService, { taskId });
@@ -657,14 +625,11 @@ describe("MCP Tool: delete_task", () => {
 
 describe("MCP Tool: view_snapshot", () => {
   let testDb: TestDatabase;
-  let issueRepository: SqliteIssueRepository;
   let versioningService: VersioningService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const repos = createRepositories(testDb.db);
-    issueRepository = repos.issueRepository;
-    const services = createServices(repos);
+    const services = createServices(testDb.client);
     versioningService = services.versioningService;
   });
 
@@ -674,19 +639,19 @@ describe("MCP Tool: view_snapshot", () => {
 
   it("should view historical snapshot", () => {
     // Setup: create issue, update it to create snapshots
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Original Title",
       description: "Original description",
     });
 
-    const issue = issueRepository.findByNumber(1);
+    const issue = testDb.client.issues.findByNumber(1);
 
     // Create a snapshot (version 1) with original state
     const snapshotType: SnapshotType = "PLAN_REGENERATION";
     versioningService.createSnapshot(issue!.number, snapshotType, "test");
 
     // Update the issue
-    issueRepository.update(issue!.id, { title: "Updated Title" });
+    testDb.client.issues.update(issue!.id, { title: "Updated Title" });
 
     // Create another snapshot (version 2)
     const updateSnapshotType: SnapshotType = "ISSUE_UPDATE";
@@ -704,7 +669,7 @@ describe("MCP Tool: view_snapshot", () => {
   });
 
   it("should return error for non-existent version", () => {
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Test Issue",
       description: "Test description",
     });
@@ -721,14 +686,11 @@ describe("MCP Tool: view_snapshot", () => {
 
 describe("MCP Tool: revert_to_snapshot", () => {
   let testDb: TestDatabase;
-  let issueRepository: SqliteIssueRepository;
   let versioningService: VersioningService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const repos = createRepositories(testDb.db);
-    issueRepository = repos.issueRepository;
-    const services = createServices(repos);
+    const services = createServices(testDb.client);
     versioningService = services.versioningService;
   });
 
@@ -738,22 +700,22 @@ describe("MCP Tool: revert_to_snapshot", () => {
 
   it("should revert issue to previous snapshot", () => {
     // Setup
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Original Title",
       description: "Original description",
     });
 
-    const issue = issueRepository.findByNumber(1);
+    const issue = testDb.client.issues.findByNumber(1);
 
     // Create snapshot v1
     const snapshotType: SnapshotType = "PLAN_REGENERATION";
     versioningService.createSnapshot(issue!.number, snapshotType, "test");
 
     // Update issue
-    issueRepository.update(issue!.id, { title: "Changed Title" });
+    testDb.client.issues.update(issue!.id, { title: "Changed Title" });
 
     // Verify current state is changed
-    const currentIssue = issueRepository.findByNumber(1);
+    const currentIssue = testDb.client.issues.findByNumber(1);
     expect(currentIssue?.title).toBe("Changed Title");
 
     // Revert to v1
@@ -766,19 +728,16 @@ describe("MCP Tool: revert_to_snapshot", () => {
     expect(result.success).toBe(true);
 
     // Verify issue reverted
-    const revertedIssue = issueRepository.findByNumber(1);
+    const revertedIssue = testDb.client.issues.findByNumber(1);
     expect(revertedIssue?.title).toBe("Original Title");
   });
 });
 
 describe("MCP Tool: list_issues", () => {
   let testDb: TestDatabase;
-  let issueRepository: SqliteIssueRepository;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const repos = createRepositories(testDb.db);
-    issueRepository = repos.issueRepository;
   });
 
   afterEach(() => {
@@ -786,11 +745,11 @@ describe("MCP Tool: list_issues", () => {
   });
 
   it("should list all issues", () => {
-    createIssueTool(issueRepository, { title: "Issue 1", description: "Desc 1" });
-    createIssueTool(issueRepository, { title: "Issue 2", description: "Desc 2" });
-    createIssueTool(issueRepository, { title: "Issue 3", description: "Desc 3" });
+    createIssueTool(testDb.client, { title: "Issue 1", description: "Desc 1" });
+    createIssueTool(testDb.client, { title: "Issue 2", description: "Desc 2" });
+    createIssueTool(testDb.client, { title: "Issue 3", description: "Desc 3" });
 
-    const result = listIssuesTool(issueRepository, {});
+    const result = listIssuesTool(testDb.client, {});
 
     expect(result.success).toBe(true);
     const issues = result.issues as unknown[];
@@ -798,15 +757,15 @@ describe("MCP Tool: list_issues", () => {
   });
 
   it("should filter issues by status", () => {
-    createIssueTool(issueRepository, { title: "Open Issue", description: "Open" });
-    const createResult = createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, { title: "Open Issue", description: "Open" });
+    const createResult = createIssueTool(testDb.client, {
       title: "Closed Issue",
       description: "Closed",
     });
     const closedIssue = createResult.issue as { id: string };
-    issueRepository.update(closedIssue.id, { status: "CLOSED" });
+    testDb.client.issues.update(closedIssue.id, { status: "CLOSED" });
 
-    const result = listIssuesTool(issueRepository, { status: "OPEN" });
+    const result = listIssuesTool(testDb.client, { status: "OPEN" });
 
     expect(result.success).toBe(true);
     const issues = result.issues as Array<{ title: string }>;
@@ -815,18 +774,18 @@ describe("MCP Tool: list_issues", () => {
   });
 
   it("should filter issues by type", () => {
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Feature",
       description: "Feature desc",
       type: "FEATURE",
     });
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Bug",
       description: "Bug desc",
       type: "BUG",
     });
 
-    const result = listIssuesTool(issueRepository, { type: "BUG" });
+    const result = listIssuesTool(testDb.client, { type: "BUG" });
 
     expect(result.success).toBe(true);
     const issues = result.issues as Array<{ title: string }>;
@@ -837,21 +796,14 @@ describe("MCP Tool: list_issues", () => {
 
 describe("MCP Tool: list_available_tasks", () => {
   let testDb: TestDatabase;
-  let issueRepository: SqliteIssueRepository;
-  let planRepository: SqlitePlanRepository;
-  let taskRepository: SqliteTaskRepository;
   let planningService: PlanningService;
   let taskSessionService: TaskSessionService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const repos = createRepositories(testDb.db);
-    issueRepository = repos.issueRepository;
-    planRepository = repos.planRepository;
-    taskRepository = repos.taskRepository;
-    const services = createServices(repos);
+    const services = createServices(testDb.client);
     planningService = services.planningService;
-    taskSessionService = new TaskSessionService(taskRepository, planRepository, issueRepository);
+    taskSessionService = new TaskSessionService(testDb.client);
   });
 
   afterEach(() => {
@@ -860,11 +812,11 @@ describe("MCP Tool: list_available_tasks", () => {
 
   it("should return BACKLOG/READY tasks from OPEN issues", async () => {
     // Create an open issue with a plan and task
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Open Issue",
       description: "This issue is open",
     });
-    await generatePlanTool(planningService, issueRepository, {
+    await generatePlanTool(planningService, testDb.client, {
       issueNumber: 1,
       summary: "Test plan",
       approach: "Test approach",
@@ -874,13 +826,13 @@ describe("MCP Tool: list_available_tasks", () => {
       estimatedComplexity: "LOW",
     });
 
-    const issue = issueRepository.findByNumber(1);
-    const plan = planRepository.findByIssueId(issue!.id);
-    const tasks = taskRepository.findByPlanId(plan!.id);
+    const issue = testDb.client.issues.findByNumber(1);
+    const plan = testDb.client.plans.findByIssueId(issue!.id);
+    const tasks = testDb.client.tasks.findByPlanId(plan!.id);
     const task = tasks[0]!;
 
     // Tasks are created in PLANNED status, move to BACKLOG to simulate activation
-    taskRepository.updateStatus(task.id, "BACKLOG");
+    testDb.client.tasks.updateStatus(task.id, "BACKLOG");
 
     // Check task availability
     const isAvailable = await taskSessionService.isTaskAvailable(task.id);
@@ -890,11 +842,11 @@ describe("MCP Tool: list_available_tasks", () => {
 
   it("should NOT return tasks from CLOSED issues", async () => {
     // Create an issue with a plan and task
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Will Be Closed",
       description: "This issue will be closed",
     });
-    await generatePlanTool(planningService, issueRepository, {
+    await generatePlanTool(planningService, testDb.client, {
       issueNumber: 1,
       summary: "Test plan",
       approach: "Test approach",
@@ -904,16 +856,16 @@ describe("MCP Tool: list_available_tasks", () => {
       estimatedComplexity: "LOW",
     });
 
-    const issue = issueRepository.findByNumber(1);
-    const plan = planRepository.findByIssueId(issue!.id);
-    const tasks = taskRepository.findByPlanId(plan!.id);
+    const issue = testDb.client.issues.findByNumber(1);
+    const plan = testDb.client.plans.findByIssueId(issue!.id);
+    const tasks = testDb.client.tasks.findByPlanId(plan!.id);
     const task = tasks[0]!;
 
     // Tasks are created in PLANNED status, move to BACKLOG to simulate activation
-    taskRepository.updateStatus(task.id, "BACKLOG");
+    testDb.client.tasks.updateStatus(task.id, "BACKLOG");
 
     // Close the issue (task remains BACKLOG)
-    issueRepository.update(issue!.id, { status: "CLOSED" });
+    testDb.client.issues.update(issue!.id, { status: "CLOSED" });
 
     // Check task availability - should be false because issue is closed
     const isAvailable = await taskSessionService.isTaskAvailable(task.id);
@@ -923,11 +875,11 @@ describe("MCP Tool: list_available_tasks", () => {
 
   it("should return tasks from reopened issues", async () => {
     // Create an issue, close it, then reopen it
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Reopened Issue",
       description: "This issue was reopened",
     });
-    await generatePlanTool(planningService, issueRepository, {
+    await generatePlanTool(planningService, testDb.client, {
       issueNumber: 1,
       summary: "Test plan",
       approach: "Test approach",
@@ -937,20 +889,20 @@ describe("MCP Tool: list_available_tasks", () => {
       estimatedComplexity: "LOW",
     });
 
-    const issue = issueRepository.findByNumber(1);
-    const plan = planRepository.findByIssueId(issue!.id);
-    const tasks = taskRepository.findByPlanId(plan!.id);
+    const issue = testDb.client.issues.findByNumber(1);
+    const plan = testDb.client.plans.findByIssueId(issue!.id);
+    const tasks = testDb.client.tasks.findByPlanId(plan!.id);
     const task = tasks[0]!;
 
     // Tasks are created in PLANNED status, move to BACKLOG to simulate activation
-    taskRepository.updateStatus(task.id, "BACKLOG");
+    testDb.client.tasks.updateStatus(task.id, "BACKLOG");
 
     // Close the issue
-    issueRepository.update(issue!.id, { status: "CLOSED" });
+    testDb.client.issues.update(issue!.id, { status: "CLOSED" });
     expect(await taskSessionService.isTaskAvailable(task.id)).toBe(false);
 
     // Reopen the issue
-    issueRepository.update(issue!.id, { status: "OPEN" });
+    testDb.client.issues.update(issue!.id, { status: "OPEN" });
     expect(await taskSessionService.isTaskAvailable(task.id)).toBe(true);
   });
 });
@@ -961,11 +913,8 @@ describe("MCP Tool: list_available_tasks", () => {
  * Simplified version that only does the status check and soft delete.
  * The real handler also handles GitHub sync and worktree cleanup.
  */
-function deleteIssueTool(
-  issueRepository: SqliteIssueRepository,
-  params: { issueNumber: number }
-): ToolResult {
-  const issue = issueRepository.findByNumber(params.issueNumber);
+function deleteIssueTool(client: DbClient, params: { issueNumber: number }): ToolResult {
+  const issue = client.issues.findByNumber(params.issueNumber);
   if (!issue) {
     return { success: false, error: `Issue not found: #${params.issueNumber}` };
   }
@@ -982,7 +931,7 @@ function deleteIssueTool(
   }
 
   try {
-    const deleted = issueRepository.delete(issue.id, "test");
+    const deleted = client.issues.delete(issue.id, "test");
     return { success: true, issue: deleted };
   } catch (error) {
     return {
@@ -994,12 +943,9 @@ function deleteIssueTool(
 
 describe("MCP Tool: delete_issue", () => {
   let testDb: TestDatabase;
-  let issueRepository: SqliteIssueRepository;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const repos = createRepositories(testDb.db);
-    issueRepository = repos.issueRepository;
   });
 
   afterEach(() => {
@@ -1008,7 +954,7 @@ describe("MCP Tool: delete_issue", () => {
 
   it("should soft delete a PLANNED issue", () => {
     // Create a PLANNED issue
-    const createResult = issueRepository.create({
+    const createResult = testDb.client.issues.create({
       title: "Planned Issue",
       description: "This issue is still being planned",
       type: "FEATURE",
@@ -1019,7 +965,7 @@ describe("MCP Tool: delete_issue", () => {
     });
 
     // Delete the issue
-    const result = deleteIssueTool(issueRepository, { issueNumber: createResult.number });
+    const result = deleteIssueTool(testDb.client, { issueNumber: createResult.number });
 
     expect(result.success).toBe(true);
     const deleted = result.issue as { isDeleted: boolean; deletedAt: string };
@@ -1029,13 +975,13 @@ describe("MCP Tool: delete_issue", () => {
 
   it("should not delete OPEN issue (immutable after planning phase)", () => {
     // Create an issue in OPEN status
-    createIssueTool(issueRepository, {
+    createIssueTool(testDb.client, {
       title: "Open Issue",
       description: "This issue is open for work",
     });
 
     // Try to delete - should fail because issue is past PLANNED status
-    const result = deleteIssueTool(issueRepository, { issueNumber: 1 });
+    const result = deleteIssueTool(testDb.client, { issueNumber: 1 });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("PLANNED status");
@@ -1044,15 +990,15 @@ describe("MCP Tool: delete_issue", () => {
 
   it("should not delete IN_PROGRESS issue", () => {
     // Create an issue and set to IN_PROGRESS
-    const createResult = createIssueTool(issueRepository, {
+    const createResult = createIssueTool(testDb.client, {
       title: "In Progress Issue",
       description: "Work is underway",
     });
     const issue = createResult.issue as { id: string };
-    issueRepository.update(issue.id, { status: "IN_PROGRESS" });
+    testDb.client.issues.update(issue.id, { status: "IN_PROGRESS" });
 
     // Try to delete - should fail
-    const result = deleteIssueTool(issueRepository, { issueNumber: 1 });
+    const result = deleteIssueTool(testDb.client, { issueNumber: 1 });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("PLANNED status");
@@ -1061,15 +1007,15 @@ describe("MCP Tool: delete_issue", () => {
 
   it("should not delete CLOSED issue", () => {
     // Create an issue and close it
-    const createResult = createIssueTool(issueRepository, {
+    const createResult = createIssueTool(testDb.client, {
       title: "Closed Issue",
       description: "This issue was completed",
     });
     const issue = createResult.issue as { id: string };
-    issueRepository.update(issue.id, { status: "CLOSED" });
+    testDb.client.issues.update(issue.id, { status: "CLOSED" });
 
     // Try to delete - should fail
-    const result = deleteIssueTool(issueRepository, { issueNumber: 1 });
+    const result = deleteIssueTool(testDb.client, { issueNumber: 1 });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("PLANNED status");

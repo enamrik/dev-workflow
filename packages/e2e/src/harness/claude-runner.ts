@@ -36,6 +36,9 @@ export async function runClaude(prompt: string, options: ClaudeOptions): Promise
   const streamOutput = options.streamOutput ?? true;
   const timeout = options.timeout ?? 60000;
 
+  // Add --dangerously-skip-permissions to bypass permission checks for MCP tools in tests
+  args.push("--dangerously-skip-permissions");
+
   if (options.mcpConfig) {
     args.push("--mcp-config", options.mcpConfig);
   }

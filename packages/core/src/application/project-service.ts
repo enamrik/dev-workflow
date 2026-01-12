@@ -6,7 +6,8 @@
  */
 
 import * as path from "node:path";
-import type { Project, ProjectRepository, UpdateProjectData } from "../domain/project.js";
+import type { Project, UpdateProjectData } from "../domain/project.js";
+import type { DbSource } from "../domain/db-source.js";
 import type { GitHubIssueSyncConfig } from "../infrastructure/database/schema.js";
 
 /**
@@ -123,7 +124,7 @@ export class ProjectError extends Error {
  */
 export class ProjectService {
   constructor(
-    private readonly projectRepository: ProjectRepository,
+    private readonly source: DbSource,
     private readonly gitOperations: GitOperations
   ) {}
 
@@ -154,7 +155,7 @@ export class ProjectService {
     const gitRootHash = await this.gitOperations.getInitialCommitHash(gitRoot);
 
     // Look up existing project
-    const existing = await this.projectRepository.findByGitRootHash(gitRootHash);
+    const existing = await this.source.projects.findByGitRootHash(gitRootHash);
 
     if (existing) {
       return existing;
@@ -162,7 +163,7 @@ export class ProjectService {
 
     // Create new project
     const name = path.basename(gitRoot);
-    return await this.projectRepository.create({
+    return await this.source.projects.create({
       gitRootHash,
       name,
       githubSync: null,
@@ -176,7 +177,7 @@ export class ProjectService {
    * @returns The project if found, null otherwise
    */
   async findById(id: string): Promise<Project | null> {
-    return this.projectRepository.findById(id);
+    return this.source.projects.findById(id);
   }
 
   /**
@@ -186,7 +187,7 @@ export class ProjectService {
    * @returns The project if found, null otherwise
    */
   async findByGitRootHash(gitRootHash: string): Promise<Project | null> {
-    return this.projectRepository.findByGitRootHash(gitRootHash);
+    return this.source.projects.findByGitRootHash(gitRootHash);
   }
 
   /**
@@ -195,7 +196,7 @@ export class ProjectService {
    * @returns Array of all projects
    */
   async findAll(): Promise<Project[]> {
-    return this.projectRepository.findAll();
+    return this.source.projects.findAll();
   }
 
   /**
@@ -210,12 +211,12 @@ export class ProjectService {
     projectId: string,
     config: GitHubIssueSyncConfig | null
   ): Promise<Project> {
-    const project = await this.projectRepository.findById(projectId);
+    const project = await this.source.projects.findById(projectId);
     if (!project) {
       throw new ProjectError(`Project not found: ${projectId}`);
     }
 
-    return this.projectRepository.update(projectId, { githubSync: config });
+    return this.source.projects.update(projectId, { githubSync: config });
   }
 
   /**
@@ -226,7 +227,7 @@ export class ProjectService {
    * @throws ProjectError if project not found
    */
   async getGitHubSync(projectId: string): Promise<GitHubIssueSyncConfig | null> {
-    const project = await this.projectRepository.findById(projectId);
+    const project = await this.source.projects.findById(projectId);
     if (!project) {
       throw new ProjectError(`Project not found: ${projectId}`);
     }
@@ -254,11 +255,11 @@ export class ProjectService {
    * @throws ProjectError if project not found
    */
   async update(projectId: string, data: UpdateProjectData): Promise<Project> {
-    const project = await this.projectRepository.findById(projectId);
+    const project = await this.source.projects.findById(projectId);
     if (!project) {
       throw new ProjectError(`Project not found: ${projectId}`);
     }
 
-    return this.projectRepository.update(projectId, data);
+    return this.source.projects.update(projectId, data);
   }
 }

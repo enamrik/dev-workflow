@@ -6,18 +6,13 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
-import { createRepositories, createTestIssue } from "../helpers.js";
-import { SqliteMilestoneRepository, SqliteProjectRepository } from "@dev-workflow/core";
+import { createClientForProject, createTestIssue, createNoOpProvider } from "../helpers.js";
+import { MilestoneService, IssueService, TaskService, type DbClient } from "@dev-workflow/core";
 import {
   handleAssignIssueToMilestone,
   handleRemoveIssueFromMilestone,
   type MilestoneToolContext,
 } from "../../tools/milestone-tools.js";
-import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import * as schema from "@dev-workflow/core/schema";
-
-/** Database type used by repositories */
-type DbType = BetterSQLite3Database<typeof schema>;
 
 /** Test project ID */
 const TEST_PROJECT_ID = "test-project-milestone";
@@ -25,27 +20,29 @@ const TEST_PROJECT_ID = "test-project-milestone";
 describe("Milestone Tools", () => {
   let testDb: TestDatabase;
   let ctx: MilestoneToolContext;
-  let projectId: string;
+  let client: DbClient;
 
   beforeEach(async () => {
     testDb = createTestDatabase();
-    const db = testDb.db as DbType;
 
     // Create project first
-    const projectRepository = new SqliteProjectRepository(db);
-    const project = await projectRepository.create({
+    const project = await testDb.source.projects.create({
       gitRootHash: TEST_PROJECT_ID,
       name: "Test Project",
     });
-    projectId = project.id;
 
-    // Create repositories
-    const repos = createRepositories(testDb.db, projectId);
-    const milestoneRepository = new SqliteMilestoneRepository(db, projectId);
+    // Create client scoped to project
+    client = createClientForProject(testDb, project.id);
+
+    // Create services with DbClient
+    const noOpProvider = createNoOpProvider();
+    const taskService = new TaskService(client, noOpProvider, null);
+    const issueService = new IssueService(client, taskService, noOpProvider);
+    const milestoneService = new MilestoneService(client);
 
     ctx = {
-      milestoneRepository,
-      issueRepository: repos.issueRepository,
+      milestoneService,
+      issueService,
       projectName: "test-project",
     };
   });
@@ -53,12 +50,12 @@ describe("Milestone Tools", () => {
   describe("handleAssignIssueToMilestone", () => {
     it("should assign an issue to a milestone", () => {
       // Create an issue
-      const issue = createTestIssue(ctx.issueRepository, {
+      const issue = createTestIssue(client.issues, {
         title: "Test Issue",
       });
 
       // Create a milestone
-      const milestone = ctx.milestoneRepository.create({
+      const milestone = client.milestones.create({
         title: "MVP",
         description: "First release",
         startDate: "2026-01-01",
@@ -77,13 +74,13 @@ describe("Milestone Tools", () => {
       expect(response.message).toContain("Assigned issue");
 
       // Verify the issue now has the milestoneId
-      const updatedIssue = ctx.issueRepository.findByNumber(issue.number);
+      const updatedIssue = client.issues.findByNumber(issue.number);
       expect(updatedIssue?.milestoneId).toBe(milestone.id);
     });
 
     it("should return error if issue not found", () => {
       // Create a milestone
-      const milestone = ctx.milestoneRepository.create({
+      const milestone = client.milestones.create({
         title: "MVP",
         description: "First release",
         startDate: "2026-01-01",
@@ -102,7 +99,7 @@ describe("Milestone Tools", () => {
     });
 
     it("should return error if milestone not found", () => {
-      const issue = createTestIssue(ctx.issueRepository);
+      const issue = createTestIssue(client.issues);
 
       const result = handleAssignIssueToMilestone(ctx, {
         issueNumber: issue.number,
@@ -118,7 +115,7 @@ describe("Milestone Tools", () => {
   describe("handleRemoveIssueFromMilestone", () => {
     it("should remove an issue from its milestone", () => {
       // Create a milestone
-      const milestone = ctx.milestoneRepository.create({
+      const milestone = client.milestones.create({
         title: "MVP",
         description: "First release",
         startDate: "2026-01-01",
@@ -127,13 +124,13 @@ describe("Milestone Tools", () => {
       });
 
       // Create an issue and assign it to the milestone
-      const issue = createTestIssue(ctx.issueRepository, {
+      const issue = createTestIssue(client.issues, {
         title: "Test Issue",
       });
-      ctx.issueRepository.update(issue.id, { milestoneId: milestone.id });
+      client.issues.update(issue.id, { milestoneId: milestone.id });
 
       // Verify it's assigned
-      const assignedIssue = ctx.issueRepository.findByNumber(issue.number);
+      const assignedIssue = client.issues.findByNumber(issue.number);
       expect(assignedIssue?.milestoneId).toBe(milestone.id);
 
       // Remove from milestone
@@ -146,7 +143,7 @@ describe("Milestone Tools", () => {
       expect(response.message).toContain("Removed issue");
 
       // Verify the issue no longer has a milestoneId
-      const updatedIssue = ctx.issueRepository.findByNumber(issue.number);
+      const updatedIssue = client.issues.findByNumber(issue.number);
       expect(updatedIssue?.milestoneId).toBeUndefined();
     });
 
@@ -162,7 +159,7 @@ describe("Milestone Tools", () => {
 
     it("should return error if issue is not assigned to any milestone", () => {
       // Create an issue without a milestone
-      const issue = createTestIssue(ctx.issueRepository, {
+      const issue = createTestIssue(client.issues, {
         title: "Test Issue",
       });
 

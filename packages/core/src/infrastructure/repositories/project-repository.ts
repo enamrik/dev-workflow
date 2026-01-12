@@ -6,7 +6,7 @@ import type {
   CreateProjectData,
   UpdateProjectData,
 } from "../../domain/project.js";
-import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
+import type { DrizzleDb } from "../../domain/drizzle-db.js";
 
 /**
  * Generate a URL-safe slug from project name and git root hash
@@ -24,16 +24,17 @@ function generateSlug(name: string, gitRootHash: string): string {
 }
 
 /**
- * SQLite implementation of ProjectRepository
+ * Drizzle implementation of ProjectRepository
  *
  * Uses Drizzle ORM for type-safe queries.
  * Follows Repository pattern from DDD.
+ * Works with any Drizzle-supported database dialect.
  *
  * Unlike other repositories, this is NOT scoped to a projectId
  * since it manages projects themselves.
  */
-export class SqliteProjectRepository implements ProjectRepository {
-  constructor(private readonly db: SqliteDrizzleDatabase) {}
+export class DrizzleProjectRepository implements ProjectRepository {
+  constructor(private readonly db: DrizzleDb) {}
 
   async create(data: CreateProjectData): Promise<Project> {
     const id = crypto.randomUUID();

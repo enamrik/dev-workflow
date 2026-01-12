@@ -4,15 +4,8 @@
 
 import {
   EventBus,
-  type SqliteIssueRepository,
-  type SqlitePlanRepository,
-  type SqliteTaskRepository,
-  type SqliteMilestoneRepository,
-  type SqliteDispatchQueueRepository,
   type TemplateService,
   type PlanningService,
-  type GitHubSyncService,
-  type GitHubSyncState,
   type IssueType,
   type IssuePriority,
   type IssueStatus,
@@ -22,9 +15,12 @@ import {
   type TypeService,
   type TemplateScope,
   type TemplateCategory,
-  TaskService,
-  IssueService,
-  getProjectManagementProvider,
+  type IssueService,
+  type TaskService,
+  type PlanService,
+  type MilestoneService,
+  type DispatchService,
+  type ProjectManagementProvider,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 import { createSlimEnrichedTaskData } from "./task-tools.js";
@@ -45,8 +41,8 @@ type ComputedIssueStatus = "PLANNED" | "OPEN" | "IN_PROGRESS" | "TASKS_DONE" | "
 function computeIssueStatus(
   issueId: string,
   rawStatus: IssueStatus,
-  planRepository: SqlitePlanRepository,
-  taskRepository: SqliteTaskRepository
+  planService: PlanService,
+  taskService: TaskService
 ): ComputedIssueStatus {
   if (rawStatus === "PLANNED") {
     return "PLANNED";
@@ -55,12 +51,12 @@ function computeIssueStatus(
     return "CLOSED";
   }
 
-  const plan = planRepository.findByIssueId(issueId);
+  const plan = planService.findByIssueId(issueId);
   if (!plan) {
     return "OPEN";
   }
 
-  const tasks = taskRepository.findByPlanId(plan.id);
+  const tasks = taskService.findByPlanId(plan.id);
   if (tasks.length === 0) {
     return "OPEN";
   }
@@ -517,16 +513,20 @@ export const issueToolDefinitions: ToolDefinition[] = [
 export interface IssueToolContext {
   /** Current project (for URL construction) */
   project: Project;
-  issueRepository: SqliteIssueRepository;
-  planRepository: SqlitePlanRepository;
-  taskRepository: SqliteTaskRepository;
-  milestoneRepository: SqliteMilestoneRepository;
-  /** Dispatch queue repository for cleaning up orphaned tasks */
-  dispatchQueueRepository: SqliteDispatchQueueRepository;
+  /** Issue service for issue operations */
+  issueService: IssueService;
+  /** Plan service for plan lookups */
+  planService: PlanService;
+  /** Task service for task operations */
+  taskService: TaskService;
+  /** Milestone service for milestone lookups */
+  milestoneService: MilestoneService;
+  /** Dispatch service for queue operations */
+  dispatchService: DispatchService;
   templateService: TemplateService;
   planningService: PlanningService;
-  /** GitHub sync service - always available, check isEnabled() before use */
-  githubSyncService: GitHubSyncService;
+  /** Project management provider for external sync */
+  projectManagementProvider: ProjectManagementProvider;
   /** GitHub CLI for direct operations like closing issues */
   githubCLI: GitHubCLI;
   /** Git worktree service for cleanup operations */
@@ -596,7 +596,7 @@ export async function handleCreateIssue(
 
   // Create issue in PLANNED status
   // GitHub sync happens at task level via move_issue_to_backlog
-  const issue = ctx.issueRepository.create({
+  const issue = ctx.issueService.create({
     title,
     description,
     acceptanceCriteria,
@@ -644,9 +644,7 @@ export function handleGetIssue(
 ): ToolResponse {
   const { id, issueNumber, includePlan = false } = args;
 
-  const issue = id
-    ? ctx.issueRepository.findById(id)
-    : ctx.issueRepository.findByNumber(issueNumber!);
+  const issue = id ? ctx.issueService.findById(id) : ctx.issueService.findByNumber(issueNumber!);
 
   if (!issue) {
     return errorResponse("Issue not found");
@@ -656,15 +654,15 @@ export function handleGetIssue(
   const computedStatus = computeIssueStatus(
     issue.id,
     issue.status,
-    ctx.planRepository,
-    ctx.taskRepository
+    ctx.planService,
+    ctx.taskService
   );
 
   // If includePlan is true, fetch and include the plan with enriched task list
   if (includePlan) {
-    const plan = ctx.planRepository.findByIssueId(issue.id);
+    const plan = ctx.planService.findByIssueId(issue.id);
     if (plan) {
-      const tasks = ctx.taskRepository.findByPlanId(plan.id);
+      const tasks = ctx.taskService.findByPlanId(plan.id);
       return successResponse({
         ...issue,
         computedStatus,
@@ -673,7 +671,7 @@ export function handleGetIssue(
           summary: plan.summary,
           approach: plan.approach,
           estimatedComplexity: plan.estimatedComplexity,
-          tasks: tasks.map((t) => createSlimEnrichedTaskData(t, ctx.dispatchQueueRepository)),
+          tasks: tasks.map((t) => createSlimEnrichedTaskData(t, ctx.dispatchService)),
         },
       });
     }
@@ -704,9 +702,9 @@ export async function handleDeleteIssue(
 
   // Resolve issue from ID or number
   const issue = issueId
-    ? ctx.issueRepository.findById(issueId)
+    ? ctx.issueService.findById(issueId)
     : issueNumber !== undefined
-      ? ctx.issueRepository.findByNumber(issueNumber)
+      ? ctx.issueService.findByNumber(issueNumber)
       : null;
 
   if (!issue) {
@@ -734,8 +732,8 @@ export async function handleDeleteIssue(
     const cleanedUpBranches: string[] = [];
 
     // Get plan and tasks first (needed for both cleanup and GitHub sync)
-    const plan = ctx.planRepository.findByIssueId(issue.id);
-    const tasks = plan ? ctx.taskRepository.findByPlanId(plan.id) : [];
+    const plan = ctx.planService.findByIssueId(issue.id);
+    const tasks = plan ? ctx.taskService.findByPlanId(plan.id) : [];
 
     // Clean up worktrees and branches for all tasks
     if (ctx.gitWorktreeService && plan) {
@@ -752,7 +750,7 @@ export async function handleDeleteIssue(
             console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
           }
           // Clear worktree info from task
-          ctx.taskRepository.clearWorktreeInfo(task.id);
+          ctx.taskService.clearWorktreeInfo(task.id);
         } else if (task.branchName) {
           // No worktree but has branch - delete it (handles branch mode or pushed branches)
           try {
@@ -785,51 +783,28 @@ export async function handleDeleteIssue(
           }
 
           // Clear branch info from task
-          ctx.taskRepository.update(task.id, { branchName: undefined });
+          ctx.taskService.update(task.id, { branchName: undefined });
         }
       }
     }
 
-    // Close GitHub issues if sync is enabled
-    if (await ctx.githubSyncService.isEnabled()) {
-      // Close task GitHub issues first
-      for (const task of tasks) {
-        if (task.githubSync?.githubIssueNumber) {
-          try {
-            await ctx.githubCLI.closeIssue(task.githubSync.githubIssueNumber);
-            closedGitHubIssues.push(task.githubSync.githubIssueNumber);
-          } catch (error) {
-            console.warn(
-              `Failed to close GitHub issue #${task.githubSync.githubIssueNumber}: ${error}`
-            );
-          }
-        }
-      }
-
-      // Close the main issue's GitHub issue
-      if (issue.githubSync?.githubIssueNumber) {
-        try {
-          await ctx.githubCLI.closeIssue(issue.githubSync.githubIssueNumber);
-          closedGitHubIssues.push(issue.githubSync.githubIssueNumber);
-        } catch (error) {
-          console.warn(
-            `Failed to close GitHub issue #${issue.githubSync.githubIssueNumber}: ${error}`
-          );
-        }
-      }
+    // Close external issues - provider handles sync check internally
+    for (const task of tasks) {
+      await ctx.projectManagementProvider.closeIssueByTask(task);
     }
+    await ctx.projectManagementProvider.closeIssue(issue);
 
-    const deleted = ctx.issueRepository.delete(issue.id, "claude-code");
+    const deleted = ctx.issueService.delete(issue.id, "claude-code");
 
     // Cascade soft-delete to all tasks and clean up dispatch queue
     let deletedTaskCount = 0;
     for (const task of tasks) {
       // Remove from dispatch queue (if present)
-      ctx.dispatchQueueRepository.remove(task.id);
+      ctx.dispatchService.remove(task.id);
 
       // Soft-delete the task
       try {
-        ctx.taskRepository.softDelete(task.id, "claude-code");
+        ctx.taskService.softDelete(task.id, "claude-code");
         deletedTaskCount++;
       } catch {
         // Task may already be deleted or in a non-deletable state
@@ -885,7 +860,7 @@ export function handleRestoreIssue(
 
   // For restore, we need to find including deleted issues
   // First try to find the issue by looking up with includeDeleted
-  const allIssues = ctx.issueRepository.findMany({ includeDeleted: true });
+  const allIssues = ctx.issueService.findMany({ includeDeleted: true });
   const issue = issueId
     ? allIssues.find((i) => i.id === issueId)
     : issueNumber !== undefined
@@ -907,7 +882,7 @@ export function handleRestoreIssue(
   }
 
   try {
-    const restored = ctx.issueRepository.restore(issue.id);
+    const restored = ctx.issueService.restore(issue.id);
 
     return successResponse({
       success: true,
@@ -1167,9 +1142,9 @@ export async function handleUpdateIssue(
 
   // Resolve issue from ID or number
   const issue = issueId
-    ? ctx.issueRepository.findById(issueId)
+    ? ctx.issueService.findById(issueId)
     : issueNumber
-      ? ctx.issueRepository.findByNumber(issueNumber)
+      ? ctx.issueService.findByNumber(issueNumber)
       : null;
 
   if (!issue) {
@@ -1182,27 +1157,9 @@ export async function handleUpdateIssue(
     );
   }
 
-  // If GitHub sync is enabled and issue has a GitHub link, update GitHub FIRST
-  // This ensures atomicity: if GitHub fails, no local update is made
-  let updatedGithubSync: GitHubSyncState | undefined;
-
-  if ((await ctx.githubSyncService.isEnabled()) && issue.githubSync?.githubIssueNumber) {
-    try {
-      updatedGithubSync = await ctx.githubSyncService.updateGitHubIssue(issue, updates);
-    } catch (error) {
-      // GitHub sync failed - fail the entire operation
-      return errorResponse(
-        `Failed to update GitHub issue: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
-
-  // Update locally (with updated GitHub sync state if applicable)
-  const updatesWithSync = updatedGithubSync
-    ? { ...updates, githubSync: updatedGithubSync }
-    : updates;
-
-  const result = ctx.planningService.updateIssue(issue.id, updatesWithSync, regeneratePlan);
+  // TODO: External sync for update operations should be added to ProjectManagementProvider
+  // For now, we only update locally
+  const result = ctx.planningService.updateIssue(issue.id, updates, regeneratePlan);
 
   return successResponse(result);
 }
@@ -1227,7 +1184,7 @@ export async function handleCloseIssue(
   const { issueNumber, force = false } = args;
 
   // Find the issue
-  const issue = ctx.issueRepository.findByNumber(issueNumber);
+  const issue = ctx.issueService.findByNumber(issueNumber);
   if (!issue) {
     return errorResponse(`Issue not found: #${issueNumber}`);
   }
@@ -1237,41 +1194,16 @@ export async function handleCloseIssue(
     return errorResponse(`Issue #${issueNumber} is already closed`);
   }
 
-  // Create services for orchestrated close operation
-  // Services call other services to avoid duplicating logic
-  const provider = (await ctx.githubSyncService.isEnabled())
-    ? getProjectManagementProvider(ctx.project, { githubCLI: ctx.githubCLI })
-    : null;
-
-  const taskService = new TaskService(
-    ctx.taskRepository,
-    ctx.planRepository,
-    provider,
-    ctx.gitWorktreeService ?? null,
-    ctx.dispatchQueueRepository
-  );
-
-  const issueService = new IssueService(
-    ctx.issueRepository,
-    taskService,
-    provider
-  );
-
   // Use IssueService.closeIssue for orchestrated close
   // This abandons incomplete tasks via TaskService (avoids duplicating logic)
-  const result = await issueService.closeIssue(issue.id, force, "claude-code");
+  const result = await ctx.issueService.closeIssue(issue.id, force, "claude-code");
 
   // For imported issues, also close the parent GitHub issue
+  // This is GitHub-specific (imported issues only exist for GitHub), so use githubCLI directly
   let parentIssueClosed = false;
-  if ((await ctx.githubSyncService.isEnabled()) && issue.sourceGitHubIssueNumber) {
-    try {
-      await ctx.githubCLI.closeIssue(issue.sourceGitHubIssueNumber);
-      parentIssueClosed = true;
-    } catch (error) {
-      return errorResponse(
-        `Failed to close parent GitHub issue #${issue.sourceGitHubIssueNumber}: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
+  if (issue.sourceGitHubIssueNumber) {
+    await ctx.githubCLI.closeIssue(issue.sourceGitHubIssueNumber);
+    parentIssueClosed = true;
   }
 
   // Build response message
@@ -1315,7 +1247,7 @@ export async function handleChangeIssueType(
   const { issueNumber, type } = args;
 
   // Find the issue
-  const issue = ctx.issueRepository.findByNumber(issueNumber);
+  const issue = ctx.issueService.findByNumber(issueNumber);
   if (!issue) {
     return errorResponse(`Issue not found: #${issueNumber}`);
   }
@@ -1343,18 +1275,8 @@ export async function handleChangeIssueType(
   // Update the issue type
   const updates = { type: type as IssueType };
 
-  // If GitHub sync is enabled and issue has a GitHub link, update GitHub FIRST
-  if ((await ctx.githubSyncService.isEnabled()) && issue.githubSync?.githubIssueNumber) {
-    try {
-      await ctx.githubSyncService.updateGitHubIssue(issue, updates);
-    } catch (error) {
-      return errorResponse(
-        `Failed to update GitHub issue: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
-
-  // Update locally
+  // TODO: External sync for type changes should be added to ProjectManagementProvider
+  // For now, we only update locally
   const result = ctx.planningService.updateIssue(issue.id, updates, false);
 
   return successResponse({
@@ -1369,8 +1291,8 @@ export async function handleChangeIssueType(
  * Returns counts of issues and tasks by status.
  */
 export function handleGetProjectStats(ctx: IssueToolContext): ToolResponse {
-  const issueCounts = ctx.issueRepository.getStatusCounts();
-  const taskCounts = ctx.taskRepository.getStatusCounts();
+  const issueCounts = ctx.issueService.getStatusCounts();
+  const taskCounts = ctx.taskService.getStatusCounts();
 
   // Calculate totals
   const issueTotal = Object.values(issueCounts).reduce((a, b) => a + b, 0);
@@ -1409,17 +1331,12 @@ export function handleSearchIssues(ctx: IssueToolContext, args: { query: string 
     return errorResponse("Search query is required");
   }
 
-  const results = ctx.issueRepository.search(query);
+  const results = ctx.issueService.search(query);
 
   // Add computedStatus to each result
   const resultsWithComputedStatus = results.map((result) => ({
     ...result,
-    computedStatus: computeIssueStatus(
-      result.id,
-      result.status,
-      ctx.planRepository,
-      ctx.taskRepository
-    ),
+    computedStatus: computeIssueStatus(result.id, result.status, ctx.planService, ctx.taskService),
   }));
 
   return successResponse({
@@ -1491,13 +1408,13 @@ function calculateIssueScore(
  */
 export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
   // Get all milestones for date lookups
-  const milestones = ctx.milestoneRepository.findMany();
+  const milestones = ctx.milestoneService.findMany();
   const milestoneEndDates = new Map(milestones.map((m) => [m.id, m.endDate]));
   const milestoneNames = new Map(milestones.map((m) => [m.id, m.title]));
 
   // Get actionable issues (PLANNED needs confirmation, OPEN/IN_PROGRESS need work)
-  const activeIssues = ctx.issueRepository
-    .findMany()
+  const activeIssues = ctx.issueService
+    .findMany({})
     .filter((i) => i.status === "IN_PROGRESS" || i.status === "OPEN" || i.status === "PLANNED");
 
   // Identify issues that need planning (PLANNED status without a plan)
@@ -1510,7 +1427,7 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
 
   for (const issue of activeIssues) {
     if (issue.status === "PLANNED") {
-      const plan = ctx.planRepository.findByIssueId(issue.id);
+      const plan = ctx.planService.findByIssueId(issue.id);
       if (!plan) {
         issuesNeedingPlanning.push({
           number: issue.number,
@@ -1542,10 +1459,10 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
 
   // For each active issue, get plan and tasks
   for (const issue of activeIssues) {
-    const plan = ctx.planRepository.findByIssueId(issue.id);
+    const plan = ctx.planService.findByIssueId(issue.id);
     if (!plan) continue;
 
-    const tasks = ctx.taskRepository.findByPlanId(plan.id);
+    const tasks = ctx.taskService.findByPlanId(plan.id);
 
     // Only include available tasks (READY or BACKLOG with satisfied dependencies)
     const availableTasks = tasks.filter((t) => t.status === "READY" || t.status === "BACKLOG");
@@ -1599,10 +1516,10 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
   // Score and sort issues
   const scoredIssues = activeIssues.map((issue) => {
     // Count available tasks for this issue
-    const plan = ctx.planRepository.findByIssueId(issue.id);
+    const plan = ctx.planService.findByIssueId(issue.id);
     let availableTaskCount = 0;
     if (plan) {
-      const tasks = ctx.taskRepository.findByPlanId(plan.id);
+      const tasks = ctx.taskService.findByPlanId(plan.id);
       availableTaskCount = tasks.filter(
         (t) => t.status === "READY" || t.status === "BACKLOG"
       ).length;
@@ -1612,12 +1529,7 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
       number: issue.number,
       title: issue.title,
       status: issue.status,
-      computedStatus: computeIssueStatus(
-        issue.id,
-        issue.status,
-        ctx.planRepository,
-        ctx.taskRepository
-      ),
+      computedStatus: computeIssueStatus(issue.id, issue.status, ctx.planService, ctx.taskService),
       priority: issue.priority,
       milestone: issue.milestoneId ? milestoneNames.get(issue.milestoneId) : undefined,
       availableTaskCount,
@@ -1784,7 +1696,7 @@ export async function handleImportGitHubIssue(
   }
 
   // Check if this issue was already imported
-  const existingIssues = ctx.issueRepository.findMany({ includeDeleted: false });
+  const existingIssues = ctx.issueService.findMany({ includeDeleted: false });
   const alreadyImported = existingIssues.find((i) => i.sourceGitHubIssueNumber === issueNumber);
   if (alreadyImported) {
     return errorResponse(
@@ -1811,7 +1723,7 @@ export async function handleImportGitHubIssue(
   const inferredPriority = inferPriorityFromLabels(githubIssue.labels);
 
   // Create dev-workflow issue
-  const issue = ctx.issueRepository.create({
+  const issue = ctx.issueService.create({
     title: githubIssue.title,
     description: githubIssue.body || `Imported from GitHub issue #${issueNumber}`,
     acceptanceCriteria: [],

@@ -1,16 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDatabase } from "../../__tests__/setup.js";
-import { createRepositories, createServices, createTestScenario } from "../../__tests__/helpers.js";
+import { getRepositories, createServices, createTestScenario } from "../../__tests__/helpers.js";
 
 describe("VersioningService", () => {
   let testDb: ReturnType<typeof createTestDatabase>;
-  let repos: ReturnType<typeof createRepositories>;
+  let repos: ReturnType<typeof getRepositories>;
   let services: ReturnType<typeof createServices>;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    repos = createRepositories(testDb.db);
-    services = createServices(repos);
+    repos = getRepositories(testDb.client);
+    services = createServices(testDb.client);
   });
 
   afterEach(() => {
@@ -19,7 +19,7 @@ describe("VersioningService", () => {
 
   describe("createSnapshot", () => {
     it("should capture issue state", () => {
-      const scenario = createTestScenario(repos);
+      const scenario = createTestScenario(testDb.client);
 
       const snapshot = services.versioningService.createSnapshot(
         scenario.issue.number,
@@ -34,7 +34,7 @@ describe("VersioningService", () => {
     });
 
     it("should capture plan state", () => {
-      const scenario = createTestScenario(repos);
+      const scenario = createTestScenario(testDb.client);
 
       const snapshot = services.versioningService.createSnapshot(
         scenario.issue.number,
@@ -47,7 +47,7 @@ describe("VersioningService", () => {
     });
 
     it("should capture all tasks state", () => {
-      const scenario = createTestScenario(repos, { taskCount: 3 });
+      const scenario = createTestScenario(testDb.client, { taskCount: 3 });
 
       const snapshot = services.versioningService.createSnapshot(
         scenario.issue.number,
@@ -60,7 +60,7 @@ describe("VersioningService", () => {
     });
 
     it("should auto-increment version numbers", () => {
-      const scenario = createTestScenario(repos);
+      const scenario = createTestScenario(testDb.client);
 
       const snapshot1 = services.versioningService.createSnapshot(
         scenario.issue.number,
@@ -78,7 +78,7 @@ describe("VersioningService", () => {
     });
 
     it("should archive previous snapshots", () => {
-      const scenario = createTestScenario(repos);
+      const scenario = createTestScenario(testDb.client);
 
       const snapshot1 = services.versioningService.createSnapshot(
         scenario.issue.number,
@@ -96,7 +96,7 @@ describe("VersioningService", () => {
 
   describe("viewSnapshot", () => {
     it("should return historical state without modifying live state", () => {
-      const scenario = createTestScenario(repos);
+      const scenario = createTestScenario(testDb.client);
 
       // Create initial snapshot
       services.versioningService.createSnapshot(scenario.issue.number, "MANUAL", "test");
@@ -123,7 +123,7 @@ describe("VersioningService", () => {
 
   describe("revertToSnapshot", () => {
     it("should restore issue state from snapshot", () => {
-      const scenario = createTestScenario(repos);
+      const scenario = createTestScenario(testDb.client);
       const originalTitle = scenario.issue.title;
 
       // Create snapshot
@@ -151,7 +151,7 @@ describe("VersioningService", () => {
     });
 
     it("should create a new snapshot after reverting", () => {
-      const scenario = createTestScenario(repos);
+      const scenario = createTestScenario(testDb.client);
 
       // Create snapshots
       services.versioningService.createSnapshot(scenario.issue.number, "MANUAL", "test");
@@ -177,7 +177,7 @@ describe("VersioningService", () => {
 
   describe("getSnapshotHistory", () => {
     it("should return snapshots ordered by version DESC", () => {
-      const scenario = createTestScenario(repos);
+      const scenario = createTestScenario(testDb.client);
 
       services.versioningService.createSnapshot(scenario.issue.number, "MANUAL", "test");
       services.versioningService.createSnapshot(scenario.issue.number, "MANUAL", "test");

@@ -12,7 +12,7 @@ import {
   BackupConfig,
   DatabaseConfig,
 } from "../database/schema.js";
-import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
+import type { DrizzleDb } from "../../domain/drizzle-db.js";
 
 /**
  * Well-known setting keys
@@ -91,10 +91,12 @@ export interface GlobalSettingsRepository {
 }
 
 /**
- * SQLite implementation of GlobalSettingsRepository
+ * Drizzle implementation of GlobalSettingsRepository
+ *
+ * Works with any Drizzle-supported database dialect.
  */
-export class SqliteGlobalSettingsRepository implements GlobalSettingsRepository {
-  constructor(private readonly db: SqliteDrizzleDatabase) {}
+export class DrizzleGlobalSettingsRepository implements GlobalSettingsRepository {
+  constructor(private readonly db: DrizzleDb) {}
 
   get<T>(key: SettingKey): T | null {
     const result = this.db.select().from(globalSettings).where(eq(globalSettings.key, key)).get();

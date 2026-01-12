@@ -11,11 +11,30 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import * as schema from "@dev-workflow/core/schema";
+import {
+  DrizzleDbClient,
+  DrizzleProjectRepository,
+  DrizzleTypeRepository,
+  DrizzleGlobalSettingsRepository,
+  DrizzleWorkerRepository,
+  DrizzleDispatchQueueRepository,
+  type DbClient,
+  type DbSource,
+  type DrizzleDb,
+} from "@dev-workflow/core";
+
+/** Default project ID for tests */
+const TEST_PROJECT_ID = "test-project-abc123";
 
 /**
  * Type for the test database instance
  */
 export type TestDatabase = {
+  /** DbClient for accessing project-scoped repositories */
+  client: DbClient;
+  /** DbSource for global repositories (projects, types, globalSettings) */
+  source: DbSource;
+  /** Raw drizzle db for direct SQL operations */
   db: ReturnType<typeof drizzle<typeof schema>>;
   sqlite: Database.Database;
   path: string;
@@ -32,8 +51,10 @@ let currentTestDb: Database.Database | null = null;
  * - Faster test execution (no disk I/O)
  * - Automatic cleanup (memory freed when connection closes)
  * - Complete isolation between tests
+ *
+ * @param projectId - Optional project ID for scoped repositories (default: test-project-abc123)
  */
-export function createTestDatabase(): TestDatabase {
+export function createTestDatabase(projectId: string = TEST_PROJECT_ID): TestDatabase {
   // Create in-memory SQLite database
   const sqlite = new Database(":memory:");
   const db = drizzle(sqlite, { schema });
@@ -48,12 +69,40 @@ export function createTestDatabase(): TestDatabase {
   // Track for cleanup
   currentTestDb = sqlite;
 
+  // Create DbClient for repository access
+  const drizzleDb = db as unknown as DrizzleDb;
+  const client = new DrizzleDbClient(drizzleDb, projectId);
+
+  // Create global repositories for DbSource
+  const projects = new DrizzleProjectRepository(drizzleDb);
+  const types = new DrizzleTypeRepository(drizzleDb);
+  const globalSettings = new DrizzleGlobalSettingsRepository(drizzleDb);
+  const workers = new DrizzleWorkerRepository(drizzleDb);
+  const dispatchQueue = new DrizzleDispatchQueueRepository(drizzleDb);
+
+  // Create DbSource
+  const source: DbSource = {
+    provision: async () => {
+      // Already migrated above
+    },
+    projects,
+    types,
+    globalSettings,
+    workers,
+    dispatchQueue,
+    getDb: () => drizzleDb,
+    createClient: (pid: string) => new DrizzleDbClient(drizzleDb, pid),
+    close: () => sqlite.close(),
+  };
+
   return {
+    client,
+    source,
     db,
     sqlite,
     path: ":memory:",
     cleanup: () => {
-      sqlite.close();
+      client.close();
     },
   };
 }

@@ -7,10 +7,10 @@
 
 import {
   getGlobalDatabasePath,
-  DataSourceFactory,
-  SqliteGlobalSettingsRepository,
+  DbSourceProvider,
+  runSqliteMigrations,
   type DatabaseConfig,
-  type SqliteDataSource,
+  type DbSource,
 } from "@dev-workflow/core";
 
 /**
@@ -49,33 +49,32 @@ export const TRACK_DATABASE_URL_ENV = "TRACK_DATABASE_URL";
  * DatabaseConfigService - Manages database configuration
  */
 export class DatabaseConfigService {
-  private dbService: SqliteDataSource | null = null;
-  private settingsRepository: SqliteGlobalSettingsRepository | null = null;
+  private sourceProvider: DbSourceProvider | null = null;
+  private source: DbSource | null = null;
 
   /**
    * Initialize the database connection (to global settings DB)
    */
   private async initialize(): Promise<void> {
-    if (this.dbService) {
+    if (this.source) {
       return;
     }
 
     const databasePath = getGlobalDatabasePath();
-    this.dbService = await DataSourceFactory.createSqlite(databasePath);
-    this.dbService.runMigrations();
+    runSqliteMigrations(databasePath);
 
-    const db = this.dbService.getDb();
-    this.settingsRepository = new SqliteGlobalSettingsRepository(db);
+    this.sourceProvider = new DbSourceProvider();
+    this.source = this.sourceProvider.getOrCreate({ connectionString: databasePath });
   }
 
   /**
    * Close database connection
    */
   close(): void {
-    if (this.dbService) {
-      this.dbService.close();
-      this.dbService = null;
-      this.settingsRepository = null;
+    if (this.sourceProvider) {
+      this.sourceProvider.closeAll();
+      this.sourceProvider = null;
+      this.source = null;
     }
   }
 
@@ -84,7 +83,7 @@ export class DatabaseConfigService {
    */
   async getConfig(): Promise<DatabaseConfig | null> {
     await this.initialize();
-    return this.settingsRepository!.getDatabaseConfig();
+    return this.source!.globalSettings.getDatabaseConfig();
   }
 
   /**
@@ -104,7 +103,7 @@ export class DatabaseConfigService {
     }
 
     // Check stored config
-    const config = this.settingsRepository!.getDatabaseConfig();
+    const config = this.source!.globalSettings.getDatabaseConfig();
     if (config && config.connectionString) {
       return {
         provider: config.provider,
@@ -155,7 +154,7 @@ export class DatabaseConfigService {
       configuredAt: new Date().toISOString(),
     };
 
-    this.settingsRepository!.setDatabaseConfig(config);
+    this.source!.globalSettings.setDatabaseConfig(config);
 
     return {
       success: true,
@@ -170,7 +169,7 @@ export class DatabaseConfigService {
     await this.initialize();
 
     // Remove any stored config
-    this.settingsRepository!.deleteDatabaseConfig();
+    this.source!.globalSettings.deleteDatabaseConfig();
 
     return {
       success: true,
@@ -188,18 +187,12 @@ export class DatabaseConfigService {
     const detectedProvider = provider ?? this.detectProvider(connectionString);
 
     try {
-      if (detectedProvider === "neon") {
-        // Test Neon connection
-        const neonDs = await DataSourceFactory.createNeon(connectionString);
-        // Neon's create method validates the connection by running a simple query
-        neonDs.close();
-        return { success: true, provider: "neon" };
-      } else {
-        // For SQLite, just check file accessibility
-        const sqliteDs = await DataSourceFactory.createSqlite(connectionString);
-        sqliteDs.close();
-        return { success: true, provider: "sqlite" };
-      }
+      // Test connection by creating a source and closing it
+      // DbSourceProvider handles both SQLite and Neon connection strings
+      const testProvider = new DbSourceProvider();
+      const source = testProvider.getOrCreate({ connectionString });
+      source.close();
+      return { success: true, provider: detectedProvider };
     } catch (error) {
       return {
         success: false,

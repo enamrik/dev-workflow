@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDatabase } from "../../__tests__/setup.js";
 import {
-  createRepositories,
+  getRepositories,
   createTestIssue,
   createTestPlan,
   createTestTask,
@@ -10,13 +10,13 @@ import { DependencyService } from "../dependency-service.js";
 
 describe("DependencyService", () => {
   let testDb: ReturnType<typeof createTestDatabase>;
-  let repos: ReturnType<typeof createRepositories>;
+  let repos: ReturnType<typeof getRepositories>;
   let dependencyService: DependencyService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    repos = createRepositories(testDb.db);
-    dependencyService = new DependencyService(repos.taskRepository);
+    repos = getRepositories(testDb.client);
+    dependencyService = new DependencyService(testDb.client);
   });
 
   afterEach(() => {

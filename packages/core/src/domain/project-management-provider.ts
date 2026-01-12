@@ -12,6 +12,9 @@
  * - Provider identity is explicit for logging and debugging
  */
 
+import type { Issue } from "./issue.js";
+import type { Task } from "./task.js";
+
 // =============================================================================
 // Sync State Types
 // =============================================================================
@@ -372,12 +375,27 @@ export interface ProjectManagementProvider {
   updateIssue(params: UpdateIssueParams): Promise<ExternalIssue>;
 
   /**
-   * Close an issue
+   * Close an issue's external issue in the external system
    *
-   * @param issueRef - External issue identifier
+   * Provider abstraction pattern: accepts the whole entity and handles internally:
+   * 1. Extracts the external reference from the entity (provider-specific)
+   * 2. No-ops gracefully if entity has no external reference
+   * 3. Only throws for actual API errors
+   *
+   * @param issue - The Issue to close externally
    * @param comment - Optional comment to add when closing
    */
-  closeIssue(issueRef: string, comment?: string): Promise<void>;
+  closeIssue(issue: Issue, comment?: string): Promise<void>;
+
+  /**
+   * Close a task's external issue in the external system
+   *
+   * Same pattern as closeIssue but for Task entities.
+   *
+   * @param task - The Task to close externally
+   * @param comment - Optional comment to add when closing
+   */
+  closeIssueByTask(task: Task, comment?: string): Promise<void>;
 
   /**
    * Reopen a closed issue

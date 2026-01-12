@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDatabase } from "../../../__tests__/setup.js";
-import { createRepositories } from "../../../__tests__/helpers.js";
+import { getRepositories } from "../../../__tests__/helpers.js";
 
-describe("SqliteWorkerRepository", () => {
+describe("DrizzleWorkerRepository", () => {
   let testDb: ReturnType<typeof createTestDatabase>;
-  let repos: ReturnType<typeof createRepositories>;
+  let repos: ReturnType<typeof getRepositories>;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    repos = createRepositories(testDb.db);
+    repos = getRepositories(testDb.client);
   });
 
   afterEach(() => {

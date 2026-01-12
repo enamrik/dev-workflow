@@ -7,18 +7,13 @@
 import {
   type GitHubCLI,
   type GitWorktreeService,
-  type SqliteIssueRepository,
-  type SqlitePlanRepository,
-  type SqliteTaskRepository,
   type PRStatus,
   type TaskSyncService,
-  type SqliteDataSource,
-  taskExecutionLogs,
+  type DbClient,
   type Project,
-  type DispatchQueueRepository,
-  TaskService,
-  IssueService,
-  getProjectManagementProvider,
+  type IssueService,
+  type TaskService,
+  type PlanService,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -159,15 +154,13 @@ export const prToolDefinitions: ToolDefinition[] = [
 export interface PRToolContext {
   project: Project;
   githubCLI: GitHubCLI;
-  issueRepository: SqliteIssueRepository;
-  planRepository: SqlitePlanRepository;
-  taskRepository: SqliteTaskRepository;
-  dispatchQueueRepository: DispatchQueueRepository;
+  issueService: IssueService;
+  planService: PlanService;
+  taskService: TaskService;
   gitWorktreeService?: GitWorktreeService;
   taskSyncService?: TaskSyncService;
   /** Required for writing final log entry on task completion */
-  dbService: SqliteDataSource;
-  taskExecutionLogsSchema: typeof taskExecutionLogs;
+  db: DbClient;
 }
 
 /**
@@ -193,7 +186,7 @@ export async function handleGetTaskPRStatus(
   const { taskId } = args;
 
   // 1. Get task
-  const task = ctx.taskRepository.findById(taskId);
+  const task = ctx.taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
@@ -225,7 +218,7 @@ export async function handleGetTaskPRStatus(
     // Update cached status if changed
     const prStatus = mapGitHubStateToPRStatus(pr.state, pr.isDraft);
     if (prStatus !== task.prStatus) {
-      ctx.taskRepository.updatePRStatus(taskId, prStatus);
+      ctx.taskService.updatePRStatus(taskId, prStatus);
     }
 
     return successResponse({
@@ -288,7 +281,7 @@ export async function handleCreatePR(
   const { taskId, title, body, draft = false, baseBranch, force = false } = args;
 
   // 1. Get task and validate state
-  const task = ctx.taskRepository.findById(taskId);
+  const task = ctx.taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
@@ -319,7 +312,7 @@ export async function handleCreatePR(
     if (existingPR) {
       // Adopt the existing PR (but don't change status)
       const prStatus = mapGitHubStateToPRStatus(existingPR.state, existingPR.isDraft);
-      ctx.taskRepository.updatePRInfo(taskId, existingPR.url, existingPR.number, prStatus);
+      ctx.taskService.updatePRInfo(taskId, existingPR.url, existingPR.number, prStatus);
 
       return successResponse({
         success: true,
@@ -349,12 +342,12 @@ export async function handleCreatePR(
   }
 
   // 3. Get issue info for PR title and linking
-  const plan = ctx.planRepository.findById(task.planId);
+  const plan = ctx.planService.findById(task.planId);
   if (!plan) {
     return errorResponse(`Plan not found for task: ${taskId}`);
   }
 
-  const issue = ctx.issueRepository.findById(plan.issueId);
+  const issue = ctx.issueService.findById(plan.issueId);
   if (!issue) {
     return errorResponse(`Issue not found for plan: ${plan.id}`);
   }
@@ -424,7 +417,7 @@ export async function handleCreatePR(
 
     // 9. Store PR info on task (but DON'T change status)
     const prStatus = mapGitHubStateToPRStatus(pr.state, pr.isDraft);
-    ctx.taskRepository.updatePRInfo(taskId, pr.url, pr.number, prStatus);
+    ctx.taskService.updatePRInfo(taskId, pr.url, pr.number, prStatus);
 
     // NOTE: We intentionally do NOT change task status or sync to GitHub here.
     // This allows GitHub's "Pull request linked to issue" workflow to naturally
@@ -488,7 +481,7 @@ export async function handleSubmitForReview(
   const { taskId, force = false } = args;
 
   // 1. Get task and validate state
-  const task = ctx.taskRepository.findById(taskId);
+  const task = ctx.taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
@@ -508,7 +501,7 @@ export async function handleSubmitForReview(
   }
 
   // 2. Update task status to PR_REVIEW
-  ctx.taskRepository.updateStatus(taskId, "PR_REVIEW", undefined, "Submitted for review");
+  ctx.taskService.updateTaskStatus(taskId, "PR_REVIEW", undefined, "Submitted for review");
 
   // 3. Sync to external project management provider (service handles "should I sync?" internally)
   if (ctx.taskSyncService) {
@@ -577,26 +570,17 @@ export async function handleCompleteTask(
   }
 
   // 1. Get task and validate
-  const task = ctx.taskRepository.findById(taskId);
+  const task = ctx.taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
 
   // 2. Write the final log entry before completing
-  const db = ctx.dbService.getDb();
-  const logId = crypto.randomUUID();
-  const now = new Date().toISOString();
-
-  db.insert(ctx.taskExecutionLogsSchema)
-    .values({
-      id: logId,
-      taskId,
-      sessionId,
-      message: finalLogEntry.trim(),
-      filesModified: null,
-      createdAt: now,
-    })
-    .run();
+  ctx.db.executionLogs.create({
+    taskId,
+    sessionId,
+    message: finalLogEntry.trim(),
+  });
 
   // Determine mode based on task state
   const hasWorktree = !!task.worktreePath;
@@ -613,10 +597,15 @@ export async function handleCompleteTask(
     }
 
     // Update task status to COMPLETED
-    ctx.taskRepository.updateStatus(taskId, "COMPLETED", sessionId, "Completed (main mode, no PR)");
+    ctx.taskService.updateTaskStatus(
+      taskId,
+      "COMPLETED",
+      sessionId,
+      "Completed (main mode, no PR)"
+    );
 
     // Clear session association
-    ctx.taskRepository.clearSession(taskId);
+    ctx.taskService.clearSession(taskId);
 
     // Sync to external project management provider (service handles "should I sync?" internally)
     if (ctx.taskSyncService) {
@@ -719,7 +708,7 @@ export async function handleCompleteTask(
       }
 
       // Clear worktree info from task
-      ctx.taskRepository.clearWorktreeInfo(taskId);
+      ctx.taskService.clearWorktreeInfo(taskId);
     } else if (hasBranch) {
       // Branch mode: delete branch and checkout main
       try {
@@ -729,23 +718,23 @@ export async function handleCompleteTask(
         console.warn(`Failed to cleanup branch: ${task.branchName}`);
       }
       // Clear branch info from task
-      ctx.taskRepository.update(taskId, { branchName: undefined });
+      ctx.taskService.update(taskId, { branchName: undefined });
     }
   }
 
   // 5. Update PR status to MERGED (only if PR was actually merged)
   if (prMerged && task.prNumber) {
-    ctx.taskRepository.updatePRStatus(taskId, "MERGED");
+    ctx.taskService.updatePRStatus(taskId, "MERGED");
   }
 
   // 6. Update task status to COMPLETED
   const completionNote = force
     ? `Force completed${task.prNumber ? ` (PR #${task.prNumber})` : ""}`
     : `PR #${task.prNumber} merged`;
-  ctx.taskRepository.updateStatus(taskId, "COMPLETED", sessionId, completionNote);
+  ctx.taskService.updateTaskStatus(taskId, "COMPLETED", sessionId, completionNote);
 
   // 7. Clear session association
-  ctx.taskRepository.clearSession(taskId);
+  ctx.taskService.clearSession(taskId);
 
   // 8. Sync to external project management provider (service handles "should I sync?" internally)
   if (ctx.taskSyncService) {
@@ -809,7 +798,7 @@ async function checkAndMaybeCloseIssue(
   autoCloseIssue: boolean
 ): Promise<{ allTasksComplete: boolean; issueClosed: boolean; issueNumber: number | null }> {
   // Get all tasks in the plan (excluding deleted ones)
-  const allTasks = ctx.taskRepository.findByPlanId(planId);
+  const allTasks = ctx.taskService.findByPlanId(planId);
   const activeTasks = allTasks.filter((t) => !t.isDeleted);
 
   // Check if all tasks are in terminal state
@@ -817,12 +806,12 @@ async function checkAndMaybeCloseIssue(
   const allTasksComplete = activeTasks.every((t) => terminalStatuses.includes(t.status));
 
   // Get the issue
-  const plan = ctx.planRepository.findById(planId);
+  const plan = ctx.planService.findById(planId);
   if (!plan) {
     return { allTasksComplete, issueClosed: false, issueNumber: null };
   }
 
-  const issue = ctx.issueRepository.findById(plan.issueId);
+  const issue = ctx.issueService.findById(plan.issueId);
   if (!issue) {
     return { allTasksComplete, issueClosed: false, issueNumber: null };
   }
@@ -830,22 +819,8 @@ async function checkAndMaybeCloseIssue(
   // If autoCloseIssue is true and all tasks are complete, close the issue
   let issueClosed = false;
   if (autoCloseIssue && allTasksComplete && issue.status !== "CLOSED") {
-    // Create services for orchestrated close operation
-    const provider = ctx.project.githubSync?.enabled
-      ? getProjectManagementProvider(ctx.project, { githubCLI: ctx.githubCLI })
-      : null;
-
-    const taskService = new TaskService(
-      ctx.taskRepository,
-      ctx.planRepository,
-      provider,
-      ctx.gitWorktreeService ?? null,
-      ctx.dispatchQueueRepository
-    );
-    const issueService = new IssueService(ctx.issueRepository, taskService, provider);
-
     // Use IssueService.closeIssue for orchestrated close (syncs to external provider)
-    await issueService.closeIssue(issue.id, true, "claude-code");
+    await ctx.issueService.closeIssue(issue.id, true, "claude-code");
     issueClosed = true;
   }
 
@@ -870,11 +845,11 @@ function findNextAvailableTask(
   status: string;
 } | null {
   // First, check same plan for READY tasks
-  const samePlanTasks = ctx.taskRepository.findByPlanId(currentPlanId);
+  const samePlanTasks = ctx.taskService.findByPlanId(currentPlanId);
   const readyTask = samePlanTasks.find((t) => t.status === "READY");
   if (readyTask) {
-    const plan = ctx.planRepository.findById(currentPlanId);
-    const issue = plan ? ctx.issueRepository.findById(plan.issueId) : null;
+    const plan = ctx.planService.findById(currentPlanId);
+    const issue = plan ? ctx.issueService.findById(plan.issueId) : null;
     return {
       id: readyTask.id,
       number: readyTask.number,
@@ -888,8 +863,8 @@ function findNextAvailableTask(
   // Check same plan for BACKLOG tasks
   const backlogTask = samePlanTasks.find((t) => t.status === "BACKLOG");
   if (backlogTask) {
-    const plan = ctx.planRepository.findById(currentPlanId);
-    const issue = plan ? ctx.issueRepository.findById(plan.issueId) : null;
+    const plan = ctx.planService.findById(currentPlanId);
+    const issue = plan ? ctx.issueService.findById(plan.issueId) : null;
     return {
       id: backlogTask.id,
       number: backlogTask.number,
@@ -901,15 +876,15 @@ function findNextAvailableTask(
   }
 
   // Look for READY tasks in other active issues
-  const activeIssues = ctx.issueRepository
-    .findMany()
+  const activeIssues = ctx.issueService
+    .findMany({})
     .filter((i) => i.status === "IN_PROGRESS" || i.status === "OPEN");
 
   for (const issue of activeIssues) {
-    const plan = ctx.planRepository.findByIssueId(issue.id);
+    const plan = ctx.planService.findByIssueId(issue.id);
     if (!plan || plan.id === currentPlanId) continue;
 
-    const tasks = ctx.taskRepository.findByPlanId(plan.id);
+    const tasks = ctx.taskService.findByPlanId(plan.id);
     const availableTask = tasks.find((t) => t.status === "READY" || t.status === "BACKLOG");
     if (availableTask) {
       return {

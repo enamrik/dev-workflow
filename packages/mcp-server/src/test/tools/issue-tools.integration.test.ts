@@ -7,16 +7,19 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
-import { createRepositories } from "../helpers.js";
+import { createClientForProject, createNoOpProvider } from "../helpers.js";
 import {
-  SqliteMilestoneRepository,
   TemplateService,
   PlanningService,
   VersioningService,
-  GitHubSyncService,
   MockGitHubCLI,
   GitHubProjectManagementProvider,
-  SqliteProjectRepository,
+  IssueService,
+  TaskService,
+  PlanService,
+  MilestoneService,
+  DispatchService,
+  type DbClient,
 } from "@dev-workflow/core";
 import {
   handleCreateIssue,
@@ -27,11 +30,6 @@ import {
   handleGetIssue,
   type IssueToolContext,
 } from "../../tools/issue-tools.js";
-import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import * as schema from "@dev-workflow/core/schema";
-
-/** Database type used by repositories */
-type DbType = BetterSQLite3Database<typeof schema>;
 
 /** Test project ID */
 const TEST_PROJECT_ID = "test-project-integration";
@@ -39,19 +37,19 @@ const TEST_PROJECT_ID = "test-project-integration";
 /**
  * Create a full IssueToolContext for testing
  */
-async function createIssueToolContext(testDb: TestDatabase): Promise<IssueToolContext> {
-  const db = testDb.db as DbType;
-
+async function createIssueToolContext(testDb: TestDatabase): Promise<{
+  ctx: IssueToolContext;
+  client: DbClient;
+}> {
   // Create project first to get the generated ID
-  const projectRepository = new SqliteProjectRepository(db);
-  const project = await projectRepository.create({
+  const project = await testDb.source.projects.create({
     gitRootHash: TEST_PROJECT_ID,
     name: "Test Project",
   });
 
-  // Use project's actual ID for repositories
-  const repos = createRepositories(testDb.db, project.id);
-  const milestoneRepository = new SqliteMilestoneRepository(db, project.id);
+  // Create a client scoped to this project
+  const client = createClientForProject(testDb, project.id);
+  const noOpProvider = createNoOpProvider();
 
   // Mock template service (returns default template)
   const mockTemplateService = {
@@ -67,53 +65,48 @@ async function createIssueToolContext(testDb: TestDatabase): Promise<IssueToolCo
     deleteTemplate: async () => {},
   } as unknown as TemplateService;
 
-  // Create real services
-  const snapshotRepository = repos.snapshotRepository;
-  const versioningService = new VersioningService(
-    repos.issueRepository,
-    snapshotRepository,
-    repos.planRepository,
-    repos.taskRepository
-  );
-
-  const planningService = new PlanningService(
-    repos.issueRepository,
-    repos.planRepository,
-    repos.taskRepository,
-    versioningService
-  );
+  // Create services with DbClient
+  const versioningService = new VersioningService(client);
+  const planningService = new PlanningService(client, versioningService);
 
   // Mock GitHub services (disabled)
   const mockGitHubCLI = new MockGitHubCLI();
   const mockProvider = new GitHubProjectManagementProvider(mockGitHubCLI);
-  const githubSyncService = new GitHubSyncService(
-    repos.issueRepository,
-    mockProvider,
-    projectRepository,
-    project.id
-  );
+
+  // Dispatch service uses DbSource (global), other services use DbClient (project-scoped)
+  const dispatchService = new DispatchService(testDb.source);
+  const planService = new PlanService(client);
+  const taskService = new TaskService(client, noOpProvider, null);
+  const issueService = new IssueService(client, taskService, noOpProvider);
+  const milestoneService = new MilestoneService(client);
 
   return {
-    project,
-    issueRepository: repos.issueRepository,
-    planRepository: repos.planRepository,
-    taskRepository: repos.taskRepository,
-    milestoneRepository,
-    dispatchQueueRepository: repos.dispatchQueueRepository,
-    templateService: mockTemplateService,
-    planningService,
-    githubSyncService,
-    githubCLI: mockGitHubCLI,
+    ctx: {
+      project,
+      issueService,
+      planService,
+      taskService,
+      milestoneService,
+      dispatchService,
+      templateService: mockTemplateService,
+      planningService,
+      projectManagementProvider: mockProvider,
+      githubCLI: mockGitHubCLI,
+    },
+    client,
   };
 }
 
 describe("Issue Tools Integration", () => {
   let testDb: TestDatabase;
   let ctx: IssueToolContext;
+  let client: DbClient;
 
   beforeEach(async () => {
     testDb = createTestDatabase();
-    ctx = await createIssueToolContext(testDb);
+    const result = await createIssueToolContext(testDb);
+    ctx = result.ctx;
+    client = result.client;
   });
 
   describe("handleCreateIssue", () => {
@@ -132,7 +125,7 @@ describe("Issue Tools Integration", () => {
       expect(content.issue.status).toBe("PLANNED");
 
       // Verify database state
-      const issue = ctx.issueRepository.findByNumber(content.issue.number);
+      const issue = client.issues.findByNumber(content.issue.number);
       expect(issue).toBeDefined();
       expect(issue!.title).toBe("Test Issue");
     });
@@ -162,7 +155,7 @@ describe("Issue Tools Integration", () => {
       const content = JSON.parse(result.content[0].text);
 
       // Verify database state
-      const issue = ctx.issueRepository.findByNumber(content.issue.number);
+      const issue = client.issues.findByNumber(content.issue.number);
       expect(issue!.acceptanceCriteria).toEqual(["AC 1", "AC 2", "AC 3"]);
     });
   });
@@ -190,7 +183,7 @@ describe("Issue Tools Integration", () => {
       expect(content.issue.title).toBe("Updated Title");
 
       // Verify database state
-      const issue = ctx.issueRepository.findByNumber(created.issue.number);
+      const issue = client.issues.findByNumber(created.issue.number);
       expect(issue!.title).toBe("Updated Title");
       expect(issue!.description).toBe("Updated description");
     });
@@ -228,7 +221,7 @@ describe("Issue Tools Integration", () => {
 
       // Verify database state - issue should be marked as deleted
       // Use includeDeleted: true since findByNumber filters out deleted issues by default
-      const issue = ctx.issueRepository.findByNumber(created.issue.number, true);
+      const issue = client.issues.findByNumber(created.issue.number, true);
       expect(issue!.isDeleted).toBe(true);
     });
 
@@ -252,7 +245,7 @@ describe("Issue Tools Integration", () => {
       const created = JSON.parse(createResult.content[0].text);
 
       // Need to transition to OPEN first (issues start as PLANNED)
-      ctx.issueRepository.update(created.issue.id, { status: "OPEN" });
+      client.issues.update(created.issue.id, { status: "OPEN" });
 
       // Close it
       const closeResult = await handleCloseIssue(ctx, {
@@ -264,7 +257,7 @@ describe("Issue Tools Integration", () => {
       expect(content.message).toContain("closed successfully");
 
       // Verify database state
-      const issue = ctx.issueRepository.findByNumber(created.issue.number);
+      const issue = client.issues.findByNumber(created.issue.number);
       expect(issue!.status).toBe("CLOSED");
     });
   });
@@ -298,7 +291,7 @@ describe("Issue Tools Integration", () => {
       expect(content.inferred.type).toBe("TASK"); // Default when no labels
 
       // Verify database state
-      const issue = ctx.issueRepository.findByNumber(content.issue.number);
+      const issue = client.issues.findByNumber(content.issue.number);
       expect(issue).toBeDefined();
       expect(issue!.sourceGitHubIssueNumber).toBe(42);
     });
@@ -515,7 +508,7 @@ describe("Issue Tools Integration", () => {
       expect(content.message).toContain("closed successfully");
 
       // Verify database state
-      const issue = ctx.issueRepository.findByNumber(created.issue.number);
+      const issue = client.issues.findByNumber(created.issue.number);
       expect(issue!.status).toBe("CLOSED");
     });
 
@@ -535,8 +528,7 @@ describe("Issue Tools Integration", () => {
       ]);
 
       // Enable GitHub sync on the project
-      const projectRepository = new SqliteProjectRepository(testDb.db as DbType);
-      projectRepository.update(ctx.project.id, {
+      testDb.source.projects.update(ctx.project.id, {
         githubSync: {
           enabled: true,
           projectId: "PVT_test123",
@@ -617,7 +609,7 @@ describe("Issue Tools Integration", () => {
       const created = JSON.parse(createResult.content[0].text);
 
       // Create a plan with tasks
-      const plan = ctx.planRepository.create({
+      const plan = client.plans.create({
         issueId: created.issue.id,
         summary: "Test plan",
         approach: "Test approach",
@@ -625,7 +617,7 @@ describe("Issue Tools Integration", () => {
         generatedBy: "test",
       });
 
-      const task1 = ctx.taskRepository.create({
+      const task1 = client.tasks.create({
         id: crypto.randomUUID(),
         planId: plan.id,
         title: "Task 1",
@@ -637,7 +629,7 @@ describe("Issue Tools Integration", () => {
         isDeleted: false,
       });
 
-      const task2 = ctx.taskRepository.create({
+      const task2 = client.tasks.create({
         id: crypto.randomUUID(),
         planId: plan.id,
         title: "Task 2",
@@ -650,10 +642,10 @@ describe("Issue Tools Integration", () => {
       });
 
       // Add session to the IN_PROGRESS task
-      ctx.taskRepository.update(task2.id, { sessionId: "test-session" });
+      client.tasks.update(task2.id, { sessionId: "test-session" });
 
       // Add PR info to one task
-      ctx.taskRepository.update(task1.id, {
+      client.tasks.update(task1.id, {
         prNumber: 123,
         prUrl: "https://github.com/test/repo/pull/123",
         prStatus: "OPEN",
@@ -698,7 +690,7 @@ describe("Issue Tools Integration", () => {
       const created = JSON.parse(createResult.content[0].text);
 
       // Create a plan with tasks
-      const plan = ctx.planRepository.create({
+      const plan = client.plans.create({
         issueId: created.issue.id,
         summary: "Test plan",
         approach: "Test approach",
@@ -706,7 +698,7 @@ describe("Issue Tools Integration", () => {
         generatedBy: "test",
       });
 
-      ctx.taskRepository.create({
+      client.tasks.create({
         id: crypto.randomUUID(),
         planId: plan.id,
         title: "Task 1",

@@ -19,9 +19,10 @@ import { NodeFileSystem } from "./infrastructure/file-system.js";
 import {
   TrackDirectoryResolver,
   createTrackDirectoryResolver,
-  DataSourceFactory,
-  SqliteWorkerRepository,
-  SqliteDispatchQueueRepository,
+  DbSourceProvider,
+  runSqliteMigrations,
+  WorkerService,
+  DispatchService,
   getGlobalDatabasePath,
   isWorktree,
   writeSlugToGitConfig,
@@ -846,20 +847,27 @@ async function runWorkers(): Promise<void> {
     process.exit(1);
   }
 
-  const dbService = await DataSourceFactory.createSqlite(dbPath);
-  const db = dbService.getDb();
-  const workerRepository = new SqliteWorkerRepository(db);
-  const dispatchQueueRepository = new SqliteDispatchQueueRepository(db);
+  // Ensure migrations are run
+  runSqliteMigrations(dbPath);
+
+  // Create DbSource for unified repository access
+  // Workers and dispatch queue are global (not project-scoped)
+  const sourceProvider = new DbSourceProvider();
+  const source = sourceProvider.getOrCreate({ connectionString: dbPath });
+
+  // Create services for worker operations
+  const workerService = new WorkerService(source);
+  const dispatchService = new DispatchService(source);
 
   try {
     // Get workers with health info
-    const workers = workerRepository.findAllWithHealth();
+    const workers = workerService.findAllWithHealth();
 
     // Get queue stats
-    const queueStats = dispatchQueueRepository.getQueueStats();
+    const queueStats = dispatchService.getQueueStats();
 
     // Get queue entries for details
-    const queueEntries = dispatchQueueRepository.findAllWithHealth();
+    const queueEntries = dispatchService.findAllWithHealth();
 
     console.log("Workers:");
     console.log("========\n");
@@ -900,7 +908,7 @@ async function runWorkers(): Promise<void> {
     console.error("Error listing workers:", error);
     process.exit(1);
   } finally {
-    dbService.close();
+    source.close();
   }
 }
 

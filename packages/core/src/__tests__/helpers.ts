@@ -4,74 +4,72 @@
  * Utility functions for testing repositories, services, and MCP tools.
  */
 
-import type { SqliteDrizzleDatabase } from "../domain/data-source.js";
-import { SqliteIssueRepository } from "../infrastructure/repositories/issue-repository.js";
-import { SqlitePlanRepository } from "../infrastructure/repositories/plan-repository.js";
-import { SqliteTaskRepository } from "../infrastructure/repositories/task-repository.js";
-import { SqliteSnapshotRepository } from "../infrastructure/repositories/snapshot-repository.js";
-import { SqliteProjectRepository } from "../infrastructure/repositories/project-repository.js";
-import { SqliteMilestoneRepository } from "../infrastructure/repositories/milestone-repository.js";
-import { SqliteGlobalSettingsRepository } from "../infrastructure/repositories/global-settings-repository.js";
-import { SqliteWorkerRepository } from "../infrastructure/repositories/worker-repository.js";
-import { SqliteDispatchQueueRepository } from "../infrastructure/repositories/dispatch-queue-repository.js";
-import { SqliteTypeRepository } from "../infrastructure/repositories/type-repository.js";
+import type {
+  IssueRepository,
+  Issue,
+  IssueType,
+  IssuePriority,
+  IssueStatus,
+} from "../domain/issue.js";
+import type { PlanRepository, Plan, PlanComplexity } from "../domain/plan.js";
+import type { TaskRepository, Task, TaskStatus, TaskSource } from "../domain/task.js";
+import type { DbClient } from "../domain/db-client.js";
+import type { DbSource } from "../domain/db-source.js";
+import type { DrizzleDb } from "../domain/drizzle-db.js";
+import type { TestDatabase } from "./setup.js";
+import { DrizzleDbClient } from "../infrastructure/database/drizzle-db-client.js";
 import { VersioningService } from "../application/versioning-service.js";
 import { PlanningService } from "../application/planning-service.js";
 import { TaskManagementService } from "../application/task-management-service.js";
-import type { Issue, IssueType, IssuePriority, IssueStatus } from "../domain/issue.js";
-import type { Plan, PlanComplexity } from "../domain/plan.js";
-import type { Task, TaskStatus, TaskSource } from "../domain/task.js";
-import type { TestDatabase } from "./setup.js";
-
-/** Database type used by repositories */
-type DbType = SqliteDrizzleDatabase;
-
-/** Default project ID for tests */
-const TEST_PROJECT_ID = "test-project-abc123";
 
 /**
- * Create all repositories from a database connection
+ * Create a DbClient scoped to a specific project from a test database
+ *
+ * Use this when you need to test with a different project ID than the
+ * default one created by createTestDatabase().
+ *
+ * @param testDb - Test database from createTestDatabase()
+ * @param projectId - Project ID to scope the new client to
  */
-export function createRepositories(db: TestDatabase["db"], projectId: string = TEST_PROJECT_ID) {
-  // Cast to the expected type - TestDatabase["db"] includes schema
-  const typedDb = db as DbType;
+export function createClientForProject(testDb: TestDatabase, projectId: string): DbClient {
+  const drizzleDb = testDb.db as unknown as DrizzleDb;
+  return new DrizzleDbClient(drizzleDb, projectId);
+}
+
+/**
+ * Get project-scoped repositories from a DbClient
+ */
+export function getRepositories(client: DbClient) {
   return {
-    issueRepository: new SqliteIssueRepository(typedDb, projectId),
-    planRepository: new SqlitePlanRepository(typedDb),
-    taskRepository: new SqliteTaskRepository(typedDb),
-    snapshotRepository: new SqliteSnapshotRepository(typedDb, projectId),
-    projectRepository: new SqliteProjectRepository(typedDb),
-    milestoneRepository: new SqliteMilestoneRepository(typedDb, projectId),
-    globalSettingsRepository: new SqliteGlobalSettingsRepository(typedDb),
-    workerRepository: new SqliteWorkerRepository(typedDb),
-    dispatchQueueRepository: new SqliteDispatchQueueRepository(typedDb),
-    typeRepository: new SqliteTypeRepository(typedDb),
+    issueRepository: client.issues,
+    planRepository: client.plans,
+    taskRepository: client.tasks,
+    snapshotRepository: client.snapshots,
+    milestoneRepository: client.milestones,
+    workerRepository: client.workers,
+    dispatchQueueRepository: client.dispatchQueue,
+    executionLogRepository: client.executionLogs,
   };
 }
 
 /**
- * Create all services from repositories
+ * Get global repositories from a DbSource
  */
-export function createServices(repos: ReturnType<typeof createRepositories>) {
-  const versioningService = new VersioningService(
-    repos.issueRepository,
-    repos.snapshotRepository,
-    repos.planRepository,
-    repos.taskRepository
-  );
+export function getSourceRepositories(source: DbSource) {
+  return {
+    projectRepository: source.projects,
+    typeRepository: source.types,
+    globalSettingsRepository: source.globalSettings,
+  };
+}
 
-  const planningService = new PlanningService(
-    repos.issueRepository,
-    repos.planRepository,
-    repos.taskRepository,
-    versioningService
-  );
-
-  const taskManagementService = new TaskManagementService(
-    repos.taskRepository,
-    repos.planRepository,
-    repos.issueRepository
-  );
+/**
+ * Create all services from a DbClient
+ */
+export function createServices(client: DbClient) {
+  const versioningService = new VersioningService(client);
+  const planningService = new PlanningService(client, versioningService);
+  const taskManagementService = new TaskManagementService(client);
 
   return {
     versioningService,
@@ -84,7 +82,7 @@ export function createServices(repos: ReturnType<typeof createRepositories>) {
  * Factory for creating test issues
  */
 export function createTestIssue(
-  repo: SqliteIssueRepository,
+  repo: IssueRepository,
   overrides: Partial<{
     title: string;
     description: string;
@@ -109,7 +107,7 @@ export function createTestIssue(
  * Factory for creating test plans
  */
 export function createTestPlan(
-  repo: SqlitePlanRepository,
+  repo: PlanRepository,
   issueId: string,
   overrides: Partial<{
     summary: string;
@@ -131,7 +129,7 @@ export function createTestPlan(
  * Factory for creating test tasks
  */
 export function createTestTask(
-  repo: SqliteTaskRepository,
+  repo: TaskRepository,
   planId: string,
   overrides: Partial<{
     title: string;
@@ -164,7 +162,7 @@ export function createTestTask(
  * BACKLOG/READY -> IN_PROGRESS -> COMPLETED
  */
 export function completeTask(
-  repo: SqliteTaskRepository,
+  repo: TaskRepository,
   taskId: string,
   sessionId: string = "test-session",
   notes: string = "Completed"
@@ -195,7 +193,7 @@ export function completeTask(
  * Create a full test scenario with issue, plan, and tasks
  */
 export function createTestScenario(
-  repos: ReturnType<typeof createRepositories>,
+  client: DbClient,
   options: {
     taskCount?: number;
     manualTaskCount?: number;
@@ -209,16 +207,16 @@ export function createTestScenario(
   const { taskCount = 3, manualTaskCount = 0 } = options;
 
   // Create issue
-  const issue = createTestIssue(repos.issueRepository);
+  const issue = createTestIssue(client.issues);
 
   // Create plan
-  const plan = createTestPlan(repos.planRepository, issue.id);
+  const plan = createTestPlan(client.plans, issue.id);
 
   // Create generated tasks
   const tasks: Task[] = [];
   for (let i = 0; i < taskCount; i++) {
     tasks.push(
-      createTestTask(repos.taskRepository, plan.id, {
+      createTestTask(client.tasks, plan.id, {
         title: `Task ${i + 1}`,
         description: `Description for task ${i + 1}`,
         source: "generated",
@@ -230,7 +228,7 @@ export function createTestScenario(
   const manualTasks: Task[] = [];
   for (let i = 0; i < manualTaskCount; i++) {
     manualTasks.push(
-      createTestTask(repos.taskRepository, plan.id, {
+      createTestTask(client.tasks, plan.id, {
         title: `Manual Task ${i + 1}`,
         description: `Description for manual task ${i + 1}`,
         source: "manual",

@@ -6,7 +6,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDatabase } from "../../../__tests__/setup.js";
-import { createRepositories } from "../../../__tests__/helpers.js";
 import { TypeService } from "../type-service.js";
 import { DEFAULT_TYPE_DEFINITIONS } from "../../../domain/type-definition.js";
 
@@ -16,8 +15,7 @@ describe("TypeService", () => {
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const repos = createRepositories(testDb.db);
-    service = new TypeService(repos.typeRepository);
+    service = new TypeService(testDb.source.types);
   });
 
   afterEach(() => {
@@ -33,14 +31,13 @@ describe("TypeService", () => {
     });
 
     it("should load types from database when present", async () => {
-      const repos = createRepositories(testDb.db);
-      repos.typeRepository.create({
+      testDb.source.types.create({
         name: "FEATURE",
         displayName: "Feature",
         description: "New functionality",
         keywords: ["feature", "new"],
       });
-      repos.typeRepository.create({
+      testDb.source.types.create({
         name: "BUG",
         displayName: "Bug",
         description: "Something broken",
@@ -48,7 +45,7 @@ describe("TypeService", () => {
       });
 
       // Need a new service instance to bypass cache
-      const freshService = new TypeService(repos.typeRepository);
+      const freshService = new TypeService(testDb.source.types);
       const result = await freshService.loadTypes();
 
       expect(result.isUserDefined).toBe(true);
@@ -58,8 +55,7 @@ describe("TypeService", () => {
     });
 
     it("should cache types after first load", async () => {
-      const repos = createRepositories(testDb.db);
-      repos.typeRepository.create({
+      testDb.source.types.create({
         name: "TEST",
         displayName: "Test",
         description: "Test type",
@@ -72,14 +68,12 @@ describe("TypeService", () => {
     });
 
     it("should reload types after clearCache", async () => {
-      const repos = createRepositories(testDb.db);
-
       // First load returns defaults
       const result1 = await service.loadTypes();
       expect(result1.types).toEqual(DEFAULT_TYPE_DEFINITIONS);
 
       // Add a type
-      repos.typeRepository.create({
+      testDb.source.types.create({
         name: "NEW",
         displayName: "New",
         description: "New type",
@@ -97,9 +91,8 @@ describe("TypeService", () => {
   describe("selectType", () => {
     beforeEach(() => {
       // Seed default types for selection tests
-      const repos = createRepositories(testDb.db);
       for (const typeDef of DEFAULT_TYPE_DEFINITIONS) {
-        repos.typeRepository.create({
+        testDb.source.types.create({
           name: typeDef.name,
           displayName: typeDef.name.charAt(0) + typeDef.name.slice(1).toLowerCase(),
           description: typeDef.description,
@@ -155,8 +148,7 @@ describe("TypeService", () => {
     });
 
     it("should return database types when present", async () => {
-      const repos = createRepositories(testDb.db);
-      repos.typeRepository.create({
+      testDb.source.types.create({
         name: "CUSTOM",
         displayName: "Custom",
         description: "Custom type",
@@ -173,13 +165,12 @@ describe("TypeService", () => {
 
   describe("isValidType", () => {
     beforeEach(() => {
-      const repos = createRepositories(testDb.db);
-      repos.typeRepository.create({
+      testDb.source.types.create({
         name: "FEATURE",
         displayName: "Feature",
         description: "New functionality",
       });
-      repos.typeRepository.create({
+      testDb.source.types.create({
         name: "BUG",
         displayName: "Bug",
         description: "Something broken",
@@ -201,8 +192,7 @@ describe("TypeService", () => {
 
   describe("getTypeByName", () => {
     beforeEach(() => {
-      const repos = createRepositories(testDb.db);
-      repos.typeRepository.create({
+      testDb.source.types.create({
         name: "FEATURE",
         displayName: "Feature",
         description: "New functionality",

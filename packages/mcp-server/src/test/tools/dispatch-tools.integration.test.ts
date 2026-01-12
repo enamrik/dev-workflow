@@ -5,8 +5,15 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createTestDatabase } from "../setup.js";
-import { createRepositories, createTestIssue, createTestPlan, createTestTask } from "../helpers.js";
+import {
+  DispatchService,
+  WorkerService,
+  TaskService,
+  type DbClient,
+  type DbSource,
+} from "@dev-workflow/core";
+import { createTestDatabase, type TestDatabase } from "../setup.js";
+import { createTestIssue, createTestPlan, createTestTask, createNoOpProvider } from "../helpers.js";
 import {
   handleDispatchTask,
   handleGetDispatchStatus,
@@ -15,17 +22,25 @@ import {
 } from "../../tools/dispatch-tools.js";
 
 describe("Dispatch Tools Integration", () => {
-  let testDb: ReturnType<typeof createTestDatabase>;
-  let repos: ReturnType<typeof createRepositories>;
+  let testDb: TestDatabase;
+  let client: DbClient;
+  let source: DbSource;
   let ctx: DispatchToolContext;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    repos = createRepositories(testDb.db);
+    client = testDb.client;
+    source = testDb.source;
+
+    // Create services - worker/dispatch use DbSource (global), taskService uses DbClient (project-scoped)
+    const dispatchService = new DispatchService(source);
+    const workerService = new WorkerService(source);
+    const taskService = new TaskService(client, createNoOpProvider(), null);
+
     ctx = {
-      dispatchQueueRepository: repos.dispatchQueueRepository,
-      taskRepository: repos.taskRepository,
-      workerRepository: repos.workerRepository,
+      dispatchService,
+      taskService,
+      workerService,
     };
   });
 
@@ -58,9 +73,9 @@ describe("Dispatch Tools Integration", () => {
 
     it("should return registered workers with their status", () => {
       // Register workers
-      repos.workerRepository.register("worker-1", "worker-1");
-      repos.workerRepository.register("worker-2", "worker-2");
-      repos.workerRepository.updateStatus("worker-2", "WORKING");
+      client.workers.register("worker-1", "worker-1");
+      client.workers.register("worker-2", "worker-2");
+      client.workers.updateStatus("worker-2", "WORKING");
 
       const result = handleGetDispatchStatus(ctx);
 
@@ -87,15 +102,15 @@ describe("Dispatch Tools Integration", () => {
 
     it("should include dispatch queue entries", () => {
       // Create issue, plan, and task
-      const issue = createTestIssue(repos.issueRepository);
-      const plan = createTestPlan(repos.planRepository, issue.id);
-      const task = createTestTask(repos.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test Task",
         status: "BACKLOG",
       });
 
       // Enqueue task
-      repos.dispatchQueueRepository.enqueue(task.id);
+      client.dispatchQueue.enqueue(task.id);
 
       const result = handleGetDispatchStatus(ctx);
 
@@ -113,19 +128,19 @@ describe("Dispatch Tools Integration", () => {
 
     it("should show current task for workers that have claimed tasks", () => {
       // Create issue, plan, and task
-      const issue = createTestIssue(repos.issueRepository);
-      const plan = createTestPlan(repos.planRepository, issue.id);
-      const task = createTestTask(repos.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test Task",
         status: "BACKLOG",
       });
 
       // Register worker
-      repos.workerRepository.register("worker-1", "worker-1");
+      client.workers.register("worker-1", "worker-1");
 
       // Enqueue and claim task
-      repos.dispatchQueueRepository.enqueue(task.id);
-      repos.dispatchQueueRepository.claimTask("worker-1");
+      client.dispatchQueue.enqueue(task.id);
+      client.dispatchQueue.claimTask("worker-1");
 
       const result = handleGetDispatchStatus(ctx);
 
@@ -147,9 +162,9 @@ describe("Dispatch Tools Integration", () => {
   describe("handleDispatchTask", () => {
     it("should dispatch a task and return queue entry", () => {
       // Create issue, plan, and task
-      const issue = createTestIssue(repos.issueRepository);
-      const plan = createTestPlan(repos.planRepository, issue.id);
-      const task = createTestTask(repos.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test Task",
         status: "BACKLOG",
       });
@@ -174,9 +189,9 @@ describe("Dispatch Tools Integration", () => {
 
     it("should return alreadyQueued=true for duplicate dispatch", () => {
       // Create issue, plan, and task
-      const issue = createTestIssue(repos.issueRepository);
-      const plan = createTestPlan(repos.planRepository, issue.id);
-      const task = createTestTask(repos.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test Task",
         status: "BACKLOG",
       });
@@ -195,17 +210,17 @@ describe("Dispatch Tools Integration", () => {
 
     it("should return claimedByWorker when task is claimed", () => {
       // Create issue, plan, and task
-      const issue = createTestIssue(repos.issueRepository);
-      const plan = createTestPlan(repos.planRepository, issue.id);
-      const task = createTestTask(repos.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test Task",
         status: "BACKLOG",
       });
 
       // Register worker and dispatch task
-      repos.workerRepository.register("worker-1", "worker-1");
-      repos.dispatchQueueRepository.enqueue(task.id);
-      repos.dispatchQueueRepository.claimTask("worker-1");
+      client.workers.register("worker-1", "worker-1");
+      client.dispatchQueue.enqueue(task.id);
+      client.dispatchQueue.claimTask("worker-1");
 
       // Dispatch again (already queued and claimed)
       const result = handleDispatchTask(ctx, { taskId: task.id });
@@ -226,14 +241,14 @@ describe("Dispatch Tools Integration", () => {
 
     it("should reject dispatch for non-BACKLOG/READY tasks", () => {
       // Create issue, plan, and task with IN_PROGRESS status
-      const issue = createTestIssue(repos.issueRepository);
-      const plan = createTestPlan(repos.planRepository, issue.id);
-      const task = createTestTask(repos.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test Task",
         status: "BACKLOG",
       });
       // Start the task so it's IN_PROGRESS
-      repos.taskRepository.updateStatus(task.id, "IN_PROGRESS", "test-session", "Started");
+      client.tasks.updateStatus(task.id, "IN_PROGRESS", "test-session", "Started");
 
       const result = handleDispatchTask(ctx, { taskId: task.id });
 
@@ -254,17 +269,17 @@ describe("Dispatch Tools Integration", () => {
   describe("handleEndWorkerSession", () => {
     it("should set claudeDone flag for a worker's task", () => {
       // Create issue, plan, and task
-      const issue = createTestIssue(repos.issueRepository);
-      const plan = createTestPlan(repos.planRepository, issue.id);
-      const task = createTestTask(repos.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test Task",
         status: "BACKLOG",
       });
 
       // Register worker and claim task
-      repos.workerRepository.register("worker-1", "worker-1");
-      repos.dispatchQueueRepository.enqueue(task.id);
-      repos.dispatchQueueRepository.claimTask("worker-1");
+      client.workers.register("worker-1", "worker-1");
+      client.dispatchQueue.enqueue(task.id);
+      client.dispatchQueue.claimTask("worker-1");
 
       const result = handleEndWorkerSession(ctx, {
         workerId: "worker-1",
@@ -278,23 +293,23 @@ describe("Dispatch Tools Integration", () => {
       expect(content.alreadyDone).toBe(false);
 
       // Verify claudeDone is set
-      const entry = repos.dispatchQueueRepository.findByTaskId(task.id);
+      const entry = client.dispatchQueue.findByTaskId(task.id);
       expect(entry?.claudeDone).toBe(true);
     });
 
     it("should reject end_worker_session with wrong workerId", () => {
       // Create issue, plan, and task
-      const issue = createTestIssue(repos.issueRepository);
-      const plan = createTestPlan(repos.planRepository, issue.id);
-      const task = createTestTask(repos.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test Task",
         status: "BACKLOG",
       });
 
       // Register worker and claim task
-      repos.workerRepository.register("worker-1", "worker-1");
-      repos.dispatchQueueRepository.enqueue(task.id);
-      repos.dispatchQueueRepository.claimTask("worker-1");
+      client.workers.register("worker-1", "worker-1");
+      client.dispatchQueue.enqueue(task.id);
+      client.dispatchQueue.claimTask("worker-1");
 
       // Try to end with wrong worker ID
       const result = handleEndWorkerSession(ctx, {

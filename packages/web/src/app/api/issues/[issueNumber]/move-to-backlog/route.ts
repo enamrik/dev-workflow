@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DataSourceRegistry, WebDIContext } from "@/server";
+import { ProjectsResolver, DbSourceProvider, WebDIContext } from "@/server";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +29,7 @@ interface RouteParams {
  * - Tasks: PLANNED → BACKLOG
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
+  const sourceProvider = new DbSourceProvider();
   try {
     const { issueNumber: issueNumberStr } = await params;
     const issueNumber = parseInt(issueNumberStr, 10);
@@ -45,11 +46,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Create context for the project
-    const registry = new DataSourceRegistry();
-    const context = await WebDIContext.create(projectSlug, registry);
+    const resolver = new ProjectsResolver();
+    const context = await WebDIContext.create(projectSlug, resolver, sourceProvider);
 
     // Find the issue
-    const issue = context.issueRepository.findByNumber(issueNumber);
+    const issue = context.db.issues.findByNumber(issueNumber);
     if (!issue) {
       return NextResponse.json({ error: "Issue not found" }, { status: 404 });
     }
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get the plan for this issue
-    const plan = context.planRepository.findByIssueId(issue.id);
+    const plan = context.db.plans.findByIssueId(issue.id);
     if (!plan) {
       return NextResponse.json(
         { error: "No plan found for this issue. Generate a plan first." },
@@ -75,13 +76,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get all tasks and filter for PLANNED ones
-    const allTasks = context.taskRepository.findByPlanId(plan.id);
+    const allTasks = context.db.tasks.findByPlanId(plan.id);
     const plannedTasks = allTasks.filter((t) => t.status === "PLANNED");
 
-    // Transition all PLANNED tasks to BACKLOG
+    // Transition all PLANNED tasks to BACKLOG via service (async for external sync)
     const activatedTasks = [];
     for (const task of plannedTasks) {
-      context.taskRepository.updateStatus(
+      await context.taskService.updateStatus(
         task.id,
         "BACKLOG",
         "web-ui",
@@ -94,8 +95,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       });
     }
 
-    // Transition issue from PLANNED → OPEN
-    context.issueRepository.update(issue.id, { status: "OPEN" });
+    // Transition issue from PLANNED → OPEN via service
+    context.issueService.update(issue.id, { status: "OPEN" });
 
     return NextResponse.json({
       success: true,
@@ -115,5 +116,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       { error: error instanceof Error ? error.message : "Failed to move issue to backlog" },
       { status: 500 }
     );
+  } finally {
+    sourceProvider.closeAll();
   }
 }

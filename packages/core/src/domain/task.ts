@@ -457,4 +457,11 @@ export interface TaskRepository {
    * @returns Array of execution log entries
    */
   getExecutionLogs(taskId: string): TaskExecutionLog[];
+
+  /**
+   * Get count of tasks by status
+   *
+   * @returns Record of status to count
+   */
+  getStatusCounts(): Record<string, number>;
 }

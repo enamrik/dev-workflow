@@ -4,17 +4,7 @@
  * Provides the merge_issues tool for combining two issues into one.
  */
 
-import {
-  MergeService,
-  MergeValidationError,
-  type MergeMode,
-  type SqliteIssueRepository,
-  type SqlitePlanRepository,
-  type SqliteTaskRepository,
-  type SqliteProjectRepository,
-  type VersioningService,
-  type GitHubCLI,
-} from "@dev-workflow/core";
+import { MergeValidationError, type MergeMode, type MergeService } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
 /**
@@ -66,13 +56,7 @@ export const mergeToolDefinitions: ToolDefinition[] = [
  * Service context for merge handlers
  */
 export interface MergeToolContext {
-  issueRepository: SqliteIssueRepository;
-  planRepository: SqlitePlanRepository;
-  taskRepository: SqliteTaskRepository;
-  projectRepository: SqliteProjectRepository;
-  versioningService: VersioningService;
-  projectId: string;
-  githubCLI: GitHubCLI;
+  mergeService: MergeService;
 }
 
 /**
@@ -103,19 +87,8 @@ export async function handleMergeIssues(
     return errorResponse(`Invalid mode: ${mode}. Must be 'create_new' or 'merge_into'.`);
   }
 
-  // Create MergeService with all dependencies
-  const mergeService = new MergeService(
-    ctx.issueRepository,
-    ctx.planRepository,
-    ctx.taskRepository,
-    ctx.versioningService,
-    ctx.projectRepository,
-    ctx.projectId,
-    ctx.githubCLI
-  );
-
   try {
-    const result = await mergeService.merge({
+    const result = await ctx.mergeService.merge({
       sourceIssueNumber,
       targetIssueNumber,
       mode,

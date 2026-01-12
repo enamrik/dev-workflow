@@ -104,8 +104,12 @@ import {
 // Environment Variable Configuration
 // =============================================================================
 //
-// PROJECT_SLUG is required. The MCP server reads it, loads
-// ~/.track/<slug>/config.json, and gets database, gitRoot, projectId from there.
+// Required environment variables (set by CLI when registering MCP server):
+// - PROJECT_SLUG: Project identifier (e.g., "dev-workflow-b9bccf")
+// - GIT_ROOT: Absolute path to the git repository root
+//
+// Optional:
+// - TRACK_DIR: Override global track directory (for testing)
 // =============================================================================
 
 const PROJECT_SLUG = process.env["PROJECT_SLUG"];

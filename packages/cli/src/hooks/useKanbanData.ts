@@ -1,36 +1,18 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  DataSourceFactory,
-  SqliteTaskRepository,
-  SqlitePlanRepository,
-  SqliteIssueRepository,
-  SqliteProjectRepository,
-  SqliteWorkerRepository,
-  type Issue,
-  type Plan,
+  DbSourceProvider,
+  BoardQueryService,
   type Project,
   type TaskStatus,
+  type BoardTask,
 } from "@dev-workflow/core";
 
 /**
  * Task with additional context for Kanban display
+ * Re-export BoardTask with taskNumber alias for backward compatibility
  */
-export interface KanbanTask {
-  id: string;
-  issueNumber: number;
+export interface KanbanTask extends Omit<BoardTask, "issueTitle" | "issueType"> {
   taskNumber: number;
-  title: string;
-  type: string;
-  status: TaskStatus;
-  branchName?: string;
-  worktreePath?: string;
-  prUrl?: string;
-  prNumber?: number;
-  prStatus?: string;
-  githubIssueNumber?: number;
-  githubUrl?: string;
-  startedAt?: string;
-  completedAt?: string;
 }
 
 /**
@@ -58,132 +40,59 @@ export interface KanbanData {
 }
 
 /**
- * Column configuration for display
- */
-const COLUMN_CONFIG: { status: TaskStatus; label: string }[] = [
-  { status: "PLANNED", label: "Planned" },
-  { status: "READY", label: "Ready" },
-  { status: "IN_PROGRESS", label: "In Progress" },
-  { status: "PR_REVIEW", label: "PR Review" },
-  { status: "COMPLETED", label: "Done" },
-];
-
-/**
- * Fetch Kanban data from the database
+ * Fetch Kanban data from the database using BoardQueryService
  */
 async function fetchKanbanData(dbPath: string, projectId: string): Promise<KanbanData | null> {
-  const dataSource = await DataSourceFactory.createSqlite(dbPath);
+  const sourceProvider = new DbSourceProvider();
+  const source = sourceProvider.getOrCreate({ connectionString: dbPath });
+  const client = source.createClient(projectId);
 
   try {
-    const db = dataSource.getDb();
-    const projectRepo = new SqliteProjectRepository(db);
-    const issueRepo = new SqliteIssueRepository(db, projectId);
-    const planRepo = new SqlitePlanRepository(db);
-    const taskRepo = new SqliteTaskRepository(db);
-    const workerRepo = new SqliteWorkerRepository(db);
-
-    // Get project
-    const project = await projectRepo.findById(projectId);
+    // Get project first (projects is a global repo on source)
+    const project = await source.projects.findById(projectId);
     if (!project) {
       return null;
     }
 
-    // Get all issues (including CLOSED for showing completed tasks)
-    const allIssues = [
-      ...issueRepo.findMany({ status: "PLANNED" }),
-      ...issueRepo.findMany({ status: "OPEN" }),
-      ...issueRepo.findMany({ status: "IN_PROGRESS" }),
-      ...issueRepo.findMany({ status: "CLOSED" }),
-    ];
+    // Create BoardQueryService with DbClient
+    const boardService = new BoardQueryService(client);
 
-    // Build map of planId -> issue for lookup
-    const planToIssue = new Map<string, Issue>();
-    const plans: Plan[] = [];
+    const boardData = boardService.getBoardData();
 
-    for (const issue of allIssues) {
-      const plan = planRepo.findByIssueId(issue.id);
-      if (plan) {
-        plans.push(plan);
-        planToIssue.set(plan.id, issue);
-      }
-    }
-
-    // Get all tasks from these plans
-    const allTasks: KanbanTask[] = [];
-
-    for (const plan of plans) {
-      const issue = planToIssue.get(plan.id);
-      if (!issue) continue;
-
-      const tasks = taskRepo.findByPlanId(plan.id);
-
-      for (const task of tasks) {
-        allTasks.push({
-          id: task.id,
-          issueNumber: issue.number,
-          taskNumber: task.number,
-          title: task.title,
-          type: task.type,
-          status: task.status,
-          branchName: task.branchName,
-          worktreePath: task.worktreePath,
-          prUrl: task.prUrl,
-          prNumber: task.prNumber,
-          prStatus: task.prStatus,
-          githubIssueNumber: task.githubSync?.githubIssueNumber ?? undefined,
-          githubUrl: task.githubSync?.githubUrl ?? undefined,
-          startedAt: task.startedAt,
-          completedAt: task.completedAt,
-        });
-      }
-    }
-
-    // Group tasks by status
-    const columns = COLUMN_CONFIG.map(({ status, label }) => {
-      let tasks = allTasks.filter((t) => t.status === status);
-
-      // For COMPLETED, only show last 20, sorted by completedAt desc
-      if (status === "COMPLETED") {
-        tasks = tasks
-          .sort((a, b) => {
-            const aTime = a.completedAt ? new Date(a.completedAt).getTime() : 0;
-            const bTime = b.completedAt ? new Date(b.completedAt).getTime() : 0;
-            return bTime - aTime;
-          })
-          .slice(0, 20);
-      }
-
-      return { status, label, tasks };
-    });
-
-    // Get worker counts
-    const workersWithHealth = workerRepo.findAllWithHealth();
-    const workers: WorkerCounts = {
-      active: 0,
-      idle: 0,
-      dead: 0,
-      total: workersWithHealth.length,
-    };
-
-    for (const worker of workersWithHealth) {
-      if (!worker.isAlive) {
-        workers.dead++;
-      } else if (worker.status === "WORKING") {
-        workers.active++;
-      } else {
-        // IDLE or DRAINING
-        workers.idle++;
-      }
-    }
+    // Map BoardTask to KanbanTask for backward compatibility
+    const columns = boardData.columns.map((col) => ({
+      status: col.status,
+      label: col.label,
+      tasks: col.tasks.map((t) => ({
+        id: t.id,
+        issueNumber: t.issueNumber,
+        taskNumber: t.taskNumber,
+        title: t.title,
+        type: t.type,
+        status: t.status,
+        branchName: t.branchName,
+        worktreePath: t.worktreePath,
+        prUrl: t.prUrl,
+        prNumber: t.prNumber,
+        prStatus: t.prStatus,
+        githubIssueNumber: t.githubIssueNumber,
+        githubUrl: t.githubUrl,
+        startedAt: t.startedAt,
+        completedAt: t.completedAt,
+        abandonedAt: t.abandonedAt,
+        submittedForReviewAt: t.submittedForReviewAt,
+        createdAt: t.createdAt,
+      })),
+    }));
 
     return {
       project,
       columns,
-      workers,
-      lastUpdated: new Date(),
+      workers: boardData.workers,
+      lastUpdated: boardData.lastUpdated,
     };
   } finally {
-    dataSource.close();
+    source.close();
   }
 }
 

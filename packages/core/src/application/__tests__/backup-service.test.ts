@@ -17,6 +17,7 @@ import type {
 import { BackupError } from "../../domain/backup.js";
 import type { GlobalSettingsRepository } from "../../infrastructure/repositories/global-settings-repository.js";
 import type { BackupConfig, DatabaseConfig } from "../../infrastructure/database/schema.js";
+import type { DbSource } from "../../domain/db-source.js";
 
 // Mock provider for testing
 class MockBackupProvider implements BackupProvider {
@@ -147,11 +148,15 @@ class MockSettingsRepository implements GlobalSettingsRepository {
 describe("BackupService", () => {
   let mockProvider: MockBackupProvider;
   let mockSettings: MockSettingsRepository;
+  let mockSource: DbSource;
   let service: BackupService;
 
   beforeEach(() => {
     mockProvider = new MockBackupProvider();
     mockSettings = new MockSettingsRepository();
+
+    // Create a mock DbSource with just globalSettings
+    mockSource = { globalSettings: mockSettings } as unknown as DbSource;
 
     // Set default config using test helper
     mockSettings.setConfig({
@@ -163,7 +168,7 @@ describe("BackupService", () => {
       retentionCount: 20,
     });
 
-    service = new BackupService(mockSettings);
+    service = new BackupService(mockSource);
 
     // Override getProvider to return our mock
     // @ts-expect-error - accessing private method for testing

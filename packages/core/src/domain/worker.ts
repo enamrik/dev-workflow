@@ -94,6 +94,16 @@ export interface DispatchQueueEntryWithHealth extends DispatchQueueEntry {
 export const DEFAULT_HEARTBEAT_THRESHOLD_SECONDS = 10;
 
 /**
+ * Queue statistics
+ */
+export interface QueueStats {
+  readonly total: number;
+  readonly unclaimed: number;
+  readonly claimed: number;
+  readonly stale: number;
+}
+
+/**
  * Check if a worker is alive based on heartbeat timestamp
  *
  * @param lastHeartbeat - ISO datetime string of last heartbeat
@@ -265,12 +275,7 @@ export interface DispatchQueueRepository {
    *
    * @returns Total entries, unclaimed count, and stale count
    */
-  getQueueStats(thresholdSeconds?: number): {
-    total: number;
-    unclaimed: number;
-    claimed: number;
-    stale: number;
-  };
+  getQueueStats(thresholdSeconds?: number): QueueStats;
 
   /**
    * Mark a queue entry as claudeDone

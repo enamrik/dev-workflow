@@ -18,14 +18,14 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     }
 
     const context = await WebDIContext.create(projectSlug);
-    const issue = context.issueRepository.findByNumber(issueNumber);
+    const issue = context.db.issues.findByNumber(issueNumber);
 
     if (!issue) {
       return NextResponse.json({ error: "Issue not found" }, { status: 404 });
     }
 
-    const plan = context.planRepository.findByIssueId(issue.id);
-    const tasks = plan ? context.taskRepository.findByPlanId(plan.id) : [];
+    const plan = context.db.plans.findByIssueId(issue.id);
+    const tasks = plan ? context.db.tasks.findByPlanId(plan.id) : [];
 
     return NextResponse.json({ issue, plan, tasks });
   } catch (error) {

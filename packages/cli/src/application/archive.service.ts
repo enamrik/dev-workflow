@@ -1,9 +1,6 @@
 import {
   TrackDirectoryResolver,
-  DataSourceFactory,
-  SqliteProjectRepository,
-  SqliteTaskRepository,
-  SqliteIssueRepository,
+  DbSourceProvider,
   NodeGitWorktreeService,
   NodeGitOperations,
   resolveConfig,
@@ -61,24 +58,24 @@ export class ArchiveService {
    * @param _projectId - Project UUID (currently unused, but kept for future filtering)
    * @returns true if there are active tasks that would block archiving
    */
-  async hasInProgressTasks(_projectId: string): Promise<boolean> {
+  async hasInProgressTasks(projectId: string): Promise<boolean> {
     const dbPath = this.resolver.getDatabasePath();
-    const dbService = await DataSourceFactory.createSqlite(dbPath);
+    const sourceProvider = new DbSourceProvider();
+    const source = sourceProvider.getOrCreate({ connectionString: dbPath });
+    const client = source.createClient(projectId);
 
     try {
-      const taskRepository = new SqliteTaskRepository(dbService.getDb());
-
       // Check for IN_PROGRESS tasks
-      const inProgressTasks = taskRepository.findMany({ status: "IN_PROGRESS" });
+      const inProgressTasks = client.tasks.findMany({ status: "IN_PROGRESS" });
       if (inProgressTasks.length > 0) {
         return true;
       }
 
       // Also check for PR_REVIEW tasks (work in progress awaiting merge)
-      const prReviewTasks = taskRepository.findMany({ status: "PR_REVIEW" });
+      const prReviewTasks = client.tasks.findMany({ status: "PR_REVIEW" });
       return prReviewTasks.length > 0;
     } finally {
-      dbService.close();
+      sourceProvider.closeAll();
     }
   }
 
@@ -123,18 +120,18 @@ export class ArchiveService {
    */
   async hasOpenIssues(projectId: string): Promise<boolean> {
     const dbPath = this.resolver.getDatabasePath();
-    const dbService = await DataSourceFactory.createSqlite(dbPath);
+    const sourceProvider = new DbSourceProvider();
+    const source = sourceProvider.getOrCreate({ connectionString: dbPath });
+    const client = source.createClient(projectId);
 
     try {
-      const issueRepository = new SqliteIssueRepository(dbService.getDb(), projectId);
-
       // Get all non-deleted issues
-      const issues = issueRepository.findMany({ includeDeleted: false });
+      const issues = client.issues.findMany({ includeDeleted: false });
 
       // Check if any are not CLOSED
-      return issues.some((issue) => issue.status !== "CLOSED");
+      return issues.some((issue: { status: string }) => issue.status !== "CLOSED");
     } finally {
-      dbService.close();
+      sourceProvider.closeAll();
     }
   }
 
@@ -198,13 +195,13 @@ export class ArchiveService {
 
     // Hard delete project from database
     const dbPath = this.resolver.getDatabasePath();
-    const dbService = await DataSourceFactory.createSqlite(dbPath);
+    const sourceProvider = new DbSourceProvider();
+    const source = sourceProvider.getOrCreate({ connectionString: dbPath });
 
     try {
-      const projectRepository = new SqliteProjectRepository(dbService.getDb());
-      await projectRepository.hardDelete(project.id);
+      await source.projects.hardDelete(project.id);
     } finally {
-      dbService.close();
+      sourceProvider.closeAll();
     }
 
     // Remove track directory
@@ -230,17 +227,17 @@ export class ArchiveService {
       return null;
     }
 
-    const dbService = await DataSourceFactory.createSqlite(dbPath);
+    const sourceProvider = new DbSourceProvider();
+    const source = sourceProvider.getOrCreate({ connectionString: dbPath });
 
     try {
-      const projectRepository = new SqliteProjectRepository(dbService.getDb());
       const gitOps = new NodeGitOperations();
 
       // Look up by gitRootHash (first commit hash)
       const gitRootHash = await gitOps.getInitialCommitHash(this.workingDirectory);
-      return await projectRepository.findByGitRootHash(gitRootHash);
+      return await source.projects.findByGitRootHash(gitRootHash);
     } finally {
-      dbService.close();
+      sourceProvider.closeAll();
     }
   }
 
@@ -280,13 +277,13 @@ export class ArchiveService {
 
     // Mark project as archived in database
     const dbPath = this.resolver.getDatabasePath();
-    const dbService = await DataSourceFactory.createSqlite(dbPath);
+    const sourceProvider = new DbSourceProvider();
+    const source = sourceProvider.getOrCreate({ connectionString: dbPath });
 
     try {
-      const projectRepository = new SqliteProjectRepository(dbService.getDb());
-      return await projectRepository.archive(project.id);
+      return await source.projects.archive(project.id);
     } finally {
-      dbService.close();
+      sourceProvider.closeAll();
     }
   }
 
@@ -305,17 +302,17 @@ export class ArchiveService {
       return null;
     }
 
-    const dbService = await DataSourceFactory.createSqlite(dbPath);
+    const sourceProvider = new DbSourceProvider();
+    const source = sourceProvider.getOrCreate({ connectionString: dbPath });
 
     try {
-      const projectRepository = new SqliteProjectRepository(dbService.getDb());
       const gitOps = new NodeGitOperations();
 
       // Get gitRootHash for current directory
       const gitRootHash = await gitOps.getInitialCommitHash(this.workingDirectory);
 
       // Look up by gitRootHash
-      const project = await projectRepository.findByGitRootHash(gitRootHash);
+      const project = await source.projects.findByGitRootHash(gitRootHash);
 
       // Only return if it's archived
       if (project && project.isArchived) {
@@ -324,7 +321,7 @@ export class ArchiveService {
 
       return null;
     } finally {
-      dbService.close();
+      sourceProvider.closeAll();
     }
   }
 
@@ -361,13 +358,12 @@ export class ArchiveService {
     }
 
     const dbPath = this.resolver.getDatabasePath();
-    const dbService = await DataSourceFactory.createSqlite(dbPath);
+    const sourceProvider = new DbSourceProvider();
+    const source = sourceProvider.getOrCreate({ connectionString: dbPath });
 
     try {
-      const projectRepository = new SqliteProjectRepository(dbService.getDb());
-
       // Mark project as unarchived in database first
-      const unarchivedProject = await projectRepository.unarchive(project.id);
+      const unarchivedProject = await source.projects.unarchive(project.id);
 
       // Re-install Claude integration
       const installer = new InstallService(
@@ -396,7 +392,7 @@ export class ArchiveService {
 
       return unarchivedProject;
     } finally {
-      dbService.close();
+      sourceProvider.closeAll();
     }
   }
 }

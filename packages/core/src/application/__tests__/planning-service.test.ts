@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
-  createRepositories,
+  getRepositories,
   createTestIssue,
   createTestPlan,
   createTestTask,
@@ -17,27 +17,17 @@ import { VersioningService } from "../versioning-service.js";
 
 describe("PlanningService", () => {
   let testDb: ReturnType<typeof createTestDatabase>;
-  let repos: ReturnType<typeof createRepositories>;
+  let repos: ReturnType<typeof getRepositories>;
   let planningService: PlanningService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    repos = createRepositories(testDb.db);
+    repos = getRepositories(testDb.client);
 
     // Create versioning service
-    const versioningService = new VersioningService(
-      repos.issueRepository,
-      repos.snapshotRepository,
-      repos.planRepository,
-      repos.taskRepository
-    );
+    const versioningService = new VersioningService(testDb.client);
 
-    planningService = new PlanningService(
-      repos.issueRepository,
-      repos.planRepository,
-      repos.taskRepository,
-      versioningService
-    );
+    planningService = new PlanningService(testDb.client, versioningService);
   });
 
   afterEach(() => {

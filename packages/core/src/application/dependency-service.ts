@@ -6,7 +6,8 @@
  * - Getting blocking dependencies for a task
  */
 
-import type { Task, TaskRepository } from "../domain/task.js";
+import type { Task } from "../domain/task.js";
+import type { DbClient } from "../domain/db-client.js";
 
 /**
  * Statuses that satisfy a dependency
@@ -23,7 +24,7 @@ const SATISFIED_STATUSES = new Set(["COMPLETED", "ABANDONED"]);
  * Uses constructor injection for TaskRepository following DDD principles.
  */
 export class DependencyService {
-  constructor(private readonly taskRepository: TaskRepository) {}
+  constructor(private readonly db: DbClient) {}
 
   /**
    * Check if all dependencies for a task are satisfied
@@ -42,7 +43,7 @@ export class DependencyService {
     }
 
     // Fetch all dependency tasks
-    const dependencyTasks = this.taskRepository.findByIds(task.dependsOn);
+    const dependencyTasks = this.db.tasks.findByIds(task.dependsOn);
 
     // Check each dependency
     for (const depTask of dependencyTasks) {
@@ -74,7 +75,7 @@ export class DependencyService {
     }
 
     // Fetch all dependency tasks
-    const dependencyTasks = this.taskRepository.findByIds(task.dependsOn);
+    const dependencyTasks = this.db.tasks.findByIds(task.dependsOn);
 
     // Filter to only blocking (unsatisfied) dependencies
     return dependencyTasks.filter((depTask) => !SATISFIED_STATUSES.has(depTask.status));

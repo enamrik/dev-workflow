@@ -18,17 +18,18 @@ import type {
 import { isValidStatusTransition, getAllowedTransitions } from "../../domain/task.js";
 import type { GitHubSyncState } from "../../domain/github.js";
 import { InvalidStatusTransitionError } from "../../domain/errors.js";
-import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
+import type { DrizzleDb } from "../../domain/drizzle-db.js";
 
 /**
- * SQLite implementation of TaskRepository
+ * Drizzle implementation of TaskRepository
  *
  * Uses Drizzle ORM for type-safe queries.
  * Follows Repository pattern from DDD.
  * Tracks status changes in task_status_history table.
+ * Works with any Drizzle-supported database dialect.
  */
-export class SqliteTaskRepository implements TaskRepository {
-  constructor(private readonly db: SqliteDrizzleDatabase) {}
+export class DrizzleTaskRepository implements TaskRepository {
+  constructor(private readonly db: DrizzleDb) {}
 
   create(data: Omit<Task, "number" | "order" | "createdAt" | "updatedAt">): Task {
     const number = this.getNextTaskNumber(data.planId);

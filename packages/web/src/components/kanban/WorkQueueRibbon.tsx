@@ -200,7 +200,7 @@ function IssueCard({ item, onIssueClick }: IssueCardProps) {
 }
 
 export function WorkQueueRibbon({ issuesWithTasks, onIssueClick }: WorkQueueRibbonProps) {
-  // Compute status and prepare issues for display
+  // Compute status for each issue (CLOSED issues already filtered at API level)
   const issuesWithStatus: IssueWithStatus[] = issuesWithTasks.map(
     ({ issue, tasks, projectSlug }) => ({
       issue,
@@ -210,7 +210,7 @@ export function WorkQueueRibbon({ issuesWithTasks, onIssueClick }: WorkQueueRibb
     })
   );
 
-  // Sort by status order (PLANNED on left, CLOSED on right)
+  // Sort by status order (PLANNED on left, TASKS_DONE on right)
   const sortedIssues = [...issuesWithStatus].sort((a, b) => {
     const statusDiff = STATUS_ORDER[a.computedStatus] - STATUS_ORDER[b.computedStatus];
     if (statusDiff !== 0) return statusDiff;
@@ -243,13 +243,8 @@ export function WorkQueueRibbon({ issuesWithTasks, onIssueClick }: WorkQueueRibb
     CLOSED: "Closed",
   };
 
-  const orderedStatuses: ComputedIssueStatus[] = [
-    "CLOSED",
-    "TASKS_DONE",
-    "IN_PROGRESS",
-    "OPEN",
-    "PLANNED",
-  ];
+  // CLOSED issues are filtered at API level - only active statuses shown
+  const orderedStatuses: ComputedIssueStatus[] = ["TASKS_DONE", "IN_PROGRESS", "OPEN", "PLANNED"];
 
   return (
     <div className="sticky bottom-0 flex-shrink-0 border-t border-gray-200 bg-gray-50 px-3 md:px-4 py-2 md:py-3 z-10 rounded-b-lg">
