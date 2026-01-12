@@ -155,25 +155,16 @@ describe("ProjectContext", () => {
     vi.clearAllMocks();
   });
 
-  it("provides projects from useProjects hook when source is selected", async () => {
-    // Set up localStorage with source already selected
-    localStorageMock.getItem.mockImplementation((key: string) => {
-      if (key === URL_STATE_KEY) {
-        return JSON.stringify({ source: "src-1" });
-      }
-      return null;
-    });
-
+  it("provides allProjects from useProjects hook", async () => {
     const { result } = renderHook(() => useProjectContext(), {
       wrapper: createWrapper(),
     });
 
-    // Projects should be filtered by the selected source
+    // All projects should be available
     await waitFor(() => {
-      expect(result.current.projects).toEqual(mockProjects);
+      expect(result.current.allProjects).toEqual(mockProjects);
     });
     expect(result.current.isLoading).toBe(false);
-    expect(result.current.sourceId).toBe("src-1");
   });
 
   it("initializes projectId from localStorage", () => {

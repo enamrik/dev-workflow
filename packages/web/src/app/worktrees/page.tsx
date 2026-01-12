@@ -38,10 +38,10 @@ function WorktreesPageContent() {
   // Enable URL state persistence
   useUrlState();
 
-  const { projectId, projects } = useProjectContext();
+  const { projectId, allProjects } = useProjectContext();
 
   // Create lookup map for project names
-  const projectNames = projects.reduce<Record<string, string>>((acc, p) => {
+  const projectNames = allProjects.reduce<Record<string, string>>((acc, p) => {
     acc[p.id] = p.name;
     return acc;
   }, {});

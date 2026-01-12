@@ -8,14 +8,11 @@ interface ProjectContextValue {
   /** Selected project ID (empty string = all projects) */
   projectId: string;
   setProjectId: (projectId: string) => void;
-  /** Selected source ID (empty string = all sources) */
+  /** Selected source ID (for API filtering - derived from selected project) */
   sourceId: string;
-  setSourceId: (sourceId: string) => void;
   /** All available data sources */
   sources: DataSource[];
-  /** All projects (filtered by selected source if one is selected) */
-  projects: Project[];
-  /** All projects (unfiltered) */
+  /** All projects */
   allProjects: Project[];
   isLoading: boolean;
 }
@@ -31,7 +28,13 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const allProjects = data?.projects ?? [];
 
   const projectId = state.project ?? "";
-  const sourceId = state.source ?? "";
+
+  // Derive sourceId from selected project (for API filtering)
+  const sourceId = useMemo(() => {
+    if (!projectId) return sources[0]?.id ?? "";
+    const project = allProjects.find((p) => p.id === projectId);
+    return project?.sourceId ?? sources[0]?.id ?? "";
+  }, [projectId, allProjects, sources]);
 
   const setProjectId = useCallback(
     (newProjectId: string) => {
@@ -40,65 +43,25 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     [setProperty]
   );
 
-  const setSourceId = useCallback(
-    (newSourceId: string) => {
-      setProperty("source", newSourceId || undefined);
-      // Clear project selection when source changes
-      setProperty("project", undefined);
-    },
-    [setProperty]
-  );
-
-  // Auto-select first source when none is selected, or clear invalid source IDs
+  // Auto-select project if there's only one
   useEffect(() => {
-    if (sources.length === 0) return; // Still loading
-
-    // Check if current sourceId is valid
-    const isValidSource = sourceId && sources.some((s) => s.id === sourceId);
-
-    if (!isValidSource && sources[0]) {
-      // Either no source selected, or selected source doesn't exist - select first
-      setProperty("source", sources[0].id);
-    }
-  }, [sourceId, sources, setProperty]);
-
-  // Filter projects by selected source
-  const projects = useMemo(() => {
-    if (!sourceId) {
-      // While waiting for auto-select to kick in, return empty array
-      // This prevents showing wrong data momentarily
-      return [];
-    }
-    return allProjects.filter((p) => p.sourceId === sourceId);
-  }, [allProjects, sourceId]);
-
-  // Find current source to check its type
-  const currentSource = sources.find((s) => s.id === sourceId);
-  const isLocalSource = currentSource?.type === "local";
-
-  // Auto-select project for local sources (single project by design)
-  useEffect(() => {
-    if (!isLocalSource) return;
-    if (projects.length !== 1) return;
-
-    const singleProject = projects[0];
+    if (allProjects.length !== 1) return;
+    const singleProject = allProjects[0];
     if (singleProject && projectId !== singleProject.id) {
       setProperty("project", singleProject.id);
     }
-  }, [isLocalSource, projects, projectId, setProperty]);
+  }, [allProjects, projectId, setProperty]);
 
   const value = useMemo(
     () => ({
       projectId,
       setProjectId,
       sourceId,
-      setSourceId,
       sources,
-      projects,
       allProjects,
       isLoading,
     }),
-    [projectId, setProjectId, sourceId, setSourceId, sources, projects, allProjects, isLoading]
+    [projectId, setProjectId, sourceId, sources, allProjects, isLoading]
   );
 
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;

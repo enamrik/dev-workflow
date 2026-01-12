@@ -21,7 +21,7 @@ const systemNavItems = [
 
 export function Nav() {
   const pathname = usePathname();
-  const { projectId, setProjectId, sourceId, setSourceId, sources, projects } = useProjectContext();
+  const { projectId, setProjectId, allProjects } = useProjectContext();
   const { state, setProperty } = useUrlState();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -57,10 +57,9 @@ export function Nav() {
 
   const pinnedSystemItems = systemNavItems.filter((item) => pinnedHrefs.includes(item.href));
 
-  // Get current source and project names for the context badge
-  const currentSource = sources.find((s) => s.id === sourceId);
-  const currentProject = projects.find((p) => p.id === projectId);
-  const contextLabel = currentProject?.name || currentSource?.name || "All";
+  // Get current project name for the context badge
+  const currentProject = allProjects.find((p) => p.id === projectId);
+  const contextLabel = currentProject?.name || "All Projects";
 
   return (
     <header className="bg-white border-b border-gray-200">
@@ -106,47 +105,29 @@ export function Nav() {
 
             {isDropdownOpen && (
               <div className="absolute right-0 mt-1 w-56 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50">
-                {/* Context section - Source/Project selection */}
-                <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Context
-                </div>
-                <div className="px-3 py-2 space-y-2">
-                  {sources.length > 0 && (
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Source</label>
-                      <select
-                        value={sourceId}
-                        onChange={(e) => setSourceId(e.target.value)}
-                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      >
-                        {sources.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
-                          </option>
-                        ))}
-                      </select>
+                {/* Project selection */}
+                {allProjects.length > 0 && (
+                  <>
+                    <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Project
                     </div>
-                  )}
-                  {projects.length > 0 && (
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Project</label>
+                    <div className="px-3 py-2">
                       <select
                         value={projectId}
                         onChange={(e) => setProjectId(e.target.value)}
                         className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                       >
                         <option value="">All projects</option>
-                        {projects.map((p) => (
+                        {allProjects.map((p) => (
                           <option key={p.id} value={p.id}>
                             {p.name}
                           </option>
                         ))}
                       </select>
                     </div>
-                  )}
-                </div>
-
-                <div className="border-t border-gray-200 my-1" />
+                    <div className="border-t border-gray-200 my-1" />
+                  </>
+                )}
 
                 {/* System section */}
                 <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -248,61 +229,42 @@ export function Nav() {
                 })}
               </div>
 
-              {/* Collapsible Context section */}
-              <div className="border-t border-gray-200">
-                <button
-                  onClick={() => setIsMobileContextExpanded(!isMobileContextExpanded)}
-                  className="w-full px-4 py-3 flex items-center justify-between text-left active:bg-transparent focus:outline-none"
-                >
-                  <span className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                    Context
-                  </span>
-                  <ChevronDownIcon
-                    className={clsx(
-                      "transform transition-transform",
-                      isMobileContextExpanded ? "rotate-180" : ""
-                    )}
-                  />
-                </button>
+              {/* Collapsible Project section */}
+              {allProjects.length > 0 && (
+                <div className="border-t border-gray-200">
+                  <button
+                    onClick={() => setIsMobileContextExpanded(!isMobileContextExpanded)}
+                    className="w-full px-4 py-3 flex items-center justify-between text-left active:bg-transparent focus:outline-none"
+                  >
+                    <span className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+                      Project
+                    </span>
+                    <ChevronDownIcon
+                      className={clsx(
+                        "transform transition-transform",
+                        isMobileContextExpanded ? "rotate-180" : ""
+                      )}
+                    />
+                  </button>
 
-                {isMobileContextExpanded && (
-                  <div className="px-4 pb-3 space-y-3">
-                    {sources.length > 0 && (
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Source</label>
-                        <select
-                          value={sourceId}
-                          onChange={(e) => setSourceId(e.target.value)}
-                          className="w-full px-3 py-2 text-base border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-                          {sources.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                    {projects.length > 0 && (
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Project</label>
-                        <select
-                          value={projectId}
-                          onChange={(e) => setProjectId(e.target.value)}
-                          className="w-full px-3 py-2 text-base border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-                          <option value="">All projects</option>
-                          {projects.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+                  {isMobileContextExpanded && (
+                    <div className="px-4 pb-3">
+                      <select
+                        value={projectId}
+                        onChange={(e) => setProjectId(e.target.value)}
+                        className="w-full px-3 py-2 text-base border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="">All projects</option>
+                        {allProjects.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Collapsible System section - all items always visible here */}
               <div className="border-t border-gray-200">
