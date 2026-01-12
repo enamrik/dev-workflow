@@ -60,18 +60,13 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const projectFilter = searchParams.get("project") ?? undefined;
-    const sourceFilter = searchParams.get("source") ?? undefined;
 
     const resolver = new ProjectsResolver();
 
-    // Get all projects and filter manually
+    // Get all projects and filter by project ID or slug
     let projects = await resolver.getAllProjects();
     if (projectFilter) {
       projects = projects.filter((p) => p.projectId === projectFilter || p.slug === projectFilter);
-    }
-    if (sourceFilter) {
-      // Source filter matches on sourceInfo or slug
-      projects = projects.filter((p) => p.slug === sourceFilter);
     }
 
     // Get worker assignments from global database

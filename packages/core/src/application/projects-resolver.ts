@@ -15,6 +15,7 @@ import * as fs from "node:fs/promises";
 import { resolveGlobalTrackDir } from "./track-directory-resolver.js";
 import { GitOperations } from "./git-operations.js";
 import type { SourceInfo } from "../infrastructure/database/db-source-provider.js";
+import type { GitHubIssueSyncConfig } from "../infrastructure/database/schema.js";
 
 // Re-export for convenience
 export type { SourceInfo } from "../infrastructure/database/db-source-provider.js";
@@ -103,20 +104,23 @@ export type ProjectConfigErrorCode =
 /**
  * Project info with source connection details
  *
- * Contains everything needed to connect to the database.
- * Does NOT require database access to obtain.
+ * Computed object combining:
+ * - Config file data (slug, name, gitRoot, projectId)
+ * - Database data (githubSync) when enriched
  */
 export interface ProjectInfo {
-  /** Project ID from config.json */
+  /** Project ID (UUID from database) */
   readonly projectId: string;
-  /** Project slug (directory name) */
+  /** Project slug (directory name, e.g., "dev-workflow-b9bccf") */
   readonly slug: string;
-  /** Project display name (from config or derived from gitRoot) */
+  /** Project display name */
   readonly name: string;
   /** Connection info for this project's database */
   readonly sourceInfo: SourceInfo;
   /** Machine-specific git root path */
   readonly gitRoot: string;
+  /** GitHub sync configuration (from database, requires enrichment) */
+  readonly githubSync?: GitHubIssueSyncConfig | null;
 }
 
 /**
@@ -676,6 +680,62 @@ export class ProjectsResolver {
   clear(): void {
     this.configBySlug.clear();
     this.scanned = false;
+  }
+
+  /**
+   * Enrich ProjectInfo with database data (githubSync)
+   *
+   * Call this after getting projects to add database-fetched fields.
+   * Requires a DbSourceProvider to connect to databases.
+   *
+   * @param projects - Array of ProjectInfo to enrich
+   * @param getDbSource - Function to get DbSource for a project's sourceInfo
+   * @returns Enriched ProjectInfo array with githubSync populated
+   */
+  async enrichWithDbData(
+    projects: ProjectInfo[],
+    getDbSource: (sourceInfo: SourceInfo) => Promise<{
+      projects: {
+        findAll(): Promise<Array<{ id: string; githubSync: GitHubIssueSyncConfig | null }>>;
+      };
+    }>
+  ): Promise<ProjectInfo[]> {
+    // Group projects by connection string to minimize DB connections
+    const byConnection = new Map<string, ProjectInfo[]>();
+    for (const project of projects) {
+      const key = project.sourceInfo.connectionString;
+      const list = byConnection.get(key) ?? [];
+      list.push(project);
+      byConnection.set(key, list);
+    }
+
+    const enriched: ProjectInfo[] = [];
+
+    for (const [, projectGroup] of byConnection) {
+      const firstProject = projectGroup[0];
+      if (!firstProject) continue;
+
+      try {
+        const dbSource = await getDbSource(firstProject.sourceInfo);
+
+        // Fetch all projects from this database in one query
+        const dbProjects = await dbSource.projects.findAll();
+        const dbProjectMap = new Map(dbProjects.map((p) => [p.id, p]));
+
+        for (const project of projectGroup) {
+          const dbProject = dbProjectMap.get(project.projectId);
+          enriched.push({
+            ...project,
+            githubSync: dbProject?.githubSync ?? null,
+          });
+        }
+      } catch {
+        // If we can't connect to this source, keep all projects without githubSync
+        enriched.push(...projectGroup);
+      }
+    }
+
+    return enriched;
   }
 
   // ===========================================================================

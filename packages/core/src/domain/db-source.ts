@@ -12,7 +12,6 @@
 import type { ProjectRepository } from "./project.js";
 import type { TypeRepository } from "./type-definition.js";
 import type { GlobalSettingsRepository } from "../infrastructure/repositories/global-settings-repository.js";
-import type { WorkerRepository, DispatchQueueRepository } from "./worker.js";
 import type { DbClient } from "./db-client.js";
 import type { DrizzleDb } from "./drizzle-db.js";
 
@@ -32,8 +31,6 @@ export interface DbSource {
   readonly projects: ProjectRepository;
   readonly types: TypeRepository;
   readonly globalSettings: GlobalSettingsRepository;
-  readonly workers: WorkerRepository;
-  readonly dispatchQueue: DispatchQueueRepository;
 
   /**
    * Get the underlying Drizzle database instance.

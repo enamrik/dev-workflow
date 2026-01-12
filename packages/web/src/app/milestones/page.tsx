@@ -28,7 +28,7 @@ export default function MilestonesPage() {
 }
 
 function MilestonesPageContent() {
-  const { projectId, sourceId, isLoading: projectsLoading } = useProjectContext();
+  const { projectId, isLoading: projectsLoading } = useProjectContext();
   const { state, setProperty } = useUrlState();
 
   const showCompleted = state.showCompleted ?? false;
@@ -44,7 +44,6 @@ function MilestonesPageContent() {
     refetch,
   } = useMilestones({
     project: projectId || undefined,
-    source: sourceId || undefined,
   });
 
   // Count visible milestones (respecting showCompleted filter)

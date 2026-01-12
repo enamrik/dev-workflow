@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
 import { ProjectsResolver, DbSourceProvider, WebDIContext } from "@/server";
 import {
-  getGlobalDatabasePath,
-  WorkerService,
-  DispatchService,
+  GlobalDbWorkerQueueDb,
   type WorkerWithHealth,
-  type DispatchQueueEntryWithHealth,
+  type QueueEntryWithHealth,
 } from "@dev-workflow/core";
 
 export const dynamic = "force-dynamic";
 
-interface DispatchQueueEntryWithDetails extends DispatchQueueEntryWithHealth {
+interface DispatchQueueEntryWithDetails extends QueueEntryWithHealth {
   taskNumber?: number;
   issueNumber?: number;
   taskTitle?: string;
@@ -82,20 +80,13 @@ async function lookupTaskDetails(
 
 export async function GET() {
   const sourceProvider = new DbSourceProvider();
+  // Worker queue uses separate database (~/.track/worker-queue.db)
+  const workerQueueDb = new GlobalDbWorkerQueueDb();
   try {
-    // Workers are GLOBAL - connect directly to the global database
-    // This ensures workers show up even if no projects are configured
-    const dbPath = getGlobalDatabasePath();
-    const source = sourceProvider.getOrCreate({ connectionString: `sqlite://${dbPath}` });
-    await source.provision();
-
-    // Create services for global worker/dispatch operations (using source, not client)
-    const workerService = new WorkerService(source);
-    const dispatchService = new DispatchService(source);
-
-    const workers = workerService.findAllWithHealth();
-    const queueEntries = dispatchService.findAllWithHealth();
-    const stats = dispatchService.getQueueStats();
+    // Get workers and queue from the worker queue database
+    const workers = workerQueueDb.findAllWorkersWithHealth();
+    const queueEntries = workerQueueDb.findAllEntriesWithHealth();
+    const stats = workerQueueDb.getQueueStats();
 
     // Try to get project info for enrichment, but don't fail if unavailable
     let projects: { projectId: string; slug: string }[] = [];
@@ -151,6 +142,7 @@ export async function GET() {
     console.error("Error fetching worker data:", error);
     return NextResponse.json({ error: "Failed to fetch worker data" }, { status: 500 });
   } finally {
+    workerQueueDb.close();
     sourceProvider.closeAll();
   }
 }

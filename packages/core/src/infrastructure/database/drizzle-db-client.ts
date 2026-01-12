@@ -14,7 +14,6 @@ import type { PlanRepository } from "../../domain/plan.js";
 import type { TaskRepository } from "../../domain/task.js";
 import type { MilestoneRepository } from "../../domain/milestone.js";
 import type { SnapshotRepository } from "../../domain/snapshot.js";
-import type { WorkerRepository, DispatchQueueRepository } from "../../domain/worker.js";
 import type { ExecutionLogRepository } from "../../domain/execution-log.js";
 
 // Repository implementations
@@ -23,8 +22,6 @@ import { DrizzlePlanRepository } from "../repositories/plan-repository.js";
 import { DrizzleTaskRepository } from "../repositories/task-repository.js";
 import { DrizzleMilestoneRepository } from "../repositories/milestone-repository.js";
 import { DrizzleSnapshotRepository } from "../repositories/snapshot-repository.js";
-import { DrizzleWorkerRepository } from "../repositories/worker-repository.js";
-import { DrizzleDispatchQueueRepository } from "../repositories/dispatch-queue-repository.js";
 import { DrizzleExecutionLogRepository } from "../repositories/execution-log-repository.js";
 
 /**
@@ -39,8 +36,6 @@ export class DrizzleDbClient implements DbClient {
   readonly tasks: TaskRepository;
   readonly milestones: MilestoneRepository;
   readonly snapshots: SnapshotRepository;
-  readonly workers: WorkerRepository;
-  readonly dispatchQueue: DispatchQueueRepository;
   readonly executionLogs: ExecutionLogRepository;
 
   /**
@@ -62,8 +57,6 @@ export class DrizzleDbClient implements DbClient {
     this.plans = new DrizzlePlanRepository(db);
     this.tasks = new DrizzleTaskRepository(db);
     this.executionLogs = new DrizzleExecutionLogRepository(db);
-    this.workers = new DrizzleWorkerRepository(db);
-    this.dispatchQueue = new DrizzleDispatchQueueRepository(db);
   }
 
   /**

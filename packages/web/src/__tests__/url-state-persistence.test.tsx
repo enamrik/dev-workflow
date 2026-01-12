@@ -38,10 +38,8 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/contexts", () => ({
   useProjectContext: vi.fn(() => ({
     projectId: "test-project",
-    sourceId: "test-source",
     setProjectId: vi.fn(),
     allProjects: [],
-    sources: [],
     isLoading: false,
   })),
 }));
@@ -101,12 +99,12 @@ describe("URL State Persistence", () => {
     mockSearchParams = vi.fn(() => ({
       get: vi.fn((key: string) => {
         if (key === "_state") {
-          // Return encoded state: {source: "global", project: "test-project"}
-          return "eyJzb3VyY2UiOiJnbG9iYWwiLCJwcm9qZWN0IjoidGVzdC1wcm9qZWN0In0";
+          // Return encoded state: {project: "test-project"}
+          return "eyJwcm9qZWN0IjoidGVzdC1wcm9qZWN0In0";
         }
         return null;
       }),
-      toString: () => "_state=eyJzb3VyY2UiOiJnbG9iYWwiLCJwcm9qZWN0IjoidGVzdC1wcm9qZWN0In0",
+      toString: () => "_state=eyJwcm9qZWN0IjoidGVzdC1wcm9qZWN0In0",
     }));
     vi.mocked(useSearchParams).mockReturnValue(mockSearchParams() as any);
   });
@@ -123,7 +121,6 @@ describe("URL State Persistence", () => {
         expect(stored).toBeDefined();
         if (stored) {
           const parsed = JSON.parse(stored);
-          expect(parsed.source).toBe("global");
           expect(parsed.project).toBe("test-project");
         }
       });
@@ -133,10 +130,7 @@ describe("URL State Persistence", () => {
       vi.mocked(usePathname).mockReturnValue("/worktrees");
 
       // Set state in localStorage
-      localStorage.setItem(
-        "dev-workflow-url-state",
-        JSON.stringify({ source: "global", project: "test-project" })
-      );
+      localStorage.setItem("dev-workflow-url-state", JSON.stringify({ project: "test-project" }));
 
       // Mock search params without _state
       vi.mocked(useSearchParams).mockReturnValue({
@@ -175,7 +169,6 @@ describe("URL State Persistence", () => {
         expect(stored).toBeDefined();
         if (stored) {
           const parsed = JSON.parse(stored);
-          expect(parsed.source).toBe("global");
           expect(parsed.project).toBe("test-project");
         }
       });
@@ -194,7 +187,6 @@ describe("URL State Persistence", () => {
         expect(stored).toBeDefined();
         if (stored) {
           const parsed = JSON.parse(stored);
-          expect(parsed.source).toBe("global");
           expect(parsed.project).toBe("test-project");
         }
       });
@@ -271,10 +263,7 @@ describe("URL State Persistence", () => {
   describe("Cross-page navigation", () => {
     it("should preserve state when navigating from Board to Worktrees", () => {
       // Simulate user on Board page with state
-      localStorage.setItem(
-        "dev-workflow-url-state",
-        JSON.stringify({ source: "global", project: "test-project" })
-      );
+      localStorage.setItem("dev-workflow-url-state", JSON.stringify({ project: "test-project" }));
 
       // Navigate to Worktrees
       vi.mocked(usePathname).mockReturnValue("/worktrees");
@@ -304,10 +293,7 @@ describe("URL State Persistence", () => {
 
     it("should preserve state when navigating from Board to Workers", () => {
       // Simulate user on Board page with state
-      localStorage.setItem(
-        "dev-workflow-url-state",
-        JSON.stringify({ source: "global", project: "test-project" })
-      );
+      localStorage.setItem("dev-workflow-url-state", JSON.stringify({ project: "test-project" }));
 
       // Navigate to Workers
       vi.mocked(usePathname).mockReturnValue("/workers");

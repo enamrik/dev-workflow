@@ -106,24 +106,6 @@ export interface GitHubIssueSyncConfig {
   projectUrl?: string;
 }
 
-/**
- * Represents a data source (database connection).
- *
- * Projects are grouped by data source to allow the UI to:
- * 1. Show a source dropdown (Local, Global, Team DB, etc.)
- * 2. Connect to different databases dynamically
- */
-export interface DataSource {
-  /** Unique identifier for this source (hash of connection string) */
-  id: string;
-  /** Display name for the source */
-  name: string;
-  /** Resolved database path (for SQLite) or connection string (for PostgreSQL) */
-  resolvedPath?: string;
-  /** Source type for categorization */
-  type: "local" | "global" | "remote";
-}
-
 export interface Project {
   id: string;
   name: string;
@@ -134,15 +116,12 @@ export interface Project {
   gitRoot?: string;
   /** GitHub sync configuration (optional - only present if configured) */
   githubSync?: GitHubIssueSyncConfig | null;
-  /** Data source ID this project belongs to */
-  sourceId: string;
 }
 
 /**
- * Projects grouped by data source for the UI.
+ * API response for the projects endpoint.
  */
-export interface ProjectsBySource {
-  sources: DataSource[];
+export interface ProjectsResponse {
   projects: Project[];
 }
 

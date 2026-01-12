@@ -14,7 +14,6 @@
  *
  * // Use repositories
  * const issues = client.issues.findMany({});
- * const workers = client.workers.findAllWithHealth();
  * ```
  */
 
@@ -23,7 +22,6 @@ import type { PlanRepository } from "./plan.js";
 import type { TaskRepository } from "./task.js";
 import type { MilestoneRepository } from "./milestone.js";
 import type { SnapshotRepository } from "./snapshot.js";
-import type { WorkerRepository, DispatchQueueRepository } from "./worker.js";
 import type { ExecutionLogRepository } from "./execution-log.js";
 
 /**
@@ -41,10 +39,6 @@ export interface DbClient {
   readonly tasks: TaskRepository;
   readonly milestones: MilestoneRepository;
   readonly snapshots: SnapshotRepository;
-
-  // Operational repositories (used during task execution)
-  readonly workers: WorkerRepository;
-  readonly dispatchQueue: DispatchQueueRepository;
   readonly executionLogs: ExecutionLogRepository;
 
   /**
