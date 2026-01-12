@@ -160,25 +160,34 @@ export class IssueService {
       externalIssueClosed: false,
     };
 
-    // 1. Abandon all incomplete tasks via TaskService
+    // 1. Check for incomplete tasks
     const incompleteTasks = this.taskService.getIncompleteTasksForIssue(issueId);
 
     if (incompleteTasks.length > 0) {
       if (!force) {
-        // Abandon each task - TaskService handles cleanup and external sync
-        for (const task of incompleteTasks) {
-          try {
-            const abandonResult = await this.taskService.abandonTask(
-              task.id,
-              "Issue closed",
-              closedBy
-            );
-            result.abandonedTasks.push(abandonResult);
-          } catch (error) {
-            console.warn(
-              `Failed to abandon task ${task.id}: ${error instanceof Error ? error.message : String(error)}`
-            );
-          }
+        // Without force: error out, require all tasks to be complete
+        const taskList = incompleteTasks
+          .map((t) => `#${t.number} ${t.title} (${t.status})`)
+          .join(", ");
+        throw new IssueServiceError(
+          `Cannot close issue: ${incompleteTasks.length} task(s) are not complete: ${taskList}. Use force=true to abandon them.`,
+          "INCOMPLETE_TASKS"
+        );
+      }
+
+      // With force: abandon incomplete tasks
+      for (const task of incompleteTasks) {
+        try {
+          const abandonResult = await this.taskService.abandonTask(
+            task.id,
+            "Issue closed",
+            closedBy
+          );
+          result.abandonedTasks.push(abandonResult);
+        } catch (error) {
+          console.warn(
+            `Failed to abandon task ${task.id}: ${error instanceof Error ? error.message : String(error)}`
+          );
         }
       }
     }
