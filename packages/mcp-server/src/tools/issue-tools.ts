@@ -396,9 +396,7 @@ export const issueToolDefinitions: ToolDefinition[] = [
             },
           },
           additionalProperties: false,
-          description:
-            "Fields to update on the issue. " +
-            "NOTE: Status CANNOT be changed here - use close_issue to close an issue.",
+          description: "Fields to update on the issue",
         },
         regeneratePlan: {
           type: "boolean",
