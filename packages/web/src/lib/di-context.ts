@@ -1,38 +1,33 @@
 /**
  * WebDIContext - Dependency injection context for web package
  *
- * This class provides repository access for a single project, following
+ * This class provides service access for a single project, following
  * proper dependency injection patterns:
  * - Constructor injection of projectSlug
- * - Optional registry for testing
- * - Readonly repository properties
+ * - Uses ProjectsResolver for config resolution
+ * - Uses DbSourceProvider for database connections
  *
  * Usage:
  * ```typescript
  * // In a route handler
- * const context = new WebDIContext(projectSlug);
- * const issues = context.issueRepository.findMany({});
- * ```
- *
- * For multi-project queries, create multiple contexts:
- * ```typescript
- * const registry = new DataSourceRegistry();
- * const { projects } = await registry.getSourcesWithProjects();
- * for (const project of projects) {
- *   const context = new WebDIContext(project.slug, registry);
- *   // ... use context.issueRepository
- * }
+ * const context = await WebDIContext.create(projectSlug);
+ * const issues = context.db.issues.findMany({});
  * ```
  */
 
 import {
-  DataSourceRegistry,
-  type DataSourceProvider,
-  type IssueRepository,
-  type PlanRepository,
-  type TaskRepository,
-  type MilestoneRepository,
+  ProjectsResolver,
+  DbSourceProvider,
+  type DbClient,
+  type DbSource,
+  type ProjectInfo,
   IssueStatusService,
+  IssueService,
+  TaskService,
+  PlanService,
+  MilestoneService,
+  BoardQueryService,
+  NoOpProjectManagementProvider,
 } from "@dev-workflow/core";
 
 // =============================================================================
@@ -42,25 +37,40 @@ import {
 /**
  * Dependency injection context for web routes
  *
- * Provides access to repositories for a specific project.
- * Use a shared DataSourceRegistry when working with multiple projects
- * to avoid redundant config scanning.
+ * Provides access to services for a specific project.
  */
 export class WebDIContext {
-  /** Repository for issue operations */
-  readonly issueRepository: IssueRepository;
+  // ============================================================================
+  // Database Access
+  // ============================================================================
 
-  /** Repository for plan operations */
-  readonly planRepository: PlanRepository;
+  /** Database source (global repos: projects, types, globalSettings) */
+  readonly source: DbSource;
 
-  /** Repository for task operations */
-  readonly taskRepository: TaskRepository;
+  /** Database client (project-scoped repos: issues, plans, tasks, etc.) */
+  readonly db: DbClient;
 
-  /** Repository for milestone operations */
-  readonly milestoneRepository: MilestoneRepository;
+  // ============================================================================
+  // Services (for mutations and orchestrated operations)
+  // ============================================================================
+
+  /** Service for issue operations */
+  readonly issueService: IssueService;
+
+  /** Service for task operations */
+  readonly taskService: TaskService;
+
+  /** Service for plan operations */
+  readonly planService: PlanService;
+
+  /** Service for milestone operations */
+  readonly milestoneService: MilestoneService;
 
   /** Service for computing issue status from task states */
   readonly issueStatusService: IssueStatusService;
+
+  /** Service for board queries */
+  readonly boardQueryService: BoardQueryService;
 
   /** Project ID (UUID) */
   readonly projectId: string;
@@ -72,60 +82,78 @@ export class WebDIContext {
    * Create a WebDIContext for a project
    *
    * @param projectSlug - Project slug (e.g., "dev-workflow-b9bccf")
-   * @param registry - Optional shared registry (created if not provided)
+   * @param source - DbSource for global repository access
+   * @param db - DbClient for project-scoped access
    */
-  private constructor(projectSlug: string, dataSource: DataSourceProvider, projectId: string) {
+  private constructor(projectSlug: string, source: DbSource, db: DbClient) {
     this.projectSlug = projectSlug;
-    this.projectId = projectId;
+    this.projectId = db.projectId;
+    this.source = source;
+    this.db = db;
 
-    // Create repositories scoped to this project
-    this.issueRepository = dataSource.createIssueRepository(projectId);
-    this.planRepository = dataSource.createPlanRepository(projectId);
-    this.taskRepository = dataSource.createTaskRepository(projectId);
-    this.milestoneRepository = dataSource.createMilestoneRepository(projectId);
+    // Create services with injected DbClient
+    // Note: Web UI doesn't have GitHub sync or worktree service, so we use NoOp providers
+    const noOpProvider = new NoOpProjectManagementProvider();
+    this.planService = new PlanService(db);
+    this.taskService = new TaskService(db, noOpProvider, null);
+    this.issueService = new IssueService(db, this.taskService, noOpProvider);
+    this.milestoneService = new MilestoneService(db);
 
-    // Create status service with injected repositories
-    this.issueStatusService = new IssueStatusService(this.planRepository, this.taskRepository);
+    // Create status service with injected DbClient
+    this.issueStatusService = new IssueStatusService(db);
+
+    // Create board query service
+    this.boardQueryService = new BoardQueryService(db);
   }
 
   /**
    * Create a WebDIContext for a project by slug
    *
    * @param projectSlug - Project slug (e.g., "dev-workflow-b9bccf")
-   * @param registry - Optional shared registry (created if not provided)
+   * @param resolver - Optional shared resolver (created if not provided)
+   * @param sourceProvider - Optional shared source provider (created if not provided)
    * @returns WebDIContext for the project
    * @throws Error if project not found
    */
-  static async create(projectSlug: string, registry?: DataSourceRegistry): Promise<WebDIContext> {
-    const reg = registry ?? new DataSourceRegistry();
-    const dataSource = await reg.getDataSource(projectSlug);
+  static async create(
+    projectSlug: string,
+    resolver?: ProjectsResolver,
+    sourceProvider?: DbSourceProvider
+  ): Promise<WebDIContext> {
+    const res = resolver ?? new ProjectsResolver();
+    const provider = sourceProvider ?? new DbSourceProvider();
 
-    // Get project ID from database
-    const projectRepo = dataSource.getProjectRepository();
-    const project = await projectRepo.findBySlug(projectSlug);
+    // Get project config (no database access)
+    const projectInfo = await res.getProjectBySlug(projectSlug);
 
-    if (!project) {
-      throw new Error(`Project not found: ${projectSlug}`);
-    }
+    // Connect to database
+    const source = provider.getOrCreate(projectInfo.sourceInfo);
+    await source.provision();
 
-    return new WebDIContext(projectSlug, dataSource, project.id);
+    // Create project-scoped client
+    const db = source.createClient(projectInfo.projectId);
+
+    return new WebDIContext(projectSlug, source, db);
   }
 
   /**
    * Create a WebDIContext from a ProjectInfo object
    *
-   * Useful when you already have project info from the registry.
+   * Useful when you already have project info from the resolver.
    *
-   * @param projectInfo - Project info from DataSourceRegistry
-   * @param registry - Shared registry
+   * @param projectInfo - Project info from ProjectsResolver
+   * @param sourceProvider - Shared source provider
    * @returns WebDIContext for the project
    */
   static async createFromProjectInfo(
-    projectInfo: { id: string; slug: string },
-    registry: DataSourceRegistry
+    projectInfo: ProjectInfo,
+    sourceProvider: DbSourceProvider
   ): Promise<WebDIContext> {
-    const dataSource = await registry.getDataSource(projectInfo.slug);
-    return new WebDIContext(projectInfo.slug, dataSource, projectInfo.id);
+    const source = sourceProvider.getOrCreate(projectInfo.sourceInfo);
+    await source.provision();
+    const db = source.createClient(projectInfo.projectId);
+
+    return new WebDIContext(projectInfo.slug, source, db);
   }
 }
 
@@ -133,5 +161,5 @@ export class WebDIContext {
 // Re-exports for convenience
 // =============================================================================
 
-export { DataSourceRegistry } from "@dev-workflow/core";
-export type { SourceInfo, ProjectInfo } from "@dev-workflow/core";
+export { ProjectsResolver, DbSourceProvider } from "@dev-workflow/core";
+export type { SourceInfo, ProjectInfo, DbSource, DbClient } from "@dev-workflow/core";

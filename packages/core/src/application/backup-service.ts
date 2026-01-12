@@ -14,7 +14,7 @@ import type {
   RestoreResult,
 } from "../domain/backup.js";
 import { BackupError } from "../domain/backup.js";
-import type { GlobalSettingsRepository } from "../infrastructure/repositories/global-settings-repository.js";
+import type { DbSource } from "../domain/db-source.js";
 import { S3BackupProvider } from "../infrastructure/backup/s3-backup-provider.js";
 
 /**
@@ -26,13 +26,13 @@ const DEFAULT_RETENTION_COUNT = 20;
  * BackupService - Manages database backup operations
  */
 export class BackupService {
-  constructor(private readonly settingsRepository: GlobalSettingsRepository) {}
+  constructor(private readonly source: DbSource) {}
 
   /**
    * Check if backup is configured
    */
   isConfigured(): boolean {
-    return this.settingsRepository.getBackupConfig() !== null;
+    return this.source.globalSettings.getBackupConfig() !== null;
   }
 
   /**
@@ -41,7 +41,7 @@ export class BackupService {
    * @throws BackupError if backup is not configured
    */
   private getProvider(): BackupProvider {
-    const config = this.settingsRepository.getBackupConfig();
+    const config = this.source.globalSettings.getBackupConfig();
 
     if (!config) {
       throw new BackupError(
@@ -60,7 +60,7 @@ export class BackupService {
    * Get the configured retention count
    */
   private getRetentionCount(): number {
-    const config = this.settingsRepository.getBackupConfig();
+    const config = this.source.globalSettings.getBackupConfig();
     return config?.retentionCount ?? DEFAULT_RETENTION_COUNT;
   }
 

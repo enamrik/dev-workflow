@@ -15,12 +15,12 @@
 
 import type {
   Milestone,
-  MilestoneRepository,
   MilestoneStatus,
   MilestoneIssueStats,
+  MilestoneRepository,
 } from "../domain/milestone.js";
-import type { IssueRepository } from "../domain/issue.js";
 import { computeMilestoneStatus } from "../domain/milestone.js";
+import type { DbClient } from "../domain/db-client.js";
 
 /**
  * Error thrown when milestone operation fails
@@ -48,16 +48,70 @@ export interface MilestoneWithStatus extends Milestone {
  * MilestoneService - Orchestrates milestone operations
  */
 export class MilestoneService {
-  constructor(
-    private readonly milestoneRepository: MilestoneRepository,
-    private readonly issueRepository: IssueRepository
-  ) {}
+  constructor(private readonly db: DbClient) {}
+
+  // ============================================================================
+  // Read Operations (delegating to repository)
+  // ============================================================================
+
+  /**
+   * Find a milestone by ID
+   *
+   * @returns Milestone or null if not found
+   */
+  findById(milestoneId: string): Milestone | null {
+    return this.db.milestones.findById(milestoneId);
+  }
+
+  /**
+   * Find a milestone by number
+   *
+   * @returns Milestone or null if not found
+   */
+  findByNumber(number: number): Milestone | null {
+    return this.db.milestones.findByNumber(number);
+  }
+
+  /**
+   * Find many milestones
+   */
+  findMany(): Milestone[] {
+    return this.db.milestones.findMany();
+  }
+
+  /**
+   * Create a milestone (direct repository call, for simpler handlers)
+   * For validation, use createMilestone().
+   */
+  create(data: Parameters<MilestoneRepository["create"]>[0]): Milestone {
+    return this.db.milestones.create(data);
+  }
+
+  /**
+   * Update a milestone (direct repository call, for simpler handlers)
+   * For validation, use updateMilestone().
+   */
+  update(milestoneId: string, updates: Parameters<MilestoneRepository["update"]>[1]): Milestone {
+    return this.db.milestones.update(milestoneId, updates);
+  }
+
+  /**
+   * Delete a milestone (direct repository call)
+   * For unassigning issues, use deleteMilestone().
+   */
+  delete(milestoneId: string): void {
+    this.db.milestones.delete(milestoneId);
+  }
+
+  // ============================================================================
+  // Private Helpers
+  // ============================================================================
 
   /**
    * Compute issue stats for a milestone
    */
   private computeIssueStats(milestoneId: string): MilestoneIssueStats {
-    const issues = this.issueRepository.findMany({ milestoneId });
+    const issues = this.db.issues.findMany({ milestoneId });
 
     return {
       totalIssues: issues.length,
@@ -73,11 +127,7 @@ export class MilestoneService {
    */
   private withComputedStatus(milestone: Milestone): MilestoneWithStatus {
     const issueStats = this.computeIssueStats(milestone.id);
-    const computedStatus = computeMilestoneStatus(
-      milestone.status,
-      issueStats,
-      milestone.endDate
-    );
+    const computedStatus = computeMilestoneStatus(milestone.status, issueStats, milestone.endDate);
 
     return {
       ...milestone,
@@ -92,7 +142,7 @@ export class MilestoneService {
    * @throws MilestoneServiceError if milestone not found
    */
   getMilestone(milestoneId: string): MilestoneWithStatus {
-    const milestone = this.milestoneRepository.findById(milestoneId);
+    const milestone = this.db.milestones.findById(milestoneId);
     if (!milestone) {
       throw new MilestoneServiceError(`Milestone not found: ${milestoneId}`, "NOT_FOUND");
     }
@@ -105,7 +155,7 @@ export class MilestoneService {
    * @throws MilestoneServiceError if milestone not found
    */
   getMilestoneByNumber(number: number): MilestoneWithStatus {
-    const milestone = this.milestoneRepository.findByNumber(number);
+    const milestone = this.db.milestones.findByNumber(number);
     if (!milestone) {
       throw new MilestoneServiceError(`Milestone M${number} not found`, "NOT_FOUND");
     }
@@ -141,7 +191,7 @@ export class MilestoneService {
       );
     }
 
-    const milestone = this.milestoneRepository.create({
+    const milestone = this.db.milestones.create({
       title: data.title,
       description: data.description ?? "",
       startDate: data.startDate,
@@ -172,7 +222,7 @@ export class MilestoneService {
       status?: MilestoneStatus;
     }
   ): MilestoneWithStatus {
-    const milestone = this.milestoneRepository.findById(milestoneId);
+    const milestone = this.db.milestones.findById(milestoneId);
     if (!milestone) {
       throw new MilestoneServiceError(`Milestone not found: ${milestoneId}`, "NOT_FOUND");
     }
@@ -204,7 +254,7 @@ export class MilestoneService {
       );
     }
 
-    const updated = this.milestoneRepository.update(milestoneId, updates);
+    const updated = this.db.milestones.update(milestoneId, updates);
     return this.withComputedStatus(updated);
   }
 
@@ -217,18 +267,18 @@ export class MilestoneService {
    * @returns Number of issues that were unassigned
    */
   deleteMilestone(milestoneId: string): number {
-    const milestone = this.milestoneRepository.findById(milestoneId);
+    const milestone = this.db.milestones.findById(milestoneId);
     if (!milestone) {
       throw new MilestoneServiceError(`Milestone not found: ${milestoneId}`, "NOT_FOUND");
     }
 
     // Unassign all issues from this milestone
-    const issues = this.issueRepository.findMany({ milestoneId });
+    const issues = this.db.issues.findMany({ milestoneId });
     for (const issue of issues) {
-      this.issueRepository.update(issue.id, { milestoneId: undefined });
+      this.db.issues.update(issue.id, { milestoneId: undefined });
     }
 
-    this.milestoneRepository.delete(milestoneId);
+    this.db.milestones.delete(milestoneId);
 
     return issues.length;
   }
@@ -237,19 +287,19 @@ export class MilestoneService {
    * Assign an issue to a milestone
    */
   assignIssue(issueId: string, milestoneId: string): void {
-    const milestone = this.milestoneRepository.findById(milestoneId);
+    const milestone = this.db.milestones.findById(milestoneId);
     if (!milestone) {
       throw new MilestoneServiceError(`Milestone not found: ${milestoneId}`, "NOT_FOUND");
     }
 
-    this.issueRepository.update(issueId, { milestoneId });
+    this.db.issues.update(issueId, { milestoneId });
   }
 
   /**
    * Remove an issue from its milestone
    */
   unassignIssue(issueId: string): void {
-    this.issueRepository.update(issueId, { milestoneId: undefined });
+    this.db.issues.update(issueId, { milestoneId: undefined });
   }
 
   /**
@@ -258,7 +308,7 @@ export class MilestoneService {
    * @param statusFilter - Optional filter by computed status
    */
   listMilestones(statusFilter?: MilestoneStatus): MilestoneWithStatus[] {
-    const milestones = this.milestoneRepository.findMany();
+    const milestones = this.db.milestones.findMany();
     const withStatus = milestones.map((m) => this.withComputedStatus(m));
 
     if (statusFilter) {

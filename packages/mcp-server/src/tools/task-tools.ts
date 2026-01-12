@@ -2,26 +2,23 @@
  * Task-related MCP tools
  */
 
-import { eq, asc } from "drizzle-orm";
 import {
-  taskExecutionLogs,
-  type SqliteDataSource,
-  type SqliteIssueRepository,
-  type SqlitePlanRepository,
-  type SqliteTaskRepository,
-  type SqliteDispatchQueueRepository,
+  type DbClient,
+  type DbSource,
   type TaskSessionService,
   type TaskManagementService,
-  type TaskExecutionLogRow,
   type ConflictDetectionService,
   type ConflictWarning,
   type TaskSyncService,
   type ProviderRegistry,
   type Project,
-  type ProjectRepository,
   type GitHubCLI,
   type AvailableLabel,
   type Task,
+  type IssueService,
+  type TaskService,
+  type PlanService,
+  type DispatchService,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -36,12 +33,12 @@ async function validateLabels(
   ctx: TaskToolContext
 ): Promise<string | null> {
   // Skip validation if provider context is not available
-  if (!ctx.providerRegistry || !ctx.project || !ctx.projectRepository || !ctx.githubCLI) {
+  if (!ctx.providerRegistry || !ctx.project || !ctx.source || !ctx.githubCLI) {
     return null; // Graceful degradation - no validation
   }
 
   // Re-fetch project to get latest config
-  const project = await ctx.projectRepository.findById(ctx.project.id);
+  const project = await ctx.source.projects.findById(ctx.project.id);
   if (!project) {
     return null; // Project not found - graceful degradation
   }
@@ -341,23 +338,23 @@ export const taskToolDefinitions: ToolDefinition[] = [
  * Service context for task handlers
  */
 export interface TaskToolContext {
-  dbService: SqliteDataSource;
-  issueRepository: SqliteIssueRepository;
-  planRepository: SqlitePlanRepository;
-  taskRepository: SqliteTaskRepository;
+  db: DbClient;
+  issueService: IssueService;
+  planService: PlanService;
+  taskService: TaskService;
   taskSessionService: TaskSessionService;
   taskManagementService: TaskManagementService;
-  taskExecutionLogsSchema: typeof taskExecutionLogs;
   conflictDetectionService?: ConflictDetectionService;
   /** Optional - for syncing task status changes to GitHub */
   taskSyncService?: TaskSyncService;
   /** Optional - for label validation against project management provider */
   providerRegistry?: ProviderRegistry;
   project?: Project;
-  projectRepository?: ProjectRepository;
+  /** Optional - for accessing global repositories (projects, types) */
+  source?: DbSource;
   githubCLI?: GitHubCLI;
   /** Optional - for enriching task data with worker info */
-  dispatchQueueRepository?: SqliteDispatchQueueRepository;
+  dispatchService?: DispatchService;
 }
 
 /**
@@ -392,13 +389,13 @@ export async function handleLoadTaskSession(
   const { taskId, sessionId, mode = "isolated", workerId } = args;
 
   // Check if task exists
-  const task = ctx.taskRepository.findById(taskId);
+  const task = ctx.taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
 
   // Access control: queued tasks require worker with matching workerId
-  const queueEntry = ctx.dispatchQueueRepository?.findByTaskId(taskId);
+  const queueEntry = ctx.dispatchService?.findByTaskId(taskId);
   if (queueEntry) {
     if (!workerId) {
       return errorResponse(
@@ -452,8 +449,8 @@ export async function handleLoadTaskSession(
   // Include conflict warnings if any were detected (only on fresh start)
   if (result.conflictWarnings && result.conflictWarnings.length > 0) {
     response.conflictWarnings = result.conflictWarnings;
-    const taskPlan = ctx.planRepository.findById(result.task.planId);
-    const taskIssue = taskPlan ? ctx.issueRepository.findById(taskPlan.issueId) : null;
+    const taskPlan = ctx.planService.findById(result.task.planId);
+    const taskIssue = taskPlan ? ctx.issueService.findById(taskPlan.issueId) : null;
     response.conflictWarningMessage = formatConflictWarnings(
       result.conflictWarnings,
       taskIssue?.number
@@ -477,7 +474,7 @@ export async function handleLoadTaskSession(
       }
 
       // Sync sibling tasks that transitioned from BACKLOG to READY
-      const siblingTasks = ctx.taskRepository.findByPlanId(result.task.planId);
+      const siblingTasks = ctx.taskService.findByPlanId(result.task.planId);
       for (const sibling of siblingTasks) {
         if (sibling.id !== taskId && sibling.status === "READY") {
           try {
@@ -503,11 +500,11 @@ export async function handleLoadTaskSession(
  */
 function buildTerminalStateResponse(ctx: TaskToolContext, task: Task): ToolResponse {
   // Get issue status
-  const plan = ctx.planRepository.findById(task.planId);
-  const issue = plan ? ctx.issueRepository.findById(plan.issueId) : null;
+  const plan = ctx.planService.findById(task.planId);
+  const issue = plan ? ctx.issueService.findById(plan.issueId) : null;
 
   // Check if all tasks are complete
-  const allTasks = ctx.taskRepository.findByPlanId(task.planId);
+  const allTasks = ctx.taskService.findByPlanId(task.planId);
   const activeTasks = allTasks.filter((t) => !t.isDeleted);
   const terminalStatuses = ["COMPLETED", "ABANDONED"];
   const allTasksComplete = activeTasks.every((t) => terminalStatuses.includes(t.status));
@@ -536,7 +533,7 @@ function findNextAvailableTaskInPlan(
   ctx: TaskToolContext,
   planId: string
 ): { id: string; number: number; title: string; status: string } | null {
-  const tasks = ctx.taskRepository.findByPlanId(planId);
+  const tasks = ctx.taskService.findByPlanId(planId);
 
   // Prefer READY tasks, then BACKLOG
   const readyTask = tasks.find((t) => t.status === "READY" && !t.isDeleted);
@@ -571,10 +568,10 @@ function addTaskContext(
   task: Task
 ): ToolResponse {
   // Get plan and issue
-  const plan = ctx.planRepository.findById(task.planId);
+  const plan = ctx.planService.findById(task.planId);
   if (plan) {
     response.plan = plan;
-    const issue = ctx.issueRepository.findById(plan.issueId);
+    const issue = ctx.issueService.findById(plan.issueId);
     if (issue) {
       response.issue = issue;
     }
@@ -582,10 +579,10 @@ function addTaskContext(
 
   // Load dependency information with issue numbers
   if (task.dependsOn?.length) {
-    const dependencies = ctx.taskRepository.findByIds(task.dependsOn);
+    const dependencies = ctx.taskService.findByIds(task.dependsOn);
     response.dependencies = dependencies.map((d) => {
-      const depPlan = ctx.planRepository.findById(d.planId);
-      const depIssue = depPlan ? ctx.issueRepository.findById(depPlan.issueId) : null;
+      const depPlan = ctx.planService.findById(d.planId);
+      const depIssue = depPlan ? ctx.issueService.findById(depPlan.issueId) : null;
       return {
         id: d.id,
         number: d.number,
@@ -597,12 +594,12 @@ function addTaskContext(
   }
 
   // Find tasks that depend on this one
-  const allPlanTasks = ctx.taskRepository.findByPlanId(task.planId);
+  const allPlanTasks = ctx.taskService.findByPlanId(task.planId);
   const dependents = allPlanTasks.filter((t) => t.dependsOn?.includes(task.id));
   if (dependents.length > 0) {
     response.dependents = dependents.map((d) => {
-      const depPlan = ctx.planRepository.findById(d.planId);
-      const depIssue = depPlan ? ctx.issueRepository.findById(depPlan.issueId) : null;
+      const depPlan = ctx.planService.findById(d.planId);
+      const depIssue = depPlan ? ctx.issueService.findById(depPlan.issueId) : null;
       return {
         id: d.id,
         number: d.number,
@@ -756,7 +753,7 @@ export interface SlimEnrichedTaskData {
  * PR info comes from task fields: prNumber, prUrl, prStatus
  *
  * @param task - The task to enrich
- * @param dispatchQueueRepository - Optional repository for looking up worker info
+ * @param dispatchService - Optional service for looking up worker info
  * @returns The enriched task data
  */
 export function enrichTaskData(
@@ -785,7 +782,7 @@ export function enrichTaskData(
     createdAt: string;
     updatedAt: string;
   },
-  dispatchQueueRepository?: SqliteDispatchQueueRepository
+  dispatchService?: DispatchService
 ): EnrichedTaskData {
   const enriched: EnrichedTaskData = {
     id: task.id,
@@ -814,8 +811,8 @@ export function enrichTaskData(
   if (hasActiveSession) {
     // Look up worker ID from dispatch queue
     let workerId: string | null = null;
-    if (dispatchQueueRepository) {
-      const queueEntry = dispatchQueueRepository.findByTaskId(task.id);
+    if (dispatchService) {
+      const queueEntry = dispatchService.findByTaskId(task.id);
       workerId = queueEntry?.workerId ?? null;
     }
 
@@ -841,7 +838,7 @@ export function enrichTaskData(
  * Create slim enriched task data for get_issue response.
  *
  * @param task - The task to create slim data for
- * @param dispatchQueueRepository - Optional repository for looking up worker info
+ * @param dispatchService - Optional service for looking up worker info
  * @returns Slim enriched task data
  */
 export function createSlimEnrichedTaskData(
@@ -857,7 +854,7 @@ export function createSlimEnrichedTaskData(
     prUrl?: string | null;
     prStatus?: string | null;
   },
-  dispatchQueueRepository?: SqliteDispatchQueueRepository
+  dispatchService?: DispatchService
 ): SlimEnrichedTaskData {
   const slim: SlimEnrichedTaskData = {
     id: task.id,
@@ -873,8 +870,8 @@ export function createSlimEnrichedTaskData(
   if (hasActiveSession) {
     // Look up worker ID from dispatch queue
     let workerId: string | null = null;
-    if (dispatchQueueRepository) {
-      const queueEntry = dispatchQueueRepository.findByTaskId(task.id);
+    if (dispatchService) {
+      const queueEntry = dispatchService.findByTaskId(task.id);
       workerId = queueEntry?.workerId ?? null;
     }
 
@@ -911,19 +908,19 @@ export function handleGetTask(
   let task;
 
   if (taskId) {
-    task = ctx.taskRepository.findById(taskId);
+    task = ctx.taskService.findById(taskId);
   } else if (taskNumber !== undefined && issueNumber !== undefined) {
-    const issue = ctx.issueRepository.findByNumber(issueNumber);
+    const issue = ctx.issueService.findByNumber(issueNumber);
     if (!issue) {
       return errorResponse(`Issue not found: #${issueNumber}`);
     }
 
-    const plan = ctx.planRepository.findByIssueId(issue.id);
+    const plan = ctx.planService.findByIssueId(issue.id);
     if (!plan) {
       return errorResponse(`No plan found for issue #${issueNumber}`);
     }
 
-    const tasks = ctx.taskRepository.findByPlanId(plan.id);
+    const tasks = ctx.taskService.findByPlanId(plan.id);
     task = tasks.find((t) => t.number === taskNumber);
   } else {
     return errorResponse("Either taskId or both taskNumber and issueNumber are required");
@@ -938,7 +935,7 @@ export function handleGetTask(
   }
 
   // Return enriched task data with worker and PR info
-  const enriched = enrichTaskData(task, ctx.dispatchQueueRepository);
+  const enriched = enrichTaskData(task, ctx.dispatchService);
   return successResponse(enriched);
 }
 
@@ -964,20 +961,20 @@ export async function handleListAvailableTasks(
 ): Promise<ToolResponse> {
   const { planId, issueNumber } = args;
 
-  let tasks: ReturnType<typeof ctx.taskRepository.findMany> = [];
+  let tasks: ReturnType<typeof ctx.taskService.findMany> = [];
 
   if (planId) {
-    tasks = ctx.taskRepository.findByPlanId(planId);
+    tasks = ctx.taskService.findByPlanId(planId);
   } else if (issueNumber) {
-    const issue = ctx.issueRepository.findByNumber(issueNumber);
+    const issue = ctx.issueService.findByNumber(issueNumber);
     if (issue) {
-      const plan = ctx.planRepository.findByIssueId(issue.id);
+      const plan = ctx.planService.findByIssueId(issue.id);
       if (plan) {
-        tasks = ctx.taskRepository.findByPlanId(plan.id);
+        tasks = ctx.taskService.findByPlanId(plan.id);
       }
     }
   } else {
-    tasks = ctx.taskRepository.findMany();
+    tasks = ctx.taskService.findMany({});
   }
 
   // Filter to only available tasks and include availability info
@@ -1042,7 +1039,7 @@ export async function handleUpdateTask(
     labels,
   } = args;
 
-  const task = ctx.taskRepository.findById(taskId);
+  const task = ctx.taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
@@ -1080,7 +1077,7 @@ export async function handleUpdateTask(
     updates.labels = Object.keys(mergedLabels).length > 0 ? mergedLabels : null;
   }
 
-  const updatedTask = ctx.taskRepository.update(taskId, updates);
+  const updatedTask = ctx.taskService.update(taskId, updates);
 
   return successResponse({
     success: true,
@@ -1097,18 +1094,18 @@ export function handleGetTaskExecutionPrompt(
 ): ToolResponse {
   const { taskId } = args;
 
-  const task = ctx.taskRepository.findById(taskId);
+  const task = ctx.taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
 
   // Get parent context
-  const plan = ctx.planRepository.findById(task.planId);
+  const plan = ctx.planService.findById(task.planId);
   if (!plan) {
     return errorResponse(`Plan not found for task: ${taskId}`);
   }
 
-  const issue = ctx.issueRepository.findById(plan.issueId);
+  const issue = ctx.issueService.findById(plan.issueId);
   if (!issue) {
     return errorResponse(`Issue not found for plan: ${plan.id}`);
   }
@@ -1177,30 +1174,22 @@ export function handleLogTaskProgress(
 ): ToolResponse {
   const { taskId, sessionId, message, filesModified } = args;
 
-  const task = ctx.taskRepository.findById(taskId);
+  const task = ctx.taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
 
   // Insert execution log entry
-  const db = ctx.dbService.getDb();
-  const logId = crypto.randomUUID();
-  const now = new Date().toISOString();
-
-  db.insert(ctx.taskExecutionLogsSchema)
-    .values({
-      id: logId,
-      taskId,
-      sessionId,
-      message,
-      filesModified: filesModified || null,
-      createdAt: now,
-    })
-    .run();
+  const log = ctx.db.executionLogs.create({
+    taskId,
+    sessionId,
+    message,
+    filesModified: filesModified || undefined,
+  });
 
   return successResponse({
     success: true,
-    logId,
+    logId: log.id,
     taskId,
     message,
   });
@@ -1215,21 +1204,15 @@ export function handleGetTaskExecutionLog(
 ): ToolResponse {
   const { taskId } = args;
 
-  const task = ctx.taskRepository.findById(taskId);
+  const task = ctx.taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
 
   // Get all execution log entries for this task
-  const db = ctx.dbService.getDb();
-  const logs = db
-    .select()
-    .from(ctx.taskExecutionLogsSchema)
-    .where(eq(ctx.taskExecutionLogsSchema.taskId, taskId))
-    .orderBy(asc(ctx.taskExecutionLogsSchema.createdAt))
-    .all();
+  const logs = ctx.db.executionLogs.findByTaskId(taskId);
 
-  const entries = logs.map((log: TaskExecutionLogRow) => ({
+  const entries = logs.map((log) => ({
     id: log.id,
     sessionId: log.sessionId,
     message: log.message,
@@ -1257,7 +1240,7 @@ export function handleCheckTaskConflicts(
   const { taskId } = args;
 
   // Verify task exists
-  const task = ctx.taskRepository.findById(taskId);
+  const task = ctx.taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
@@ -1287,8 +1270,8 @@ export function handleCheckTaskConflicts(
 
   if (result.hasConflicts) {
     // Get issue number for #issue.task format in warning message
-    const taskPlan = ctx.planRepository.findById(task.planId);
-    const taskIssue = taskPlan ? ctx.issueRepository.findById(taskPlan.issueId) : null;
+    const taskPlan = ctx.planService.findById(task.planId);
+    const taskIssue = taskPlan ? ctx.issueService.findById(taskPlan.issueId) : null;
     response.warningMessage = formatConflictWarnings(result.warnings, taskIssue?.number);
   } else {
     response.message = "No potential conflicts detected with prior tasks";

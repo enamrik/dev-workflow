@@ -9,12 +9,13 @@
  * All merge logic is deterministic in the service layer (not prompt-driven).
  */
 
-import type { Issue, IssueRepository } from "../domain/issue.js";
-import type { Plan, PlanRepository } from "../domain/plan.js";
-import type { Task, TaskRepository, TaskStatus } from "../domain/task.js";
+import type { Issue } from "../domain/issue.js";
+import type { Plan } from "../domain/plan.js";
+import type { Task, TaskStatus } from "../domain/task.js";
 import type { VersioningService } from "./versioning-service.js";
 import type { GitHubCLI } from "../infrastructure/github/github-cli.js";
-import type { ProjectRepository } from "../domain/project.js";
+import type { DbClient } from "../domain/db-client.js";
+import type { DbSource } from "../domain/db-source.js";
 import { EventBus } from "../infrastructure/events/event-bus.js";
 
 /**
@@ -104,24 +105,23 @@ export class MergeValidationError extends Error {
  */
 export class MergeService {
   private readonly eventBus: EventBus;
+  private readonly db: DbClient;
 
   constructor(
-    private readonly issueRepository: IssueRepository,
-    private readonly planRepository: PlanRepository,
-    private readonly taskRepository: TaskRepository,
+    private readonly source: DbSource,
     private readonly versioningService: VersioningService,
-    private readonly projectRepository: ProjectRepository,
     private readonly projectId: string,
     private readonly githubCLI?: GitHubCLI
   ) {
     this.eventBus = EventBus.getInstance();
+    this.db = source.createClient(projectId);
   }
 
   /**
    * Check if GitHub sync is enabled for this project
    */
   private async isGitHubSyncEnabled(): Promise<boolean> {
-    const project = await this.projectRepository.findById(this.projectId);
+    const project = await this.source.projects.findById(this.projectId);
     return project?.githubSync?.enabled ?? false;
   }
 
@@ -197,9 +197,9 @@ export class MergeService {
     let issue: Issue | null = null;
 
     if (id) {
-      issue = this.issueRepository.findById(id);
+      issue = this.db.issues.findById(id);
     } else if (number !== undefined) {
-      issue = this.issueRepository.findByNumber(number);
+      issue = this.db.issues.findByNumber(number);
     }
 
     if (!issue) {
@@ -217,16 +217,16 @@ export class MergeService {
     const warnings: MergeWarning[] = [];
 
     // Check source issue tasks
-    const sourcePlan = this.planRepository.findByIssueId(sourceIssue.id);
+    const sourcePlan = this.db.plans.findByIssueId(sourceIssue.id);
     if (sourcePlan) {
-      const sourceTasks = this.taskRepository.findByPlanId(sourcePlan.id, false);
+      const sourceTasks = this.db.tasks.findByPlanId(sourcePlan.id, false);
       warnings.push(...this.checkTasksForWarnings(sourceTasks, sourceIssue.number));
     }
 
     // Check target issue tasks
-    const targetPlan = this.planRepository.findByIssueId(targetIssue.id);
+    const targetPlan = this.db.plans.findByIssueId(targetIssue.id);
     if (targetPlan) {
-      const targetTasks = this.taskRepository.findByPlanId(targetPlan.id, false);
+      const targetTasks = this.db.tasks.findByPlanId(targetPlan.id, false);
       warnings.push(...this.checkTasksForWarnings(targetTasks, targetIssue.number));
     }
 
@@ -301,7 +301,7 @@ export class MergeService {
     const priority = this.getHigherPriority(sourceIssue.priority, targetIssue.priority);
 
     // Create new issue
-    const newIssue = this.issueRepository.create({
+    const newIssue = this.db.issues.create({
       title,
       description,
       type: sourceIssue.type, // Use source type
@@ -318,8 +318,8 @@ export class MergeService {
     });
 
     // Handle plan and task merging
-    const sourcePlan = this.planRepository.findByIssueId(sourceIssue.id);
-    const targetPlan = this.planRepository.findByIssueId(targetIssue.id);
+    const sourcePlan = this.db.plans.findByIssueId(sourceIssue.id);
+    const targetPlan = this.db.plans.findByIssueId(targetIssue.id);
 
     let resultPlan: Plan | undefined;
     const resultTasks: Task[] = [];
@@ -333,7 +333,7 @@ export class MergeService {
         targetPlan?.estimatedComplexity
       );
 
-      resultPlan = this.planRepository.create({
+      resultPlan = this.db.plans.create({
         issueId: newIssue.id,
         summary: planSummary,
         approach: planApproach,
@@ -350,11 +350,11 @@ export class MergeService {
 
       // Copy tasks from both plans
       if (sourcePlan) {
-        const sourceTasks = this.taskRepository.findByPlanId(sourcePlan.id, false);
+        const sourceTasks = this.db.tasks.findByPlanId(sourcePlan.id, false);
         resultTasks.push(...this.copyTasksToPlan(sourceTasks, resultPlan.id, sourceIssue.number));
       }
       if (targetPlan) {
-        const targetTasks = this.taskRepository.findByPlanId(targetPlan.id, false);
+        const targetTasks = this.db.tasks.findByPlanId(targetPlan.id, false);
         resultTasks.push(...this.copyTasksToPlan(targetTasks, resultPlan.id, targetIssue.number));
       }
 
@@ -419,24 +419,24 @@ export class MergeService {
     );
 
     // Update target issue
-    const updatedTarget = this.issueRepository.update(targetIssue.id, {
+    const updatedTarget = this.db.issues.update(targetIssue.id, {
       description: updatedDescription,
       acceptanceCriteria: combinedCriteria,
     });
 
     // Handle plan and task merging
-    const sourcePlan = this.planRepository.findByIssueId(sourceIssue.id);
-    const targetPlan = this.planRepository.findByIssueId(targetIssue.id);
+    const sourcePlan = this.db.plans.findByIssueId(sourceIssue.id);
+    const targetPlan = this.db.plans.findByIssueId(targetIssue.id);
 
     let resultPlan: Plan | undefined = targetPlan ?? undefined;
     let resultTasks: Task[] = [];
 
     if (sourcePlan) {
-      const sourceTasks = this.taskRepository.findByPlanId(sourcePlan.id, false);
+      const sourceTasks = this.db.tasks.findByPlanId(sourcePlan.id, false);
 
       if (targetPlan) {
         // Target has a plan - add source tasks to it
-        resultTasks = this.taskRepository.findByPlanId(targetPlan.id, false);
+        resultTasks = this.db.tasks.findByPlanId(targetPlan.id, false);
         const copiedTasks = this.copyTasksToPlan(sourceTasks, targetPlan.id, sourceIssue.number);
         resultTasks.push(...copiedTasks);
 
@@ -446,7 +446,7 @@ export class MergeService {
           sourcePlan.approach,
           sourceIssue.number
         );
-        resultPlan = this.planRepository.update(targetPlan.id, {
+        resultPlan = this.db.plans.update(targetPlan.id, {
           approach: updatedApproach,
         });
 
@@ -460,7 +460,7 @@ export class MergeService {
         }
       } else {
         // Target has no plan - create one from source
-        resultPlan = this.planRepository.create({
+        resultPlan = this.db.plans.create({
           issueId: targetIssue.id,
           summary: sourcePlan.summary,
           approach: sourcePlan.approach,
@@ -487,11 +487,11 @@ export class MergeService {
       }
     } else if (targetPlan) {
       // Source has no plan, target does - just get existing tasks
-      resultTasks = this.taskRepository.findByPlanId(targetPlan.id, false);
+      resultTasks = this.db.tasks.findByPlanId(targetPlan.id, false);
     }
 
     // Soft-delete the source issue
-    this.issueRepository.delete(sourceIssue.id, mergedBy ?? "merge-service");
+    this.db.issues.delete(sourceIssue.id, mergedBy ?? "merge-service");
 
     // Emit event for target issue update
     this.eventBus.emit("issue:updated", {
@@ -535,7 +535,7 @@ export class MergeService {
       const newStatus = this.mapTaskStatusForCopy(task.status);
 
       // Create the copied task, preserving GitHub sync state
-      const copiedTask = this.taskRepository.create({
+      const copiedTask = this.db.tasks.create({
         id: crypto.randomUUID(),
         planId: targetPlanId,
         title: task.title,

@@ -1,12 +1,13 @@
 import * as path from "node:path";
+import * as os from "node:os";
 import { execSync, spawnSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
   TrackDirectoryResolver,
-  DataSourceFactory,
+  DbSourceProvider,
   ProjectService,
   NodeGitOperations,
-  resolveConnectionString,
+  runSqliteMigrations,
   DEFAULT_TYPE_DEFINITIONS,
   type Project,
 } from "@dev-workflow/core";
@@ -32,7 +33,8 @@ export class InstallService {
     private readonly resolver: TrackDirectoryResolver,
     databaseConnectionString: string
   ) {
-    this.databaseConnectionString = databaseConnectionString;
+    // Store as sqlite: format for DbClientProvider
+    this.databaseConnectionString = this.normalizeConnectionString(databaseConnectionString);
   }
 
   /**
@@ -40,17 +42,62 @@ export class InstallService {
    * Use this when re-initializing and the connection string changes.
    */
   setDatabaseConnectionString(connectionString: string): void {
-    this.databaseConnectionString = connectionString;
+    this.databaseConnectionString = this.normalizeConnectionString(connectionString);
   }
 
   /**
-   * Get the resolved database connection string.
-   * For file: URLs, resolves relative paths against gitRoot.
-   * For postgresql: URLs, returns unchanged.
+   * Normalize connection string to format expected by DbClientProvider.
+   * Converts file: URLs to sqlite: format and resolves relative paths.
    */
-  private getResolvedConnectionString(): string {
-    const gitRoot = this.resolver.getGitRoot();
-    return resolveConnectionString(this.databaseConnectionString, gitRoot);
+  private normalizeConnectionString(connectionString: string): string {
+    // postgres:// passes through unchanged
+    if (connectionString.startsWith("postgres")) {
+      return connectionString;
+    }
+
+    // Already sqlite: format
+    if (connectionString.startsWith("sqlite:")) {
+      return connectionString;
+    }
+
+    // file:///absolute/path -> sqlite:///absolute/path
+    if (connectionString.startsWith("file:///")) {
+      let absolutePath = connectionString.slice(7); // "file://" is 7 chars
+      if (absolutePath.startsWith("/~")) {
+        absolutePath = path.join(os.homedir(), absolutePath.slice(2));
+      }
+      return `sqlite://${absolutePath}`;
+    }
+
+    // file:./relative/path -> resolve and convert to sqlite:///absolute/path
+    if (connectionString.startsWith("file:")) {
+      const relativePath = connectionString.slice(5); // "file:" is 5 chars
+      const absolutePath = path.resolve(this.resolver.getGitRoot(), relativePath);
+      return `sqlite://${absolutePath}`;
+    }
+
+    throw new InstallError(`Invalid connection string format: ${connectionString}`);
+  }
+
+  /**
+   * Extract the file path from a sqlite connection string for file operations.
+   */
+  private getDbFilePath(): string {
+    const cs = this.databaseConnectionString;
+    if (cs.startsWith("sqlite:///")) {
+      return cs.slice(9); // "sqlite://" is 9 chars, path starts with /
+    }
+    if (cs.startsWith("sqlite::memory:")) {
+      return ":memory:";
+    }
+    throw new InstallError(`Cannot extract path from connection string: ${cs}`);
+  }
+
+  /**
+   * Check if a connection string is for a remote database.
+   */
+  private isRemoteConnectionString(): boolean {
+    return this.databaseConnectionString.startsWith("postgres");
   }
 
   /**
@@ -62,26 +109,25 @@ export class InstallService {
    * @returns The registered project
    */
   async registerProject(): Promise<Project> {
-    const connectionString = this.getResolvedConnectionString();
-    const dataSource = await DataSourceFactory.create({ connectionString });
-
-    if (dataSource.isRemote) {
-      dataSource.close();
+    if (this.isRemoteConnectionString()) {
       throw new InstallError(
         "Remote database support for project registration is not yet implemented. " +
           "Use a local SQLite database for now."
       );
     }
 
+    const source = new DbSourceProvider().getOrCreate({
+      connectionString: this.databaseConnectionString,
+    });
+
     try {
-      const projectRepo = dataSource.getProjectRepository();
       const gitOps = new NodeGitOperations();
-      const projectService = new ProjectService(projectRepo, gitOps);
+      const projectService = new ProjectService(source, gitOps);
 
       this.project = await projectService.getOrCreateProject(this.workingDirectory);
       return this.project;
     } finally {
-      dataSource.close();
+      source.close();
     }
   }
 
@@ -193,9 +239,9 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
       // Build the command args for local scope only
       // Local scope stores config in ~/.claude.json, not in the project's .mcp.json
       // This allows dev-workflow to work in projects where .mcp.json is committed
-      // MCP server loads config from ~/.track/<slug>/config.json at startup
       // All options must come BEFORE the server name
       // Use --env=KEY=value format (equals sign) to avoid variadic arg parsing issues
+      const gitRoot = this.resolver.getGitRoot();
       const args = [
         "mcp",
         "add",
@@ -204,6 +250,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
         "--transport",
         "stdio",
         `--env=PROJECT_SLUG=${slug}`,
+        `--env=GIT_ROOT=${gitRoot}`,
       ];
 
       // Pass TRACK_DIR for E2E test isolation - allows MCP server to use
@@ -231,24 +278,21 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
 
   async initializeDatabase(): Promise<void> {
     try {
-      const connectionString = this.getResolvedConnectionString();
-      const dataSource = await DataSourceFactory.create({ connectionString });
-
-      if (dataSource.isRemote) {
-        dataSource.close();
+      if (this.isRemoteConnectionString()) {
         throw new InstallError(
           "Remote database initialization is not yet implemented. " +
             "Use a local SQLite database for now."
         );
       }
 
+      const dbPath = this.getDbFilePath();
+
       // Ensure parent directory exists for SQLite
-      const dbDir = path.dirname(connectionString);
+      const dbDir = path.dirname(dbPath);
       await this.fileSystem.mkdir(dbDir, { recursive: true });
 
       // Create database and run migrations
-      dataSource.runMigrations();
-      dataSource.close();
+      runSqliteMigrations(dbPath);
     } catch (error) {
       if (error instanceof InstallError) throw error;
       throw new InstallError("Failed to initialize database", error);
@@ -411,38 +455,37 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
    * @returns The existing project if found, null otherwise
    */
   async findExistingProject(): Promise<Project | null> {
-    const connectionString = this.getResolvedConnectionString();
+    // Remote database check not yet implemented
+    if (this.isRemoteConnectionString()) {
+      return null;
+    }
+
+    const dbPath = this.getDbFilePath();
 
     // Check if database file exists (only applicable for SQLite)
-    // For remote databases, we'll check after creation
-    const dbExists = await this.fileSystem.exists(connectionString);
+    const dbExists = await this.fileSystem.exists(dbPath);
     if (!dbExists) {
       return null;
     }
 
-    const dataSource = await DataSourceFactory.create({ connectionString });
+    // Run migrations first to ensure schema is up to date
+    // This is critical for handling cases where the database exists but is out of date
+    runSqliteMigrations(dbPath);
 
-    if (dataSource.isRemote) {
-      // Remote database check not yet implemented
-      dataSource.close();
-      return null;
-    }
+    const source = new DbSourceProvider().getOrCreate({
+      connectionString: this.databaseConnectionString,
+    });
 
     try {
-      // Run migrations first to ensure schema is up to date
-      // This is critical for handling cases where the database exists but is out of date
-      dataSource.runMigrations();
-
-      const projectRepo = dataSource.getProjectRepository();
       const gitOps = new NodeGitOperations();
 
       // Get gitRootHash for current directory
       const gitRootHash = await gitOps.getInitialCommitHash(this.workingDirectory);
 
       // Look up by gitRootHash
-      return await projectRepo.findByGitRootHash(gitRootHash);
+      return await source.projects.findByGitRootHash(gitRootHash);
     } finally {
-      dataSource.close();
+      source.close();
     }
   }
 
@@ -523,18 +566,16 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
    */
   async seedDefaultTypes(): Promise<{ seeded: number; existing: number }> {
     try {
-      const connectionString = this.getResolvedConnectionString();
-      const dataSource = await DataSourceFactory.create({ connectionString });
-
-      if (dataSource.isRemote) {
-        // Skip for remote databases - will be handled differently
-        dataSource.close();
+      // Skip for remote databases - will be handled differently
+      if (this.isRemoteConnectionString()) {
         return { seeded: 0, existing: 0 };
       }
 
-      try {
-        const typeRepository = dataSource.getTypeRepository();
+      const source = new DbSourceProvider().getOrCreate({
+        connectionString: this.databaseConnectionString,
+      });
 
+      try {
         // Convert DEFAULT_TYPE_DEFINITIONS to CreateTypeData format
         const typesToSeed = DEFAULT_TYPE_DEFINITIONS.map((typeDef) => ({
           name: typeDef.name,
@@ -544,20 +585,20 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
         }));
 
         // Check how many already exist
-        const existingTypes = typeRepository.findAll(true);
+        const existingTypes = source.types.findAll(true);
         const existingNames = new Set(existingTypes.map((t) => t.name));
 
         const toSeed = typesToSeed.filter((t) => !existingNames.has(t.name));
 
         // Seed the types
-        typeRepository.seedTypes(toSeed);
+        source.types.seedTypes(toSeed);
 
         return {
           seeded: toSeed.length,
           existing: existingTypes.length,
         };
       } finally {
-        dataSource.close();
+        source.close();
       }
     } catch (error) {
       throw new InstallError("Failed to seed default types", error);

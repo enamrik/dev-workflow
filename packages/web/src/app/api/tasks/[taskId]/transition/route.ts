@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DataSourceRegistry, WebDIContext } from "@/server";
+import { ProjectsResolver, DbSourceProvider, WebDIContext } from "@/server";
 import { isValidStatusTransition, type TaskStatus } from "@dev-workflow/core";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +30,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
 ) {
+  const sourceProvider = new DbSourceProvider();
   try {
     const { taskId } = await params;
     const body = (await request.json()) as TransitionRequest;
@@ -43,11 +44,11 @@ export async function POST(
     }
 
     // Create context for the project
-    const registry = new DataSourceRegistry();
-    const context = await WebDIContext.create(projectSlug, registry);
+    const resolver = new ProjectsResolver();
+    const context = await WebDIContext.create(projectSlug, resolver, sourceProvider);
 
     // Find the task
-    const task = context.taskRepository.findById(taskId);
+    const task = context.db.tasks.findById(taskId);
     if (!task) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
@@ -83,18 +84,18 @@ export async function POST(
     // For PLANNED → BACKLOG, we also need to check if the parent issue
     // should transition from PLANNED to OPEN
     if (task.status === "PLANNED" && targetStatus === "BACKLOG") {
-      const plan = context.planRepository.findById(task.planId);
+      const plan = context.db.plans.findById(task.planId);
       if (plan) {
-        const issue = context.issueRepository.findById(plan.issueId);
+        const issue = context.db.issues.findById(plan.issueId);
         if (issue && issue.status === "PLANNED") {
           // Transition the issue to OPEN
-          context.issueRepository.update(issue.id, { status: "OPEN" });
+          context.issueService.update(issue.id, { status: "OPEN" });
         }
       }
     }
 
-    // Update task status
-    const updatedTask = context.taskRepository.updateStatus(
+    // Update task status via service (async for external sync)
+    const updatedTask = await context.taskService.updateStatus(
       taskId,
       targetStatus,
       "web-ui",
@@ -117,5 +118,7 @@ export async function POST(
       { error: error instanceof Error ? error.message : "Failed to transition task" },
       { status: 500 }
     );
+  } finally {
+    sourceProvider.closeAll();
   }
 }

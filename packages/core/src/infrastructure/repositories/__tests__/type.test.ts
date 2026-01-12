@@ -1,16 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDatabase } from "../../../__tests__/setup.js";
-import { createRepositories } from "../../../__tests__/helpers.js";
-import type { SqliteTypeRepository } from "../type-repository.js";
+import type { TypeRepository } from "../../../domain/type-definition.js";
 
 describe("SqliteTypeRepository", () => {
   let testDb: ReturnType<typeof createTestDatabase>;
-  let typeRepository: SqliteTypeRepository;
+  let typeRepository: TypeRepository;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const repos = createRepositories(testDb.db);
-    typeRepository = repos.typeRepository;
+    typeRepository = testDb.source.types;
   });
 
   afterEach(() => {

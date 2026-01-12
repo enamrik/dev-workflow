@@ -2,14 +2,14 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { execSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
+import Database from "better-sqlite3";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
   TrackDirectoryResolver,
-  DataSourceFactory,
-  SqliteProjectRepository,
+  DbSourceProvider,
   ProjectService,
   NodeGitOperations,
-  sql,
+  runSqliteMigrations,
   resolveGlobalTrackDir,
   type Project,
 } from "@dev-workflow/core";
@@ -55,17 +55,17 @@ export class UpdateService {
    */
   async registerProject(): Promise<Project> {
     const dbPath = this.resolver.getDatabasePath();
-    const dbService = await DataSourceFactory.createSqlite(dbPath);
+    const sourceProvider = new DbSourceProvider();
+    const source = sourceProvider.getOrCreate({ connectionString: dbPath });
 
     try {
-      const projectRepo = new SqliteProjectRepository(dbService.getDb());
       const gitOps = new NodeGitOperations();
-      const projectService = new ProjectService(projectRepo, gitOps);
+      const projectService = new ProjectService(source, gitOps);
 
       this.project = await projectService.getOrCreateProject(this.workingDirectory);
       return this.project;
     } finally {
-      dbService.close();
+      source.close();
     }
   }
 
@@ -100,29 +100,26 @@ export class UpdateService {
       return { migrated: 0, oldProjectId };
     }
 
-    const dbService = await DataSourceFactory.createSqlite(dbPath);
+    // Use better-sqlite3 directly for this one-time migration
+    // since we need raw SQL access across project scopes
+    const db = new Database(dbPath);
 
     try {
-      const db = dbService.getDb();
-
       // Update issues with old projectId to use new project.id
-      const result = db.run(
-        sql`UPDATE issues SET project_id = ${project.id} WHERE project_id = ${oldProjectId}`
-      );
+      const issueStmt = db.prepare("UPDATE issues SET project_id = ? WHERE project_id = ?");
+      const result = issueStmt.run(project.id, oldProjectId);
 
       // Also update snapshots
-      db.run(
-        sql`UPDATE snapshots SET project_id = ${project.id} WHERE project_id = ${oldProjectId}`
-      );
+      const snapshotStmt = db.prepare("UPDATE snapshots SET project_id = ? WHERE project_id = ?");
+      snapshotStmt.run(project.id, oldProjectId);
 
       // Also update milestones
-      db.run(
-        sql`UPDATE milestones SET project_id = ${project.id} WHERE project_id = ${oldProjectId}`
-      );
+      const milestoneStmt = db.prepare("UPDATE milestones SET project_id = ? WHERE project_id = ?");
+      milestoneStmt.run(project.id, oldProjectId);
 
       return { migrated: result.changes ?? 0, oldProjectId };
     } finally {
-      dbService.close();
+      db.close();
     }
   }
 
@@ -300,10 +297,8 @@ export class UpdateService {
         throw new UpdateError("Database not found. Run 'dev-workflow init' first.");
       }
 
-      // Run migrations with automatic native/WASM detection
-      const dbService = await DataSourceFactory.createSqlite(dbPath);
-      dbService.runMigrations();
-      dbService.close();
+      // Run migrations
+      runSqliteMigrations(dbPath);
     } catch (error) {
       if (error instanceof UpdateError) throw error;
       throw new UpdateError("Failed to run database migrations", error);

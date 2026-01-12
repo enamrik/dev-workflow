@@ -6,15 +6,17 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
-import { createRepositories, createTestIssue } from "../helpers.js";
+import { createClientForProject, createTestIssue, createNoOpProvider } from "../helpers.js";
 import {
   PlanningService,
   VersioningService,
-  SqliteProjectRepository,
-  SqliteTypeRepository,
   TaskSyncService,
   TypeService,
   type ProjectManagementProvider,
+  IssueService,
+  TaskService,
+  PlanService,
+  type DbClient,
 } from "@dev-workflow/core";
 import {
   handleGeneratePlan,
@@ -23,41 +25,29 @@ import {
   handleMoveIssueToBacklog,
   type PlanToolContext,
 } from "../../tools/plan-tools.js";
-import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import * as schema from "@dev-workflow/core/schema";
 
-type DbType = BetterSQLite3Database<typeof schema>;
 const TEST_PROJECT_ID = "test-project-plan";
 
 /**
  * Create a PlanToolContext for testing
  */
-async function createPlanToolContext(testDb: TestDatabase): Promise<PlanToolContext> {
-  const db = testDb.db as DbType;
-
+async function createPlanToolContext(testDb: TestDatabase): Promise<{
+  ctx: PlanToolContext;
+  client: DbClient;
+}> {
   // Create project first to get the generated ID
-  const projectRepository = new SqliteProjectRepository(db);
-  const project = await projectRepository.create({
+  const project = await testDb.source.projects.create({
     gitRootHash: TEST_PROJECT_ID,
     name: "Test Project",
   });
 
-  // Use project's actual ID for repositories
-  const repos = createRepositories(testDb.db, project.id);
+  // Create a client scoped to this project
+  const client = createClientForProject(testDb, project.id);
+  const noOpProvider = createNoOpProvider();
 
-  const versioningService = new VersioningService(
-    repos.issueRepository,
-    repos.snapshotRepository,
-    repos.planRepository,
-    repos.taskRepository
-  );
-
-  const planningService = new PlanningService(
-    repos.issueRepository,
-    repos.planRepository,
-    repos.taskRepository,
-    versioningService
-  );
+  // Create services with DbClient
+  const versioningService = new VersioningService(client);
+  const planningService = new PlanningService(client, versioningService);
 
   // TaskSyncService (disabled - no GitHub sync in tests)
   // Create a minimal mock provider for testing
@@ -87,6 +77,7 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<PlanToolCont
       labels: [],
     }),
     closeIssue: async () => {},
+    closeIssueByTask: async () => {},
     reopenIssue: async () => {},
     getIssue: async () => null,
     searchIssues: async () => [],
@@ -104,43 +95,46 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<PlanToolCont
     addComment: async () => {},
     assignIssue: async () => {},
   };
-  const taskSyncService = new TaskSyncService(
-    repos.taskRepository,
-    repos.issueRepository,
-    repos.planRepository,
-    mockProvider,
-    projectRepository,
-    project.id
-  );
+  const taskSyncService = new TaskSyncService(testDb.source, mockProvider, project.id);
 
-  // TypeService for type validation (backed by database)
-  const typeRepository = new SqliteTypeRepository(db);
-  const typeService = new TypeService(typeRepository);
+  // TypeService for type validation (backed by database - types are global)
+  const typeService = new TypeService(testDb.source.types);
+
+  // Create services with DbClient
+  const planService = new PlanService(client);
+  const taskService = new TaskService(client, noOpProvider, null);
+  const issueService = new IssueService(client, taskService, noOpProvider);
 
   return {
-    project,
-    issueRepository: repos.issueRepository,
-    planRepository: repos.planRepository,
-    taskRepository: repos.taskRepository,
-    planningService,
-    taskSyncService,
-    typeService,
+    ctx: {
+      project,
+      issueService,
+      planService,
+      taskService,
+      planningService,
+      taskSyncService,
+      typeService,
+    },
+    client,
   };
 }
 
 describe("Plan Tools Integration", () => {
   let testDb: TestDatabase;
   let ctx: PlanToolContext;
+  let client: DbClient;
 
   beforeEach(async () => {
     testDb = createTestDatabase();
-    ctx = await createPlanToolContext(testDb);
+    const result = await createPlanToolContext(testDb);
+    ctx = result.ctx;
+    client = result.client;
   });
 
   describe("handleGeneratePlan", () => {
     it("should generate a plan with tasks", async () => {
       // Create an issue first
-      const issue = createTestIssue(ctx.issueRepository, {
+      const issue = createTestIssue(client.issues, {
         title: "Test Feature",
         status: "PLANNED",
       });
@@ -168,11 +162,11 @@ describe("Plan Tools Integration", () => {
       expect(content.tasks).toHaveLength(2);
 
       // Verify database state
-      const plan = ctx.planRepository.findByIssueId(issue.id);
+      const plan = client.plans.findByIssueId(issue.id);
       expect(plan).toBeDefined();
       expect(plan!.summary).toBe("Implementation plan");
 
-      const tasks = ctx.taskRepository.findByPlanId(plan!.id);
+      const tasks = client.tasks.findByPlanId(plan!.id);
       expect(tasks).toHaveLength(2);
       expect(tasks[0].status).toBe("PLANNED");
     });
@@ -191,7 +185,7 @@ describe("Plan Tools Integration", () => {
     });
 
     it("should return error when task is missing type field", async () => {
-      const issue = createTestIssue(ctx.issueRepository, {
+      const issue = createTestIssue(client.issues, {
         title: "Test Feature",
         status: "PLANNED",
       });
@@ -213,7 +207,7 @@ describe("Plan Tools Integration", () => {
     });
 
     it("should return error when task has invalid type", async () => {
-      const issue = createTestIssue(ctx.issueRepository, {
+      const issue = createTestIssue(client.issues, {
         title: "Test Feature",
         status: "PLANNED",
       });
@@ -236,7 +230,7 @@ describe("Plan Tools Integration", () => {
     });
 
     it("should accept valid types", async () => {
-      const issue = createTestIssue(ctx.issueRepository, {
+      const issue = createTestIssue(client.issues, {
         title: "Test Feature",
         status: "PLANNED",
       });
@@ -260,7 +254,7 @@ describe("Plan Tools Integration", () => {
       expect(content.tasks).toHaveLength(4);
 
       // Verify task types are stored correctly
-      const tasks = ctx.taskRepository.findByPlanId(content.plan.id);
+      const tasks = client.tasks.findByPlanId(content.plan.id);
       expect(tasks[0].type).toBe("FEATURE");
       expect(tasks[1].type).toBe("BUG");
       expect(tasks[2].type).toBe("ENHANCEMENT");
@@ -271,7 +265,7 @@ describe("Plan Tools Integration", () => {
   describe("handleGetPlan", () => {
     it("should return plan with tasks", async () => {
       // Create issue and plan
-      const issue = createTestIssue(ctx.issueRepository, { status: "PLANNED" });
+      const issue = createTestIssue(client.issues, { status: "PLANNED" });
       await handleGeneratePlan(ctx, {
         issueNumber: issue.number,
         summary: "Test plan",
@@ -289,7 +283,7 @@ describe("Plan Tools Integration", () => {
     });
 
     it("should return error when no plan exists", () => {
-      const issue = createTestIssue(ctx.issueRepository);
+      const issue = createTestIssue(client.issues);
 
       const result = handleGetPlan(ctx, { issueNumber: issue.number });
 
@@ -301,7 +295,7 @@ describe("Plan Tools Integration", () => {
   describe("handleMoveIssueToBacklog", () => {
     it("should activate tasks and transition issue", async () => {
       // Create issue and plan
-      const issue = createTestIssue(ctx.issueRepository, { status: "PLANNED" });
+      const issue = createTestIssue(client.issues, { status: "PLANNED" });
       await handleGeneratePlan(ctx, {
         issueNumber: issue.number,
         summary: "Test plan",
@@ -323,17 +317,17 @@ describe("Plan Tools Integration", () => {
       expect(content.issueStatus).toBe("OPEN");
 
       // Verify database state
-      const updatedIssue = ctx.issueRepository.findByNumber(issue.number);
+      const updatedIssue = client.issues.findByNumber(issue.number);
       expect(updatedIssue!.status).toBe("OPEN");
 
-      const plan = ctx.planRepository.findByIssueId(issue.id);
-      const tasks = ctx.taskRepository.findByPlanId(plan!.id);
+      const plan = client.plans.findByIssueId(issue.id);
+      const tasks = client.tasks.findByPlanId(plan!.id);
       expect(tasks.every((t) => t.status === "BACKLOG")).toBe(true);
     });
 
     it("should skip GitHub sync when skipGitHubSync is true", async () => {
       // Create issue and plan
-      const issue = createTestIssue(ctx.issueRepository, { status: "PLANNED" });
+      const issue = createTestIssue(client.issues, { status: "PLANNED" });
       await handleGeneratePlan(ctx, {
         issueNumber: issue.number,
         summary: "Test plan",
@@ -359,11 +353,11 @@ describe("Plan Tools Integration", () => {
       expect(content.message).toContain("GitHub sync skipped");
 
       // Verify database state - tasks should still transition to BACKLOG
-      const updatedIssue = ctx.issueRepository.findByNumber(issue.number);
+      const updatedIssue = client.issues.findByNumber(issue.number);
       expect(updatedIssue!.status).toBe("OPEN");
 
-      const plan = ctx.planRepository.findByIssueId(issue.id);
-      const tasks = ctx.taskRepository.findByPlanId(plan!.id);
+      const plan = client.plans.findByIssueId(issue.id);
+      const tasks = client.tasks.findByPlanId(plan!.id);
       expect(tasks.every((t) => t.status === "BACKLOG")).toBe(true);
 
       // Tasks should NOT have GitHub sync state
@@ -372,7 +366,7 @@ describe("Plan Tools Integration", () => {
 
     it("should not skip GitHub sync when skipGitHubSync is false (default)", async () => {
       // Create issue and plan
-      const issue = createTestIssue(ctx.issueRepository, { status: "PLANNED" });
+      const issue = createTestIssue(client.issues, { status: "PLANNED" });
       await handleGeneratePlan(ctx, {
         issueNumber: issue.number,
         summary: "Test plan",
@@ -397,7 +391,7 @@ describe("Plan Tools Integration", () => {
   describe("handleMoveIssueToReady", () => {
     it("should move BACKLOG tasks to READY", async () => {
       // Create issue and plan, then activate to BACKLOG
-      const issue = createTestIssue(ctx.issueRepository, { status: "PLANNED" });
+      const issue = createTestIssue(client.issues, { status: "PLANNED" });
       await handleGeneratePlan(ctx, {
         issueNumber: issue.number,
         summary: "Test plan",
@@ -421,14 +415,14 @@ describe("Plan Tools Integration", () => {
       expect(content.message).toContain("is ready");
 
       // Verify database state
-      const plan = ctx.planRepository.findByIssueId(issue.id);
-      const tasks = ctx.taskRepository.findByPlanId(plan!.id);
+      const plan = client.plans.findByIssueId(issue.id);
+      const tasks = client.tasks.findByPlanId(plan!.id);
       expect(tasks.every((t) => t.status === "READY")).toBe(true);
     });
 
     it("should do nothing when no BACKLOG tasks exist", async () => {
       // Create issue and plan, activate to BACKLOG, then move to READY
-      const issue = createTestIssue(ctx.issueRepository, { status: "PLANNED" });
+      const issue = createTestIssue(client.issues, { status: "PLANNED" });
       await handleGeneratePlan(ctx, {
         issueNumber: issue.number,
         summary: "Test plan",
@@ -459,7 +453,7 @@ describe("Plan Tools Integration", () => {
 
     it("should return error when no plan exists", async () => {
       // Create issue without a plan
-      const issue = createTestIssue(ctx.issueRepository);
+      const issue = createTestIssue(client.issues);
 
       const result = await handleMoveIssueToReady(ctx, { issueNumber: issue.number });
 

@@ -5,10 +5,8 @@
  * file conflicts before starting a new task.
  */
 
-import { and, inArray, asc } from "drizzle-orm";
-import type { Task, TaskRepository } from "../domain/task.js";
-import { taskExecutionLogs } from "../infrastructure/database/schema.js";
-import type { SqliteDrizzleDatabase } from "../domain/data-source.js";
+import type { Task } from "../domain/task.js";
+import type { DbClient } from "../domain/db-client.js";
 
 /**
  * Information about a file that was modified by a prior task
@@ -50,10 +48,7 @@ export interface ConflictDetectionResult {
  * task execution, they just inform the user of potential issues.
  */
 export class ConflictDetectionService {
-  constructor(
-    private readonly db: SqliteDrizzleDatabase,
-    private readonly taskRepository: TaskRepository
-  ) {}
+  constructor(private readonly db: DbClient) {}
 
   /**
    * Detect potential conflicts for a task by analyzing
@@ -63,13 +58,13 @@ export class ConflictDetectionService {
    * @returns ConflictDetectionResult with warnings if conflicts found
    */
   detectConflicts(taskId: string): ConflictDetectionResult {
-    const task = this.taskRepository.findById(taskId);
+    const task = this.db.tasks.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
 
     // Get all completed tasks in the same plan
-    const planTasks = this.taskRepository.findByPlanId(task.planId);
+    const planTasks = this.db.tasks.findByPlanId(task.planId);
     const completedTaskIds = planTasks
       .filter((t) => t.status === "COMPLETED" && t.id !== taskId)
       .map((t) => t.id);
@@ -83,17 +78,7 @@ export class ConflictDetectionService {
     }
 
     // Get execution logs with filesModified from completed tasks
-    const logs = this.db
-      .select()
-      .from(taskExecutionLogs)
-      .where(
-        and(
-          inArray(taskExecutionLogs.taskId, completedTaskIds)
-          // Only get logs that have filesModified
-        )
-      )
-      .orderBy(asc(taskExecutionLogs.createdAt))
-      .all();
+    const logs = this.db.executionLogs.findWithFileModifications(completedTaskIds);
 
     // Build a map of file paths to the tasks that modified them
     const priorTaskFiles = new Map<string, FileModification[]>();
@@ -161,19 +146,14 @@ export class ConflictDetectionService {
    * @returns Map of file paths to their modifications
    */
   getModifiedFilesForPlan(planId: string): Map<string, FileModification[]> {
-    const planTasks = this.taskRepository.findByPlanId(planId);
+    const planTasks = this.db.tasks.findByPlanId(planId);
     const completedTaskIds = planTasks.filter((t) => t.status === "COMPLETED").map((t) => t.id);
 
     if (completedTaskIds.length === 0) {
       return new Map();
     }
 
-    const logs = this.db
-      .select()
-      .from(taskExecutionLogs)
-      .where(inArray(taskExecutionLogs.taskId, completedTaskIds))
-      .orderBy(asc(taskExecutionLogs.createdAt))
-      .all();
+    const logs = this.db.executionLogs.findWithFileModifications(completedTaskIds);
 
     const fileMap = new Map<string, FileModification[]>();
     const taskMap = new Map(planTasks.map((t) => [t.id, t]));

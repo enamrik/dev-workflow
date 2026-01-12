@@ -1,14 +1,14 @@
 import type {
   Snapshot,
-  SnapshotRepository,
   SnapshotType,
   SnapshotIssueState,
   SnapshotPlanState,
   SnapshotTaskState,
 } from "../domain/snapshot.js";
-import type { Issue, IssueRepository } from "../domain/issue.js";
-import type { Plan, PlanRepository } from "../domain/plan.js";
-import type { Task, TaskRepository } from "../domain/task.js";
+import type { Issue } from "../domain/issue.js";
+import type { Plan } from "../domain/plan.js";
+import type { Task } from "../domain/task.js";
+import type { DbClient } from "../domain/db-client.js";
 
 /**
  * Complete snapshot data for viewing historical state
@@ -35,16 +35,11 @@ export interface SnapshotData {
  * - Handle snapshot restoration (revert)
  * - Provide time travel view of historical state
  *
- * Follows the Dependency Inversion Principle - depends on repository
- * interfaces, not concrete implementations.
+ * Follows the Dependency Inversion Principle - depends on DbClient
+ * interface, not concrete implementations.
  */
 export class VersioningService {
-  constructor(
-    private readonly issueRepository: IssueRepository,
-    private readonly snapshotRepository: SnapshotRepository,
-    private readonly planRepository: PlanRepository,
-    private readonly taskRepository: TaskRepository
-  ) {}
+  constructor(private readonly db: DbClient) {}
 
   /**
    * Create a new snapshot capturing current live state
@@ -69,21 +64,21 @@ export class VersioningService {
     notes?: string
   ): Snapshot {
     // Get current live state
-    const issue = this.issueRepository.findByNumber(issueNumber);
+    const issue = this.db.issues.findByNumber(issueNumber);
     if (!issue) {
       throw new Error(`Issue not found: #${issueNumber}`);
     }
 
-    const plan = this.planRepository.findByIssueId(issue.id);
+    const plan = this.db.plans.findByIssueId(issue.id);
     const tasks = plan
-      ? this.taskRepository.findByPlanId(plan.id, true) // Include deleted
+      ? this.db.tasks.findByPlanId(plan.id, true) // Include deleted
       : [];
 
     // Archive current active snapshot (if exists)
-    this.snapshotRepository.archiveCurrent(issueNumber);
+    this.db.snapshots.archiveCurrent(issueNumber);
 
     // Create snapshot with captured state
-    const snapshot = this.snapshotRepository.create({
+    const snapshot = this.db.snapshots.create({
       issueNumber,
       status: "ACTIVE",
       snapshotType,
@@ -117,7 +112,7 @@ export class VersioningService {
     notes?: string
   ): Snapshot {
     // Find the target snapshot
-    const targetSnapshot = this.snapshotRepository.findByVersion(issueNumber, version);
+    const targetSnapshot = this.db.snapshots.findByVersion(issueNumber, version);
     if (!targetSnapshot) {
       throw new Error(`Snapshot not found: issue #${issueNumber} version ${version}`);
     }
@@ -131,13 +126,13 @@ export class VersioningService {
     );
 
     // Get current issue
-    const issue = this.issueRepository.findByNumber(issueNumber);
+    const issue = this.db.issues.findByNumber(issueNumber);
     if (!issue) {
       throw new Error(`Issue not found: #${issueNumber}`);
     }
 
     // Restore issue state from snapshot
-    this.issueRepository.update(issue.id, {
+    this.db.issues.update(issue.id, {
       title: targetSnapshot.issueState.title,
       description: targetSnapshot.issueState.description,
       type: targetSnapshot.issueState.type,
@@ -147,11 +142,11 @@ export class VersioningService {
     });
 
     // Handle plan restoration
-    const currentPlan = this.planRepository.findByIssueId(issue.id);
+    const currentPlan = this.db.plans.findByIssueId(issue.id);
     if (targetSnapshot.planState) {
       if (currentPlan) {
         // Update existing plan
-        this.planRepository.update(currentPlan.id, {
+        this.db.plans.update(currentPlan.id, {
           summary: targetSnapshot.planState.summary,
           approach: targetSnapshot.planState.approach,
           estimatedComplexity: targetSnapshot.planState.estimatedComplexity,
@@ -159,7 +154,7 @@ export class VersioningService {
         });
       } else {
         // Create new plan from snapshot
-        this.planRepository.create({
+        this.db.plans.create({
           issueId: issue.id,
           summary: targetSnapshot.planState.summary,
           approach: targetSnapshot.planState.approach,
@@ -169,17 +164,17 @@ export class VersioningService {
       }
     } else if (currentPlan) {
       // Target had no plan, delete current plan (cascades to tasks)
-      this.planRepository.delete(currentPlan.id);
+      this.db.plans.delete(currentPlan.id);
     }
 
     // Handle tasks restoration
-    const plan = this.planRepository.findByIssueId(issue.id);
+    const plan = this.db.plans.findByIssueId(issue.id);
     if (plan && targetSnapshot.tasksState.length > 0) {
       // Soft delete all current tasks that haven't been started
-      const currentTasks = this.taskRepository.findByPlanId(plan.id, false);
+      const currentTasks = this.db.tasks.findByPlanId(plan.id, false);
       for (const task of currentTasks) {
         if (task.status === "BACKLOG" || task.status === "READY") {
-          this.taskRepository.softDelete(task.id, createdBy);
+          this.db.tasks.softDelete(task.id, createdBy);
         }
       }
 
@@ -206,7 +201,7 @@ export class VersioningService {
             return newDepId ?? depId;
           });
 
-          this.taskRepository.create({
+          this.db.tasks.create({
             id: newId,
             planId: plan.id,
             title: taskState.title,
@@ -247,7 +242,7 @@ export class VersioningService {
    * @returns Snapshot data with captured state
    */
   viewSnapshot(issueNumber: number, version: number): SnapshotData {
-    const snapshot = this.snapshotRepository.findByVersion(issueNumber, version);
+    const snapshot = this.db.snapshots.findByVersion(issueNumber, version);
     if (!snapshot) {
       throw new Error(`Snapshot not found: issue #${issueNumber} version ${version}`);
     }
@@ -267,7 +262,7 @@ export class VersioningService {
    * @returns Array of snapshots ordered by version DESC (newest first)
    */
   getSnapshotHistory(issueNumber: number): Snapshot[] {
-    return this.snapshotRepository.findByIssueNumber(issueNumber);
+    return this.db.snapshots.findByIssueNumber(issueNumber);
   }
 
   /**

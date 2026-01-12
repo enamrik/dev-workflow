@@ -1,20 +1,21 @@
 import { eq, max, and, desc } from "drizzle-orm";
 import { snapshots, SnapshotRow } from "../database/schema.js";
 import type { Snapshot, SnapshotRepository } from "../../domain/snapshot.js";
-import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
+import type { DrizzleDb } from "../../domain/drizzle-db.js";
 
 /**
- * SQLite implementation of SnapshotRepository
+ * Drizzle implementation of SnapshotRepository
  *
  * Uses Drizzle ORM for type-safe queries.
  * Follows Repository pattern from DDD.
+ * Works with any Drizzle-supported database dialect.
  *
  * The repository is scoped to a specific project via projectId.
  * All queries automatically filter by this project.
  */
-export class SqliteSnapshotRepository implements SnapshotRepository {
+export class DrizzleSnapshotRepository implements SnapshotRepository {
   constructor(
-    private readonly db: SqliteDrizzleDatabase,
+    private readonly db: DrizzleDb,
     private readonly projectId: string
   ) {}
 

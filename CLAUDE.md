@@ -702,7 +702,7 @@ async function runInit(options: InitOptions): Promise<void> {
 class IssueService {
   constructor(
     private readonly issueRepository: IssueRepository,
-    private readonly taskService: TaskService,  // Service, not repository!
+    private readonly taskService: TaskService, // Service, not repository!
     private readonly planRepository: PlanRepository,
     private readonly provider: ProjectManagementProvider | null
   ) {}
@@ -717,7 +717,7 @@ class IssueService {
       const tasks = this.taskRepository.findByPlanId(plan.id);
       for (const task of tasks) {
         if (!task.isTerminal()) {
-          await this.taskService.abandonTask(task.id);  // Calls TaskService!
+          await this.taskService.abandonTask(task.id); // Calls TaskService!
         }
       }
     }
@@ -790,7 +790,7 @@ async function handleCloseIssue(issueNumber: number) {
 class IssueService {
   async closeIssue(id: string) {
     for (const task of tasks) {
-      await this.taskService.abandonTask(task.id);  // Reuse, don't duplicate
+      await this.taskService.abandonTask(task.id); // Reuse, don't duplicate
     }
   }
 }
@@ -798,12 +798,12 @@ class IssueService {
 
 **Required Services:**
 
-| Entity | Service | Responsibilities |
-|--------|---------|------------------|
-| Issue | `IssueService` | create, update, close (calls TaskService), delete, assignMilestone |
-| Task | `TaskService` | create, update, updateStatus, abandon, complete, submitForReview |
-| Milestone | `MilestoneService` | create, update, delete |
-| Plan | `PlanningService` | generate, regenerate (already exists) |
+| Entity    | Service            | Responsibilities                                                   |
+| --------- | ------------------ | ------------------------------------------------------------------ |
+| Issue     | `IssueService`     | create, update, close (calls TaskService), delete, assignMilestone |
+| Task      | `TaskService`      | create, update, updateStatus, abandon, complete, submitForReview   |
+| Milestone | `MilestoneService` | create, update, delete                                             |
+| Plan      | `PlanningService`  | generate, regenerate (already exists)                              |
 
 **Service Location:** `packages/core/src/application/{entity}-service.ts`
 

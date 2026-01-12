@@ -21,7 +21,9 @@ export * from "./domain/errors.js";
 export * from "./domain/backup.js";
 export * from "./domain/type-definition.js";
 export * from "./domain/worker.js";
-export * from "./domain/data-source.js";
+export * from "./domain/execution-log.js";
+export * from "./domain/drizzle-db.js";
+export * from "./domain/db-client.js";
 
 // Application services
 export { PlanningService } from "./application/planning-service.js";
@@ -55,24 +57,6 @@ export {
   getProjectsDirectory,
 } from "./application/track-directory-resolver.js";
 export {
-  resolveConfig,
-  resolveConfigFromGit,
-  resolveConnectionString,
-  writeConfig,
-  readSlugFromGitConfig,
-  writeSlugToGitConfig,
-  findGitRoot,
-  isWorktree,
-  getConfigPath,
-  listConfiguredProjects,
-  loadAllConfigs,
-  ProjectConfigError,
-  type ProjectConfig,
-  type ResolvedConfig,
-  type ProjectConfigErrorCode,
-} from "./application/project-config-resolver.js";
-export { GitHubSyncService, GitHubSyncError } from "./application/github-sync-service.js";
-export {
   TaskSyncService,
   TaskSyncError,
   type TaskActivationResult,
@@ -96,19 +80,6 @@ export {
   type MergeResult,
 } from "./application/merge-service.js";
 export {
-  SourceRegistry,
-  getSourceRegistry,
-  type Source,
-  type SourceProject,
-  type SourcesWithProjects,
-} from "./application/source-registry.js";
-export {
-  DataSourceRegistry,
-  type SourceType,
-  type SourceInfo,
-  type ProjectInfo,
-} from "./application/data-source-registry.js";
-export {
   IssueStatusService,
   computeIssueStatus,
   type ComputedIssueStatus,
@@ -131,6 +102,37 @@ export {
   MilestoneServiceError,
   type MilestoneWithStatus,
 } from "./application/milestone-service.js";
+export { DispatchService, DispatchServiceError } from "./application/dispatch-service.js";
+export { WorkerService, WorkerServiceError } from "./application/worker-service.js";
+export { PlanService, PlanServiceError } from "./application/plan-service.js";
+export {
+  BoardQueryService,
+  type BoardIssueWithTasks,
+  type WorkerTaskAssignment,
+  type WorkerCounts,
+  type BoardTask,
+  type BoardColumn,
+  type BoardData,
+} from "./application/board-query-service.js";
+export {
+  ProjectsResolver,
+  type Source,
+  type ProjectInfo,
+} from "./application/projects-resolver.js";
+export {
+  resolveConfig,
+  loadAllConfigs,
+  resolveConfigFromGit,
+  isWorktree,
+  findGitRoot,
+  writeSlugToGitConfig,
+  readSlugFromGitConfig,
+  writeConfig,
+  ProjectConfigError,
+  type ProjectConfig,
+  type ResolvedConfig,
+  type ProjectConfigErrorCode,
+} from "./application/project-config-resolver.js";
 
 // Infrastructure - Database
 export * from "./infrastructure/database/schema.js";
@@ -139,13 +141,16 @@ export { sql } from "drizzle-orm";
 // PostgreSQL schema (Neon) - exported as a namespace to avoid polluting SQLite schema
 export { pgSchema } from "./infrastructure/database/pg-schema-export.js";
 
-// Data Source providers
-export { SqliteDataSource } from "./infrastructure/database/sqlite-data-source.js";
-export { NeonDataSource } from "./infrastructure/database/neon-data-source.js";
+// DbSource and DbClient
+export type { DbSource } from "./domain/db-source.js";
+export { DrizzleDbClient } from "./infrastructure/database/drizzle-db-client.js";
+export { DbSourceProvider, type SourceInfo } from "./infrastructure/database/db-source-provider.js";
+
+// Low-level SQLite utilities
 export {
-  DataSourceFactory,
-  type DataSourceConfig,
-} from "./infrastructure/database/data-source-factory.js";
+  checkpointSqliteDatabase,
+  runSqliteMigrations,
+} from "./infrastructure/database/sqlite-utils.js";
 
 // Low-level SQLite adapters (internal use)
 export { DatabaseFactory } from "./infrastructure/database/database-factory.js";
@@ -158,21 +163,22 @@ export { NativeAdapter } from "./infrastructure/database/native-adapter.js";
 export { WasmAdapter } from "./infrastructure/database/wasm-adapter.js";
 
 // Infrastructure - Repositories
-export { SqliteIssueRepository } from "./infrastructure/repositories/issue-repository.js";
-export { SqlitePlanRepository } from "./infrastructure/repositories/plan-repository.js";
-export { SqliteTaskRepository } from "./infrastructure/repositories/task-repository.js";
-export { SqliteSnapshotRepository } from "./infrastructure/repositories/snapshot-repository.js";
-export { SqliteMilestoneRepository } from "./infrastructure/repositories/milestone-repository.js";
-export { SqliteProjectRepository } from "./infrastructure/repositories/project-repository.js";
+export { DrizzleIssueRepository } from "./infrastructure/repositories/issue-repository.js";
+export { DrizzlePlanRepository } from "./infrastructure/repositories/plan-repository.js";
+export { DrizzleTaskRepository } from "./infrastructure/repositories/task-repository.js";
+export { DrizzleSnapshotRepository } from "./infrastructure/repositories/snapshot-repository.js";
+export { DrizzleMilestoneRepository } from "./infrastructure/repositories/milestone-repository.js";
+export { DrizzleProjectRepository } from "./infrastructure/repositories/project-repository.js";
 export {
-  SqliteGlobalSettingsRepository,
+  DrizzleGlobalSettingsRepository,
   SettingKeys,
   type GlobalSettingsRepository,
   type SettingKey,
 } from "./infrastructure/repositories/global-settings-repository.js";
-export { SqliteWorkerRepository } from "./infrastructure/repositories/worker-repository.js";
-export { SqliteDispatchQueueRepository } from "./infrastructure/repositories/dispatch-queue-repository.js";
-export { SqliteTypeRepository } from "./infrastructure/repositories/type-repository.js";
+export { DrizzleWorkerRepository } from "./infrastructure/repositories/worker-repository.js";
+export { DrizzleDispatchQueueRepository } from "./infrastructure/repositories/dispatch-queue-repository.js";
+export { DrizzleTypeRepository } from "./infrastructure/repositories/type-repository.js";
+export { DrizzleExecutionLogRepository } from "./infrastructure/repositories/execution-log-repository.js";
 
 // Infrastructure - Backup
 export { S3BackupProvider } from "./infrastructure/backup/s3-backup-provider.js";
@@ -205,6 +211,7 @@ export {
 // Infrastructure - Project Management Providers
 export {
   GitHubProjectManagementProvider,
+  NoOpProjectManagementProvider,
   ProviderRegistry,
   ProviderNotFoundError,
   ProviderDependencyError,

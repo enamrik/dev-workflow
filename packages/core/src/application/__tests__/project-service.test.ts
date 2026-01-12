@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createTestDatabase } from "../../__tests__/setup.js";
-import { createRepositories } from "../../__tests__/helpers.js";
 import { ProjectService, ProjectError, type GitOperations } from "../project-service.js";
 import type { GitHubIssueSyncConfig } from "../../infrastructure/database/schema.js";
 
@@ -17,15 +16,13 @@ function createMockGitOperations(overrides: Partial<GitOperations> = {}): GitOpe
 
 describe("ProjectService", () => {
   let testDb: ReturnType<typeof createTestDatabase>;
-  let repos: ReturnType<typeof createRepositories>;
   let mockGitOps: GitOperations;
   let service: ProjectService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    repos = createRepositories(testDb.db);
     mockGitOps = createMockGitOperations();
-    service = new ProjectService(repos.projectRepository, mockGitOps);
+    service = new ProjectService(testDb.source, mockGitOps);
   });
 
   afterEach(() => {
@@ -70,7 +67,7 @@ describe("ProjectService", () => {
       mockGitOps = createMockGitOperations({
         isGitRepository: vi.fn().mockResolvedValue(false),
       });
-      service = new ProjectService(repos.projectRepository, mockGitOps);
+      service = new ProjectService(testDb.source, mockGitOps);
 
       await expect(service.getOrCreateProject("/not/a/repo")).rejects.toThrow(ProjectError);
       await expect(service.getOrCreateProject("/not/a/repo")).rejects.toThrow(
@@ -82,7 +79,7 @@ describe("ProjectService", () => {
       mockGitOps = createMockGitOperations({
         getInitialCommitHash: vi.fn().mockRejectedValue(new Error("Git error")),
       });
-      service = new ProjectService(repos.projectRepository, mockGitOps);
+      service = new ProjectService(testDb.source, mockGitOps);
 
       await expect(service.getOrCreateProject("/path/to/repo")).rejects.toThrow();
     });
@@ -92,14 +89,14 @@ describe("ProjectService", () => {
       mockGitOps = createMockGitOperations({
         getInitialCommitHash: vi.fn().mockResolvedValue("hash-repo-1"),
       });
-      service = new ProjectService(repos.projectRepository, mockGitOps);
+      service = new ProjectService(testDb.source, mockGitOps);
       const project1 = await service.getOrCreateProject("/path/to/repo1");
 
       // Second repo (different hash)
       mockGitOps = createMockGitOperations({
         getInitialCommitHash: vi.fn().mockResolvedValue("hash-repo-2"),
       });
-      service = new ProjectService(repos.projectRepository, mockGitOps);
+      service = new ProjectService(testDb.source, mockGitOps);
       const project2 = await service.getOrCreateProject("/path/to/repo2");
 
       expect(project1.id).not.toBe(project2.id);
@@ -146,14 +143,14 @@ describe("ProjectService", () => {
       mockGitOps = createMockGitOperations({
         getInitialCommitHash: vi.fn().mockResolvedValue("hash1"),
       });
-      service = new ProjectService(repos.projectRepository, mockGitOps);
+      service = new ProjectService(testDb.source, mockGitOps);
       await service.getOrCreateProject("/path/to/project1");
 
       // Create second project
       mockGitOps = createMockGitOperations({
         getInitialCommitHash: vi.fn().mockResolvedValue("hash2"),
       });
-      service = new ProjectService(repos.projectRepository, mockGitOps);
+      service = new ProjectService(testDb.source, mockGitOps);
       await service.getOrCreateProject("/path/to/project2");
 
       const projects = await service.findAll();

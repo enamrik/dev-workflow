@@ -79,6 +79,7 @@ describe("E2E: Simple File Rename", () => {
       {
         cwd: harness.testDir,
         allowedTools: ["mcp__dev-workflow-tracker__create_issue"],
+        mcpConfig: harness.getMcpConfig(),
         timeout: 120000,
         env: harness.getEnv() as Record<string, string>,
       }
@@ -104,6 +105,7 @@ describe("E2E: Simple File Rename", () => {
           "mcp__dev-workflow-tracker__get_issue",
           "mcp__dev-workflow-tracker__generate_plan",
         ],
+        mcpConfig: harness.getMcpConfig(),
         timeout: 120000,
         env: harness.getEnv() as Record<string, string>,
       }
@@ -126,6 +128,7 @@ describe("E2E: Simple File Rename", () => {
       {
         cwd: harness.testDir,
         allowedTools: ["mcp__dev-workflow-tracker__move_issue_to_backlog"],
+        mcpConfig: harness.getMcpConfig(),
         timeout: 60000,
         env: harness.getEnv() as Record<string, string>,
       }
@@ -157,6 +160,7 @@ describe("E2E: Simple File Rename", () => {
           "mcp__dev-workflow-tracker__complete_task_session",
           "Bash",
         ],
+        mcpConfig: harness.getMcpConfig(),
         timeout: 120000,
         env: harness.getEnv() as Record<string, string>,
       }
@@ -235,6 +239,7 @@ describe("E2E: Simple File Rename", () => {
       {
         cwd: harness.testDir,
         allowedTools: ["mcp__dev-workflow-tracker__update_issue"],
+        mcpConfig: harness.getMcpConfig(),
         timeout: 60000,
         env: harness.getEnv() as Record<string, string>,
       }

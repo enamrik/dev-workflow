@@ -28,6 +28,8 @@ import type {
   AvailableLabel,
   AvailableLabelsResult,
 } from "../../domain/project-management-provider.js";
+import type { Issue } from "../../domain/issue.js";
+import type { Task } from "../../domain/task.js";
 import { ProjectManagementProviderError } from "../../domain/project-management-provider.js";
 import type { GitHubCLI } from "../github/github-cli.js";
 import type { GitHubIssueData } from "../../domain/github.js";
@@ -141,9 +143,26 @@ export class GitHubProjectManagementProvider implements ProjectManagementProvide
     }
   }
 
-  async closeIssue(issueRef: string, comment?: string): Promise<void> {
+  async closeIssue(issue: Issue, comment?: string): Promise<void> {
+    // Provider abstraction pattern: extract ref internally, no-op if not synced
+    const issueNumber = issue.githubSync?.githubIssueNumber;
+    if (!issueNumber) {
+      return;
+    }
+    await this.closeExternalIssue(issueNumber, comment);
+  }
+
+  async closeIssueByTask(task: Task, comment?: string): Promise<void> {
+    // Provider abstraction pattern: extract ref internally, no-op if not synced
+    const issueNumber = task.githubSync?.githubIssueNumber;
+    if (!issueNumber) {
+      return;
+    }
+    await this.closeExternalIssue(issueNumber, comment);
+  }
+
+  private async closeExternalIssue(issueNumber: number, comment?: string): Promise<void> {
     try {
-      const issueNumber = this.parseIssueNumber(issueRef);
       if (comment) {
         await this.githubCLI.closeIssueWithComment(issueNumber, comment);
       } else {

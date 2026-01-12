@@ -8,16 +8,9 @@
 
 import * as path from "node:path";
 import {
-  DataSourceFactory,
-  type SqliteDataSource,
-  SqliteIssueRepository,
-  SqliteSnapshotRepository,
-  SqlitePlanRepository,
-  SqliteTaskRepository,
-  SqliteMilestoneRepository,
-  SqliteProjectRepository,
-  SqliteDispatchQueueRepository,
-  SqliteWorkerRepository,
+  DbSourceProvider,
+  type DbSource,
+  type DbClient,
   TemplateService,
   type TemplateServiceConfig,
   TypeService,
@@ -26,8 +19,6 @@ import {
   PlanningService,
   TaskSessionService,
   TaskManagementService,
-  taskExecutionLogs,
-  GitHubSyncService,
   TaskSyncService,
   NodeGitHubCLI,
   ProviderRegistry,
@@ -36,7 +27,15 @@ import {
   ConflictDetectionService,
   type Project,
   resolveGlobalTrackDir,
-  resolveConfig,
+  getGlobalDatabasePath,
+  // New services for Service Layer Pattern
+  IssueService,
+  TaskService,
+  MilestoneService,
+  WorkerService,
+  DispatchService,
+  PlanService,
+  MergeService,
 } from "@dev-workflow/core";
 
 import type {
@@ -52,6 +51,16 @@ import type {
   TypeToolContext,
   DispatchToolContext,
 } from "./tools/index.js";
+
+// =============================================================================
+// Module-level DbSourceProvider
+// =============================================================================
+
+/**
+ * Shared DbSourceProvider for the MCP server process.
+ * Caches DbSource instances by connection string across tool calls.
+ */
+const sourceProvider = new DbSourceProvider();
 
 /**
  * Configuration resolved from PROJECT_SLUG
@@ -78,7 +87,8 @@ export interface McpConfig {
  */
 export class McpDIContext {
   // Core infrastructure
-  readonly dataSource: SqliteDataSource;
+  readonly dbSource: DbSource;
+  readonly dbClient: DbClient;
   readonly project: Project;
   readonly config: McpConfig;
 
@@ -96,7 +106,8 @@ export class McpDIContext {
   readonly dispatchToolContext: DispatchToolContext;
 
   private constructor(
-    dataSource: SqliteDataSource,
+    dbSource: DbSource,
+    dbClient: DbClient,
     project: Project,
     config: McpConfig,
     issueToolContext: IssueToolContext,
@@ -111,7 +122,8 @@ export class McpDIContext {
     typeToolContext: TypeToolContext,
     dispatchToolContext: DispatchToolContext
   ) {
-    this.dataSource = dataSource;
+    this.dbSource = dbSource;
+    this.dbClient = dbClient;
     this.project = project;
     this.config = config;
     this.issueToolContext = issueToolContext;
@@ -131,45 +143,49 @@ export class McpDIContext {
    * Create a new McpDIContext from a project slug.
    *
    * This is an async factory method because it needs to:
-   * 1. Resolve config from slug
+   * 1. Read config from environment variables (PROJECT_SLUG, GIT_ROOT)
    * 2. Create database connection
-   * 3. Load project from database
+   * 3. Load project from database by slug
    *
    * @param projectSlug - The project slug (e.g., "dev-workflow-b9bccf")
-   * @throws Error if config resolution fails or project not found
+   * @throws Error if GIT_ROOT not set or project not found
    */
   static async create(projectSlug: string): Promise<McpDIContext> {
-    // Resolve config from slug
-    const resolvedConfig = await resolveConfig(projectSlug);
-    const config: McpConfig = {
-      projectSlug,
-      databasePath: resolvedConfig.resolvedDatabase,
-      projectId: resolvedConfig.projectId,
-      gitRoot: resolvedConfig.gitRoot,
-    };
-
-    // Initialize database
-    const dataSource = await DataSourceFactory.createSqlite(config.databasePath);
-    const db = dataSource.getDb();
-
-    // Load project from database
-    const projectRepository = new SqliteProjectRepository(db);
-    const project = await projectRepository.findById(config.projectId);
-
-    if (!project) {
+    // Get gitRoot from environment variable (set by CLI when registering MCP)
+    const gitRoot = process.env["GIT_ROOT"];
+    if (!gitRoot) {
       throw new Error(
-        `Project not found in database: ${config.projectId}. ` +
-          `Run 'dev-workflow update' to migrate to the new project system.`
+        "GIT_ROOT environment variable is required. " +
+          "Run 'dev-workflow init' to register the MCP server correctly."
       );
     }
 
-    // Initialize repositories with project scoping
-    const issueRepository = new SqliteIssueRepository(db, config.projectId);
-    const snapshotRepository = new SqliteSnapshotRepository(db, config.projectId);
-    const planRepository = new SqlitePlanRepository(db);
-    const taskRepository = new SqliteTaskRepository(db);
-    const milestoneRepository = new SqliteMilestoneRepository(db, config.projectId);
-    const dispatchQueueRepository = new SqliteDispatchQueueRepository(db);
+    // Database is global at ~/.track/workflow.db
+    const databasePath = getGlobalDatabasePath();
+
+    // Get or create DbSource (cached by module-level provider)
+    const connectionString = `sqlite://${databasePath}`;
+    const dbSource = sourceProvider.getOrCreate({ connectionString });
+
+    // Look up project by slug
+    const project = await dbSource.projects.findBySlug(projectSlug);
+
+    if (!project) {
+      throw new Error(
+        `Project not found for slug: ${projectSlug}. ` +
+          `Run 'dev-workflow init' to register the project.`
+      );
+    }
+
+    const config: McpConfig = {
+      projectSlug,
+      databasePath,
+      projectId: project.id,
+      gitRoot,
+    };
+
+    // Create DbClient scoped to this project
+    const dbClient = dbSource.createClient(project.id);
 
     // Initialize file system and paths
     const fileSystem = new NodeFileSystem();
@@ -187,9 +203,8 @@ export class McpDIContext {
       globalTaskTemplatesPath: path.join(globalTrackDir, "config", "templates", "tasks"),
     };
 
-    // Initialize type repository and service (types are stored in global DB)
-    const typeRepository = dataSource.getTypeRepository();
-    const typeService = new TypeService(typeRepository);
+    // Initialize type and template services
+    const typeService = new TypeService(dbSource.types);
     const templateService = new TemplateService(fileSystem, templateConfig, typeService);
 
     // Initialize project management provider
@@ -198,69 +213,63 @@ export class McpDIContext {
     const providerDeps = { githubCLI };
     const projectManagementProvider = getProjectManagementProvider(project, providerDeps);
 
-    // GitHub sync services
-    const githubSyncService = new GitHubSyncService(
-      issueRepository,
-      projectManagementProvider,
-      projectRepository,
-      config.projectId
-    );
-
+    // Task sync service
     const taskSyncService = new TaskSyncService(
-      taskRepository,
-      issueRepository,
-      planRepository,
+      dbSource,
       projectManagementProvider,
-      projectRepository,
       config.projectId,
       templateService,
       typeService
     );
 
     // Application services
-    const versioningService = new VersioningService(
-      issueRepository,
-      snapshotRepository,
-      planRepository,
-      taskRepository
-    );
+    const versioningService = new VersioningService(dbClient);
 
-    const planningService = new PlanningService(
-      issueRepository,
-      planRepository,
-      taskRepository,
-      versioningService
-    );
+    const planningService = new PlanningService(dbClient, versioningService);
 
-    const taskManagementService = new TaskManagementService(
-      taskRepository,
-      planRepository,
-      issueRepository
-    );
+    const taskManagementService = new TaskManagementService(dbClient);
 
     const gitWorktreeService = new NodeGitWorktreeService(projectRoot);
-    const conflictDetectionService = new ConflictDetectionService(db, taskRepository);
+
+    const conflictDetectionService = new ConflictDetectionService(dbClient);
 
     const taskSessionService = new TaskSessionService(
-      taskRepository,
-      planRepository,
-      issueRepository,
+      dbClient,
       gitWorktreeService,
       conflictDetectionService,
       trackDirectory
     );
 
-    // Create tool contexts
+    // Entity services (Service Layer Pattern)
+    const planService = new PlanService(dbClient);
+    // Worker and Dispatch services use DbSource (global repos), not DbClient
+    const workerService = new WorkerService(dbSource);
+    const dispatchService = new DispatchService(dbSource);
+
+    const taskService = new TaskService(dbClient, projectManagementProvider, gitWorktreeService);
+
+    const issueService = new IssueService(dbClient, taskService, projectManagementProvider);
+
+    const milestoneService = new MilestoneService(dbClient);
+
+    const mergeServiceInstance = new MergeService(
+      dbSource,
+      versioningService,
+      config.projectId,
+      githubCLI
+    );
+
+    // Create tool contexts (using services, not repositories)
     const issueToolContext: IssueToolContext = {
       project,
-      issueRepository,
-      planRepository,
-      taskRepository,
-      milestoneRepository,
-      dispatchQueueRepository,
+      issueService,
+      planService,
+      taskService,
+      milestoneService,
+      dispatchService,
       templateService,
       planningService,
-      githubSyncService,
+      projectManagementProvider,
       githubCLI,
       gitWorktreeService,
       typeService,
@@ -268,39 +277,38 @@ export class McpDIContext {
 
     const planToolContext: PlanToolContext = {
       project,
-      issueRepository,
-      planRepository,
-      taskRepository,
+      issueService,
+      planService,
+      taskService,
       planningService,
       taskSyncService,
       typeService,
     };
 
     const taskToolContext: TaskToolContext = {
-      dbService: dataSource,
-      issueRepository,
-      planRepository,
-      taskRepository,
+      db: dbClient,
+      issueService,
+      planService,
+      taskService,
+      dispatchService,
       taskSessionService,
       taskManagementService,
-      taskExecutionLogsSchema: taskExecutionLogs,
       conflictDetectionService,
       taskSyncService,
       providerRegistry,
       project,
-      projectRepository,
+      source: dbSource,
       githubCLI,
-      dispatchQueueRepository,
     };
 
     const snapshotToolContext: SnapshotToolContext = {
-      issueRepository,
+      issueService,
       versioningService,
     };
 
     const settingsToolContext: SettingsToolContext = {
       project,
-      projectRepository,
+      source: dbSource,
       githubCLI,
       gitRoot: config.gitRoot,
       providerRegistry,
@@ -308,8 +316,8 @@ export class McpDIContext {
     };
 
     const milestoneToolContext: MilestoneToolContext = {
-      milestoneRepository,
-      issueRepository,
+      milestoneService,
+      issueService,
       projectName: project.name,
     };
 
@@ -320,40 +328,31 @@ export class McpDIContext {
     const prToolContext: PRToolContext = {
       project,
       githubCLI,
-      issueRepository,
-      planRepository,
-      taskRepository,
-      dispatchQueueRepository,
+      issueService,
+      planService,
+      taskService,
       gitWorktreeService,
       taskSyncService,
-      dbService: dataSource,
-      taskExecutionLogsSchema: taskExecutionLogs,
+      db: dbClient,
     };
 
     const mergeToolContext: MergeToolContext = {
-      issueRepository,
-      planRepository,
-      taskRepository,
-      projectRepository,
-      versioningService,
-      projectId: config.projectId,
-      githubCLI,
+      mergeService: mergeServiceInstance,
     };
 
     const typeToolContext: TypeToolContext = {
       typeService,
     };
 
-    const workerRepository = new SqliteWorkerRepository(db);
-
     const dispatchToolContext: DispatchToolContext = {
-      dispatchQueueRepository,
-      taskRepository,
-      workerRepository,
+      dispatchService,
+      taskService,
+      workerService,
     };
 
     return new McpDIContext(
-      dataSource,
+      dbSource,
+      dbClient,
       project,
       config,
       issueToolContext,
@@ -375,7 +374,7 @@ export class McpDIContext {
    * Call this during server shutdown.
    */
   close(): void {
-    this.dataSource.close();
+    this.dbSource.close();
   }
 
   /**

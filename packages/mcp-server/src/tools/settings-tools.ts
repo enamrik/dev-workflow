@@ -7,10 +7,10 @@
 
 import {
   DEFAULT_COLUMN_MAPPING,
+  type DbSource,
   type GitHubCLI,
   type GitHubIssueSyncConfig,
   type Project,
-  type ProjectRepository,
   type StatusColumnMapping,
   type ProviderRegistry,
   type TypeService,
@@ -130,7 +130,7 @@ export const settingsToolDefinitions: ToolDefinition[] = [
  */
 export interface SettingsToolContext {
   project: Project;
-  projectRepository: ProjectRepository;
+  source: DbSource; // For accessing global repositories (projects, types)
   githubCLI: GitHubCLI;
   gitRoot: string; // From env var, not database (machine-specific)
   providerRegistry: ProviderRegistry; // For validating available providers
@@ -263,7 +263,7 @@ export async function handleUpdateSettings(
 async function handleGetSettings(ctx: SettingsToolContext): Promise<ToolResponse> {
   try {
     // Re-fetch project from database to get latest config
-    const project = await ctx.projectRepository.findById(ctx.project.id);
+    const project = await ctx.source.projects.findById(ctx.project.id);
     if (!project) {
       return errorResponse(`Project not found: ${ctx.project.id}`);
     }
@@ -409,7 +409,7 @@ async function handleEnableGitHub(
 
   try {
     // Update project in database with GitHub sync config
-    ctx.projectRepository.update(ctx.project.id, { githubSync: syncConfig });
+    ctx.source.projects.update(ctx.project.id, { githubSync: syncConfig });
 
     return successResponse({
       success: true,
@@ -429,7 +429,7 @@ async function handleEnableGitHub(
 async function handleDisableGitHub(ctx: SettingsToolContext): Promise<ToolResponse> {
   try {
     // Re-fetch project from database to get latest config
-    const project = await ctx.projectRepository.findById(ctx.project.id);
+    const project = await ctx.source.projects.findById(ctx.project.id);
     if (!project) {
       return errorResponse(`Project not found: ${ctx.project.id}`);
     }
@@ -438,7 +438,7 @@ async function handleDisableGitHub(ctx: SettingsToolContext): Promise<ToolRespon
 
     if (currentSync) {
       // Preserve config but set enabled to false
-      await ctx.projectRepository.update(project.id, {
+      await ctx.source.projects.update(project.id, {
         githubSync: { ...currentSync, enabled: false },
       });
     }
@@ -468,7 +468,7 @@ async function handleConfigureGitHub(
 
   try {
     // Re-fetch project from database to get latest config
-    const project = await ctx.projectRepository.findById(ctx.project.id);
+    const project = await ctx.source.projects.findById(ctx.project.id);
     if (!project) {
       return errorResponse(`Project not found: ${ctx.project.id}`);
     }
@@ -546,7 +546,7 @@ async function handleConfigureGitHub(
     };
 
     // Update project in database
-    await ctx.projectRepository.update(project.id, { githubSync: updatedConfig });
+    await ctx.source.projects.update(project.id, { githubSync: updatedConfig });
 
     return successResponse({
       success: true,
@@ -572,7 +572,7 @@ async function handleConfigureColumnMapping(
 ): Promise<ToolResponse> {
   try {
     // Re-fetch project from database to get latest config
-    const project = await ctx.projectRepository.findById(ctx.project.id);
+    const project = await ctx.source.projects.findById(ctx.project.id);
     if (!project) {
       return errorResponse(`Project not found: ${ctx.project.id}`);
     }
@@ -590,7 +590,7 @@ async function handleConfigureColumnMapping(
         columnMapping: undefined, // Remove custom mapping, will use defaults
       };
 
-      await ctx.projectRepository.update(project.id, { githubSync: updatedConfig });
+      await ctx.source.projects.update(project.id, { githubSync: updatedConfig });
 
       return successResponse({
         success: true,
@@ -628,7 +628,7 @@ async function handleConfigureColumnMapping(
       columnMapping: mergedMapping,
     };
 
-    await ctx.projectRepository.update(project.id, { githubSync: updatedConfig });
+    await ctx.source.projects.update(project.id, { githubSync: updatedConfig });
 
     // Show the effective mapping (defaults + custom)
     const effectiveMapping = {
@@ -663,7 +663,7 @@ async function handleConfigureColumnMapping(
 async function handleListAvailableLabels(ctx: SettingsToolContext): Promise<ToolResponse> {
   try {
     // Re-fetch project from database to get latest config
-    const project = await ctx.projectRepository.findById(ctx.project.id);
+    const project = await ctx.source.projects.findById(ctx.project.id);
     if (!project) {
       return errorResponse(`Project not found: ${ctx.project.id}`);
     }

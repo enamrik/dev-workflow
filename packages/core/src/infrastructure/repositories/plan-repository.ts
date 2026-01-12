@@ -1,16 +1,17 @@
 import { eq } from "drizzle-orm";
 import { plans, PlanRow } from "../database/schema.js";
 import type { Plan, PlanRepository } from "../../domain/plan.js";
-import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
+import type { DrizzleDb } from "../../domain/drizzle-db.js";
 
 /**
- * SQLite implementation of PlanRepository
+ * Drizzle implementation of PlanRepository
  *
  * Uses Drizzle ORM for type-safe queries.
  * Follows Repository pattern from DDD.
+ * Works with any Drizzle-supported database dialect.
  */
-export class SqlitePlanRepository implements PlanRepository {
-  constructor(private readonly db: SqliteDrizzleDatabase) {}
+export class DrizzlePlanRepository implements PlanRepository {
+  constructor(private readonly db: DrizzleDb) {}
 
   create(data: Omit<Plan, "id" | "createdAt" | "updatedAt">): Plan {
     const id = crypto.randomUUID();

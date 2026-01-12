@@ -7,16 +7,17 @@ import type {
   DispatchQueueStatus,
 } from "../../domain/worker.js";
 import { DEFAULT_HEARTBEAT_THRESHOLD_SECONDS, isWorkerAlive } from "../../domain/worker.js";
-import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
+import type { DrizzleDb } from "../../domain/drizzle-db.js";
 
 /**
- * SQLite implementation of DispatchQueueRepository
+ * Drizzle implementation of DispatchQueueRepository
  *
  * Manages the queue of tasks assigned to workers.
  * Entry persists until task reaches terminal state (COMPLETED/ABANDONED).
+ * Works with any Drizzle-supported database dialect.
  */
-export class SqliteDispatchQueueRepository implements DispatchQueueRepository {
-  constructor(private readonly db: SqliteDrizzleDatabase) {}
+export class DrizzleDispatchQueueRepository implements DispatchQueueRepository {
+  constructor(private readonly db: DrizzleDb) {}
 
   /**
    * Kill a stale worker process before reclaiming its task.

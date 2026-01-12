@@ -21,6 +21,13 @@ import { resolveGlobalTrackDir } from "./track-directory-resolver.js";
  */
 export interface ProjectConfig {
   /**
+   * Project display name (typically the git folder name)
+   *
+   * Optional for backward compatibility - if not present, derived from gitRoot.
+   */
+  readonly name?: string;
+
+  /**
    * Database connection string
    *
    * Formats:
@@ -52,6 +59,12 @@ export interface ProjectConfig {
  * values needed to connect to the database.
  */
 export interface ResolvedConfig extends ProjectConfig {
+  /**
+   * Project display name (from config or derived from gitRoot folder name).
+   * Always present in ResolvedConfig (derived if not in config.json).
+   */
+  readonly name: string;
+
   /**
    * The resolved database path (for SQLite) or connection string (for PostgreSQL)
    *
@@ -247,8 +260,12 @@ export async function resolveConfig(slug: string): Promise<ResolvedConfig> {
   // Resolve the database connection string
   const resolvedDatabase = resolveConnectionString(config.database, config.gitRoot);
 
+  // Derive name from config or gitRoot folder name
+  const name = config.name ?? path.basename(config.gitRoot);
+
   return {
     ...config,
+    name,
     resolvedDatabase,
     slug,
   };

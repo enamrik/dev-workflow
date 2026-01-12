@@ -13,8 +13,9 @@
  */
 
 import type { Issue } from "../domain/issue.js";
-import type { Plan, PlanRepository } from "../domain/plan.js";
-import type { Task, TaskRepository } from "../domain/task.js";
+import type { Plan } from "../domain/plan.js";
+import type { Task } from "../domain/task.js";
+import type { DbClient } from "../domain/db-client.js";
 
 // =============================================================================
 // Types
@@ -61,10 +62,7 @@ export interface ComputedStatusResult {
  * The same instance can be used for multiple computations.
  */
 export class IssueStatusService {
-  constructor(
-    private readonly planRepository: PlanRepository,
-    private readonly taskRepository: TaskRepository
-  ) {}
+  constructor(private readonly db: DbClient) {}
 
   /**
    * Compute the status for a single issue
@@ -89,12 +87,12 @@ export class IssueStatusService {
     }
 
     // Get plan and tasks
-    const plan = this.planRepository.findByIssueId(issue.id);
+    const plan = this.db.plans.findByIssueId(issue.id);
     if (!plan) {
       return { computedStatus: "OPEN" };
     }
 
-    const tasks = this.taskRepository.findByPlanId(plan.id);
+    const tasks = this.db.tasks.findByPlanId(plan.id);
     if (tasks.length === 0) {
       return { computedStatus: "OPEN" };
     }

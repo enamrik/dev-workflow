@@ -11,11 +11,10 @@
  * - Syncs with external provider (ProjectManagementProvider)
  */
 
-import type { Task, TaskRepository, TaskStatus } from "../domain/task.js";
-import type { PlanRepository } from "../domain/plan.js";
+import type { Task, TaskStatus, PRStatus, TaskRepository } from "../domain/task.js";
 import type { ProjectManagementProvider } from "../domain/project-management-provider.js";
-import type { DispatchQueueRepository } from "../domain/worker.js";
 import type { GitWorktreeService } from "../infrastructure/git/git-worktree-service.js";
+import type { DbClient } from "../domain/db-client.js";
 import { isValidStatusTransition, getAllowedTransitions } from "../domain/task.js";
 
 /**
@@ -53,11 +52,9 @@ export interface AbandonTaskResult {
  */
 export class TaskService {
   constructor(
-    private readonly taskRepository: TaskRepository,
-    private readonly planRepository: PlanRepository,
-    private readonly provider: ProjectManagementProvider | null,
-    private readonly gitWorktreeService: GitWorktreeService | null,
-    private readonly dispatchQueueRepository: DispatchQueueRepository | null
+    private readonly db: DbClient,
+    private readonly provider: ProjectManagementProvider,
+    private readonly gitWorktreeService: GitWorktreeService | null
   ) {}
 
   /**
@@ -68,12 +65,21 @@ export class TaskService {
   }
 
   /**
+   * Find a task by ID
+   *
+   * @returns Task or null if not found
+   */
+  findById(taskId: string): Task | null {
+    return this.db.tasks.findById(taskId);
+  }
+
+  /**
    * Get a task by ID
    *
    * @throws TaskServiceError if task not found
    */
   getTask(taskId: string): Task {
-    const task = this.taskRepository.findById(taskId);
+    const task = this.db.tasks.findById(taskId);
     if (!task) {
       throw new TaskServiceError(`Task not found: ${taskId}`, "NOT_FOUND");
     }
@@ -114,19 +120,11 @@ export class TaskService {
     }
 
     // Update local status first
-    const updatedTask = this.taskRepository.updateStatus(taskId, newStatus, changedBy, notes);
+    const updatedTask = this.db.tasks.updateStatus(taskId, newStatus, changedBy, notes);
 
-    // Sync terminal states to external provider
-    if (this.provider && task.githubSync?.githubIssueNumber) {
-      if (newStatus === "COMPLETED" || newStatus === "ABANDONED") {
-        try {
-          await this.provider.closeIssue(String(task.githubSync.githubIssueNumber));
-        } catch (error) {
-          console.warn(
-            `Failed to close external issue: ${error instanceof Error ? error.message : String(error)}`
-          );
-        }
-      }
+    // Sync terminal states to external provider (provider handles sync check internally)
+    if (newStatus === "COMPLETED" || newStatus === "ABANDONED") {
+      await this.provider.closeIssueByTask(task);
     }
 
     return updatedTask;
@@ -171,9 +169,9 @@ export class TaskService {
     };
 
     // 1. Remove from dispatch queue if present
-    if (this.dispatchQueueRepository) {
+    if (this.db.dispatchQueue) {
       try {
-        this.dispatchQueueRepository.remove(taskId);
+        this.db.dispatchQueue.remove(taskId);
         result.removedFromQueue = true;
       } catch {
         // Queue removal is best-effort
@@ -191,7 +189,7 @@ export class TaskService {
       } catch {
         console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
       }
-      this.taskRepository.clearWorktreeInfo(taskId);
+      this.db.tasks.clearWorktreeInfo(taskId);
     } else if (this.gitWorktreeService && task.branchName) {
       try {
         await this.gitWorktreeService.run(["branch", "-D", task.branchName]);
@@ -220,23 +218,15 @@ export class TaskService {
         console.warn(`Failed to delete remote branch: ${task.branchName}`);
       }
 
-      this.taskRepository.update(taskId, { branchName: undefined });
+      this.db.tasks.update(taskId, { branchName: undefined });
     }
 
-    // 3. Close external issue if synced
-    if (this.provider && task.githubSync?.githubIssueNumber) {
-      try {
-        await this.provider.closeIssue(String(task.githubSync.githubIssueNumber));
-        result.externalIssueClosed = true;
-      } catch (error) {
-        console.warn(
-          `Failed to close external issue: ${error instanceof Error ? error.message : String(error)}`
-        );
-      }
-    }
+    // 3. Close external issue (provider handles sync check internally)
+    await this.provider.closeIssueByTask(task);
+    result.externalIssueClosed = !!task.githubSync?.githubIssueNumber;
 
     // 4. Update task status to ABANDONED
-    const updatedTask = this.taskRepository.updateStatus(
+    const updatedTask = this.db.tasks.updateStatus(
       taskId,
       "ABANDONED",
       changedBy ?? "system",
@@ -245,7 +235,7 @@ export class TaskService {
 
     // Clear session if present
     if (task.sessionId) {
-      this.taskRepository.clearSession(taskId);
+      this.db.tasks.clearSession(taskId);
     }
 
     result.task = updatedTask;
@@ -256,7 +246,7 @@ export class TaskService {
    * Get all tasks for a plan
    */
   getTasksForPlan(planId: string, includeDeleted = false): Task[] {
-    return this.taskRepository.findByPlanId(planId, includeDeleted);
+    return this.db.tasks.findByPlanId(planId, includeDeleted);
   }
 
   /**
@@ -265,26 +255,110 @@ export class TaskService {
    * Returns tasks that are not in terminal state (COMPLETED or ABANDONED)
    */
   getIncompleteTasksForIssue(issueId: string): Task[] {
-    const plan = this.planRepository.findByIssueId(issueId);
+    const plan = this.db.plans.findByIssueId(issueId);
     if (!plan) {
       return [];
     }
 
-    return this.taskRepository
-      .findByPlanId(plan.id)
-      .filter((t) => !t.isDeleted && !this.isTerminal(t));
+    return this.db.tasks.findByPlanId(plan.id).filter((t) => !t.isDeleted && !this.isTerminal(t));
   }
 
   /**
    * Check if all tasks for an issue are complete
    */
   areAllTasksComplete(issueId: string): boolean {
-    const plan = this.planRepository.findByIssueId(issueId);
+    const plan = this.db.plans.findByIssueId(issueId);
     if (!plan) {
       return true;
     }
 
-    const tasks = this.taskRepository.findByPlanId(plan.id).filter((t) => !t.isDeleted);
+    const tasks = this.db.tasks.findByPlanId(plan.id).filter((t) => !t.isDeleted);
     return tasks.every((t) => this.isTerminal(t));
+  }
+
+  // ============================================================================
+  // Additional Read Operations (delegating to repository)
+  // ============================================================================
+
+  /**
+   * Find tasks by plan ID
+   */
+  findByPlanId(planId: string, includeDeleted = false): Task[] {
+    return this.db.tasks.findByPlanId(planId, includeDeleted);
+  }
+
+  /**
+   * Find tasks by multiple IDs
+   */
+  findByIds(taskIds: string[]): Task[] {
+    return this.db.tasks.findByIds(taskIds);
+  }
+
+  /**
+   * Find many tasks with optional filtering
+   */
+  findMany(options: Parameters<TaskRepository["findMany"]>[0]): Task[] {
+    return this.db.tasks.findMany(options);
+  }
+
+  // ============================================================================
+  // Additional Write Operations (delegating to repository)
+  // ============================================================================
+
+  /**
+   * Update a task
+   */
+  update(taskId: string, updates: Parameters<TaskRepository["update"]>[1]): Task {
+    return this.db.tasks.update(taskId, updates);
+  }
+
+  /**
+   * Soft delete a task
+   */
+  softDelete(taskId: string, deletedBy?: string): Task {
+    return this.db.tasks.softDelete(taskId, deletedBy);
+  }
+
+  /**
+   * Clear session from a task
+   */
+  clearSession(taskId: string): void {
+    this.db.tasks.clearSession(taskId);
+  }
+
+  /**
+   * Clear worktree info from a task
+   */
+  clearWorktreeInfo(taskId: string): void {
+    this.db.tasks.clearWorktreeInfo(taskId);
+  }
+
+  /**
+   * Update PR status
+   */
+  updatePRStatus(taskId: string, prStatus: PRStatus): void {
+    this.db.tasks.updatePRStatus(taskId, prStatus);
+  }
+
+  /**
+   * Update PR info
+   */
+  updatePRInfo(taskId: string, prUrl: string, prNumber: number, prStatus: PRStatus): void {
+    this.db.tasks.updatePRInfo(taskId, prUrl, prNumber, prStatus);
+  }
+
+  /**
+   * Update task status (direct, without validation - for internal use)
+   * For external use with validation, use the async updateStatus method.
+   */
+  updateTaskStatus(taskId: string, status: TaskStatus, changedBy?: string, notes?: string): Task {
+    return this.db.tasks.updateStatus(taskId, status, changedBy, notes);
+  }
+
+  /**
+   * Get count of tasks by status
+   */
+  getStatusCounts(): Record<string, number> {
+    return this.db.tasks.getStatusCounts();
   }
 }

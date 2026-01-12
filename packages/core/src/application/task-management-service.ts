@@ -1,6 +1,5 @@
-import type { Task, TaskRepository } from "../domain/task.js";
-import type { PlanRepository } from "../domain/plan.js";
-import type { IssueRepository } from "../domain/issue.js";
+import type { Task } from "../domain/task.js";
+import type { DbClient } from "../domain/db-client.js";
 
 /**
  * Request to add a manual task
@@ -30,11 +29,7 @@ export interface AddManualTaskRequest {
  * interfaces, not concrete implementations.
  */
 export class TaskManagementService {
-  constructor(
-    private readonly taskRepository: TaskRepository,
-    private readonly planRepository: PlanRepository,
-    private readonly issueRepository: IssueRepository
-  ) {}
+  constructor(private readonly db: DbClient) {}
 
   /**
    * Add a manual task to a plan
@@ -56,20 +51,20 @@ export class TaskManagementService {
     } = request;
 
     // Find the issue
-    const issue = this.issueRepository.findByNumber(issueNumber);
+    const issue = this.db.issues.findByNumber(issueNumber);
     if (!issue) {
       throw new Error(`Issue not found: #${issueNumber}`);
     }
 
     // Find the plan for this issue
-    const plan = this.planRepository.findByIssueId(issue.id);
+    const plan = this.db.plans.findByIssueId(issue.id);
     if (!plan) {
       throw new Error(`No plan exists for issue #${issueNumber}. Generate a plan first.`);
     }
 
     // Validate insertAfterTaskId if provided
     if (insertAfterTaskId) {
-      const afterTask = this.taskRepository.findById(insertAfterTaskId);
+      const afterTask = this.db.tasks.findById(insertAfterTaskId);
       if (!afterTask) {
         throw new Error(`Task not found: ${insertAfterTaskId}`);
       }
@@ -79,7 +74,7 @@ export class TaskManagementService {
     }
 
     // Create the manual task
-    const task = this.taskRepository.create({
+    const task = this.db.tasks.create({
       id: crypto.randomUUID(), // Generate ID for manual task
       planId: plan.id,
       title,
@@ -110,7 +105,7 @@ export class TaskManagementService {
    */
   deleteTask(taskId: string, deletedBy?: string): Task {
     // Use includeDeleted=true to distinguish "not found" from "already deleted"
-    const task = this.taskRepository.findById(taskId, true);
+    const task = this.db.tasks.findById(taskId, true);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
@@ -126,7 +121,7 @@ export class TaskManagementService {
       );
     }
 
-    return this.taskRepository.softDelete(taskId, deletedBy);
+    return this.db.tasks.softDelete(taskId, deletedBy);
   }
 
   /**
@@ -136,7 +131,7 @@ export class TaskManagementService {
    * @returns The restored task
    */
   restoreTask(taskId: string): Task {
-    const task = this.taskRepository.findById(taskId);
+    const task = this.db.tasks.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
@@ -145,7 +140,7 @@ export class TaskManagementService {
       throw new Error(`Task is not deleted: ${taskId}`);
     }
 
-    return this.taskRepository.restore(taskId);
+    return this.db.tasks.restore(taskId);
   }
 
   /**
@@ -156,16 +151,16 @@ export class TaskManagementService {
    * @returns Array of tasks
    */
   getTasksForIssue(issueNumber: number, includeDeleted = false): Task[] {
-    const issue = this.issueRepository.findByNumber(issueNumber);
+    const issue = this.db.issues.findByNumber(issueNumber);
     if (!issue) {
       throw new Error(`Issue not found: #${issueNumber}`);
     }
 
-    const plan = this.planRepository.findByIssueId(issue.id);
+    const plan = this.db.plans.findByIssueId(issue.id);
     if (!plan) {
       return [];
     }
 
-    return this.taskRepository.findByPlanId(plan.id, includeDeleted);
+    return this.db.tasks.findByPlanId(plan.id, includeDeleted);
   }
 }

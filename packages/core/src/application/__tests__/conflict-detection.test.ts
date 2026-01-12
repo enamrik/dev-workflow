@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createTestDatabase } from "../../__tests__/setup.js";
+import { createTestDatabase, type TestDatabase } from "../../__tests__/setup.js";
 import {
-  createRepositories,
   createTestIssue,
   createTestPlan,
   createTestTask,
@@ -11,22 +10,20 @@ import { ConflictDetectionService } from "../conflict-detection-service.js";
 import { taskExecutionLogs } from "../../infrastructure/database/schema.js";
 
 describe("ConflictDetectionService", () => {
-  let testDb: ReturnType<typeof createTestDatabase>;
-  let repos: ReturnType<typeof createRepositories>;
+  let testDb: TestDatabase;
   let conflictService: ConflictDetectionService;
   let planId: string;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    repos = createRepositories(testDb.db);
 
     // Create issue and plan
-    const issue = createTestIssue(repos.issueRepository);
-    const plan = createTestPlan(repos.planRepository, issue.id);
+    const issue = createTestIssue(testDb.client.issues);
+    const plan = createTestPlan(testDb.client.plans, issue.id);
     planId = plan.id;
 
     // Create conflict detection service
-    conflictService = new ConflictDetectionService(testDb.db, repos.taskRepository);
+    conflictService = new ConflictDetectionService(testDb.client);
   });
 
   afterEach(() => {
@@ -36,8 +33,8 @@ describe("ConflictDetectionService", () => {
   describe("detectConflicts", () => {
     it("should return no conflicts when no prior tasks are completed", () => {
       // Create two tasks, both BACKLOG
-      createTestTask(repos.taskRepository, planId, { title: "Task 1" });
-      const task2 = createTestTask(repos.taskRepository, planId, { title: "Task 2" });
+      createTestTask(testDb.client.tasks, planId, { title: "Task 1" });
+      const task2 = createTestTask(testDb.client.tasks, planId, { title: "Task 2" });
 
       // Task 1 is still BACKLOG, so no conflicts
       const result = conflictService.detectConflicts(task2.id);
@@ -48,11 +45,11 @@ describe("ConflictDetectionService", () => {
     });
 
     it("should return no conflicts when completed tasks have no logged file modifications", () => {
-      const task1 = createTestTask(repos.taskRepository, planId, { title: "Task 1" });
-      const task2 = createTestTask(repos.taskRepository, planId, { title: "Task 2" });
+      const task1 = createTestTask(testDb.client.tasks, planId, { title: "Task 1" });
+      const task2 = createTestTask(testDb.client.tasks, planId, { title: "Task 2" });
 
       // Complete task 1 without logging any file modifications
-      completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
+      completeTask(testDb.client.tasks, task1.id, "session-1", "Completed");
 
       const result = conflictService.detectConflicts(task2.id);
 
@@ -62,14 +59,14 @@ describe("ConflictDetectionService", () => {
 
     it("should detect conflicts when prior task modified files mentioned in current task", () => {
       // Create tasks where task 2 mentions a file that task 1 modified
-      const task1 = createTestTask(repos.taskRepository, planId, { title: "Task 1" });
-      const task2 = createTestTask(repos.taskRepository, planId, {
+      const task1 = createTestTask(testDb.client.tasks, planId, { title: "Task 1" });
+      const task2 = createTestTask(testDb.client.tasks, planId, {
         title: "Task 2",
         description: "Update the src/components/Button.tsx component",
       });
 
       // Complete task 1 and log file modification
-      completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
+      completeTask(testDb.client.tasks, task1.id, "session-1", "Completed");
 
       // Log that task 1 modified src/components/Button.tsx
       testDb.db
@@ -94,14 +91,14 @@ describe("ConflictDetectionService", () => {
     });
 
     it("should detect conflicts based on directory overlap", () => {
-      const task1 = createTestTask(repos.taskRepository, planId, { title: "Task 1" });
-      const task2 = createTestTask(repos.taskRepository, planId, {
+      const task1 = createTestTask(testDb.client.tasks, planId, { title: "Task 1" });
+      const task2 = createTestTask(testDb.client.tasks, planId, {
         title: "Task 2",
         // Use a file path that shares a directory with the modified files
         description: "Update src/components/Nav.tsx to add navigation",
       });
 
-      completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
+      completeTask(testDb.client.tasks, task1.id, "session-1", "Completed");
 
       testDb.db
         .insert(taskExecutionLogs)
@@ -123,13 +120,13 @@ describe("ConflictDetectionService", () => {
     });
 
     it("should not detect conflicts for unrelated files", () => {
-      const task1 = createTestTask(repos.taskRepository, planId, { title: "Task 1" });
-      const task2 = createTestTask(repos.taskRepository, planId, {
+      const task1 = createTestTask(testDb.client.tasks, planId, { title: "Task 1" });
+      const task2 = createTestTask(testDb.client.tasks, planId, {
         title: "Task 2",
         description: "Work on src/api/users.ts",
       });
 
-      completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
+      completeTask(testDb.client.tasks, task1.id, "session-1", "Completed");
 
       testDb.db
         .insert(taskExecutionLogs)
@@ -149,16 +146,16 @@ describe("ConflictDetectionService", () => {
     });
 
     it("should aggregate multiple tasks that modified the same file", () => {
-      const task1 = createTestTask(repos.taskRepository, planId, { title: "Task 1" });
-      const task2 = createTestTask(repos.taskRepository, planId, { title: "Task 2" });
-      const task3 = createTestTask(repos.taskRepository, planId, {
+      const task1 = createTestTask(testDb.client.tasks, planId, { title: "Task 1" });
+      const task2 = createTestTask(testDb.client.tasks, planId, { title: "Task 2" });
+      const task3 = createTestTask(testDb.client.tasks, planId, {
         title: "Task 3",
         description: "Update src/index.ts",
       });
 
       // Complete task 1 and 2, both modify the same file
-      completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
-      completeTask(repos.taskRepository, task2.id, "session-2", "Completed");
+      completeTask(testDb.client.tasks, task1.id, "session-1", "Completed");
+      completeTask(testDb.client.tasks, task2.id, "session-2", "Completed");
 
       testDb.db
         .insert(taskExecutionLogs)
@@ -200,7 +197,7 @@ describe("ConflictDetectionService", () => {
 
   describe("getModifiedFilesForPlan", () => {
     it("should return empty map when no tasks are completed", () => {
-      createTestTask(repos.taskRepository, planId, { title: "Task 1" });
+      createTestTask(testDb.client.tasks, planId, { title: "Task 1" });
 
       const result = conflictService.getModifiedFilesForPlan(planId);
 
@@ -208,11 +205,11 @@ describe("ConflictDetectionService", () => {
     });
 
     it("should return all files modified by completed tasks", () => {
-      const task1 = createTestTask(repos.taskRepository, planId, { title: "Task 1" });
-      const task2 = createTestTask(repos.taskRepository, planId, { title: "Task 2" });
+      const task1 = createTestTask(testDb.client.tasks, planId, { title: "Task 1" });
+      const task2 = createTestTask(testDb.client.tasks, planId, { title: "Task 2" });
 
-      completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
-      completeTask(repos.taskRepository, task2.id, "session-2", "Completed");
+      completeTask(testDb.client.tasks, task1.id, "session-1", "Completed");
+      completeTask(testDb.client.tasks, task2.id, "session-2", "Completed");
 
       testDb.db
         .insert(taskExecutionLogs)
@@ -247,11 +244,11 @@ describe("ConflictDetectionService", () => {
     });
 
     it("should track multiple modifications to same file", () => {
-      const task1 = createTestTask(repos.taskRepository, planId, { title: "Task 1" });
-      const task2 = createTestTask(repos.taskRepository, planId, { title: "Task 2" });
+      const task1 = createTestTask(testDb.client.tasks, planId, { title: "Task 1" });
+      const task2 = createTestTask(testDb.client.tasks, planId, { title: "Task 2" });
 
-      completeTask(repos.taskRepository, task1.id, "session-1", "Completed");
-      completeTask(repos.taskRepository, task2.id, "session-2", "Completed");
+      completeTask(testDb.client.tasks, task1.id, "session-1", "Completed");
+      completeTask(testDb.client.tasks, task2.id, "session-2", "Completed");
 
       testDb.db
         .insert(taskExecutionLogs)

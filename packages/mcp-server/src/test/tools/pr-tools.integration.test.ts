@@ -7,17 +7,23 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
-import { createRepositories, createTestIssue, createTestPlan, createTestTask } from "../helpers.js";
+import {
+  createClientForProject,
+  createTestIssue,
+  createTestPlan,
+  createTestTask,
+} from "../helpers.js";
 import {
   MockGitHubCLI,
   MockGitWorktreeService,
-  SqliteProjectRepository,
-  SqliteDispatchQueueRepository,
   TaskSyncService,
   taskExecutionLogs,
-  type SqliteDataSource,
   type ProjectManagementProvider,
   type Project,
+  IssueService,
+  TaskService,
+  PlanService,
+  type DbClient,
 } from "@dev-workflow/core";
 import {
   handleCreatePR,
@@ -25,28 +31,13 @@ import {
   handleCompleteTask,
   type PRToolContext,
 } from "../../tools/pr-tools.js";
-import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import * as schema from "@dev-workflow/core/schema";
 
-type DbType = BetterSQLite3Database<typeof schema>;
 const TEST_PROJECT_ID = "test-project-pr";
-
-/**
- * Create a mock SqliteDataSource for testing
- * Only implements getDb() which is what PRToolContext needs
- */
-function createMockDbService(db: DbType) {
-  return {
-    getDb: () => db,
-    // Other methods not needed for PR tools
-    close: () => {},
-  };
-}
 
 /**
  * Create a minimal mock provider for testing
  */
-function createMockProvider(): ProjectManagementProvider {
+function createLocalMockProvider(): ProjectManagementProvider {
   return {
     providerId: "mock",
     displayName: "Mock Provider",
@@ -73,6 +64,7 @@ function createMockProvider(): ProjectManagementProvider {
       labels: [],
     }),
     closeIssue: async () => {},
+    closeIssueByTask: async () => {},
     reopenIssue: async () => {},
     getIssue: async () => null,
     searchIssues: async () => [],
@@ -112,40 +104,42 @@ function createTestProject(): Project {
 /**
  * Create a PRToolContext for testing
  */
-function createPRToolContext(
+async function createPRToolContext(
   testDb: TestDatabase,
   mockGitHubCLI?: MockGitHubCLI,
   mockGitWorktreeService?: MockGitWorktreeService
-): PRToolContext {
-  const db = testDb.db as DbType;
-  const repos = createRepositories(testDb.db, TEST_PROJECT_ID);
-  const projectRepository = new SqliteProjectRepository(db);
-  const dispatchQueueRepository = new SqliteDispatchQueueRepository(db);
+): Promise<{ ctx: PRToolContext; client: DbClient }> {
+  // Create project first
+  const project = await testDb.source.projects.create({
+    gitRootHash: TEST_PROJECT_ID,
+    name: "Test Project",
+  });
+
+  const client = createClientForProject(testDb, project.id);
 
   const githubCLI = mockGitHubCLI ?? new MockGitHubCLI();
   const gitWorktreeService = mockGitWorktreeService ?? new MockGitWorktreeService();
-  const mockProvider = createMockProvider();
+  const mockProvider = createLocalMockProvider();
 
-  const taskSyncService = new TaskSyncService(
-    repos.taskRepository,
-    repos.issueRepository,
-    repos.planRepository,
-    mockProvider,
-    projectRepository,
-    TEST_PROJECT_ID
-  );
+  const taskSyncService = new TaskSyncService(testDb.source, mockProvider, project.id);
+
+  // Create services with DbClient
+  const planService = new PlanService(client);
+  const taskService = new TaskService(client, mockProvider, gitWorktreeService);
+  const issueService = new IssueService(client, taskService, mockProvider);
 
   return {
-    project: createTestProject(),
-    githubCLI,
-    issueRepository: repos.issueRepository,
-    planRepository: repos.planRepository,
-    taskRepository: repos.taskRepository,
-    dispatchQueueRepository,
-    gitWorktreeService,
-    taskSyncService,
-    dbService: createMockDbService(db) as unknown as SqliteDataSource,
-    taskExecutionLogsSchema: taskExecutionLogs,
+    ctx: {
+      project: { ...createTestProject(), id: project.id },
+      githubCLI,
+      issueService,
+      planService,
+      taskService,
+      gitWorktreeService,
+      taskSyncService,
+      db: client,
+    },
+    client,
   };
 }
 
@@ -161,16 +155,20 @@ describe("create_pr", () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+      const { ctx, client } = await createPRToolContext(
+        testDb,
+        mockGitHubCLI,
+        mockGitWorktreeService
+      );
 
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Implement feature",
         status: "IN_PROGRESS",
       });
 
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         branchName: "issue-1/task-1-implement-feature",
         worktreePath: "/tmp/worktree/issue-1-task-1",
       });
@@ -189,7 +187,7 @@ describe("create_pr", () => {
       expect(createPRCalls).toHaveLength(1);
 
       // Verify task still has IN_PROGRESS status in DB
-      const updatedTask = ctx.taskRepository.findById(task.id);
+      const updatedTask = client.tasks.findById(task.id);
       expect(updatedTask?.status).toBe("IN_PROGRESS");
       expect(updatedTask?.prNumber).toBeDefined();
     });
@@ -198,16 +196,20 @@ describe("create_pr", () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+      const { ctx, client } = await createPRToolContext(
+        testDb,
+        mockGitHubCLI,
+        mockGitWorktreeService
+      );
 
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Update feature",
         status: "IN_PROGRESS",
       });
 
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         branchName: "issue-1/task-1-update-feature",
         worktreePath: "/tmp/worktree/issue-1-task-1",
       });
@@ -226,20 +228,24 @@ describe("create_pr", () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+      const { ctx, client } = await createPRToolContext(
+        testDb,
+        mockGitHubCLI,
+        mockGitWorktreeService
+      );
 
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Implement feature",
         status: "IN_PROGRESS",
       });
 
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         branchName: "issue-1/task-1-implement-feature",
         worktreePath: "/tmp/worktree/issue-1-task-1",
       });
-      ctx.taskRepository.updateGitHubSync(task.id, {
+      client.tasks.updateGitHubSync(task.id, {
         githubIssueNumber: 42,
         githubUrl: "https://github.com/test/repo/issues/42",
         githubNodeId: "I_test_42",
@@ -263,21 +269,25 @@ describe("create_pr", () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+      const { ctx, client } = await createPRToolContext(
+        testDb,
+        mockGitHubCLI,
+        mockGitWorktreeService
+      );
 
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         description: "Task description",
         status: "IN_PROGRESS",
       });
 
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         branchName: "issue-1/task-1-test-task",
         worktreePath: "/tmp/worktree/issue-1-task-1",
       });
-      ctx.taskRepository.updateGitHubSync(task.id, {
+      client.tasks.updateGitHubSync(task.id, {
         githubIssueNumber: 99,
         githubUrl: "https://github.com/test/repo/issues/99",
         githubNodeId: "I_test_99",
@@ -302,23 +312,27 @@ describe("create_pr", () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+      const { ctx, client } = await createPRToolContext(
+        testDb,
+        mockGitHubCLI,
+        mockGitWorktreeService
+      );
 
-      const issue = createTestIssue(ctx.issueRepository, { title: "Regular Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues, { title: "Regular Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Regular task",
         description: "Task description",
         status: "IN_PROGRESS",
       });
 
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         branchName: "issue-1/task-1-regular-task",
         worktreePath: "/tmp/worktree/issue-1-task-1",
       });
 
       // Set GitHub sync for BOTH task and parent issue (but parent is NOT imported)
-      ctx.taskRepository.updateGitHubSync(task.id, {
+      client.tasks.updateGitHubSync(task.id, {
         githubIssueNumber: 101,
         githubUrl: "https://github.com/test/repo/issues/101",
         githubNodeId: "I_test_101",
@@ -328,7 +342,7 @@ describe("create_pr", () => {
         projectItemId: null,
       });
 
-      ctx.issueRepository.update(issue.id, {
+      client.issues.update(issue.id, {
         githubSync: {
           githubIssueNumber: 100,
           githubUrl: "https://github.com/test/repo/issues/100",
@@ -356,25 +370,29 @@ describe("create_pr", () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+      const { ctx, client } = await createPRToolContext(
+        testDb,
+        mockGitHubCLI,
+        mockGitWorktreeService
+      );
 
-      const issue = createTestIssue(ctx.issueRepository, {
+      const issue = createTestIssue(client.issues, {
         title: "Imported Issue",
       });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Sub-issue task",
         description: "Task description",
         status: "IN_PROGRESS",
       });
 
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         branchName: "issue-1/task-1-sub-issue-task",
         worktreePath: "/tmp/worktree/issue-1-task-1",
       });
 
       // Set GitHub sync for BOTH task and parent issue, AND mark parent as imported
-      ctx.taskRepository.updateGitHubSync(task.id, {
+      client.tasks.updateGitHubSync(task.id, {
         githubIssueNumber: 201,
         githubUrl: "https://github.com/test/repo/issues/201",
         githubNodeId: "I_test_201",
@@ -384,7 +402,7 @@ describe("create_pr", () => {
         projectItemId: null,
       });
 
-      ctx.issueRepository.update(issue.id, {
+      client.issues.update(issue.id, {
         sourceGitHubIssueNumber: 200, // Mark as imported
         githubSync: {
           githubIssueNumber: 200,
@@ -413,15 +431,15 @@ describe("create_pr", () => {
   describe("validation", () => {
     it("should fail if task is not IN_PROGRESS", async () => {
       // Arrange
-      const ctx = createPRToolContext(testDb);
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const { ctx, client } = await createPRToolContext(testDb);
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "READY", // Not IN_PROGRESS
       });
 
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         branchName: "issue-1/task-1-test",
         worktreePath: "/tmp/worktree",
       });
@@ -438,16 +456,20 @@ describe("create_pr", () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+      const { ctx, client } = await createPRToolContext(
+        testDb,
+        mockGitHubCLI,
+        mockGitWorktreeService
+      );
 
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "READY", // Not IN_PROGRESS
       });
 
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         branchName: "issue-1/task-1-test",
         worktreePath: "/tmp/worktree",
       });
@@ -464,10 +486,10 @@ describe("create_pr", () => {
 
     it("should fail if task has no branch", async () => {
       // Arrange
-      const ctx = createPRToolContext(testDb);
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const { ctx, client } = await createPRToolContext(testDb);
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
@@ -485,25 +507,24 @@ describe("create_pr", () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+      const { ctx, client } = await createPRToolContext(
+        testDb,
+        mockGitHubCLI,
+        mockGitWorktreeService
+      );
 
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
 
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         branchName: "issue-1/task-1-test",
         worktreePath: "/tmp/worktree",
       });
-      ctx.taskRepository.updatePRInfo(
-        task.id,
-        "https://github.com/test/repo/pull/123",
-        123,
-        "OPEN"
-      );
+      client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/123", 123, "OPEN");
 
       // Act
       const result = await handleCreatePR(ctx, { taskId: task.id });
@@ -527,21 +548,25 @@ describe("submit_for_review", () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+      const { ctx, client } = await createPRToolContext(
+        testDb,
+        mockGitHubCLI,
+        mockGitWorktreeService
+      );
 
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
 
       // Set up task with branch and existing PR
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         branchName: "issue-1/task-1-test",
         worktreePath: "/tmp/worktree",
       });
-      ctx.taskRepository.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+      client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
 
       // Act
       const result = await handleSubmitForReview(ctx, { taskId: task.id });
@@ -553,7 +578,7 @@ describe("submit_for_review", () => {
       expect(content.task.status).toBe("PR_REVIEW");
 
       // Verify task status changed in DB
-      const updatedTask = ctx.taskRepository.findById(task.id);
+      const updatedTask = client.tasks.findById(task.id);
       expect(updatedTask?.status).toBe("PR_REVIEW");
     });
 
@@ -561,20 +586,24 @@ describe("submit_for_review", () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+      const { ctx, client } = await createPRToolContext(
+        testDb,
+        mockGitHubCLI,
+        mockGitWorktreeService
+      );
 
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
 
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         branchName: "issue-1/task-1-test",
         worktreePath: "/tmp/worktree",
       });
-      ctx.taskRepository.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+      client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
 
       // Act
       await handleSubmitForReview(ctx, { taskId: task.id });
@@ -588,10 +617,10 @@ describe("submit_for_review", () => {
   describe("validation", () => {
     it("should fail if task is not IN_PROGRESS", async () => {
       // Arrange
-      const ctx = createPRToolContext(testDb);
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const { ctx, client } = await createPRToolContext(testDb);
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "READY", // Not IN_PROGRESS
       });
@@ -606,10 +635,10 @@ describe("submit_for_review", () => {
 
     it("should fail if task has no PR", async () => {
       // Arrange
-      const ctx = createPRToolContext(testDb);
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const { ctx, client } = await createPRToolContext(testDb);
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
@@ -627,11 +656,11 @@ describe("submit_for_review", () => {
     it("should succeed with force=true when task has no PR", async () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI);
+      const { ctx, client } = await createPRToolContext(testDb, mockGitHubCLI);
 
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
@@ -651,16 +680,16 @@ describe("submit_for_review", () => {
     it("should succeed with force=true when task is not IN_PROGRESS", async () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI);
+      const { ctx, client } = await createPRToolContext(testDb, mockGitHubCLI);
 
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "PR_REVIEW", // Already in PR_REVIEW
       });
 
-      ctx.taskRepository.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+      client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
 
       // Act
       const result = await handleSubmitForReview(ctx, { taskId: task.id, force: true });
@@ -678,11 +707,9 @@ describe("submit_for_review", () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
-      const db = testDb.db as DbType;
 
       // Create a project with GitHub sync enabled (including projectId)
-      const projectRepository = new SqliteProjectRepository(db);
-      const project = await projectRepository.create({
+      const project = await testDb.source.projects.create({
         name: "Test Project",
         gitRootHash: "test-hash-123",
         githubSync: {
@@ -699,53 +726,48 @@ describe("submit_for_review", () => {
         },
       });
 
-      // Create repositories and services with the actual project ID
-      const repos = createRepositories(testDb.db, project.id);
+      // Create client scoped to this project
+      const client = createClientForProject(testDb, project.id);
+
       // Create a mock provider that tracks calls using vitest spies
       const moveToColumnMock = vi.fn().mockResolvedValue(undefined);
       const mockProvider: ProjectManagementProvider = {
-        ...createMockProvider(),
+        ...createLocalMockProvider(),
         moveToColumn: moveToColumnMock,
       };
-      const taskSyncService = new TaskSyncService(
-        repos.taskRepository,
-        repos.issueRepository,
-        repos.planRepository,
-        mockProvider,
-        projectRepository,
-        project.id
-      );
+      const taskSyncService = new TaskSyncService(testDb.source, mockProvider, project.id);
 
-      const dispatchQueueRepository = new SqliteDispatchQueueRepository(db);
+      // Create services with DbClient
+      const planService = new PlanService(client);
+      const taskService = new TaskService(client, mockProvider, mockGitWorktreeService);
+      const issueService = new IssueService(client, taskService, mockProvider);
 
       const ctx: PRToolContext = {
         project,
         githubCLI: mockGitHubCLI,
-        issueRepository: repos.issueRepository,
-        planRepository: repos.planRepository,
-        taskRepository: repos.taskRepository,
-        dispatchQueueRepository,
+        issueService,
+        planService,
+        taskService,
         gitWorktreeService: mockGitWorktreeService,
         taskSyncService,
-        dbService: createMockDbService(db) as unknown as SqliteDataSource,
-        taskExecutionLogsSchema: taskExecutionLogs,
+        db: client,
       };
 
       // Create issue, plan, and task
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
 
       // Set up task with branch, worktree, PR, and GitHub sync (including projectItemId)
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         branchName: "issue-1/task-1-test-task",
         worktreePath: "/tmp/worktree/issue-1-task-1",
       });
-      ctx.taskRepository.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
-      ctx.taskRepository.updateGitHubSync(task.id, {
+      client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+      client.tasks.updateGitHubSync(task.id, {
         githubIssueNumber: 42,
         githubUrl: "https://github.com/test/repo/issues/42",
         githubNodeId: "I_test_42",
@@ -782,16 +804,20 @@ describe("two-step PR workflow", () => {
     // Arrange
     const mockGitHubCLI = new MockGitHubCLI();
     const mockGitWorktreeService = new MockGitWorktreeService();
-    const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+    const { ctx, client } = await createPRToolContext(
+      testDb,
+      mockGitHubCLI,
+      mockGitWorktreeService
+    );
 
-    const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-    const plan = createTestPlan(ctx.planRepository, issue.id);
-    const task = createTestTask(ctx.taskRepository, plan.id, {
+    const issue = createTestIssue(client.issues, { title: "Test Issue" });
+    const plan = createTestPlan(client.plans, issue.id);
+    const task = createTestTask(client.tasks, plan.id, {
       title: "Implement feature",
       status: "IN_PROGRESS",
     });
 
-    ctx.taskRepository.update(task.id, {
+    client.tasks.update(task.id, {
       branchName: "issue-1/task-1-implement-feature",
       worktreePath: "/tmp/worktree/issue-1-task-1",
     });
@@ -801,7 +827,7 @@ describe("two-step PR workflow", () => {
     expect(createResult.isError).toBeFalsy();
 
     // Verify status is still IN_PROGRESS after create_pr
-    const taskAfterCreate = ctx.taskRepository.findById(task.id);
+    const taskAfterCreate = client.tasks.findById(task.id);
     expect(taskAfterCreate?.status).toBe("IN_PROGRESS");
     expect(taskAfterCreate?.prNumber).toBeDefined();
 
@@ -810,7 +836,7 @@ describe("two-step PR workflow", () => {
     expect(submitResult.isError).toBeFalsy();
 
     // Verify status is now PR_REVIEW
-    const taskAfterSubmit = ctx.taskRepository.findById(task.id);
+    const taskAfterSubmit = client.tasks.findById(task.id);
     expect(taskAfterSubmit?.status).toBe("PR_REVIEW");
   });
 
@@ -818,16 +844,20 @@ describe("two-step PR workflow", () => {
     // Arrange
     const mockGitHubCLI = new MockGitHubCLI();
     const mockGitWorktreeService = new MockGitWorktreeService();
-    const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+    const { ctx, client } = await createPRToolContext(
+      testDb,
+      mockGitHubCLI,
+      mockGitWorktreeService
+    );
 
-    const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-    const plan = createTestPlan(ctx.planRepository, issue.id);
-    const task = createTestTask(ctx.taskRepository, plan.id, {
+    const issue = createTestIssue(client.issues, { title: "Test Issue" });
+    const plan = createTestPlan(client.plans, issue.id);
+    const task = createTestTask(client.tasks, plan.id, {
       title: "Implement feature",
       status: "IN_PROGRESS",
     });
 
-    ctx.taskRepository.update(task.id, {
+    client.tasks.update(task.id, {
       branchName: "issue-1/task-1-implement-feature",
       worktreePath: "/tmp/worktree/issue-1-task-1",
     });
@@ -857,16 +887,16 @@ describe("complete_task", () => {
   describe("autoCloseIssue behavior", () => {
     it("should return allTasksComplete=true when completing the final task", async () => {
       // Arrange
-      const ctx = createPRToolContext(testDb);
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const { ctx, client } = await createPRToolContext(testDb);
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
 
       // Create two tasks - first is COMPLETED, second is IN_PROGRESS (will be completed)
-      createTestTask(ctx.taskRepository, plan.id, {
+      createTestTask(client.tasks, plan.id, {
         title: "First task",
         status: "COMPLETED",
       });
-      const task2 = createTestTask(ctx.taskRepository, plan.id, {
+      const task2 = createTestTask(client.tasks, plan.id, {
         title: "Second task",
         status: "IN_PROGRESS",
       });
@@ -890,16 +920,16 @@ describe("complete_task", () => {
 
     it("should return allTasksComplete=false when tasks remain", async () => {
       // Arrange
-      const ctx = createPRToolContext(testDb);
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const { ctx, client } = await createPRToolContext(testDb);
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
 
       // Create two tasks - first is IN_PROGRESS (will be completed), second is READY
-      const taskToComplete = createTestTask(ctx.taskRepository, plan.id, {
+      const taskToComplete = createTestTask(client.tasks, plan.id, {
         title: "First task",
         status: "IN_PROGRESS",
       });
-      createTestTask(ctx.taskRepository, plan.id, {
+      createTestTask(client.tasks, plan.id, {
         title: "Second task",
         status: "READY",
       });
@@ -921,12 +951,12 @@ describe("complete_task", () => {
 
     it("should auto-close issue when autoCloseIssue=true and all tasks complete", async () => {
       // Arrange
-      const ctx = createPRToolContext(testDb);
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue", status: "OPEN" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const { ctx, client } = await createPRToolContext(testDb);
+      const issue = createTestIssue(client.issues, { title: "Test Issue", status: "OPEN" });
+      const plan = createTestPlan(client.plans, issue.id);
 
       // Create single task
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Only task",
         status: "IN_PROGRESS",
       });
@@ -948,22 +978,22 @@ describe("complete_task", () => {
       expect(content.message).toContain("has been closed");
 
       // Verify issue was actually closed in DB
-      const updatedIssue = ctx.issueRepository.findById(issue.id);
+      const updatedIssue = client.issues.findById(issue.id);
       expect(updatedIssue?.status).toBe("CLOSED");
     });
 
     it("should NOT auto-close issue when autoCloseIssue=true but tasks remain", async () => {
       // Arrange
-      const ctx = createPRToolContext(testDb);
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue", status: "OPEN" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const { ctx, client } = await createPRToolContext(testDb);
+      const issue = createTestIssue(client.issues, { title: "Test Issue", status: "OPEN" });
+      const plan = createTestPlan(client.plans, issue.id);
 
       // Create two tasks
-      const taskToComplete = createTestTask(ctx.taskRepository, plan.id, {
+      const taskToComplete = createTestTask(client.tasks, plan.id, {
         title: "First task",
         status: "IN_PROGRESS",
       });
-      createTestTask(ctx.taskRepository, plan.id, {
+      createTestTask(client.tasks, plan.id, {
         title: "Second task",
         status: "READY",
       });
@@ -984,22 +1014,22 @@ describe("complete_task", () => {
       expect(content.issueClosed).toBe(false);
 
       // Verify issue is still open
-      const updatedIssue = ctx.issueRepository.findById(issue.id);
+      const updatedIssue = client.issues.findById(issue.id);
       expect(updatedIssue?.status).toBe("OPEN");
     });
 
     it("should count ABANDONED tasks as terminal for allTasksComplete", async () => {
       // Arrange
-      const ctx = createPRToolContext(testDb);
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const { ctx, client } = await createPRToolContext(testDb);
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
 
       // Create two tasks - first is ABANDONED, second is IN_PROGRESS (will be completed)
-      createTestTask(ctx.taskRepository, plan.id, {
+      createTestTask(client.tasks, plan.id, {
         title: "Abandoned task",
         status: "ABANDONED",
       });
-      const taskToComplete = createTestTask(ctx.taskRepository, plan.id, {
+      const taskToComplete = createTestTask(client.tasks, plan.id, {
         title: "Final task",
         status: "IN_PROGRESS",
       });
@@ -1019,18 +1049,18 @@ describe("complete_task", () => {
 
     it("should exclude deleted tasks from allTasksComplete calculation", async () => {
       // Arrange
-      const ctx = createPRToolContext(testDb);
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const { ctx, client } = await createPRToolContext(testDb);
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
 
       // Create two tasks - first is READY but deleted, second is IN_PROGRESS
-      const deletedTask = createTestTask(ctx.taskRepository, plan.id, {
+      const deletedTask = createTestTask(client.tasks, plan.id, {
         title: "Deleted task",
         status: "READY",
       });
-      ctx.taskRepository.softDelete(deletedTask.id, "test-user");
+      client.tasks.softDelete(deletedTask.id, "test-user");
 
-      const taskToComplete = createTestTask(ctx.taskRepository, plan.id, {
+      const taskToComplete = createTestTask(client.tasks, plan.id, {
         title: "Only active task",
         status: "IN_PROGRESS",
       });
@@ -1052,10 +1082,10 @@ describe("complete_task", () => {
   describe("finalLogEntry requirement", () => {
     it("should fail if finalLogEntry is not provided", async () => {
       // Arrange
-      const ctx = createPRToolContext(testDb);
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const { ctx, client } = await createPRToolContext(testDb);
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
@@ -1074,10 +1104,10 @@ describe("complete_task", () => {
 
     it("should fail if finalLogEntry is only whitespace", async () => {
       // Arrange
-      const ctx = createPRToolContext(testDb);
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const { ctx, client } = await createPRToolContext(testDb);
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
@@ -1096,10 +1126,10 @@ describe("complete_task", () => {
 
     it("should write finalLogEntry to execution log on successful completion (main mode)", async () => {
       // Arrange
-      const ctx = createPRToolContext(testDb);
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const { ctx, client } = await createPRToolContext(testDb);
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
@@ -1119,7 +1149,7 @@ describe("complete_task", () => {
       expect(content.task.status).toBe("COMPLETED");
 
       // Verify log entry was written
-      const db = testDb.db as DbType;
+      const db = testDb.db;
       const logs = db
         .select()
         .from(taskExecutionLogs)
@@ -1133,16 +1163,16 @@ describe("complete_task", () => {
 
     it("should preserve existing log entries when completing task", async () => {
       // Arrange
-      const ctx = createPRToolContext(testDb);
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const { ctx, client } = await createPRToolContext(testDb);
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
 
       // Add an existing log entry
-      const db = testDb.db as DbType;
+      const db = testDb.db;
       db.insert(taskExecutionLogs)
         .values({
           id: crypto.randomUUID(),
@@ -1182,21 +1212,25 @@ describe("complete_task", () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+      const { ctx, client } = await createPRToolContext(
+        testDb,
+        mockGitHubCLI,
+        mockGitWorktreeService
+      );
 
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "PR_REVIEW",
       });
 
       // Set up task with branch, worktree, and PR
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         branchName: "issue-1/task-1-test-task",
         worktreePath: "/tmp/worktree/issue-1-task-1",
       });
-      ctx.taskRepository.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+      client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
 
       // Configure mock to return an unmerged PR
       mockGitHubCLI.setPRStatus(42, { merged: false, state: "open" });
@@ -1215,7 +1249,7 @@ describe("complete_task", () => {
       expect(result.content[0].text).toContain("force=true cannot bypass");
 
       // Verify task was NOT completed
-      const updatedTask = ctx.taskRepository.findById(task.id);
+      const updatedTask = client.tasks.findById(task.id);
       expect(updatedTask?.status).toBe("PR_REVIEW");
     });
 
@@ -1223,21 +1257,25 @@ describe("complete_task", () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+      const { ctx, client } = await createPRToolContext(
+        testDb,
+        mockGitHubCLI,
+        mockGitWorktreeService
+      );
 
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "PR_REVIEW",
       });
 
       // Set up task with branch, worktree, and PR
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         branchName: "issue-1/task-1-test-task",
         worktreePath: "/tmp/worktree/issue-1-task-1",
       });
-      ctx.taskRepository.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+      client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
 
       // Configure mock to return null (PR not found)
       mockGitHubCLI.setPRStatus(42, null);
@@ -1261,21 +1299,25 @@ describe("complete_task", () => {
       // Arrange
       const mockGitHubCLI = new MockGitHubCLI();
       const mockGitWorktreeService = new MockGitWorktreeService();
-      const ctx = createPRToolContext(testDb, mockGitHubCLI, mockGitWorktreeService);
+      const { ctx, client } = await createPRToolContext(
+        testDb,
+        mockGitHubCLI,
+        mockGitWorktreeService
+      );
 
-      const issue = createTestIssue(ctx.issueRepository, { title: "Test Issue" });
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS", // Wrong status for completion
       });
 
       // Set up task with branch, worktree, and PR
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         branchName: "issue-1/task-1-test-task",
         worktreePath: "/tmp/worktree/issue-1-task-1",
       });
-      ctx.taskRepository.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+      client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
 
       // Configure mock to return a merged PR
       mockGitHubCLI.setPRStatus(42, { merged: true, state: "closed" });

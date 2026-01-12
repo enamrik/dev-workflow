@@ -14,8 +14,9 @@
  *   const provider = registry.createProvider(project, { githubCLI });
  */
 
-// Provider implementation
+// Provider implementations
 export { GitHubProjectManagementProvider } from "./github-project-management-provider.js";
+export { NoOpProjectManagementProvider } from "./noop-project-management-provider.js";
 
 // Factory interfaces and implementations
 export {

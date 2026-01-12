@@ -2,7 +2,7 @@
  * Snapshot/versioning MCP tools
  */
 
-import type { SqliteIssueRepository, VersioningService } from "@dev-workflow/core";
+import type { IssueService, VersioningService } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
 /**
@@ -74,7 +74,7 @@ export const snapshotToolDefinitions: ToolDefinition[] = [
  * Service context for snapshot handlers
  */
 export interface SnapshotToolContext {
-  issueRepository: SqliteIssueRepository;
+  issueService: IssueService;
   versioningService: VersioningService;
 }
 
@@ -90,7 +90,7 @@ export function handleGetSnapshotHistory(
   // Resolve issue number from ID if needed
   let resolvedIssueNumber = issueNumber;
   if (!resolvedIssueNumber && issueId) {
-    const issue = ctx.issueRepository.findById(issueId);
+    const issue = ctx.issueService.findById(issueId);
     if (!issue) {
       return errorResponse(`Issue not found: ${issueId}`);
     }

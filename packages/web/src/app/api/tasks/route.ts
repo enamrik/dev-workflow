@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DataSourceRegistry, WebDIContext } from "@/server";
+import { ProjectsResolver, DbSourceProvider, WebDIContext } from "@/server";
 import type { Issue, Plan, Task } from "@dev-workflow/core";
 import {
-  SqliteDispatchQueueRepository,
-  DataSourceFactory,
   getGlobalDatabasePath,
-  type SqliteDataSource,
+  BoardQueryService,
+  type WorkerTaskAssignment,
 } from "@dev-workflow/core";
 
 export const dynamic = "force-dynamic";
@@ -35,39 +34,48 @@ interface CompletedTaskWithContext extends Task {
   issueStatus: string;
 }
 
+/**
+ * Get worker assignments from global database using BoardQueryService
+ */
+async function getGlobalWorkerAssignments(
+  sourceProvider: DbSourceProvider
+): Promise<Map<string, WorkerTaskAssignment>> {
+  try {
+    const dbPath = getGlobalDatabasePath();
+    const source = sourceProvider.getOrCreate({ connectionString: `sqlite://${dbPath}` });
+    await source.provision();
+    const dbClient = source.createClient("global");
+
+    // Create BoardQueryService with the DbClient
+    const globalBoardService = new BoardQueryService(dbClient);
+    return globalBoardService.getWorkerAssignments();
+  } catch {
+    // Continue without worker info if global db is inaccessible
+    return new Map();
+  }
+}
+
 export async function GET(request: NextRequest) {
+  const sourceProvider = new DbSourceProvider();
   try {
     const searchParams = request.nextUrl.searchParams;
     const projectFilter = searchParams.get("project") ?? undefined;
     const sourceFilter = searchParams.get("source") ?? undefined;
 
-    const registry = new DataSourceRegistry();
-    const filteredProjects = await registry.getFilteredProjects({
-      project: projectFilter,
-      source: sourceFilter,
-    });
+    const resolver = new ProjectsResolver();
 
-    // Fetch dispatch queue data from global database for worker info
-    // Build a map of taskId -> { workerId, workerName } for tasks with WORKING workers
-    const workerByTaskId = new Map<string, { workerId: string; workerName: string | null }>();
-    try {
-      const dbPath = getGlobalDatabasePath();
-      const dataSource = (await DataSourceFactory.createSqlite(dbPath)) as SqliteDataSource;
-      const db = dataSource.getDb();
-      const dispatchQueueRepository = new SqliteDispatchQueueRepository(db);
-      const queueEntries = dispatchQueueRepository.findAllWithHealth();
-
-      for (const entry of queueEntries) {
-        if (entry.workerId && entry.status === "WORKING") {
-          workerByTaskId.set(entry.taskId, {
-            workerId: entry.workerId,
-            workerName: entry.workerName,
-          });
-        }
-      }
-    } catch {
-      // Continue without worker info if global db is inaccessible
+    // Get all projects and filter manually
+    let projects = await resolver.getAllProjects();
+    if (projectFilter) {
+      projects = projects.filter((p) => p.projectId === projectFilter || p.slug === projectFilter);
     }
+    if (sourceFilter) {
+      // Source filter matches on sourceInfo or slug
+      projects = projects.filter((p) => p.slug === sourceFilter);
+    }
+
+    // Get worker assignments from global database
+    const workerAssignments = await getGlobalWorkerAssignments(sourceProvider);
 
     const issuesWithTasks: IssueWithTasks[] = [];
     const completedTasks: CompletedTaskWithContext[] = [];
@@ -76,52 +84,37 @@ export async function GET(request: NextRequest) {
     cutoffDate.setDate(cutoffDate.getDate() - 7);
     const cutoffDateStr = cutoffDate.toISOString();
 
-    for (const project of filteredProjects) {
+    for (const project of projects) {
       try {
-        const context = await WebDIContext.createFromProjectInfo(project, registry);
-        const issues = context.issueRepository.findMany({});
+        const context = await WebDIContext.createFromProjectInfo(project, sourceProvider);
 
-        for (const issue of issues) {
-          const plan = context.planRepository.findByIssueId(issue.id);
-          const tasks = plan ? context.taskRepository.findByPlanId(plan.id) : [];
+        // Use BoardQueryService to get active issues (excludes CLOSED at DB level)
+        // Closed issue tasks are included via completedTasks feed for Done column
+        const boardData = context.boardQueryService.getActiveIssuesWithTasks();
 
-          // For kanban board: skip closed issues
-          if (issue.status !== "CLOSED") {
-            let milestoneNumber: number | undefined;
-            let milestoneTitle: string | undefined;
-            if (issue.milestoneId) {
-              const milestone = context.milestoneRepository.findById(issue.milestoneId);
-              if (milestone) {
-                milestoneNumber = milestone.number;
-                milestoneTitle = milestone.title;
-              }
+        for (const { issue, plan, tasks, milestone } of boardData) {
+          // Enrich tasks with worker info
+          const tasksWithWorker: TaskWithWorker[] = tasks.map((task) => {
+            const workerInfo = workerAssignments.get(task.id);
+            if (workerInfo) {
+              return {
+                ...task,
+                workerId: workerInfo.workerId,
+                workerName: workerInfo.workerName ?? undefined,
+              };
             }
+            return task;
+          });
 
-            // Enrich tasks with worker info when worker is in WORKING state
-            // This includes both IN_PROGRESS and PR_REVIEW tasks since workers
-            // continue working through the PR lifecycle
-            const tasksWithWorker: TaskWithWorker[] = tasks.map((task) => {
-              const workerInfo = workerByTaskId.get(task.id);
-              if (workerInfo) {
-                return {
-                  ...task,
-                  workerId: workerInfo.workerId,
-                  workerName: workerInfo.workerName ?? undefined,
-                };
-              }
-              return task;
-            });
-
-            issuesWithTasks.push({
-              issue,
-              plan,
-              tasks: tasksWithWorker,
-              milestoneNumber,
-              milestoneTitle,
-              projectName: project.name,
-              projectSlug: project.slug,
-            });
-          }
+          issuesWithTasks.push({
+            issue,
+            plan,
+            tasks: tasksWithWorker,
+            milestoneNumber: milestone?.number,
+            milestoneTitle: milestone?.title,
+            projectName: project.name,
+            projectSlug: project.slug,
+          });
 
           // Collect completed tasks from last 7 days
           for (const task of tasks) {
@@ -161,5 +154,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Error fetching tasks:", error);
     return NextResponse.json({ error: "Failed to fetch tasks" }, { status: 500 });
+  } finally {
+    sourceProvider.closeAll();
   }
 }

@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
-  createRepositories,
+  getRepositories,
   createTestIssue,
   createTestPlan,
   createTestTask,
@@ -17,36 +17,31 @@ import { VersioningService } from "../versioning-service.js";
 
 describe("MergeService", () => {
   let testDb: ReturnType<typeof createTestDatabase>;
-  let repos: ReturnType<typeof createRepositories>;
+  let repos: ReturnType<typeof getRepositories>;
   let mergeService: MergeService;
   let versioningService: VersioningService;
   let testProjectId: string;
 
   beforeEach(async () => {
     testDb = createTestDatabase();
-    repos = createRepositories(testDb.db);
 
     // Create a test project (GitHub sync disabled by default for most tests)
-    const project = await repos.projectRepository.create({
+    const project = await testDb.source.projects.create({
       name: "Test Project",
       gitRootHash: "abc123def",
       githubSync: null, // GitHub sync disabled
     });
     testProjectId = project.id;
 
-    versioningService = new VersioningService(
-      repos.issueRepository,
-      repos.snapshotRepository,
-      repos.planRepository,
-      repos.taskRepository
-    );
+    // Create a client scoped to this project for the repos
+    const projectClient = testDb.source.createClient(testProjectId);
+    repos = getRepositories(projectClient);
+
+    versioningService = new VersioningService(projectClient);
 
     mergeService = new MergeService(
-      repos.issueRepository,
-      repos.planRepository,
-      repos.taskRepository,
+      testDb.source,
       versioningService,
-      repos.projectRepository,
       testProjectId
       // No githubCLI - GitHub sync disabled
     );
@@ -752,7 +747,7 @@ describe("MergeService", () => {
 
     beforeEach(async () => {
       // Update the project to enable GitHub sync
-      await repos.projectRepository.update(testProjectId, {
+      await testDb.source.projects.update(testProjectId, {
         githubSync: {
           enabled: true,
           projectId: "PVT_test",
@@ -770,11 +765,8 @@ describe("MergeService", () => {
 
       // Create MergeService with GitHub CLI
       mergeServiceWithGitHub = new MergeService(
-        repos.issueRepository,
-        repos.planRepository,
-        repos.taskRepository,
+        testDb.source,
         versioningService,
-        repos.projectRepository,
         testProjectId,
         mockGitHubCLI as unknown as import("../../infrastructure/github/github-cli.js").GitHubCLI
       );
@@ -972,7 +964,7 @@ describe("MergeService", () => {
 
     it("should not call GitHub when sync is disabled", async () => {
       // Disable GitHub sync
-      await repos.projectRepository.update(testProjectId, {
+      await testDb.source.projects.update(testProjectId, {
         githubSync: {
           enabled: false,
           projectId: undefined,

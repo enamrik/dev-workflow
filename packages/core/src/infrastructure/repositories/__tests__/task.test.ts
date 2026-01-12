@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDatabase } from "../../../__tests__/setup.js";
 import {
-  createRepositories,
+  getRepositories,
   createTestIssue,
   createTestPlan,
   createTestTask,
@@ -10,12 +10,12 @@ import { InvalidStatusTransitionError } from "../../../domain/errors.js";
 
 describe("SqliteTaskRepository", () => {
   let testDb: ReturnType<typeof createTestDatabase>;
-  let repos: ReturnType<typeof createRepositories>;
+  let repos: ReturnType<typeof getRepositories>;
   let planId: string;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    repos = createRepositories(testDb.db);
+    repos = getRepositories(testDb.client);
 
     // Create issue and plan for tasks
     const issue = createTestIssue(repos.issueRepository);

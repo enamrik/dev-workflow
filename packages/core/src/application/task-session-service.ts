@@ -1,6 +1,5 @@
-import type { Task, TaskRepository } from "../domain/task.js";
-import type { PlanRepository } from "../domain/plan.js";
-import type { IssueRepository } from "../domain/issue.js";
+import type { Task } from "../domain/task.js";
+import type { DbClient } from "../domain/db-client.js";
 import { EventBus } from "../infrastructure/events/event-bus.js";
 import { DependencyService } from "./dependency-service.js";
 import { DependencyNotSatisfiedError } from "../domain/errors.js";
@@ -74,32 +73,30 @@ export class TaskSessionService {
   private readonly dependencyService: DependencyService;
 
   constructor(
-    private readonly taskRepository: TaskRepository,
-    private readonly planRepository: PlanRepository,
-    private readonly issueRepository: IssueRepository,
+    private readonly db: DbClient,
     private readonly gitWorktreeService?: GitWorktreeService,
     private readonly conflictDetectionService?: ConflictDetectionService,
     private readonly trackDirectory?: string
   ) {
     this.eventBus = EventBus.getInstance();
-    this.dependencyService = new DependencyService(taskRepository);
+    this.dependencyService = new DependencyService(db);
   }
 
   /**
    * Get the issue number for a task by looking up its plan and issue
    */
   private getIssueNumberForTask(taskId: string): number {
-    const task = this.taskRepository.findById(taskId);
+    const task = this.db.tasks.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
 
-    const plan = this.planRepository.findById(task.planId);
+    const plan = this.db.plans.findById(task.planId);
     if (!plan) {
       throw new Error(`Plan not found for task: ${taskId}`);
     }
 
-    const issue = this.issueRepository.findById(plan.issueId);
+    const issue = this.db.issues.findById(plan.issueId);
     if (!issue) {
       throw new Error(`Issue not found for task: ${taskId}`);
     }
@@ -123,7 +120,7 @@ export class TaskSessionService {
     const { taskId, sessionId, mode = "isolated" } = request;
 
     // Get task and validate
-    const task = this.taskRepository.findById(taskId);
+    const task = this.db.tasks.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
@@ -158,9 +155,9 @@ export class TaskSessionService {
           task.title,
           blockingTasks.map((t) => {
             // Resolve issue number for each blocking task
-            const blockingPlan = this.planRepository.findById(t.planId);
+            const blockingPlan = this.db.plans.findById(t.planId);
             const blockingIssue = blockingPlan
-              ? this.issueRepository.findById(blockingPlan.issueId)
+              ? this.db.issues.findById(blockingPlan.issueId)
               : null;
             return {
               id: t.id,
@@ -210,7 +207,7 @@ export class TaskSessionService {
       worktreePath = await this.gitWorktreeService.createWorktree(names.worktreePath, branchName);
 
       // Update task with worktree info
-      this.taskRepository.updateWorktreeInfo(taskId, worktreePath, branchName);
+      this.db.tasks.updateWorktreeInfo(taskId, worktreePath, branchName);
     } else if (mode === "branch" && !branchName) {
       // Branch mode: create branch only, checkout in main repo (only if not already created)
       if (!this.gitWorktreeService) {
@@ -232,7 +229,7 @@ export class TaskSessionService {
       await this.gitWorktreeService.run(["checkout", "-b", branchName]);
 
       // Update task with branch info only (no worktree path)
-      this.taskRepository.update(taskId, { branchName });
+      this.db.tasks.update(taskId, { branchName });
     }
     // mode === "main": no branch, no worktree - work directly on main
 
@@ -240,10 +237,10 @@ export class TaskSessionService {
     if (!isResume) {
       // Transition all BACKLOG tasks in this plan to READY
       // This happens when any task in the plan is first started
-      const allPlanTasks = this.taskRepository.findByPlanId(task.planId);
+      const allPlanTasks = this.db.tasks.findByPlanId(task.planId);
       for (const planTask of allPlanTasks) {
         if (planTask.status === "BACKLOG" && planTask.id !== taskId) {
-          this.taskRepository.updateStatus(
+          this.db.tasks.updateStatus(
             planTask.id,
             "READY",
             sessionId,
@@ -253,11 +250,11 @@ export class TaskSessionService {
       }
 
       // Update task status to IN_PROGRESS
-      this.taskRepository.updateStatus(taskId, "IN_PROGRESS", sessionId, "Started session");
+      this.db.tasks.updateStatus(taskId, "IN_PROGRESS", sessionId, "Started session");
     }
 
     // Always update session tracking (idempotent)
-    this.taskRepository.updateSessionInfo(
+    this.db.tasks.updateSessionInfo(
       taskId,
       sessionId,
       isResume ? undefined : now, // Only set sessionStartedAt on fresh start
@@ -265,7 +262,7 @@ export class TaskSessionService {
     );
 
     // Get final task state
-    const finalTask = this.taskRepository.findById(taskId);
+    const finalTask = this.db.tasks.findById(taskId);
     if (!finalTask) {
       throw new Error(`Failed to retrieve updated task: ${taskId}`);
     }
@@ -309,7 +306,7 @@ export class TaskSessionService {
     const { taskId, sessionId, notes } = request;
 
     // Get task and validate
-    const task = this.taskRepository.findById(taskId);
+    const task = this.db.tasks.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
@@ -336,17 +333,17 @@ export class TaskSessionService {
         console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
       }
       // Clear worktree info from task
-      this.taskRepository.clearWorktreeInfo(taskId);
+      this.db.tasks.clearWorktreeInfo(taskId);
     }
 
     // Update task status to COMPLETED
-    this.taskRepository.updateStatus(taskId, "COMPLETED", sessionId, notes ?? "Completed session");
+    this.db.tasks.updateStatus(taskId, "COMPLETED", sessionId, notes ?? "Completed session");
 
     // Clear session association
-    this.taskRepository.clearSession(taskId);
+    this.db.tasks.clearSession(taskId);
 
     // Get final task state
-    const finalTask = this.taskRepository.findById(taskId);
+    const finalTask = this.db.tasks.findById(taskId);
     if (!finalTask) {
       throw new Error(`Failed to retrieve completed task: ${taskId}`);
     }
@@ -380,7 +377,7 @@ export class TaskSessionService {
     force: boolean = false
   ): Promise<Task> {
     // Get task and validate
-    const task = this.taskRepository.findById(taskId);
+    const task = this.db.tasks.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
@@ -403,17 +400,17 @@ export class TaskSessionService {
         console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
       }
       // Clear worktree info from task
-      this.taskRepository.clearWorktreeInfo(taskId);
+      this.db.tasks.clearWorktreeInfo(taskId);
     }
 
     // Update task status to ABANDONED
-    this.taskRepository.updateStatus(taskId, "ABANDONED", sessionId, reason ?? "Abandoned session");
+    this.db.tasks.updateStatus(taskId, "ABANDONED", sessionId, reason ?? "Abandoned session");
 
     // Clear session association
-    this.taskRepository.clearSession(taskId);
+    this.db.tasks.clearSession(taskId);
 
     // Get final task state
-    const finalTask = this.taskRepository.findById(taskId);
+    const finalTask = this.db.tasks.findById(taskId);
     if (!finalTask) {
       throw new Error(`Failed to retrieve abandoned task: ${taskId}`);
     }
@@ -435,7 +432,7 @@ export class TaskSessionService {
    * Used to prevent session timeouts for active sessions.
    */
   async updateSessionActivity(taskId: string, sessionId: string): Promise<void> {
-    const task = this.taskRepository.findById(taskId);
+    const task = this.db.tasks.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
@@ -447,7 +444,7 @@ export class TaskSessionService {
     }
 
     const now = new Date().toISOString();
-    this.taskRepository.updateSessionInfo(
+    this.db.tasks.updateSessionInfo(
       taskId,
       sessionId,
       undefined, // Don't update sessionStartedAt
@@ -464,7 +461,7 @@ export class TaskSessionService {
    * - Parent issue is not CLOSED
    */
   async isTaskAvailable(taskId: string): Promise<boolean> {
-    const task = this.taskRepository.findById(taskId);
+    const task = this.db.tasks.findById(taskId);
     if (!task) {
       return false;
     }
@@ -476,7 +473,7 @@ export class TaskSessionService {
    * Get active session for task (if any)
    */
   async getActiveSession(taskId: string): Promise<TaskSession | null> {
-    const task = this.taskRepository.findById(taskId);
+    const task = this.db.tasks.findById(taskId);
     if (!task || !task.sessionId || !task.sessionStartedAt) {
       return null;
     }
@@ -501,9 +498,9 @@ export class TaskSessionService {
    */
   private isTaskAvailableSync(task: Task): boolean {
     // Check if parent issue is closed
-    const plan = this.planRepository.findById(task.planId);
+    const plan = this.db.plans.findById(task.planId);
     if (plan) {
-      const issue = this.issueRepository.findById(plan.issueId);
+      const issue = this.db.issues.findById(plan.issueId);
       if (issue && issue.status === "CLOSED") {
         return false;
       }

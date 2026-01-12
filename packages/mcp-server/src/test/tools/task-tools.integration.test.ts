@@ -6,16 +6,24 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
-import { createRepositories, createTestIssue, createTestPlan, createTestTask } from "../helpers.js";
+import {
+  createClientForProject,
+  createTestIssue,
+  createTestPlan,
+  createTestTask,
+} from "../helpers.js";
 import {
   TaskSessionService,
   TaskManagementService,
   ConflictDetectionService,
   MockGitWorktreeService,
-  SqliteProjectRepository,
   TaskSyncService,
-  taskExecutionLogs,
   type ProjectManagementProvider,
+  IssueService,
+  TaskService,
+  PlanService,
+  DispatchService,
+  type DbClient,
 } from "@dev-workflow/core";
 import {
   handleGetTask,
@@ -26,10 +34,6 @@ import {
   handleLoadTaskSession,
   type TaskToolContext,
 } from "../../tools/task-tools.js";
-import { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import * as schema from "@dev-workflow/core/schema";
-
-type DbType = BetterSQLite3Database<typeof schema>;
 
 /**
  * Tracking for mock provider calls
@@ -41,7 +45,7 @@ interface MockProviderCalls {
 /**
  * Create a minimal mock provider for testing
  */
-function createMockProvider(calls?: MockProviderCalls): ProjectManagementProvider {
+function createLocalMockProvider(calls?: MockProviderCalls): ProjectManagementProvider {
   return {
     providerId: "mock",
     displayName: "Mock Provider",
@@ -68,6 +72,7 @@ function createMockProvider(calls?: MockProviderCalls): ProjectManagementProvide
       labels: [],
     }),
     closeIssue: async () => {},
+    closeIssueByTask: async () => {},
     reopenIssue: async () => {},
     getIssue: async () => null,
     searchIssues: async () => [],
@@ -92,10 +97,9 @@ function createMockProvider(calls?: MockProviderCalls): ProjectManagementProvide
 }
 
 /**
- * Extended context for testing that includes projectRepository
+ * Extended context for testing that includes projectId
  */
 interface TestTaskToolContext extends TaskToolContext {
-  projectRepository: SqliteProjectRepository;
   projectId: string;
 }
 
@@ -114,79 +118,73 @@ async function createTaskToolContext(
       assignee?: string;
     };
   }
-): Promise<TestTaskToolContext> {
-  const db = testDb.db as DbType;
-  const projectRepository = new SqliteProjectRepository(db);
-
+): Promise<{ ctx: TestTaskToolContext; client: DbClient }> {
   // Create project first with optional GitHub sync config
-  const project = await projectRepository.create({
+  const project = await testDb.source.projects.create({
     name: "Test Project",
     gitRootHash: "test-hash-" + crypto.randomUUID().slice(0, 8),
     githubSync: options?.githubSync ?? null,
   });
 
   const projectId = project.id;
-  const repos = createRepositories(testDb.db, projectId);
+  const client = createClientForProject(testDb, projectId);
 
   // Mock services
   const mockGitWorktreeService = new MockGitWorktreeService();
-  const mockProvider = createMockProvider(options?.mockProviderCalls);
+  const mockProvider = createLocalMockProvider(options?.mockProviderCalls);
 
-  const conflictDetectionService = new ConflictDetectionService(db, repos.taskRepository);
+  const conflictDetectionService = new ConflictDetectionService(client);
 
   const taskSessionService = new TaskSessionService(
-    repos.taskRepository,
-    repos.planRepository,
-    repos.issueRepository,
+    client,
     mockGitWorktreeService,
-    conflictDetectionService,
-    projectId
+    conflictDetectionService
   );
 
-  const taskManagementService = new TaskManagementService(
-    repos.taskRepository,
-    repos.planRepository,
-    repos.issueRepository
-  );
+  const taskManagementService = new TaskManagementService(client);
 
-  const taskSyncService = new TaskSyncService(
-    repos.taskRepository,
-    repos.issueRepository,
-    repos.planRepository,
-    mockProvider,
-    projectRepository,
-    projectId
-  );
+  const taskSyncService = new TaskSyncService(testDb.source, mockProvider, projectId);
+
+  // Dispatch service uses DbSource (global), other services use DbClient (project-scoped)
+  const dispatchService = new DispatchService(testDb.source);
+  const planService = new PlanService(client);
+  const taskService = new TaskService(client, mockProvider, mockGitWorktreeService);
+  const issueService = new IssueService(client, taskService, mockProvider);
 
   return {
-    dbService: { getDb: () => db } as any,
-    issueRepository: repos.issueRepository,
-    planRepository: repos.planRepository,
-    taskRepository: repos.taskRepository,
-    taskSessionService,
-    taskManagementService,
-    taskExecutionLogsSchema: taskExecutionLogs,
-    conflictDetectionService,
-    taskSyncService,
-    projectRepository,
-    projectId,
+    ctx: {
+      db: client,
+      issueService,
+      planService,
+      taskService,
+      dispatchService,
+      taskSessionService,
+      taskManagementService,
+      conflictDetectionService,
+      taskSyncService,
+      projectId,
+    },
+    client,
   };
 }
 
 describe("Task Tools Integration", () => {
   let testDb: TestDatabase;
   let ctx: TaskToolContext;
+  let client: DbClient;
 
   beforeEach(async () => {
     testDb = createTestDatabase();
-    ctx = await createTaskToolContext(testDb);
+    const result = await createTaskToolContext(testDb);
+    ctx = result.ctx;
+    client = result.client;
   });
 
   describe("handleGetTask", () => {
     it("should get task by ID", () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Test Task",
         status: "BACKLOG",
       });
@@ -201,9 +199,9 @@ describe("Task Tools Integration", () => {
     });
 
     it("should get task by issue and task number", () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      createTestTask(ctx.taskRepository, plan.id, { title: "First Task" });
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      createTestTask(client.tasks, plan.id, { title: "First Task" });
 
       const result = handleGetTask(ctx, {
         issueNumber: issue.number,
@@ -223,10 +221,10 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return stored task number", () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task1 = createTestTask(ctx.taskRepository, plan.id, { title: "Task 1" });
-      const task2 = createTestTask(ctx.taskRepository, plan.id, { title: "Task 2" });
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task1 = createTestTask(client.tasks, plan.id, { title: "Task 1" });
+      const task2 = createTestTask(client.tasks, plan.id, { title: "Task 2" });
 
       const result1 = handleGetTask(ctx, { taskId: task1.id });
       const result2 = handleGetTask(ctx, { taskId: task2.id });
@@ -239,10 +237,10 @@ describe("Task Tools Integration", () => {
     });
 
     it("should find task by stored number", () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      createTestTask(ctx.taskRepository, plan.id, { title: "Task 1" });
-      createTestTask(ctx.taskRepository, plan.id, { title: "Task 2" });
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      createTestTask(client.tasks, plan.id, { title: "Task 1" });
+      createTestTask(client.tasks, plan.id, { title: "Task 2" });
 
       const result = handleGetTask(ctx, {
         issueNumber: issue.number,
@@ -256,9 +254,9 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return task labels and type", () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Task with labels",
         type: "FEATURE",
         labels: { priority: "high", sprint: "sprint-1" },
@@ -273,15 +271,15 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return workerInfo when task is IN_PROGRESS with session", () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Task in progress",
         status: "IN_PROGRESS",
       });
 
       // Simulate a task with sessionId (as would happen during load_task_session)
-      ctx.taskRepository.update(task.id, { sessionId: "test-session-123" });
+      client.tasks.update(task.id, { sessionId: "test-session-123" });
 
       const result = handleGetTask(ctx, { taskId: task.id });
 
@@ -295,9 +293,9 @@ describe("Task Tools Integration", () => {
     });
 
     it("should not return workerInfo when task is not IN_PROGRESS", () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Task in backlog",
         status: "BACKLOG",
       });
@@ -311,15 +309,15 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return prInfo when task has a PR", () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Task with PR",
         status: "PR_REVIEW",
       });
 
       // Simulate a task with PR info
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         prNumber: 42,
         prUrl: "https://github.com/test/repo/pull/42",
         prStatus: "OPEN",
@@ -336,9 +334,9 @@ describe("Task Tools Integration", () => {
     });
 
     it("should not return prInfo when task has no PR", () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Task without PR",
         status: "IN_PROGRESS",
       });
@@ -351,15 +349,15 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return both workerInfo and prInfo when applicable", () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Task with worker and PR",
         status: "IN_PROGRESS",
       });
 
       // Simulate a task with both session and PR info
-      ctx.taskRepository.update(task.id, {
+      client.tasks.update(task.id, {
         sessionId: "session-456",
         prNumber: 99,
         prUrl: "https://github.com/test/repo/pull/99",
@@ -382,11 +380,11 @@ describe("Task Tools Integration", () => {
 
   describe("handleListAvailableTasks", () => {
     it("should list available tasks", async () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      createTestTask(ctx.taskRepository, plan.id, { title: "Task 1", status: "BACKLOG" });
-      createTestTask(ctx.taskRepository, plan.id, { title: "Task 2", status: "READY" });
-      createTestTask(ctx.taskRepository, plan.id, { title: "Task 3", status: "IN_PROGRESS" });
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      createTestTask(client.tasks, plan.id, { title: "Task 1", status: "BACKLOG" });
+      createTestTask(client.tasks, plan.id, { title: "Task 2", status: "READY" });
+      createTestTask(client.tasks, plan.id, { title: "Task 3", status: "IN_PROGRESS" });
 
       const result = await handleListAvailableTasks(ctx, {});
 
@@ -397,12 +395,12 @@ describe("Task Tools Integration", () => {
     });
 
     it("should filter by issue number", async () => {
-      const issue1 = createTestIssue(ctx.issueRepository, { title: "Issue 1" });
-      const issue2 = createTestIssue(ctx.issueRepository, { title: "Issue 2" });
-      const plan1 = createTestPlan(ctx.planRepository, issue1.id);
-      const plan2 = createTestPlan(ctx.planRepository, issue2.id);
-      createTestTask(ctx.taskRepository, plan1.id, { title: "Task A", status: "BACKLOG" });
-      createTestTask(ctx.taskRepository, plan2.id, { title: "Task B", status: "BACKLOG" });
+      const issue1 = createTestIssue(client.issues, { title: "Issue 1" });
+      const issue2 = createTestIssue(client.issues, { title: "Issue 2" });
+      const plan1 = createTestPlan(client.plans, issue1.id);
+      const plan2 = createTestPlan(client.plans, issue2.id);
+      createTestTask(client.tasks, plan1.id, { title: "Task A", status: "BACKLOG" });
+      createTestTask(client.tasks, plan2.id, { title: "Task B", status: "BACKLOG" });
 
       const result = await handleListAvailableTasks(ctx, {
         issueNumber: issue1.number,
@@ -415,10 +413,10 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return stored task numbers", async () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      createTestTask(ctx.taskRepository, plan.id, { title: "Task 1", status: "BACKLOG" });
-      createTestTask(ctx.taskRepository, plan.id, { title: "Task 2", status: "BACKLOG" });
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      createTestTask(client.tasks, plan.id, { title: "Task 1", status: "BACKLOG" });
+      createTestTask(client.tasks, plan.id, { title: "Task 2", status: "BACKLOG" });
 
       const result = await handleListAvailableTasks(ctx, { issueNumber: issue.number });
 
@@ -434,9 +432,9 @@ describe("Task Tools Integration", () => {
 
   describe("handleUpdateTask", () => {
     it("should update task properties", async () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Original Title",
       });
 
@@ -452,16 +450,16 @@ describe("Task Tools Integration", () => {
       expect(content.task.title).toBe("Updated Title");
 
       // Verify database state
-      const updated = ctx.taskRepository.findById(task.id);
+      const updated = client.tasks.findById(task.id);
       expect(updated!.title).toBe("Updated Title");
       expect(updated!.description).toBe("New description");
       expect(updated!.estimatedMinutes).toBe(60);
     });
 
     it("should add labels to a task", async () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Task without labels",
       });
 
@@ -483,7 +481,7 @@ describe("Task Tools Integration", () => {
       });
 
       // Verify database state
-      const updated = ctx.taskRepository.findById(task.id);
+      const updated = client.tasks.findById(task.id);
       expect(updated!.labels).toEqual({
         priority: "high",
         sprint: "sprint-1",
@@ -492,9 +490,9 @@ describe("Task Tools Integration", () => {
     });
 
     it("should merge labels with existing ones", async () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Task with labels",
         labels: { existing: "value", toUpdate: "old" },
       });
@@ -517,9 +515,9 @@ describe("Task Tools Integration", () => {
     });
 
     it("should remove labels when value is null", async () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Task with labels",
         labels: { keep: "value", remove: "gone" },
       });
@@ -539,14 +537,14 @@ describe("Task Tools Integration", () => {
       });
 
       // Verify database state
-      const updated = ctx.taskRepository.findById(task.id);
+      const updated = client.tasks.findById(task.id);
       expect(updated!.labels).toEqual({ keep: "value" });
     });
 
     it("should clear all labels when all are removed", async () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Task with labels",
         labels: { only: "label" },
       });
@@ -564,16 +562,16 @@ describe("Task Tools Integration", () => {
       expect(content.task.labels).toBeUndefined();
 
       // Verify database state
-      const updated = ctx.taskRepository.findById(task.id);
+      const updated = client.tasks.findById(task.id);
       expect(updated!.labels).toBeUndefined();
     });
   });
 
   describe("handleLogTaskProgress and handleGetTaskExecutionLog", () => {
     it("should log and retrieve task progress", () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id);
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id);
 
       // Log progress
       const logResult = handleLogTaskProgress(ctx, {
@@ -601,24 +599,27 @@ describe("Task Tools Integration", () => {
       // Track mock provider calls
       const mockCalls: MockProviderCalls = { assignIssue: [] };
       const testDbWithAssignee = createTestDatabase();
-      const ctxWithAssignee = await createTaskToolContext(testDbWithAssignee, {
-        mockProviderCalls: mockCalls,
-        githubSync: {
-          enabled: true,
-          assignee: "testuser",
-        },
-      });
+      const { ctx: ctxWithAssignee, client: clientWithAssignee } = await createTaskToolContext(
+        testDbWithAssignee,
+        {
+          mockProviderCalls: mockCalls,
+          githubSync: {
+            enabled: true,
+            assignee: "testuser",
+          },
+        }
+      );
 
       // Create task with GitHub sync info
-      const issue = createTestIssue(ctxWithAssignee.issueRepository);
-      const plan = createTestPlan(ctxWithAssignee.planRepository, issue.id);
-      const task = createTestTask(ctxWithAssignee.taskRepository, plan.id, {
+      const issue = createTestIssue(clientWithAssignee.issues);
+      const plan = createTestPlan(clientWithAssignee.plans, issue.id);
+      const task = createTestTask(clientWithAssignee.tasks, plan.id, {
         title: "Task with GitHub",
         status: "BACKLOG",
       });
 
       // Add GitHub sync state to the task
-      ctxWithAssignee.taskRepository.updateGitHubSync(task.id, {
+      clientWithAssignee.tasks.updateGitHubSync(task.id, {
         githubIssueNumber: 42,
         githubUrl: "https://github.com/test/repo/issues/42",
         githubNodeId: "I_test_42",
@@ -649,24 +650,27 @@ describe("Task Tools Integration", () => {
       // Track mock provider calls
       const mockCalls: MockProviderCalls = { assignIssue: [] };
       const testDbNoAssignee = createTestDatabase();
-      const ctxNoAssignee = await createTaskToolContext(testDbNoAssignee, {
-        mockProviderCalls: mockCalls,
-        githubSync: {
-          enabled: true,
-          // No assignee configured
-        },
-      });
+      const { ctx: ctxNoAssignee, client: clientNoAssignee } = await createTaskToolContext(
+        testDbNoAssignee,
+        {
+          mockProviderCalls: mockCalls,
+          githubSync: {
+            enabled: true,
+            // No assignee configured
+          },
+        }
+      );
 
       // Create task with GitHub sync info
-      const issue = createTestIssue(ctxNoAssignee.issueRepository);
-      const plan = createTestPlan(ctxNoAssignee.planRepository, issue.id);
-      const task = createTestTask(ctxNoAssignee.taskRepository, plan.id, {
+      const issue = createTestIssue(clientNoAssignee.issues);
+      const plan = createTestPlan(clientNoAssignee.plans, issue.id);
+      const task = createTestTask(clientNoAssignee.tasks, plan.id, {
         title: "Task with GitHub",
         status: "BACKLOG",
       });
 
       // Add GitHub sync state to the task
-      ctxNoAssignee.taskRepository.updateGitHubSync(task.id, {
+      clientNoAssignee.tasks.updateGitHubSync(task.id, {
         githubIssueNumber: 42,
         githubUrl: "https://github.com/test/repo/issues/42",
         githubNodeId: "I_test_42",
@@ -694,20 +698,23 @@ describe("Task Tools Integration", () => {
       const mockCalls: MockProviderCalls = { assignIssue: [] };
       const testDbDisabled = createTestDatabase();
       // No githubSync option - sync is disabled by default
-      const ctxDisabled = await createTaskToolContext(testDbDisabled, {
-        mockProviderCalls: mockCalls,
-      });
+      const { ctx: ctxDisabled, client: clientDisabled } = await createTaskToolContext(
+        testDbDisabled,
+        {
+          mockProviderCalls: mockCalls,
+        }
+      );
 
       // Create task with GitHub sync info (simulating a previously synced task)
-      const issue = createTestIssue(ctxDisabled.issueRepository);
-      const plan = createTestPlan(ctxDisabled.planRepository, issue.id);
-      const task = createTestTask(ctxDisabled.taskRepository, plan.id, {
+      const issue = createTestIssue(clientDisabled.issues);
+      const plan = createTestPlan(clientDisabled.plans, issue.id);
+      const task = createTestTask(clientDisabled.tasks, plan.id, {
         title: "Task with GitHub",
         status: "BACKLOG",
       });
 
       // Add GitHub sync state to the task
-      ctxDisabled.taskRepository.updateGitHubSync(task.id, {
+      clientDisabled.tasks.updateGitHubSync(task.id, {
         githubIssueNumber: 42,
         githubUrl: "https://github.com/test/repo/issues/42",
         githubNodeId: "I_test_42",
@@ -734,7 +741,7 @@ describe("Task Tools Integration", () => {
       // Track mock provider calls
       const mockCalls: MockProviderCalls = { assignIssue: [] };
       const testDbNoSync = createTestDatabase();
-      const ctxNoSync = await createTaskToolContext(testDbNoSync, {
+      const { ctx: ctxNoSync, client: clientNoSync } = await createTaskToolContext(testDbNoSync, {
         mockProviderCalls: mockCalls,
         githubSync: {
           enabled: true,
@@ -743,9 +750,9 @@ describe("Task Tools Integration", () => {
       });
 
       // Create task WITHOUT GitHub sync info
-      const issue = createTestIssue(ctxNoSync.issueRepository);
-      const plan = createTestPlan(ctxNoSync.planRepository, issue.id);
-      const task = createTestTask(ctxNoSync.taskRepository, plan.id, {
+      const issue = createTestIssue(clientNoSync.issues);
+      const plan = createTestPlan(clientNoSync.plans, issue.id);
+      const task = createTestTask(clientNoSync.tasks, plan.id, {
         title: "Task without GitHub",
         status: "BACKLOG",
       });
@@ -769,28 +776,21 @@ describe("Task Tools Integration", () => {
   describe("handleLoadTaskSession - claiming rules", () => {
     it("should reject queued task without workerId", async () => {
       const testDbQueue = createTestDatabase();
-      const ctxQueue = await createTaskToolContext(testDbQueue);
-      const repos = createRepositories(testDbQueue.db);
+      const { ctx: ctxQueue, client: clientQueue } = await createTaskToolContext(testDbQueue);
 
       // Create task
-      const issue = createTestIssue(ctxQueue.issueRepository);
-      const plan = createTestPlan(ctxQueue.planRepository, issue.id);
-      const task = createTestTask(ctxQueue.taskRepository, plan.id, {
+      const issue = createTestIssue(clientQueue.issues);
+      const plan = createTestPlan(clientQueue.plans, issue.id);
+      const task = createTestTask(clientQueue.tasks, plan.id, {
         title: "Queued Task",
         status: "BACKLOG",
       });
 
       // Add task to dispatch queue
-      repos.dispatchQueueRepository.enqueue(task.id);
-
-      // Add dispatch queue to context
-      const ctxWithQueue = {
-        ...ctxQueue,
-        dispatchQueueRepository: repos.dispatchQueueRepository,
-      };
+      clientQueue.dispatchQueue.enqueue(task.id);
 
       // Try to start without workerId
-      const result = await handleLoadTaskSession(ctxWithQueue, {
+      const result = await handleLoadTaskSession(ctxQueue, {
         taskId: task.id,
         sessionId: "test-session",
         mode: "main",
@@ -805,35 +805,28 @@ describe("Task Tools Integration", () => {
 
     it("should allow worker to claim queued task", async () => {
       const testDbQueue = createTestDatabase();
-      const ctxQueue = await createTaskToolContext(testDbQueue);
-      const repos = createRepositories(testDbQueue.db);
+      const { ctx: ctxQueue, client: clientQueue } = await createTaskToolContext(testDbQueue);
 
       // Create task
-      const issue = createTestIssue(ctxQueue.issueRepository);
-      const plan = createTestPlan(ctxQueue.planRepository, issue.id);
-      const task = createTestTask(ctxQueue.taskRepository, plan.id, {
+      const issue = createTestIssue(clientQueue.issues);
+      const plan = createTestPlan(clientQueue.plans, issue.id);
+      const task = createTestTask(clientQueue.tasks, plan.id, {
         title: "Queued Task",
         status: "BACKLOG",
       });
 
       // Register worker and add task to dispatch queue
       const workerId = "test-worker-id";
-      repos.workerRepository.register(workerId, "test-session");
-      repos.dispatchQueueRepository.enqueue(task.id);
+      clientQueue.workers.register(workerId, "test-session");
+      clientQueue.dispatchQueue.enqueue(task.id);
 
       // Worker claims the task (simulating what worker-runner does)
-      const claimed = repos.dispatchQueueRepository.claimTask(workerId);
+      const claimed = clientQueue.dispatchQueue.claimTask(workerId);
       expect(claimed).toBeTruthy();
       expect(claimed?.taskId).toBe(task.id);
 
-      // Add dispatch queue to context
-      const ctxWithQueue = {
-        ...ctxQueue,
-        dispatchQueueRepository: repos.dispatchQueueRepository,
-      };
-
       // Start with workerId (isolated mode is enforced for workers)
-      const result = await handleLoadTaskSession(ctxWithQueue, {
+      const result = await handleLoadTaskSession(ctxQueue, {
         taskId: task.id,
         sessionId: "test-session",
         workerId,
@@ -848,15 +841,15 @@ describe("Task Tools Integration", () => {
     });
 
     it("should resume non-queued IN_PROGRESS task by any session", async () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "In Progress Task",
         status: "IN_PROGRESS",
       });
 
       // Update task with session info (as if started by another session)
-      ctx.taskRepository.update(task.id, { sessionId: "original-session" });
+      client.tasks.update(task.id, { sessionId: "original-session" });
 
       // Resume with different session
       const result = await handleLoadTaskSession(ctx, {
@@ -871,10 +864,10 @@ describe("Task Tools Integration", () => {
     });
 
     it("should resume non-queued PR_REVIEW task by any session", async () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
       // Create task directly in PR_REVIEW status (bypassing state machine)
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const task = createTestTask(client.tasks, plan.id, {
         title: "PR Review Task",
         status: "PR_REVIEW",
       });
@@ -893,10 +886,10 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return gracefully for COMPLETED task with context", async () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
       // Create task directly in COMPLETED status (bypassing state machine)
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Completed Task",
         status: "COMPLETED",
       });
@@ -918,10 +911,10 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return gracefully for ABANDONED task with context", async () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
       // Create task directly in ABANDONED status (bypassing state machine)
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Abandoned Task",
         status: "ABANDONED",
       });
@@ -943,9 +936,9 @@ describe("Task Tools Integration", () => {
     });
 
     it("should start fresh for non-queued BACKLOG task", async () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Backlog Task",
         status: "BACKLOG",
       });
@@ -964,9 +957,9 @@ describe("Task Tools Integration", () => {
     });
 
     it("should start fresh for non-queued READY task", async () => {
-      const issue = createTestIssue(ctx.issueRepository);
-      const plan = createTestPlan(ctx.planRepository, issue.id);
-      const task = createTestTask(ctx.taskRepository, plan.id, {
+      const issue = createTestIssue(client.issues);
+      const plan = createTestPlan(client.plans, issue.id);
+      const task = createTestTask(client.tasks, plan.id, {
         title: "Ready Task",
         status: "READY",
       });

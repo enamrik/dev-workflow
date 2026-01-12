@@ -3,15 +3,15 @@
  */
 
 import type {
-  SqliteIssueRepository,
-  SqlitePlanRepository,
-  SqliteTaskRepository,
   PlanningService,
   PlanComplexity,
   TaskSyncService,
   Project,
   TypeService,
   IssueType,
+  IssueService,
+  TaskService,
+  PlanService,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -190,9 +190,9 @@ export const planToolDefinitions: ToolDefinition[] = [
 export interface PlanToolContext {
   /** Current project (for URL construction) */
   project: Project;
-  issueRepository: SqliteIssueRepository;
-  planRepository: SqlitePlanRepository;
-  taskRepository: SqliteTaskRepository;
+  issueService: IssueService;
+  planService: PlanService;
+  taskService: TaskService;
   planningService: PlanningService;
   taskSyncService?: TaskSyncService; // Optional - only present if GitHub sync is enabled
   typeService: TypeService; // Required for type validation in generate_plan
@@ -240,9 +240,9 @@ export async function handleGeneratePlan(
 
   // Resolve issue from ID or number
   const issue = issueId
-    ? ctx.issueRepository.findById(issueId)
+    ? ctx.issueService.findById(issueId)
     : issueNumber
-      ? ctx.issueRepository.findByNumber(issueNumber)
+      ? ctx.issueService.findByNumber(issueNumber)
       : null;
 
   if (!issue) {
@@ -336,7 +336,7 @@ export function handleGetPlan(
   // Resolve issue ID from number if needed
   let resolvedIssueId = issueId;
   if (!resolvedIssueId && issueNumber) {
-    const issue = ctx.issueRepository.findByNumber(issueNumber);
+    const issue = ctx.issueService.findByNumber(issueNumber);
     if (!issue) {
       return errorResponse(`Issue not found: #${issueNumber}`);
     }
@@ -347,12 +347,12 @@ export function handleGetPlan(
     return errorResponse("Either issueId or issueNumber is required");
   }
 
-  const plan = ctx.planRepository.findByIssueId(resolvedIssueId);
+  const plan = ctx.planService.findByIssueId(resolvedIssueId);
   if (!plan) {
     return errorResponse("No plan found for this issue");
   }
 
-  const tasks = ctx.taskRepository.findByPlanId(plan.id);
+  const tasks = ctx.taskService.findByPlanId(plan.id);
 
   return successResponse({ plan, tasks });
 }
@@ -460,7 +460,7 @@ export async function handleMoveIssueToBacklog(
   }
 
   // Get the issue
-  const issue = ctx.issueRepository.findByNumber(issueNumber);
+  const issue = ctx.issueService.findByNumber(issueNumber);
   if (!issue) {
     return errorResponse(`Issue not found: #${issueNumber}`);
   }
@@ -473,13 +473,13 @@ export async function handleMoveIssueToBacklog(
   }
 
   // Get the plan
-  const plan = ctx.planRepository.findByIssueId(issue.id);
+  const plan = ctx.planService.findByIssueId(issue.id);
   if (!plan) {
     return errorResponse(`No plan found for issue #${issueNumber}`);
   }
 
   // Get PLANNED tasks
-  const allTasks = ctx.taskRepository.findByPlanId(plan.id);
+  const allTasks = ctx.taskService.findByPlanId(plan.id);
   const plannedTasks = allTasks.filter((t) => t.status === "PLANNED");
 
   // If no PLANNED tasks and issue is already OPEN, nothing to do
@@ -525,7 +525,7 @@ export async function handleMoveIssueToBacklog(
   // No GitHub sync - just move tasks to BACKLOG
   const activatedTasks = [];
   for (const task of plannedTasks) {
-    ctx.taskRepository.updateStatus(
+    ctx.taskService.updateTaskStatus(
       task.id,
       "BACKLOG",
       "system",
@@ -542,7 +542,7 @@ export async function handleMoveIssueToBacklog(
   // Transition issue from PLANNED → OPEN
   const issueTransitioned = issue.status === "PLANNED";
   if (issueTransitioned) {
-    ctx.issueRepository.update(issue.id, { status: "OPEN" });
+    ctx.issueService.update(issue.id, { status: "OPEN" });
   }
 
   return successResponse({

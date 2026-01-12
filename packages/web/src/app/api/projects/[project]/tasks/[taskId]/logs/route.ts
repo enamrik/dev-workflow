@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DataSourceRegistry, WebDIContext } from "@/server";
+import { ProjectsResolver, DbSourceProvider, WebDIContext } from "@/server";
 
 interface RouteParams {
   params: Promise<{
@@ -14,20 +14,21 @@ interface RouteParams {
  * Returns the execution logs for a task.
  */
 export async function GET(_request: NextRequest, { params }: RouteParams) {
+  const sourceProvider = new DbSourceProvider();
   try {
     const { taskId } = await params;
 
     // Search for task across all projects
-    const registry = new DataSourceRegistry();
-    const { projects } = await registry.getSourcesWithProjects();
+    const resolver = new ProjectsResolver();
+    const projects = await resolver.getAllProjects();
 
     for (const project of projects) {
       try {
-        const context = await WebDIContext.createFromProjectInfo(project, registry);
-        const task = context.taskRepository.findById(taskId);
+        const context = await WebDIContext.createFromProjectInfo(project, sourceProvider);
+        const task = context.db.tasks.findById(taskId);
 
         if (task) {
-          const logs = context.taskRepository.getExecutionLogs(taskId);
+          const logs = context.db.tasks.getExecutionLogs(taskId);
           return NextResponse.json(logs);
         }
       } catch {
@@ -39,5 +40,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
   } catch (error) {
     console.error("Error fetching task execution logs:", error);
     return NextResponse.json({ error: "Failed to fetch task execution logs" }, { status: 500 });
+  } finally {
+    sourceProvider.closeAll();
   }
 }

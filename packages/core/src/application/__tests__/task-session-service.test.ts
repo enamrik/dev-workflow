@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
-  createRepositories,
+  getRepositories,
   createTestIssue,
   createTestPlan,
   createTestTask,
@@ -16,18 +16,16 @@ import { TaskSessionService } from "../task-session-service.js";
 
 describe("TaskSessionService", () => {
   let testDb: ReturnType<typeof createTestDatabase>;
-  let repos: ReturnType<typeof createRepositories>;
+  let repos: ReturnType<typeof getRepositories>;
   let taskSessionService: TaskSessionService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    repos = createRepositories(testDb.db);
+    repos = getRepositories(testDb.client);
 
     // Create service without git worktree support for unit tests
     taskSessionService = new TaskSessionService(
-      repos.taskRepository,
-      repos.planRepository,
-      repos.issueRepository,
+      testDb.client,
       undefined, // No git worktree service
       undefined, // No conflict detection service
       undefined // No track directory

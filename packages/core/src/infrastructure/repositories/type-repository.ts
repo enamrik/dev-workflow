@@ -7,7 +7,7 @@
 
 import { eq, and } from "drizzle-orm";
 import { types, TypeRow, NewType } from "../database/schema.js";
-import type { SqliteDrizzleDatabase } from "../../domain/data-source.js";
+import type { DrizzleDb } from "../../domain/drizzle-db.js";
 import type {
   TypeRepository,
   TypeEntity,
@@ -16,13 +16,14 @@ import type {
 } from "../../domain/type-definition.js";
 
 /**
- * SQLite implementation of TypeRepository
+ * Drizzle implementation of TypeRepository
  *
  * Uses Drizzle ORM for type-safe queries.
+ * Works with any Drizzle-supported database dialect.
  * Like ProjectRepository, this is NOT scoped to a project since types are global.
  */
-export class SqliteTypeRepository implements TypeRepository {
-  constructor(private readonly db: SqliteDrizzleDatabase) {}
+export class DrizzleTypeRepository implements TypeRepository {
+  constructor(private readonly db: DrizzleDb) {}
 
   create(data: CreateTypeData): TypeEntity {
     const id = crypto.randomUUID();

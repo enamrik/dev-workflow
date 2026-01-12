@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DataSourceRegistry, WebDIContext } from "@/server";
+import { ProjectsResolver, DbSourceProvider, WebDIContext } from "@/server";
 import {
   computeMilestoneStatus,
   type MilestoneIssueStats,
@@ -9,16 +9,22 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  const sourceProvider = new DbSourceProvider();
   try {
     const searchParams = request.nextUrl.searchParams;
     const projectFilter = searchParams.get("project") ?? undefined;
     const sourceFilter = searchParams.get("source") ?? undefined;
 
-    const registry = new DataSourceRegistry();
-    const filteredProjects = await registry.getFilteredProjects({
-      project: projectFilter,
-      source: sourceFilter,
-    });
+    const resolver = new ProjectsResolver();
+
+    // Get all projects and filter manually
+    let projects = await resolver.getAllProjects();
+    if (projectFilter) {
+      projects = projects.filter((p) => p.projectId === projectFilter || p.slug === projectFilter);
+    }
+    if (sourceFilter) {
+      projects = projects.filter((p) => p.slug === sourceFilter);
+    }
 
     const result: {
       milestone: {
@@ -49,13 +55,13 @@ export async function GET(request: NextRequest) {
       };
     }[] = [];
 
-    for (const project of filteredProjects) {
+    for (const project of projects) {
       try {
-        const context = await WebDIContext.createFromProjectInfo(project, registry);
-        const milestones = context.milestoneRepository.findMany();
+        const context = await WebDIContext.createFromProjectInfo(project, sourceProvider);
+        const milestones = context.db.milestones.findMany();
 
         for (const milestone of milestones) {
-          const issues = context.issueRepository.findMany({ milestoneId: milestone.id });
+          const issues = context.db.issues.findMany({ milestoneId: milestone.id });
           const closedIssues = issues.filter((i) => i.status === "CLOSED").length;
 
           const milestoneIssueStats: MilestoneIssueStats = {
@@ -110,5 +116,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Error fetching milestones:", error);
     return NextResponse.json({ error: "Failed to fetch milestones" }, { status: 500 });
+  } finally {
+    sourceProvider.closeAll();
   }
 }

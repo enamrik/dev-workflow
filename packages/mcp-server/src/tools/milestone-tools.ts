@@ -2,57 +2,15 @@
  * Milestone-related MCP tools
  */
 
-import {
-  type SqliteMilestoneRepository,
-  type SqliteIssueRepository,
-  type MilestoneStatus,
-  type Milestone,
-  type MilestoneIssueStats,
-  computeMilestoneStatus,
-} from "@dev-workflow/core";
+import { type MilestoneStatus, type MilestoneService, type IssueService } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
-
-/**
- * Compute issue stats for a milestone from the issue repository.
- * Returns the stats needed for milestone status computation.
- */
-function computeIssueStats(
-  issueRepository: SqliteIssueRepository,
-  milestoneId: string
-): MilestoneIssueStats {
-  const issues = issueRepository.findMany({ milestoneId });
-
-  return {
-    totalIssues: issues.length,
-    closedIssues: issues.filter((i) => i.status === "CLOSED").length,
-    openOrInProgressIssues: issues.filter((i) => i.status === "OPEN" || i.status === "IN_PROGRESS")
-      .length,
-  };
-}
-
-/**
- * Get milestone with computed status.
- * Status is computed from issue states and dates at read time.
- */
-function getMilestoneWithComputedStatus(
-  milestone: Milestone,
-  issueRepository: SqliteIssueRepository
-): Milestone {
-  const stats = computeIssueStats(issueRepository, milestone.id);
-  const computedStatus = computeMilestoneStatus(milestone.status, stats, milestone.endDate);
-
-  return {
-    ...milestone,
-    status: computedStatus,
-  };
-}
 
 /**
  * Context for milestone tools
  */
 export interface MilestoneToolContext {
-  milestoneRepository: SqliteMilestoneRepository;
-  issueRepository: SqliteIssueRepository;
+  milestoneService: MilestoneService;
+  issueService: IssueService;
   projectName: string;
 }
 
@@ -229,25 +187,18 @@ export function handleCreateMilestone(
     return errorResponse("startDate must be before or equal to endDate");
   }
 
-  // Always store PLANNED as initial status (status is computed at read time)
-  const milestone = ctx.milestoneRepository.create({
+  // Create milestone using service (handles status internally)
+  const milestoneWithStatus = ctx.milestoneService.createMilestone({
     title: args.title,
-    description: args.description ?? "",
+    description: args.description,
     startDate: args.startDate,
     endDate: args.endDate,
-    status: "PLANNED",
   });
 
-  // Return milestone with computed status
-  const milestoneWithComputedStatus = getMilestoneWithComputedStatus(
-    milestone,
-    ctx.issueRepository
-  );
-
   return successResponse({
-    message: `Created milestone M${milestoneWithComputedStatus.number}: ${milestoneWithComputedStatus.title}`,
+    message: `Created milestone M${milestoneWithStatus.number}: ${milestoneWithStatus.title}`,
     milestone: {
-      ...milestoneWithComputedStatus,
+      ...milestoneWithStatus,
       projectName: ctx.projectName,
     },
   });
@@ -265,9 +216,9 @@ export function handleGetMilestone(
   let milestone = null;
 
   if (args.id) {
-    milestone = ctx.milestoneRepository.findById(args.id);
+    milestone = ctx.milestoneService.findById(args.id);
   } else if (args.milestoneNumber !== undefined) {
-    milestone = ctx.milestoneRepository.findByNumber(args.milestoneNumber);
+    milestone = ctx.milestoneService.findByNumber(args.milestoneNumber);
   } else {
     return errorResponse("Either id or milestoneNumber is required");
   }
@@ -277,17 +228,14 @@ export function handleGetMilestone(
   }
 
   // Get milestone with computed status
-  const milestoneWithComputedStatus = getMilestoneWithComputedStatus(
-    milestone,
-    ctx.issueRepository
-  );
+  const milestoneWithStatus = ctx.milestoneService.getMilestone(milestone.id);
 
   // Get issues assigned to this milestone
-  const issues = ctx.issueRepository.findMany({ milestoneId: milestone.id });
+  const issues = ctx.issueService.findMany({ milestoneId: milestone.id });
 
   return successResponse({
     milestone: {
-      ...milestoneWithComputedStatus,
+      ...milestoneWithStatus,
       projectName: ctx.projectName,
     },
     issues: issues.map((i) => ({
@@ -316,15 +264,15 @@ export function handleListMilestones(
   args: { status?: MilestoneStatus }
 ): ToolResponse {
   // Fetch all milestones (no status filter at DB level since status is computed)
-  const allMilestones = ctx.milestoneRepository.findMany();
+  const allMilestones = ctx.milestoneService.findMany();
 
   // Enrich each milestone with computed status, issue counts, and project name
   const enrichedMilestones = allMilestones.map((m) => {
-    const issues = ctx.issueRepository.findMany({ milestoneId: m.id });
-    const milestoneWithComputedStatus = getMilestoneWithComputedStatus(m, ctx.issueRepository);
+    const issues = ctx.issueService.findMany({ milestoneId: m.id });
+    const milestoneWithStatus = ctx.milestoneService.getMilestone(m.id);
 
     return {
-      ...milestoneWithComputedStatus,
+      ...milestoneWithStatus,
       projectName: ctx.projectName,
       issueCount: issues.length,
       closedCount: issues.filter((i) => i.status === "CLOSED").length,
@@ -362,7 +310,7 @@ export function handleUpdateMilestone(
     };
   }
 ): ToolResponse {
-  const milestone = ctx.milestoneRepository.findByNumber(args.milestoneNumber);
+  const milestone = ctx.milestoneService.findByNumber(args.milestoneNumber);
   if (!milestone) {
     return errorResponse(`Milestone M${args.milestoneNumber} not found`);
   }
@@ -391,15 +339,15 @@ export function handleUpdateMilestone(
     return errorResponse("startDate must be before or equal to endDate");
   }
 
-  const updated = ctx.milestoneRepository.update(milestone.id, args.updates);
+  const updated = ctx.milestoneService.update(milestone.id, args.updates);
 
   // Return milestone with computed status
-  const updatedWithComputedStatus = getMilestoneWithComputedStatus(updated, ctx.issueRepository);
+  const updatedWithStatus = ctx.milestoneService.getMilestone(updated.id);
 
   return successResponse({
-    message: `Updated milestone M${updatedWithComputedStatus.number}`,
+    message: `Updated milestone M${updatedWithStatus.number}`,
     milestone: {
-      ...updatedWithComputedStatus,
+      ...updatedWithStatus,
       projectName: ctx.projectName,
     },
   });
@@ -412,18 +360,18 @@ export function handleDeleteMilestone(
   ctx: MilestoneToolContext,
   args: { milestoneNumber: number }
 ): ToolResponse {
-  const milestone = ctx.milestoneRepository.findByNumber(args.milestoneNumber);
+  const milestone = ctx.milestoneService.findByNumber(args.milestoneNumber);
   if (!milestone) {
     return errorResponse(`Milestone M${args.milestoneNumber} not found`);
   }
 
   // Find and unassign issues from this milestone
-  const issues = ctx.issueRepository.findMany({ milestoneId: milestone.id });
+  const issues = ctx.issueService.findMany({ milestoneId: milestone.id });
   for (const issue of issues) {
-    ctx.issueRepository.update(issue.id, { milestoneId: undefined });
+    ctx.issueService.update(issue.id, { milestoneId: undefined });
   }
 
-  ctx.milestoneRepository.delete(milestone.id);
+  ctx.milestoneService.delete(milestone.id);
 
   return successResponse({
     message: `Deleted milestone M${args.milestoneNumber}: ${milestone.title}`,
@@ -438,21 +386,27 @@ export function handleAssignIssueToMilestone(
   ctx: MilestoneToolContext,
   args: { issueNumber: number; milestoneNumber: number }
 ): ToolResponse {
-  const issue = ctx.issueRepository.findByNumber(args.issueNumber);
+  // Look up issue by number
+  const issue = ctx.issueService.findByNumber(args.issueNumber);
   if (!issue) {
     return errorResponse(`Issue #${args.issueNumber} not found`);
   }
 
-  const milestone = ctx.milestoneRepository.findByNumber(args.milestoneNumber);
+  // Look up milestone by number
+  const milestone = ctx.milestoneService.findByNumber(args.milestoneNumber);
   if (!milestone) {
     return errorResponse(`Milestone M${args.milestoneNumber} not found`);
   }
 
-  ctx.issueRepository.update(issue.id, { milestoneId: milestone.id });
-
-  return successResponse({
-    message: `Assigned issue #${args.issueNumber} to milestone M${args.milestoneNumber}`,
-  });
+  try {
+    ctx.milestoneService.assignIssue(issue.id, milestone.id);
+    return successResponse({
+      message: `Assigned issue #${args.issueNumber} to milestone M${args.milestoneNumber}`,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return errorResponse(message);
+  }
 }
 
 /**
@@ -462,19 +416,24 @@ export function handleRemoveIssueFromMilestone(
   ctx: MilestoneToolContext,
   args: { issueNumber: number }
 ): ToolResponse {
-  const issue = ctx.issueRepository.findByNumber(args.issueNumber);
+  // Look up issue by number
+  const issue = ctx.issueService.findByNumber(args.issueNumber);
   if (!issue) {
     return errorResponse(`Issue #${args.issueNumber} not found`);
   }
 
+  // Check if issue is assigned to a milestone
   if (!issue.milestoneId) {
     return errorResponse(`Issue #${args.issueNumber} is not assigned to any milestone`);
   }
 
-  // Pass undefined to clear the milestone (repository converts to null in DB)
-  ctx.issueRepository.update(issue.id, { milestoneId: undefined });
-
-  return successResponse({
-    message: `Removed issue #${args.issueNumber} from milestone`,
-  });
+  try {
+    ctx.milestoneService.unassignIssue(issue.id);
+    return successResponse({
+      message: `Removed issue #${args.issueNumber} from milestone`,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return errorResponse(message);
+  }
 }

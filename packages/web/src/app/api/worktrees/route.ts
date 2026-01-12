@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DataSourceRegistry, WebDIContext } from "@/server";
+import { ProjectsResolver, DbSourceProvider, WebDIContext } from "@/server";
 import { NodeGitWorktreeService, resolveConfig } from "@dev-workflow/core";
 
 export const dynamic = "force-dynamic";
@@ -19,23 +19,27 @@ interface ProjectWorktree {
 }
 
 export async function GET(request: NextRequest) {
+  const sourceProvider = new DbSourceProvider();
   try {
     const searchParams = request.nextUrl.searchParams;
     const projectFilter = searchParams.get("project") ?? undefined;
 
-    const registry = new DataSourceRegistry();
-    const filteredProjects = await registry.getFilteredProjects({
-      project: projectFilter,
-    });
+    const resolver = new ProjectsResolver();
+
+    // Get all projects and filter manually
+    let projects = await resolver.getAllProjects();
+    if (projectFilter) {
+      projects = projects.filter((p) => p.projectId === projectFilter || p.slug === projectFilter);
+    }
 
     const allWorktrees: ProjectWorktree[] = [];
 
-    for (const project of filteredProjects) {
+    for (const project of projects) {
       try {
         const config = await resolveConfig(project.slug);
         if (!config.gitRoot) continue;
 
-        const context = await WebDIContext.createFromProjectInfo(project, registry);
+        const context = await WebDIContext.createFromProjectInfo(project, sourceProvider);
 
         const worktreeService = new NodeGitWorktreeService(config.gitRoot);
         const worktrees = await worktreeService.listWorktrees();
@@ -43,15 +47,15 @@ export async function GET(request: NextRequest) {
         // Build task lookup by worktree path
         const tasksByWorktreePath = new Map<
           string,
-          { task: ReturnType<typeof context.taskRepository.findById>; issueNumber: number }
+          { task: ReturnType<typeof context.db.tasks.findById>; issueNumber: number }
         >();
-        const issues = context.issueRepository.findMany({});
+        const issues = context.db.issues.findMany({});
 
         for (const issue of issues) {
-          const plan = context.planRepository.findByIssueId(issue.id);
+          const plan = context.db.plans.findByIssueId(issue.id);
           if (!plan) continue;
 
-          const tasks = context.taskRepository.findByPlanId(plan.id);
+          const tasks = context.db.tasks.findByPlanId(plan.id);
           for (const task of tasks) {
             if (task.worktreePath) {
               tasksByWorktreePath.set(task.worktreePath, { task, issueNumber: issue.number });
@@ -64,7 +68,7 @@ export async function GET(request: NextRequest) {
 
           const taskInfo = tasksByWorktreePath.get(wt.path);
           allWorktrees.push({
-            projectId: project.id,
+            projectId: project.projectId,
             path: wt.path,
             branch: wt.branch,
             head: wt.head,
@@ -86,6 +90,8 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Error fetching worktrees:", error);
     return NextResponse.json({ error: "Failed to fetch worktrees" }, { status: 500 });
+  } finally {
+    sourceProvider.closeAll();
   }
 }
 
@@ -102,9 +108,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "projectId is required" }, { status: 400 });
     }
 
-    const registry = new DataSourceRegistry();
-    const { projects } = await registry.getSourcesWithProjects();
-    const project = projects.find((p) => p.id === projectId);
+    const resolver = new ProjectsResolver();
+    const allProjects = await resolver.getAllProjects();
+    const project = allProjects.find((p) => p.projectId === projectId);
 
     if (!project) {
       throw new Error(`Project not found: ${projectId}`);

@@ -1,6 +1,7 @@
-import type { Issue, IssueRepository } from "../domain/issue.js";
-import type { Plan, PlanRepository, PlanComplexity } from "../domain/plan.js";
-import type { Task, TaskRepository } from "../domain/task.js";
+import type { Issue } from "../domain/issue.js";
+import type { Plan, PlanComplexity } from "../domain/plan.js";
+import type { Task } from "../domain/task.js";
+import type { DbClient } from "../domain/db-client.js";
 import { TaskMatchingService, type TaskDefinition } from "./task-matching-service.js";
 import type { VersioningService } from "./versioning-service.js";
 import { EventBus } from "../infrastructure/events/event-bus.js";
@@ -60,9 +61,7 @@ export class PlanningService {
   private readonly eventBus: EventBus;
 
   constructor(
-    private readonly issueRepository: IssueRepository,
-    private readonly planRepository: PlanRepository,
-    private readonly taskRepository: TaskRepository,
+    private readonly db: DbClient,
     private readonly versioningService: VersioningService
   ) {
     this.taskMatchingService = new TaskMatchingService();
@@ -141,15 +140,15 @@ export class PlanningService {
     );
 
     // Verify issue exists
-    const issue = this.issueRepository.findById(issueId);
+    const issue = this.db.issues.findById(issueId);
     if (!issue) {
       throw new Error(`Issue not found: ${issueId}`);
     }
 
     // Get existing plan and tasks (if any)
-    const existingPlan = this.planRepository.findByIssueId(issueId);
+    const existingPlan = this.db.plans.findByIssueId(issueId);
     const existingTasks = existingPlan
-      ? this.taskRepository.findByPlanId(existingPlan.id, false) // Exclude deleted
+      ? this.db.tasks.findByPlanId(existingPlan.id, false) // Exclude deleted
       : [];
 
     // Create snapshot before regeneration (captures current state)
@@ -163,14 +162,14 @@ export class PlanningService {
     // Create or update plan
     let plan: Plan;
     if (existingPlan) {
-      plan = this.planRepository.update(existingPlan.id, {
+      plan = this.db.plans.update(existingPlan.id, {
         summary,
         approach,
         estimatedComplexity,
         generatedBy,
       });
     } else {
-      plan = this.planRepository.create({
+      plan = this.db.plans.create({
         issueId,
         summary,
         approach,
@@ -247,17 +246,17 @@ export class PlanningService {
     createSnapshot = true
   ): { issue: Issue; plan?: Plan; tasks: Task[] } {
     // Verify issue exists
-    const issue = this.issueRepository.findById(issueId);
+    const issue = this.db.issues.findById(issueId);
     if (!issue) {
       throw new Error(`Issue not found: ${issueId}`);
     }
 
     // Update the issue
-    const updatedIssue = this.issueRepository.update(issueId, updates);
+    const updatedIssue = this.db.issues.update(issueId, updates);
 
     // Get current plan and tasks
-    const plan = this.planRepository.findByIssueId(issueId);
-    const tasks = plan ? this.taskRepository.findByPlanId(plan.id) : [];
+    const plan = this.db.plans.findByIssueId(issueId);
+    const tasks = plan ? this.db.tasks.findByPlanId(plan.id) : [];
 
     // Create snapshot if requested
     if (createSnapshot) {
@@ -316,7 +315,7 @@ export class PlanningService {
         !matchedTaskIds.has(task.id) &&
         (task.status === "PLANNED" || task.status === "BACKLOG" || task.status === "READY")
       ) {
-        this.taskRepository.softDelete(task.id, generatedBy);
+        this.db.tasks.softDelete(task.id, generatedBy);
       }
     }
 
@@ -327,7 +326,7 @@ export class PlanningService {
       if (result.action === "PRESERVE" && result.matchedTask) {
         // Update matched task with new content but preserve status
         // Clear dependencies since ID mapping is not preserved
-        const updatedTask = this.taskRepository.update(result.matchedTask.id, {
+        const updatedTask = this.db.tasks.update(result.matchedTask.id, {
           title: result.newTask.title,
           description: result.newTask.description,
           acceptanceCriteria: result.newTask.acceptanceCriteria,
@@ -341,7 +340,7 @@ export class PlanningService {
         // Create new generated task
         // Clear dependencies since ID mapping is not preserved
         // Inherit labels from parent issue
-        const task = this.taskRepository.create({
+        const task = this.db.tasks.create({
           id: result.newTask.id, // Use caller-provided ID
           planId: plan.id,
           title: result.newTask.title,
@@ -377,25 +376,25 @@ export class PlanningService {
    */
   pauseIssue(issueNumber: number): { count: number; tasks: Task[] } {
     // Find the issue
-    const issue = this.issueRepository.findByNumber(issueNumber);
+    const issue = this.db.issues.findByNumber(issueNumber);
     if (!issue) {
       throw new Error(`Issue not found: #${issueNumber}`);
     }
 
     // Find the plan for this issue
-    const plan = this.planRepository.findByIssueId(issue.id);
+    const plan = this.db.plans.findByIssueId(issue.id);
     if (!plan) {
       throw new Error(`No plan exists for issue #${issueNumber}`);
     }
 
     // Get all tasks for the plan
-    const allTasks = this.taskRepository.findByPlanId(plan.id, false);
+    const allTasks = this.db.tasks.findByPlanId(plan.id, false);
 
     // Move READY tasks back to BACKLOG
     const movedTasks: Task[] = [];
     for (const task of allTasks) {
       if (task.status === "READY") {
-        const updatedTask = this.taskRepository.updateStatus(
+        const updatedTask = this.db.tasks.updateStatus(
           task.id,
           "BACKLOG",
           "pause_issue",
@@ -434,25 +433,25 @@ export class PlanningService {
    */
   readyIssue(issueNumber: number): { count: number; tasks: Task[] } {
     // Find the issue
-    const issue = this.issueRepository.findByNumber(issueNumber);
+    const issue = this.db.issues.findByNumber(issueNumber);
     if (!issue) {
       throw new Error(`Issue not found: #${issueNumber}`);
     }
 
     // Find the plan for this issue
-    const plan = this.planRepository.findByIssueId(issue.id);
+    const plan = this.db.plans.findByIssueId(issue.id);
     if (!plan) {
       throw new Error(`No plan exists for issue #${issueNumber}`);
     }
 
     // Get all tasks for the plan
-    const allTasks = this.taskRepository.findByPlanId(plan.id, false);
+    const allTasks = this.db.tasks.findByPlanId(plan.id, false);
 
     // Move BACKLOG tasks to READY
     const movedTasks: Task[] = [];
     for (const task of allTasks) {
       if (task.status === "BACKLOG") {
-        const updatedTask = this.taskRepository.updateStatus(
+        const updatedTask = this.db.tasks.updateStatus(
           task.id,
           "READY",
           "ready_issue",
@@ -503,7 +502,7 @@ export class PlanningService {
       implementationPlan: def.implementationPlan, // Technical details for Claude execution
     }));
 
-    return this.taskRepository.createMany(taskData);
+    return this.db.tasks.createMany(taskData);
   }
 
   /**
@@ -519,7 +518,7 @@ export class PlanningService {
    */
   private renumberTasks(planId: string): Task[] {
     // Get all non-deleted tasks ordered by order
-    const tasks = this.taskRepository.findByPlanId(planId, false);
+    const tasks = this.db.tasks.findByPlanId(planId, false);
 
     // Update each task's number to be sequential
     const updatedTasks: Task[] = [];
@@ -529,7 +528,7 @@ export class PlanningService {
 
       // Only update if number has changed
       if (task.number !== newNumber) {
-        const updated = this.taskRepository.updateNumber(task.id, newNumber);
+        const updated = this.db.tasks.updateNumber(task.id, newNumber);
         updatedTasks.push(updated);
       } else {
         updatedTasks.push(task);

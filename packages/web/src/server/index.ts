@@ -1,6 +1,6 @@
 // DI Context and Registry - use these in route handlers
-export { WebDIContext, DataSourceRegistry } from "../lib/di-context";
-export type { SourceInfo, ProjectInfo } from "../lib/di-context";
+export { WebDIContext, ProjectsResolver, DbSourceProvider } from "../lib/di-context";
+export type { SourceInfo, ProjectInfo, DbSource, DbClient } from "../lib/di-context";
 
 // Re-export core types for convenience
 export {

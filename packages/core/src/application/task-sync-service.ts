@@ -12,9 +12,8 @@
  * - Fail fast: if sync fails, operation fails
  */
 
-import type { Task, TaskRepository, TaskStatus } from "../domain/task.js";
-import type { Issue, IssueRepository } from "../domain/issue.js";
-import type { PlanRepository } from "../domain/plan.js";
+import type { Task, TaskStatus } from "../domain/task.js";
+import type { Issue } from "../domain/issue.js";
 import type { GitHubSyncState } from "../domain/github.js";
 import type { ProjectManagementProvider } from "../domain/project-management-provider.js";
 import {
@@ -22,7 +21,8 @@ import {
   type GitHubIssueSyncConfig,
   type LabelFieldMapping,
 } from "../infrastructure/database/schema.js";
-import type { ProjectRepository } from "../domain/project.js";
+import type { DbClient } from "../domain/db-client.js";
+import type { DbSource } from "../domain/db-source.js";
 import type { TemplateService } from "../infrastructure/templates/template-service.js";
 import type { TypeService } from "../infrastructure/types/type-service.js";
 
@@ -91,22 +91,23 @@ export interface IssueSyncResult {
  * TaskSyncService - Creates and syncs GitHub issues for tasks
  */
 export class TaskSyncService {
+  private readonly db: DbClient;
+
   constructor(
-    private readonly taskRepository: TaskRepository,
-    private readonly issueRepository: IssueRepository,
-    private readonly planRepository: PlanRepository,
+    private readonly source: DbSource,
     private readonly provider: ProjectManagementProvider,
-    private readonly projectRepository: ProjectRepository,
     private readonly projectId: string,
     private readonly templateService?: TemplateService,
     private readonly typeService?: TypeService
-  ) {}
+  ) {
+    this.db = source.createClient(projectId);
+  }
 
   /**
    * Get fresh GitHub sync config from the database
    */
   private async getConfig(): Promise<GitHubIssueSyncConfig | null> {
-    const project = await this.projectRepository.findById(this.projectId);
+    const project = await this.source.projects.findById(this.projectId);
     return project?.githubSync ?? null;
   }
 
@@ -139,7 +140,7 @@ export class TaskSyncService {
    * @returns Activation result with details for each task
    */
   async activatePlannedTasks(issueId: string): Promise<ActivationResult> {
-    const issue = this.issueRepository.findById(issueId);
+    const issue = this.db.issues.findById(issueId);
     if (!issue) {
       return {
         success: false,
@@ -149,7 +150,7 @@ export class TaskSyncService {
       };
     }
 
-    const plan = this.planRepository.findByIssueId(issueId);
+    const plan = this.db.plans.findByIssueId(issueId);
     if (!plan) {
       return {
         success: false,
@@ -159,14 +160,14 @@ export class TaskSyncService {
       };
     }
 
-    const allTasks = this.taskRepository.findByPlanId(plan.id);
+    const allTasks = this.db.tasks.findByPlanId(plan.id);
     const plannedTasks = allTasks.filter((t) => t.status === "PLANNED");
 
     if (plannedTasks.length === 0) {
       // No PLANNED tasks - just ensure issue is OPEN
       const issueTransitioned = issue.status === "PLANNED";
       if (issueTransitioned) {
-        this.issueRepository.update(issue.id, { status: "OPEN" });
+        this.db.issues.update(issue.id, { status: "OPEN" });
       }
       return {
         success: true,
@@ -196,11 +197,11 @@ export class TaskSyncService {
           }
 
           // Update task with GitHub sync state
-          this.taskRepository.updateGitHubSync(task.id, syncState);
+          this.db.tasks.updateGitHubSync(task.id, syncState);
         }
 
         // Transition task from PLANNED → BACKLOG
-        this.taskRepository.updateStatus(
+        this.db.tasks.updateStatus(
           task.id,
           "BACKLOG",
           "system",
@@ -212,10 +213,10 @@ export class TaskSyncService {
           taskNumber: task.number,
           success: true,
           githubIssueNumber: config?.enabled
-            ? (this.taskRepository.findById(task.id)?.githubSync?.githubIssueNumber ?? undefined)
+            ? (this.db.tasks.findById(task.id)?.githubSync?.githubIssueNumber ?? undefined)
             : undefined,
           githubUrl: config?.enabled
-            ? (this.taskRepository.findById(task.id)?.githubSync?.githubUrl ?? undefined)
+            ? (this.db.tasks.findById(task.id)?.githubSync?.githubUrl ?? undefined)
             : undefined,
         });
       } catch (error) {
@@ -228,7 +229,7 @@ export class TaskSyncService {
     // Transition issue from PLANNED → OPEN
     const issueTransitioned = issue.status === "PLANNED";
     if (issueTransitioned) {
-      this.issueRepository.update(issue.id, { status: "OPEN" });
+      this.db.issues.update(issue.id, { status: "OPEN" });
     }
 
     return {
@@ -452,7 +453,7 @@ export class TaskSyncService {
    * @param newStatus - The new status that was just set
    */
   async syncTaskStatus(taskId: string, newStatus: TaskStatus): Promise<void> {
-    const task = this.taskRepository.findById(taskId);
+    const task = this.db.tasks.findById(taskId);
     if (!task?.githubSync?.githubIssueNumber) {
       // Task doesn't have GitHub sync - nothing to do
       return;
@@ -463,17 +464,11 @@ export class TaskSyncService {
       return;
     }
 
-    const githubNumber = task.githubSync.githubIssueNumber;
     let syncError: string | null = null;
 
-    // Handle terminal states - close the GitHub issue
+    // Handle terminal states - close the GitHub issue (provider handles sync check internally)
     if (newStatus === "COMPLETED" || newStatus === "ABANDONED") {
-      try {
-        await this.provider.closeIssue(String(githubNumber));
-      } catch (error) {
-        syncError = `Failed to close GitHub issue: ${error instanceof Error ? error.message : String(error)}`;
-        console.warn(syncError);
-      }
+      await this.provider.closeIssueByTask(task);
     }
 
     // Move in project kanban if configured
@@ -492,7 +487,7 @@ export class TaskSyncService {
     }
 
     // Update sync state - record any errors
-    this.taskRepository.updateGitHubSync(taskId, {
+    this.db.tasks.updateGitHubSync(taskId, {
       ...task.githubSync,
       lastSyncedAt: new Date().toISOString(),
       lastSyncError: syncError,
@@ -508,7 +503,7 @@ export class TaskSyncService {
    * @param taskId - The task UUID
    */
   async assignIssue(taskId: string): Promise<void> {
-    const task = this.taskRepository.findById(taskId);
+    const task = this.db.tasks.findById(taskId);
     if (!task?.githubSync?.githubIssueNumber) {
       // Task doesn't have GitHub sync - nothing to do
       return;
@@ -546,13 +541,13 @@ export class TaskSyncService {
     }
 
     for (const taskId of taskIds) {
-      const task = this.taskRepository.findById(taskId);
+      const task = this.db.tasks.findById(taskId);
       if (task?.githubSync?.githubIssueNumber) {
         try {
-          await this.provider.closeIssue(String(task.githubSync.githubIssueNumber));
+          await this.provider.closeIssueByTask(task);
 
           // Update sync state
-          this.taskRepository.updateGitHubSync(taskId, {
+          this.db.tasks.updateGitHubSync(taskId, {
             ...task.githubSync,
             lastSyncedAt: new Date().toISOString(),
           });
@@ -584,7 +579,7 @@ export class TaskSyncService {
    * @returns Sync result with details for each task
    */
   async syncIssue(issueNumber: number): Promise<IssueSyncResult> {
-    const issue = this.issueRepository.findByNumber(issueNumber);
+    const issue = this.db.issues.findByNumber(issueNumber);
     if (!issue) {
       return {
         success: false,
@@ -621,7 +616,7 @@ export class TaskSyncService {
       };
     }
 
-    const plan = this.planRepository.findByIssueId(issue.id);
+    const plan = this.db.plans.findByIssueId(issue.id);
     if (!plan) {
       return {
         success: false,
@@ -642,7 +637,7 @@ export class TaskSyncService {
       };
     }
 
-    const allTasks = this.taskRepository.findByPlanId(plan.id);
+    const allTasks = this.db.tasks.findByPlanId(plan.id);
 
     // Only sync non-terminal tasks (exclude PLANNED, COMPLETED, ABANDONED)
     const tasksToSync = allTasks.filter(
@@ -757,7 +752,7 @@ export class TaskSyncService {
       }
 
       // Issue was deleted - clear sync state and proceed to create/link
-      this.taskRepository.updateGitHubSync(task.id, {
+      this.db.tasks.updateGitHubSync(task.id, {
         githubIssueNumber: null,
         githubUrl: null,
         githubNodeId: null,
@@ -780,7 +775,7 @@ export class TaskSyncService {
     if (matchingIssue) {
       // Found existing issue - link it
       const syncState = await this.linkExistingGitHubIssue(matchingIssue, task, config);
-      this.taskRepository.updateGitHubSync(task.id, syncState);
+      this.db.tasks.updateGitHubSync(task.id, syncState);
 
       return {
         taskId: task.id,
@@ -800,7 +795,7 @@ export class TaskSyncService {
       syncState = await this.createGitHubIssueForTask(issue, task);
     }
 
-    this.taskRepository.updateGitHubSync(task.id, syncState);
+    this.db.tasks.updateGitHubSync(task.id, syncState);
 
     // Move to correct column based on current task status
     if (syncState.projectItemId && config.projectId) {
@@ -892,7 +887,7 @@ export class TaskSyncService {
 
         if (result.success && result.itemId) {
           // Update task with project item ID
-          this.taskRepository.updateGitHubSync(task.id, {
+          this.db.tasks.updateGitHubSync(task.id, {
             ...task.githubSync,
             projectItemId: result.itemId,
             lastSyncedAt: new Date().toISOString(),
