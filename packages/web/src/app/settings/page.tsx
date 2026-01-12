@@ -23,10 +23,10 @@ function SettingsPageContent() {
   // Enable URL state persistence
   useUrlState();
 
-  const { projectId, projects, sources, sourceId } = useProjectContext();
+  const { projectId, allProjects, sources, sourceId } = useProjectContext();
 
   // Find the selected project
-  const selectedProject = projects.find((p) => p.id === projectId);
+  const selectedProject = allProjects.find((p) => p.id === projectId);
 
   // Find the selected source
   const selectedSource = sources.find((s) => s.id === sourceId);
