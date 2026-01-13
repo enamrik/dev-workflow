@@ -15,6 +15,7 @@ import {
   type Project,
 } from "@dev-workflow/core";
 import { handleUpdateSettings, type SettingsToolContext } from "../../tools/settings-tools.js";
+import { UpdateSettingsSchema } from "../../tools/schemas.js";
 
 const TEST_GIT_ROOT_HASH = "abc123def456";
 const TEST_GIT_ROOT = "/test/repo";
@@ -793,6 +794,80 @@ describe("update_settings - typeLabels validation", () => {
       expect(result.isError).toBeFalsy();
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(true);
+    });
+  });
+});
+
+/**
+ * Schema Validation Tests for Settings Tools
+ */
+describe("Settings Tool Schema Validation", () => {
+  describe("UpdateSettingsSchema", () => {
+    it("should accept get_settings action", () => {
+      const result = UpdateSettingsSchema.safeParse({ action: "get_settings" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept enable_github action", () => {
+      const result = UpdateSettingsSchema.safeParse({ action: "enable_github" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept disable_github action", () => {
+      const result = UpdateSettingsSchema.safeParse({ action: "disable_github" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept configure_github with options", () => {
+      const input = {
+        action: "configure_github",
+        github: {
+          projectId: "PVT_test123",
+          assignee: "username",
+          labels: {
+            customLabels: ["custom-label"],
+            typeLabels: { FEATURE: "feature", BUG: "bug" },
+          },
+        },
+      };
+      const result = UpdateSettingsSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept configure_column_mapping action", () => {
+      const input = {
+        action: "configure_column_mapping",
+        github: {
+          columnMapping: {
+            BACKLOG: "Backlog",
+            READY: "Ready",
+            IN_PROGRESS: "In Progress",
+            PR_REVIEW: "In Review",
+            COMPLETED: "Done",
+          },
+        },
+      };
+      const result = UpdateSettingsSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept resetColumnMapping flag", () => {
+      const input = {
+        action: "configure_column_mapping",
+        resetColumnMapping: true,
+      };
+      const result = UpdateSettingsSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject invalid action", () => {
+      const result = UpdateSettingsSchema.safeParse({ action: "invalid_action" });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject missing action", () => {
+      const result = UpdateSettingsSchema.safeParse({});
+      expect(result.success).toBe(false);
     });
   });
 });

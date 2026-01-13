@@ -15,6 +15,7 @@ import {
 } from "../helpers.js";
 import { VersioningService, MockGitHubCLI, MergeService, type DbClient } from "@dev-workflow/core";
 import { handleMergeIssues, type MergeToolContext } from "../../tools/merge-tools.js";
+import { MergeIssuesSchema } from "../../tools/schemas.js";
 
 /** Test project ID */
 const TEST_PROJECT_ID = "test-project-merge-integration";
@@ -309,6 +310,82 @@ describe("Merge Tools Integration", () => {
         expect(content.success).toBe(false);
         expect(content.error).toContain("Invalid mode");
       });
+    });
+  });
+});
+
+/**
+ * Schema Validation Tests for Merge Tools
+ */
+describe("Merge Tool Schema Validation", () => {
+  describe("MergeIssuesSchema", () => {
+    it("should accept valid create_new mode", () => {
+      const input = {
+        sourceIssueNumber: 1,
+        targetIssueNumber: 2,
+        mode: "create_new",
+      };
+      const result = MergeIssuesSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept valid merge_into mode", () => {
+      const input = {
+        sourceIssueNumber: 1,
+        targetIssueNumber: 2,
+        mode: "merge_into",
+      };
+      const result = MergeIssuesSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept optional newTitle and newDescription", () => {
+      const input = {
+        sourceIssueNumber: 1,
+        targetIssueNumber: 2,
+        mode: "create_new",
+        newTitle: "Merged Issue",
+        newDescription: "Combined description",
+      };
+      const result = MergeIssuesSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject invalid mode", () => {
+      const input = {
+        sourceIssueNumber: 1,
+        targetIssueNumber: 2,
+        mode: "invalid_mode",
+      };
+      const result = MergeIssuesSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject missing sourceIssueNumber", () => {
+      const input = {
+        targetIssueNumber: 2,
+        mode: "merge_into",
+      };
+      const result = MergeIssuesSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject missing targetIssueNumber", () => {
+      const input = {
+        sourceIssueNumber: 1,
+        mode: "merge_into",
+      };
+      const result = MergeIssuesSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject missing mode", () => {
+      const input = {
+        sourceIssueNumber: 1,
+        targetIssueNumber: 2,
+      };
+      const result = MergeIssuesSchema.safeParse(input);
+      expect(result.success).toBe(false);
     });
   });
 });

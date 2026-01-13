@@ -13,6 +13,15 @@ import {
   handleRemoveIssueFromMilestone,
   type MilestoneToolContext,
 } from "../../tools/milestone-tools.js";
+import {
+  CreateMilestoneSchema,
+  GetMilestoneSchema,
+  ListMilestonesSchema,
+  UpdateMilestoneSchema,
+  DeleteMilestoneSchema,
+  AssignIssueToMilestoneSchema,
+  RemoveIssueFromMilestoneSchema,
+} from "../../tools/schemas.js";
 
 /** Test project ID */
 const TEST_PROJECT_ID = "test-project-milestone";
@@ -170,6 +179,165 @@ describe("Milestone Tools", () => {
       const response = JSON.parse((result.content[0] as { text: string }).text);
       expect(response.success).toBe(false);
       expect(response.error).toContain("not assigned to any milestone");
+    });
+  });
+});
+
+/**
+ * Schema Validation Tests for Milestone Tools
+ */
+describe("Milestone Tool Schema Validation", () => {
+  describe("CreateMilestoneSchema", () => {
+    it("should accept valid milestone", () => {
+      const input = {
+        title: "Q1 Release",
+        startDate: "2024-01-01",
+        endDate: "2024-03-31",
+        description: "First quarter release",
+      };
+      const result = CreateMilestoneSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept without optional description", () => {
+      const input = {
+        title: "Q1 Release",
+        startDate: "2024-01-01",
+        endDate: "2024-03-31",
+      };
+      const result = CreateMilestoneSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing title", () => {
+      const input = {
+        startDate: "2024-01-01",
+        endDate: "2024-03-31",
+      };
+      const result = CreateMilestoneSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject missing dates", () => {
+      const input = { title: "Q1 Release" };
+      const result = CreateMilestoneSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("GetMilestoneSchema", () => {
+    it("should accept milestoneNumber", () => {
+      const result = GetMilestoneSchema.safeParse({ milestoneNumber: 1 });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept id", () => {
+      const result = GetMilestoneSchema.safeParse({ id: "uuid-here" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept empty object", () => {
+      const result = GetMilestoneSchema.safeParse({});
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("ListMilestonesSchema", () => {
+    it("should accept status filter", () => {
+      const result = ListMilestonesSchema.safeParse({ status: "IN_PROGRESS" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept empty object", () => {
+      const result = ListMilestonesSchema.safeParse({});
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject invalid status", () => {
+      const result = ListMilestonesSchema.safeParse({ status: "INVALID" });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("UpdateMilestoneSchema", () => {
+    it("should accept valid updates", () => {
+      const input = {
+        milestoneNumber: 1,
+        updates: { title: "Updated Title" },
+      };
+      const result = UpdateMilestoneSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept all valid update fields", () => {
+      const input = {
+        milestoneNumber: 1,
+        updates: {
+          title: "Updated Title",
+          description: "Updated description",
+          startDate: "2024-02-01",
+          endDate: "2024-04-30",
+          status: "COMPLETED",
+        },
+      };
+      const result = UpdateMilestoneSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing milestoneNumber", () => {
+      const input = { updates: { title: "Updated" } };
+      const result = UpdateMilestoneSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject missing updates", () => {
+      const input = { milestoneNumber: 1 };
+      const result = UpdateMilestoneSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("DeleteMilestoneSchema", () => {
+    it("should accept milestoneNumber", () => {
+      const result = DeleteMilestoneSchema.safeParse({ milestoneNumber: 1 });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing milestoneNumber", () => {
+      const result = DeleteMilestoneSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("AssignIssueToMilestoneSchema", () => {
+    it("should accept valid input", () => {
+      const input = { issueNumber: 1, milestoneNumber: 2 };
+      const result = AssignIssueToMilestoneSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing issueNumber", () => {
+      const input = { milestoneNumber: 2 };
+      const result = AssignIssueToMilestoneSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject missing milestoneNumber", () => {
+      const input = { issueNumber: 1 };
+      const result = AssignIssueToMilestoneSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("RemoveIssueFromMilestoneSchema", () => {
+    it("should accept issueNumber", () => {
+      const result = RemoveIssueFromMilestoneSchema.safeParse({ issueNumber: 1 });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing issueNumber", () => {
+      const result = RemoveIssueFromMilestoneSchema.safeParse({});
+      expect(result.success).toBe(false);
     });
   });
 });

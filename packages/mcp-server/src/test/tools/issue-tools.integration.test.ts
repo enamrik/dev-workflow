@@ -33,6 +33,14 @@ import {
   handleGetIssue,
   type IssueToolContext,
 } from "../../tools/issue-tools.js";
+import {
+  CreateIssueSchema,
+  GetIssueSchema,
+  UpdateIssueSchema,
+  DeleteIssueSchema,
+  CloseIssueSchema,
+  ImportGitHubIssueSchema,
+} from "../../tools/schemas.js";
 
 /** Test project ID */
 const TEST_PROJECT_ID = "test-project-integration";
@@ -745,6 +753,183 @@ describe("Issue Tools Integration", () => {
 
       // Plan should not be included
       expect(content.plan).toBeUndefined();
+    });
+  });
+});
+
+/**
+ * Schema Validation Tests for Issue Tools
+ *
+ * Tests that Zod schemas correctly validate inputs and reject invalid data.
+ */
+describe("Issue Tool Schema Validation", () => {
+  describe("CreateIssueSchema", () => {
+    it("should accept valid minimal input", () => {
+      const input = { title: "Test Issue", description: "Test description" };
+      const result = CreateIssueSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept valid full input", () => {
+      const input = {
+        title: "Full Issue",
+        description: "Full description",
+        type: "BUG",
+        priority: "HIGH",
+        acceptanceCriteria: ["AC 1", "AC 2"],
+        labels: { bug: "", product: "Case Workflow" },
+        useTemplate: true,
+      };
+      const result = CreateIssueSchema.safeParse(input);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.type).toBe("BUG");
+        expect(result.data.priority).toBe("HIGH");
+      }
+    });
+
+    it("should reject missing required title", () => {
+      const input = { description: "Missing title" };
+      const result = CreateIssueSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject missing required description", () => {
+      const input = { title: "Missing description" };
+      const result = CreateIssueSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject invalid type enum value", () => {
+      const input = { title: "Test", description: "Desc", type: "INVALID_TYPE" };
+      const result = CreateIssueSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject invalid priority enum value", () => {
+      const input = { title: "Test", description: "Desc", priority: "SUPER_HIGH" };
+      const result = CreateIssueSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("GetIssueSchema", () => {
+    it("should accept issueNumber only", () => {
+      const result = GetIssueSchema.safeParse({ issueNumber: 42 });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept id only", () => {
+      const result = GetIssueSchema.safeParse({ id: "uuid-here" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept includePlan flag", () => {
+      const result = GetIssueSchema.safeParse({ issueNumber: 1, includePlan: true });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.includePlan).toBe(true);
+      }
+    });
+
+    it("should accept empty object (all optional)", () => {
+      const result = GetIssueSchema.safeParse({});
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("UpdateIssueSchema", () => {
+    it("should accept valid updates", () => {
+      const input = {
+        issueNumber: 1,
+        updates: { title: "Updated Title", description: "Updated description" },
+      };
+      const result = UpdateIssueSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject unknown properties in updates (strict mode)", () => {
+      const input = {
+        issueNumber: 1,
+        updates: { title: "Updated Title", unknownField: "should fail" },
+      };
+      const result = UpdateIssueSchema.safeParse(input);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues.some((i) => i.message.includes("Unrecognized key"))).toBe(true);
+      }
+    });
+
+    it("should accept all valid update fields", () => {
+      const input = {
+        issueNumber: 1,
+        updates: {
+          title: "New Title",
+          description: "New description",
+          acceptanceCriteria: ["New AC"],
+          type: "ENHANCEMENT",
+          priority: "LOW",
+          labels: { new: "label" },
+        },
+      };
+      const result = UpdateIssueSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("DeleteIssueSchema", () => {
+    it("should accept issueNumber", () => {
+      const result = DeleteIssueSchema.safeParse({ issueNumber: 1 });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept issueId", () => {
+      const result = DeleteIssueSchema.safeParse({ issueId: "uuid-here" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept empty object (all optional)", () => {
+      const result = DeleteIssueSchema.safeParse({});
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("CloseIssueSchema", () => {
+    it("should accept issueNumber", () => {
+      const result = CloseIssueSchema.safeParse({ issueNumber: 1 });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept force flag", () => {
+      const result = CloseIssueSchema.safeParse({ issueNumber: 1, force: true });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.force).toBe(true);
+      }
+    });
+
+    it("should reject missing issueNumber", () => {
+      const result = CloseIssueSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("ImportGitHubIssueSchema", () => {
+    it("should accept githubIssueNumber", () => {
+      const result = ImportGitHubIssueSchema.safeParse({ githubIssueNumber: 42 });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept githubIssueUrl", () => {
+      const result = ImportGitHubIssueSchema.safeParse({
+        githubIssueUrl: "https://github.com/owner/repo/issues/42",
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept empty object (both optional)", () => {
+      const result = ImportGitHubIssueSchema.safeParse({});
+      expect(result.success).toBe(true);
     });
   });
 });

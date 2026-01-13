@@ -37,6 +37,18 @@ import {
   handleLoadTaskSession,
   type TaskToolContext,
 } from "../../tools/task-tools.js";
+import {
+  GetTaskSchema,
+  ListAvailableTasksSchema,
+  UpdateTaskSchema,
+  LogTaskProgressSchema,
+  GetTaskExecutionLogSchema,
+  LoadTaskSessionSchema,
+  AbandonTaskSessionSchema,
+  DeleteTaskSchema,
+  GetTaskExecutionPromptSchema,
+  CheckTaskConflictsSchema,
+} from "../../tools/schemas.js";
 
 /**
  * Tracking for mock provider calls
@@ -1127,6 +1139,239 @@ describe("Task Tools Integration", () => {
       expect(content.resumed).toBe(false); // Not resumed, fresh start
       expect(content.startedAt).toBeDefined();
       expect(content.task.status).toBe("IN_PROGRESS");
+    });
+  });
+});
+
+/**
+ * Schema Validation Tests for Task Tools
+ */
+describe("Task Tool Schema Validation", () => {
+  describe("GetTaskSchema", () => {
+    it("should accept taskId only", () => {
+      const result = GetTaskSchema.safeParse({ taskId: "uuid-here" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept issueNumber and taskNumber", () => {
+      const result = GetTaskSchema.safeParse({ issueNumber: 1, taskNumber: 2 });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept empty object", () => {
+      const result = GetTaskSchema.safeParse({});
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("ListAvailableTasksSchema", () => {
+    it("should accept issueNumber filter", () => {
+      const result = ListAvailableTasksSchema.safeParse({ issueNumber: 1 });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept planId filter", () => {
+      const result = ListAvailableTasksSchema.safeParse({ planId: "uuid-here" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept empty object", () => {
+      const result = ListAvailableTasksSchema.safeParse({});
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("UpdateTaskSchema", () => {
+    it("should accept valid updates", () => {
+      const input = {
+        taskId: "uuid-here",
+        title: "Updated Task",
+        description: "Updated description",
+        estimatedMinutes: 60,
+      };
+      const result = UpdateTaskSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept all valid update fields", () => {
+      const input = {
+        taskId: "uuid-here",
+        title: "Updated Task",
+        description: "Updated description",
+        acceptanceCriteria: ["AC 1", "AC 2"],
+        estimatedMinutes: 120,
+        implementationPlan: "Use existing pattern",
+        labels: { urgent: "", product: "Case Workflow" },
+      };
+      const result = UpdateTaskSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing taskId", () => {
+      const input = { title: "Updated Task" };
+      const result = UpdateTaskSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("LogTaskProgressSchema", () => {
+    it("should accept valid progress log", () => {
+      const input = {
+        taskId: "uuid-here",
+        sessionId: "session-here",
+        message: "Completed first step",
+      };
+      const result = LogTaskProgressSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept filesModified", () => {
+      const input = {
+        taskId: "uuid-here",
+        sessionId: "session-here",
+        message: "Updated files",
+        filesModified: ["src/file1.ts", "src/file2.ts"],
+      };
+      const result = LogTaskProgressSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing required fields", () => {
+      const input = { taskId: "uuid-here" };
+      const result = LogTaskProgressSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("GetTaskExecutionLogSchema", () => {
+    it("should accept taskId", () => {
+      const result = GetTaskExecutionLogSchema.safeParse({ taskId: "uuid-here" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing taskId", () => {
+      const result = GetTaskExecutionLogSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("LoadTaskSessionSchema", () => {
+    it("should accept required fields", () => {
+      const input = {
+        taskId: "uuid-here",
+        sessionId: "session-here",
+      };
+      const result = LoadTaskSessionSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept valid execution mode", () => {
+      const input = {
+        taskId: "uuid-here",
+        sessionId: "session-here",
+        mode: "isolated",
+      };
+      const result = LoadTaskSessionSchema.safeParse(input);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.mode).toBe("isolated");
+      }
+    });
+
+    it("should accept workerId for worker execution", () => {
+      const input = {
+        taskId: "uuid-here",
+        sessionId: "session-here",
+        workerId: "worker-uuid",
+      };
+      const result = LoadTaskSessionSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject invalid mode", () => {
+      const input = {
+        taskId: "uuid-here",
+        sessionId: "session-here",
+        mode: "invalid-mode",
+      };
+      const result = LoadTaskSessionSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject missing taskId", () => {
+      const input = { sessionId: "session-here" };
+      const result = LoadTaskSessionSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject missing sessionId", () => {
+      const input = { taskId: "uuid-here" };
+      const result = LoadTaskSessionSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("AbandonTaskSessionSchema", () => {
+    it("should accept required fields", () => {
+      const input = {
+        taskId: "uuid-here",
+        sessionId: "session-here",
+      };
+      const result = AbandonTaskSessionSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept reason and force", () => {
+      const input = {
+        taskId: "uuid-here",
+        sessionId: "session-here",
+        reason: "Task is blocked",
+        force: true,
+      };
+      const result = AbandonTaskSessionSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing required fields", () => {
+      const input = { taskId: "uuid-here" };
+      const result = AbandonTaskSessionSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("DeleteTaskSchema", () => {
+    it("should accept taskId", () => {
+      const result = DeleteTaskSchema.safeParse({ taskId: "uuid-here" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing taskId", () => {
+      const result = DeleteTaskSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("GetTaskExecutionPromptSchema", () => {
+    it("should accept taskId", () => {
+      const result = GetTaskExecutionPromptSchema.safeParse({ taskId: "uuid-here" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing taskId", () => {
+      const result = GetTaskExecutionPromptSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("CheckTaskConflictsSchema", () => {
+    it("should accept taskId", () => {
+      const result = CheckTaskConflictsSchema.safeParse({ taskId: "uuid-here" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing taskId", () => {
+      const result = CheckTaskConflictsSchema.safeParse({});
+      expect(result.success).toBe(false);
     });
   });
 });
