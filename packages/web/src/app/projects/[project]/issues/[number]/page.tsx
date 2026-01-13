@@ -18,6 +18,7 @@ import {
   GitHubLink,
 } from "@/components/ui";
 import { IssueTransitionButton } from "@/components/issues";
+import { isTerminal, isActive } from "@/lib/types";
 import type { Issue, Plan, Task, ComputedIssueStatus } from "@/lib/types";
 
 type TabId = "details" | "plan" | "tasks";
@@ -62,12 +63,10 @@ export default function IssueDetailPage({ params }: PageProps) {
   }
 
   const { issue, plan, tasks } = data;
-  const completed = tasks.filter((t) => t.status === "COMPLETED").length;
-  const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
   const taskCounts = {
     total: tasks.length,
-    completed: completed + abandoned, // Terminal tasks (COMPLETED or ABANDONED)
-    inProgress: tasks.filter((t) => t.status === "IN_PROGRESS").length,
+    completed: tasks.filter(isTerminal).length,
+    inProgress: tasks.filter(isActive).length,
   };
 
   // Compute single status from issue state and tasks
@@ -284,44 +283,31 @@ function formatDate(isoString: string): string {
 
 /**
  * Compute single issue status from issue state and tasks.
- *
- * Status rules:
- * - CLOSED: Issue is explicitly closed
- * - TASKS_DONE: All tasks are COMPLETED or ABANDONED (issue ready to be closed)
- * - IN_PROGRESS: Some tasks not completed AND no tasks in BACKLOG/READY (work has started)
- * - OPEN: Plan exists but work not started (tasks in BACKLOG/READY), or no plan/tasks yet
+ * Uses trait functions (single source of truth).
  */
 function computeIssueStatus(issue: Issue, plan: Plan | null, tasks: Task[]): ComputedIssueStatus {
-  // Explicitly closed issues stay CLOSED
   if (issue.status === "CLOSED") {
     return "CLOSED";
   }
 
-  // PLANNED issues stay PLANNED
   if (issue.status === "PLANNED") {
     return "PLANNED";
   }
 
-  // No plan means OPEN
   if (!plan || tasks.length === 0) {
     return "OPEN";
   }
 
-  const completed = tasks.filter((t) => t.status === "COMPLETED").length;
-  const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
-  const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
-  const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
+  const terminal = tasks.filter(isTerminal).length;
+  const active = tasks.filter(isActive).length;
 
-  // All tasks done (completed or abandoned) = TASKS_DONE
-  if (completed + abandoned === tasks.length) {
+  if (terminal === tasks.length) {
     return "TASKS_DONE";
   }
 
-  // No tasks have progressed past READY (all are BACKLOG, READY, or terminal) = OPEN
-  if (inProgress === 0 && prReview === 0) {
+  if (active === 0) {
     return "OPEN";
   }
 
-  // At least one task is IN_PROGRESS or PR_REVIEW = IN_PROGRESS
   return "IN_PROGRESS";
 }

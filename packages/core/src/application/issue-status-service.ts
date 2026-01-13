@@ -15,6 +15,7 @@
 import type { Issue } from "../domain/issue.js";
 import type { Plan } from "../domain/plan.js";
 import type { Task } from "../domain/task.js";
+import { isTerminal, isActive } from "../domain/task.js";
 import type { DbClient } from "../domain/db-client.js";
 
 // =============================================================================
@@ -97,28 +98,19 @@ export class IssueStatusService {
       return { computedStatus: "OPEN" };
     }
 
-    // Count task states
-    const completed = tasks.filter((t) => t.status === "COMPLETED").length;
-    const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
-    const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
-    const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
+    // Count task states using trait functions (single source of truth)
+    const terminal = tasks.filter(isTerminal).length;
+    const active = tasks.filter(isActive).length;
 
-    const terminal = completed + abandoned;
     const taskCounts: TaskCounts = {
       total: tasks.length,
       completed: terminal,
-      inProgress: inProgress + prReview,
+      inProgress: active,
     };
 
     // Determine computed status
-    let computedStatus: ComputedIssueStatus;
-    if (terminal === tasks.length) {
-      computedStatus = "TASKS_DONE";
-    } else if (inProgress === 0 && prReview === 0) {
-      computedStatus = "OPEN";
-    } else {
-      computedStatus = "IN_PROGRESS";
-    }
+    const computedStatus: ComputedIssueStatus =
+      terminal === tasks.length ? "TASKS_DONE" : active === 0 ? "OPEN" : "IN_PROGRESS";
 
     return { computedStatus, taskCounts };
   }
@@ -153,28 +145,19 @@ export class IssueStatusService {
       return { computedStatus: "OPEN" };
     }
 
-    // Count task states
-    const completed = tasks.filter((t) => t.status === "COMPLETED").length;
-    const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
-    const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
-    const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
+    // Count task states using trait functions (single source of truth)
+    const terminal = tasks.filter(isTerminal).length;
+    const active = tasks.filter(isActive).length;
 
-    const terminal = completed + abandoned;
     const taskCounts: TaskCounts = {
       total: tasks.length,
       completed: terminal,
-      inProgress: inProgress + prReview,
+      inProgress: active,
     };
 
     // Determine computed status
-    let computedStatus: ComputedIssueStatus;
-    if (terminal === tasks.length) {
-      computedStatus = "TASKS_DONE";
-    } else if (inProgress === 0 && prReview === 0) {
-      computedStatus = "OPEN";
-    } else {
-      computedStatus = "IN_PROGRESS";
-    }
+    const computedStatus: ComputedIssueStatus =
+      terminal === tasks.length ? "TASKS_DONE" : active === 0 ? "OPEN" : "IN_PROGRESS";
 
     return { computedStatus, taskCounts };
   }
@@ -205,15 +188,14 @@ export function computeIssueStatus(issue: Issue, tasks: Task[]): ComputedIssueSt
     return "OPEN";
   }
 
-  const completed = tasks.filter((t) => t.status === "COMPLETED").length;
-  const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
-  const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
-  const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
+  // Use trait functions (single source of truth)
+  const terminal = tasks.filter(isTerminal).length;
+  const active = tasks.filter(isActive).length;
 
-  if (completed + abandoned === tasks.length) {
+  if (terminal === tasks.length) {
     return "TASKS_DONE";
   }
-  if (inProgress === 0 && prReview === 0) {
+  if (active === 0) {
     return "OPEN";
   }
   return "IN_PROGRESS";

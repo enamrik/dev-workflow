@@ -2,6 +2,7 @@
 
 import { clsx } from "clsx";
 import { Badge } from "../ui";
+import { isTerminal } from "@/lib/types";
 import type { Task } from "@/lib/types";
 
 interface TaskDependenciesProps {
@@ -17,9 +18,7 @@ export function TaskDependencies({ dependencies, className }: TaskDependenciesPr
     return null;
   }
 
-  const allComplete = dependencies.every(
-    (t) => t.status === "COMPLETED" || t.status === "ABANDONED"
-  );
+  const allComplete = dependencies.every(isTerminal);
 
   return (
     <div className={clsx("space-y-2", className)}>

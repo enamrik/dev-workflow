@@ -262,6 +262,50 @@ export class ApiError extends Error {
   }
 }
 
+// =============================================================================
+// Task Status Traits (Single Source of Truth)
+// =============================================================================
+
+/**
+ * Table-driven status traits - single source of truth for status semantics.
+ *
+ * Mirrors the core package's STATUS_TRAITS to ensure consistent behavior.
+ */
+const STATUS_TRAITS = {
+  PLANNED: { terminal: false, workable: false, active: false },
+  BACKLOG: { terminal: false, workable: true, active: false },
+  READY: { terminal: false, workable: true, active: false },
+  IN_PROGRESS: { terminal: false, workable: true, active: true },
+  PR_REVIEW: { terminal: false, workable: false, active: true },
+  COMPLETED: { terminal: true, workable: false, active: false },
+  ABANDONED: { terminal: true, workable: false, active: false },
+} as const satisfies Record<
+  Task["status"],
+  { terminal: boolean; workable: boolean; active: boolean }
+>;
+
+/**
+ * Check if a task is in a terminal state (COMPLETED or ABANDONED).
+ * Use for progress calculations: `tasks.filter(isTerminal).length`
+ */
+export function isTerminal(task: Task): boolean {
+  return STATUS_TRAITS[task.status].terminal;
+}
+
+/**
+ * Check if a task can be worked on (BACKLOG, READY, IN_PROGRESS).
+ */
+export function isWorkable(task: Task): boolean {
+  return STATUS_TRAITS[task.status].workable;
+}
+
+/**
+ * Check if a task has active work in progress (IN_PROGRESS or PR_REVIEW).
+ */
+export function isActive(task: Task): boolean {
+  return STATUS_TRAITS[task.status].active;
+}
+
 /**
  * Worker status
  */

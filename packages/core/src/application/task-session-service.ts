@@ -1,4 +1,5 @@
 import type { Task } from "../domain/task.js";
+import { isTerminal } from "../domain/task.js";
 import type { DbClient } from "../domain/db-client.js";
 import { EventBus } from "../infrastructure/events/event-bus.js";
 import { DependencyService } from "./dependency-service.js";
@@ -126,7 +127,7 @@ export class TaskSessionService {
     }
 
     // Terminal states - reject (caller should handle these gracefully)
-    if (task.status === "COMPLETED" || task.status === "ABANDONED") {
+    if (isTerminal(task)) {
       throw new Error(
         `Cannot start session for task in terminal state: ${task.status}. ` +
           "Task is already done."

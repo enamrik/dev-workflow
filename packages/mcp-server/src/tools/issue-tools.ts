@@ -4,6 +4,8 @@
 
 import {
   EventBus,
+  isTerminal,
+  isActive,
   type TemplateService,
   type PlanningService,
   type IssueType,
@@ -52,6 +54,7 @@ type ComputedIssueStatus = "PLANNED" | "OPEN" | "IN_PROGRESS" | "TASKS_DONE" | "
 
 /**
  * Compute the status for an issue based on its raw status and task progress.
+ * Uses trait functions (single source of truth).
  */
 function computeIssueStatus(
   issueId: string,
@@ -76,15 +79,13 @@ function computeIssueStatus(
     return "OPEN";
   }
 
-  const completed = tasks.filter((t) => t.status === "COMPLETED").length;
-  const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
-  const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
-  const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
+  const terminal = tasks.filter(isTerminal).length;
+  const active = tasks.filter(isActive).length;
 
-  if (completed + abandoned === tasks.length) {
+  if (terminal === tasks.length) {
     return "TASKS_DONE";
   }
-  if (inProgress === 0 && prReview === 0) {
+  if (active === 0) {
     return "OPEN";
   }
   return "IN_PROGRESS";

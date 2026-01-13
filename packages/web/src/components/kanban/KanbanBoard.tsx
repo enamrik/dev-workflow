@@ -1,5 +1,6 @@
 import { KanbanColumn } from "./KanbanColumn";
 import { EmptyState } from "../ui";
+import { isTerminal, isActive } from "@/lib/types";
 import type {
   ProjectIssueWithTasks,
   Task,
@@ -10,7 +11,7 @@ import type {
 
 /**
  * Compute issue status based on issue state and task progress.
- * Mirrors the server-side logic in IssueStatusService.
+ * Uses trait functions (single source of truth).
  */
 function computeIssueStatus(issue: Issue, tasks: Task[]): ComputedIssueStatus {
   if (issue.status === "PLANNED") {
@@ -23,15 +24,13 @@ function computeIssueStatus(issue: Issue, tasks: Task[]): ComputedIssueStatus {
     return "OPEN";
   }
 
-  const completed = tasks.filter((t) => t.status === "COMPLETED").length;
-  const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
-  const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
-  const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
+  const terminal = tasks.filter(isTerminal).length;
+  const active = tasks.filter(isActive).length;
 
-  if (completed + abandoned === tasks.length) {
+  if (terminal === tasks.length) {
     return "TASKS_DONE";
   }
-  if (inProgress === 0 && prReview === 0) {
+  if (active === 0) {
     return "OPEN";
   }
   return "IN_PROGRESS";
@@ -117,14 +116,10 @@ export function KanbanBoard({
 
   // For Done column: merge completed tasks from open issues with completedTasks prop
   // The completedTasks prop includes tasks from closed issues (last 7 days, max 20)
-  const openIssueCompletedIds = new Set(
-    allTasks.filter((t) => t.status === "COMPLETED" || t.status === "ABANDONED").map((t) => t.id)
-  );
+  const openIssueCompletedIds = new Set(allTasks.filter(isTerminal).map((t) => t.id));
 
   // Add completed tasks from completedTasks that aren't already in openIssueCompletedIds
-  const doneTasks: KanbanTask[] = allTasks.filter(
-    (t) => t.status === "COMPLETED" || t.status === "ABANDONED"
-  );
+  const doneTasks: KanbanTask[] = allTasks.filter(isTerminal);
 
   for (const task of completedTasks) {
     if (!openIssueCompletedIds.has(task.id)) {

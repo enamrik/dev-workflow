@@ -3,6 +3,7 @@
  */
 
 import {
+  isTerminal,
   type DbClient,
   type DbSource,
   type TaskSessionService,
@@ -420,7 +421,7 @@ export async function handleLoadTaskSession(
   }
 
   // Terminal states - return gracefully with context (not an error)
-  if (task.status === "COMPLETED" || task.status === "ABANDONED") {
+  if (isTerminal(task)) {
     return buildTerminalStateResponse(ctx, task);
   }
 
