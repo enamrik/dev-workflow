@@ -149,12 +149,12 @@ function TaskCard({
       flexDirection="column"
       marginBottom={1}
       borderStyle={isSelected ? "single" : undefined}
-      borderColor={isSelected ? "cyan" : undefined}
+      borderColor={isSelected ? typeColor : undefined}
       paddingX={isSelected ? 1 : 0}
     >
       {/* Task ID and type */}
       <Box>
-        <Text bold color={isSelected ? "cyan" : STATUS_COLORS[task.status]}>
+        <Text bold color={typeColor}>
           {taskId}
         </Text>
         <Text color="gray"> </Text>
