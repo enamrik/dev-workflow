@@ -97,7 +97,7 @@ export class TaskManagementService {
    * (via move_issue_to_backlog), task numbers become immutable to ensure
    * stable references like #180.2.
    *
-   * For tasks past PLANNED status, use abandon_task_session instead.
+   * For tasks past PLANNED status, use abandon_task instead.
    *
    * @param taskId - Task UUID
    * @param deletedBy - Who is deleting the task
@@ -117,7 +117,7 @@ export class TaskManagementService {
     if (task.status !== "PLANNED") {
       throw new Error(
         `Cannot delete task with status ${task.status}. Tasks can only be deleted while in PLANNED status. ` +
-          `Use abandon_task_session instead to mark the task as abandoned.`
+          `Use abandon_task instead to mark the task as abandoned.`
       );
     }
 

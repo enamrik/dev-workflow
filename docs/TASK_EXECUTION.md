@@ -116,7 +116,7 @@ PLANNED → BACKLOG → READY → IN_PROGRESS → PR_REVIEW → COMPLETED
 | IN_PROGRESS | PR_REVIEW   | `submit_for_review`     | After `create_pr`                         |
 | IN_PROGRESS | COMPLETED   | `complete_task`         | Main mode only (no PR)                    |
 | PR_REVIEW   | COMPLETED   | `complete_task`         | After PR is merged                        |
-| Any         | ABANDONED   | `abandon_task_session`  | Work stopped                              |
+| Any         | ABANDONED   | `abandon_task`          | Work stopped                              |
 
 ### Task Dependencies
 
@@ -355,13 +355,13 @@ Force mode bypasses state machine validation when state has drifted from reality
 
 ### Tools with Force Option
 
-| Tool                   | What force bypasses           |
-| ---------------------- | ----------------------------- |
-| `create_pr`            | IN_PROGRESS status check      |
-| `submit_for_review`    | Status and PR existence check |
-| `complete_task`        | Status check (wrong status)   |
-| `abandon_task_session` | Session ownership check       |
-| `close_issue`          | Task completion check         |
+| Tool                | What force bypasses           |
+| ------------------- | ----------------------------- |
+| `create_pr`         | IN_PROGRESS status check      |
+| `submit_for_review` | Status and PR existence check |
+| `complete_task`     | Status check (wrong status)   |
+| `abandon_task`      | Session ownership check       |
+| `close_issue`       | Task completion check         |
 
 ### Force Mode Protocol
 

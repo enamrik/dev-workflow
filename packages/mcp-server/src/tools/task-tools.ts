@@ -126,7 +126,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
     },
   },
   {
-    name: "abandon_task_session",
+    name: "abandon_task",
     description:
       "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Abandons the current task. Marks task as ABANDONED. " +
       "Use force=true to bypass session ownership validation when state has drifted.",
@@ -200,7 +200,7 @@ export const taskToolDefinitions: ToolDefinition[] = [
     description:
       "Delete a task (soft delete). Only PLANNED tasks can be deleted. " +
       "Once an issue moves to BACKLOG (via move_issue_to_backlog), task numbers become immutable. " +
-      "Use abandon_task_session instead for tasks past PLANNED status.",
+      "Use abandon_task instead for tasks past PLANNED status.",
     inputSchema: {
       type: "object",
       properties: {
@@ -641,19 +641,24 @@ function formatConflictWarnings(warnings: ConflictWarning[], issueNumber?: numbe
 }
 
 /**
- * Handle abandon_task_session tool call
+ * Handle abandon_task tool call
  *
  * When force=true:
  * - Bypasses session ownership validation
  * - Use when task state has drifted (e.g., session expired but task is still IN_PROGRESS)
+ *
+ * Returns same context as complete_task for consistent close_issue prompting:
+ * - allTasksComplete: whether all tasks are in terminal state
+ * - issueNumber: for easy close_issue call
+ * - nextTask: next available task in the plan
  */
-export async function handleAbandonTaskSession(
+export async function handleAbandonTask(
   ctx: TaskToolContext,
   args: { taskId: string; sessionId: string; reason?: string; force?: boolean }
 ): Promise<ToolResponse> {
   const { taskId, sessionId, reason, force = false } = args;
 
-  const task = await ctx.taskSessionService.abandonTaskSession(taskId, sessionId, reason, force);
+  const task = await ctx.taskSessionService.abandonTask(taskId, sessionId, reason, force);
 
   // Sync to external project management provider (service handles "should I sync?" internally)
   if (ctx.taskSyncService) {
@@ -665,10 +670,26 @@ export async function handleAbandonTaskSession(
     }
   }
 
+  // Get issue context for close_issue prompting (same pattern as complete_task)
+  const plan = ctx.planService.findById(task.planId);
+  const issue = plan ? ctx.issueService.findById(plan.issueId) : null;
+
+  // Check if all tasks are in terminal state
+  const allTasks = ctx.taskService.findByPlanId(task.planId);
+  const activeTasks = allTasks.filter((t) => !t.isDeleted);
+  const terminalStatuses = ["COMPLETED", "ABANDONED"];
+  const allTasksComplete = activeTasks.every((t) => terminalStatuses.includes(t.status));
+
+  // Find next available task
+  const nextTask = findNextAvailableTaskInPlan(ctx, task.planId);
+
   return successResponse({
     success: true,
     task,
     forced: force,
+    allTasksComplete,
+    issueNumber: issue?.number ?? null,
+    nextTask,
     message: force ? "Task force-abandoned" : "Task abandoned",
   });
 }
@@ -1145,7 +1166,7 @@ ${task.implementationPlan ? `## Additional Instructions\n${task.implementationPl
 4. When complete: call \`complete_task_session\` with:
    - taskId: "${taskId}"
    - sessionId: "${sessionId}"
-5. If blocked: call \`abandon_task_session\` with:
+5. If blocked: call \`abandon_task\` with:
    - taskId: "${taskId}"
    - sessionId: "${sessionId}"
    - reason: (explain why)

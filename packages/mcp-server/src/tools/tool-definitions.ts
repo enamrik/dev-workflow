@@ -159,10 +159,10 @@ export const taskToolDefinitions = [
     schemas.LoadTaskSessionSchema
   ),
   createToolDefinition(
-    "abandon_task_session",
+    "abandon_task",
     "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Abandons the current task. Marks task as ABANDONED. " +
       "Use force=true to bypass session ownership validation when state has drifted.",
-    schemas.AbandonTaskSessionSchema
+    schemas.AbandonTaskSchema
   ),
   createToolDefinition(
     "get_task",
@@ -176,7 +176,7 @@ export const taskToolDefinitions = [
   ),
   createToolDefinition(
     "delete_task",
-    "Delete a task (soft delete). Only PLANNED tasks can be deleted. Once an issue moves to BACKLOG (via move_issue_to_backlog), task numbers become immutable. Use abandon_task_session instead for tasks past PLANNED status.",
+    "Delete a task (soft delete). Only PLANNED tasks can be deleted. Once an issue moves to BACKLOG (via move_issue_to_backlog), task numbers become immutable. Use abandon_task instead for tasks past PLANNED status.",
     schemas.DeleteTaskSchema
   ),
   createToolDefinition(
@@ -382,7 +382,7 @@ export const dispatchToolDefinitions = [
   ),
   createToolDefinition(
     "end_worker_session",
-    "Signal that the Claude worker session is complete. This is the TERMINAL action for worker tasks - nothing should be done after calling this. Sets the claudeDone flag which workers poll for before terminating. Think of this like process.exit() - there is no 'after'. Must be called after complete_task or abandon_task_session.",
+    "Signal that the Claude worker session is complete. This is the TERMINAL action for worker tasks - nothing should be done after calling this. Sets the claudeDone flag which workers poll for before terminating. Think of this like process.exit() - there is no 'after'. Must be called after complete_task or abandon_task.",
     schemas.EndWorkerSessionSchema
   ),
 ];

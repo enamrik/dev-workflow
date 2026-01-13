@@ -51,7 +51,7 @@ export const dispatchToolDefinitions: ToolDefinition[] = [
     description:
       "Signal that the Claude worker session is complete. This is the TERMINAL action for worker tasks - " +
       "nothing should be done after calling this. Sets the claudeDone flag which workers poll for before terminating. " +
-      "Think of this like process.exit() - there is no 'after'. Must be called after complete_task or abandon_task_session.",
+      "Think of this like process.exit() - there is no 'after'. Must be called after complete_task or abandon_task.",
     inputSchema: {
       type: "object",
       properties: {

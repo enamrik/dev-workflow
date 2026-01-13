@@ -58,7 +58,7 @@ import {
   handleSyncIssue,
   // Task handlers
   handleLoadTaskSession,
-  handleAbandonTaskSession,
+  handleAbandonTask,
   handleGetTask,
   handleListAvailableTasks,
   handleDeleteTask,
@@ -124,7 +124,7 @@ import {
   type MoveIssueToBacklogArgs,
   type SyncIssueArgs,
   type LoadTaskSessionArgs,
-  type AbandonTaskSessionArgs,
+  type AbandonTaskArgs,
   type GetTaskArgs,
   type ListAvailableTasksArgs,
   type DeleteTaskArgs,
@@ -355,10 +355,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
       if (!validation.success) return validation.response;
       return await handleLoadTaskSession(context.taskToolContext, validation.data);
     }
-    if (name === "abandon_task_session") {
-      const validation = validateToolArgs<AbandonTaskSessionArgs>(name, args);
+    if (name === "abandon_task") {
+      const validation = validateToolArgs<AbandonTaskArgs>(name, args);
       if (!validation.success) return validation.response;
-      return await handleAbandonTaskSession(context.taskToolContext, validation.data);
+      return await handleAbandonTask(context.taskToolContext, validation.data);
     }
     if (name === "get_task") {
       const validation = validateToolArgs<GetTaskArgs>(name, args);

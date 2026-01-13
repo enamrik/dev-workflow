@@ -370,7 +370,7 @@ export class TaskSessionService {
    *
    * @param force - Bypass session ownership validation when state has drifted
    */
-  async abandonTaskSession(
+  async abandonTask(
     taskId: string,
     sessionId: string,
     reason?: string,
