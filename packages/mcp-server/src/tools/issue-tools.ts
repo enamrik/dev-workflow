@@ -13,8 +13,6 @@ import {
   type GitWorktreeService,
   type Project,
   type TypeService,
-  type TemplateScope,
-  type TemplateCategory,
   type IssueService,
   type TaskService,
   type PlanService,
@@ -22,8 +20,25 @@ import {
   type WorkerQueueDb,
   type ProjectManagementProvider,
 } from "@dev-workflow/core";
-import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
+import { type ToolResponse, successResponse, errorResponse } from "./types.js";
 import { createSlimEnrichedTaskData } from "./task-tools.js";
+import type {
+  CreateIssueArgs,
+  GetIssueArgs,
+  DeleteIssueArgs,
+  RestoreIssueArgs,
+  ListTemplatesArgs,
+  GetTemplateArgs,
+  CreateTemplateArgs,
+  UpdateTemplateArgs,
+  DeleteTemplateArgs,
+  CopyTemplateArgs,
+  UpdateIssueArgs,
+  CloseIssueArgs,
+  ChangeIssueTypeArgs,
+  SearchIssuesArgs,
+  ImportGitHubIssueArgs,
+} from "./schemas.js";
 
 /**
  * Computed issue status based on task progress.
@@ -75,438 +90,7 @@ function computeIssueStatus(
   return "IN_PROGRESS";
 }
 
-/**
- * Tool definitions for issue operations
- */
-export const issueToolDefinitions: ToolDefinition[] = [
-  {
-    name: "create_issue",
-    description:
-      "⚠️ Prefer 'dwf-manage-issue' skill for proper workflow. Creates a new issue in the task tracker.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        title: {
-          type: "string",
-          description: "Issue title",
-        },
-        description: {
-          type: "string",
-          description: "Detailed description of the issue",
-        },
-        acceptanceCriteria: {
-          type: "array",
-          items: { type: "string" },
-          description: "List of acceptance criteria",
-        },
-        type: {
-          type: "string",
-          enum: ["FEATURE", "BUG", "ENHANCEMENT", "TASK"],
-          description: "Issue type",
-        },
-        priority: {
-          type: "string",
-          enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
-          description: "Issue priority",
-        },
-        useTemplate: {
-          type: "boolean",
-          description: "Auto-select template based on description",
-        },
-        labels: {
-          type: "object",
-          description:
-            "Labels for this issue. Supports simple labels (empty value) and key-value pairs. " +
-            'Example: {"bug": "", "product": "Case Workflow", "Product Area": "HR Portal"}',
-          additionalProperties: { type: "string" },
-        },
-      },
-      required: ["title", "description"],
-    },
-  },
-  {
-    name: "get_issue",
-    description: "Get issue by ID or number. Optionally include the plan with tasks.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: {
-          type: "string",
-          description: "Issue UUID",
-        },
-        issueNumber: {
-          type: "number",
-          description: "Issue number (e.g., 123 for #123)",
-        },
-        includePlan: {
-          type: "boolean",
-          description: "Include the plan with slim task list (default: false)",
-        },
-      },
-    },
-  },
-  {
-    name: "delete_issue",
-    description:
-      "Soft delete an issue. Only PLANNED issues can be deleted. " +
-      "Once work begins (status changes to OPEN or IN_PROGRESS), the issue structure becomes immutable. " +
-      "Use close_issue instead for issues past PLANNED status.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        issueId: {
-          type: "string",
-          description: "Issue UUID",
-        },
-        issueNumber: {
-          type: "number",
-          description: "Issue number (e.g., 123 for #123) - alternative to issueId",
-        },
-      },
-    },
-  },
-  {
-    name: "restore_issue",
-    description:
-      "Restore a soft-deleted issue. The issue will be included in search and work queue again. Associated plans and tasks become accessible again.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        issueId: {
-          type: "string",
-          description: "Issue UUID",
-        },
-        issueNumber: {
-          type: "number",
-          description: "Issue number (e.g., 123 for #123) - alternative to issueId",
-        },
-      },
-    },
-  },
-  {
-    name: "list_templates",
-    description:
-      "List available issue templates. Returns both user-defined and default templates with their metadata.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        category: {
-          type: "string",
-          enum: ["issue", "task"],
-          description:
-            "Template category: 'issue' for issue templates (default), 'task' for task templates from .track/templates/tasks/",
-        },
-        scope: {
-          type: "string",
-          enum: ["global", "local", "all"],
-          description:
-            "Filter by template scope: 'global' for ~/.track/templates/, 'local' for .track/templates/, 'all' for both (default: all)",
-        },
-        type: {
-          type: "string",
-          description:
-            "Filter by template type (e.g., 'FEATURE', 'BUG'). Returns only templates of the specified type.",
-        },
-      },
-    },
-  },
-  {
-    name: "get_template",
-    description:
-      "Get a single issue template by filename with its full content and source information.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        filename: {
-          type: "string",
-          description: "Template filename (e.g., 'feature.md', 'bug.md')",
-        },
-        category: {
-          type: "string",
-          enum: ["issue", "task"],
-          description:
-            "Template category: 'issue' for issue templates (default), 'task' for task templates",
-        },
-        scope: {
-          type: "string",
-          enum: ["local", "global"],
-          description:
-            "Template scope: 'local' for project templates (.track/templates/), 'global' for user templates (~/.track/templates/). If not specified, searches local first then global.",
-        },
-      },
-      required: ["filename"],
-    },
-  },
-  {
-    name: "create_template",
-    description:
-      "Create a new template. Templates use markdown with YAML frontmatter for metadata. Cannot create a template if one with the same name already exists at the target scope.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        filename: {
-          type: "string",
-          description: "Template filename (must end with .md)",
-        },
-        content: {
-          type: "string",
-          description:
-            "Template content in markdown with YAML frontmatter. Example: '---\\ntype: FEATURE\\npriority: MEDIUM\\n---\\n# Description\\n...'",
-        },
-        category: {
-          type: "string",
-          enum: ["issue", "task"],
-          description:
-            "Template category: 'issue' for issue templates (default), 'task' for task templates",
-        },
-        scope: {
-          type: "string",
-          enum: ["local", "global"],
-          description:
-            "Template scope: 'local' for project templates (.track/templates/, default), 'global' for user templates (~/.track/templates/).",
-        },
-      },
-      required: ["filename", "content"],
-    },
-  },
-  {
-    name: "update_template",
-    description: "Update an existing template at the specified scope.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        filename: {
-          type: "string",
-          description: "Template filename",
-        },
-        content: {
-          type: "string",
-          description: "New template content in markdown with YAML frontmatter",
-        },
-        category: {
-          type: "string",
-          enum: ["issue", "task"],
-          description:
-            "Template category: 'issue' for issue templates (default), 'task' for task templates",
-        },
-        scope: {
-          type: "string",
-          enum: ["local", "global"],
-          description:
-            "Template scope: 'local' for project templates (.track/templates/, default), 'global' for user templates (~/.track/templates/).",
-        },
-      },
-      required: ["filename", "content"],
-    },
-  },
-  {
-    name: "delete_template",
-    description: "Delete a template at the specified scope.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        filename: {
-          type: "string",
-          description: "Template filename to delete",
-        },
-        category: {
-          type: "string",
-          enum: ["issue", "task"],
-          description:
-            "Template category: 'issue' for issue templates (default), 'task' for task templates",
-        },
-        scope: {
-          type: "string",
-          enum: ["local", "global"],
-          description:
-            "Template scope: 'local' for project templates (.track/templates/, default), 'global' for user templates (~/.track/templates/).",
-        },
-      },
-      required: ["filename"],
-    },
-  },
-  {
-    name: "copy_template",
-    description:
-      "Copy a template between local and global scopes. Useful for customizing global templates locally or promoting local templates to global.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        filename: {
-          type: "string",
-          description: "Template filename to copy (e.g., 'feature.md')",
-        },
-        category: {
-          type: "string",
-          enum: ["issue", "task"],
-          description: "Template category: 'issue' for issue templates, 'task' for task templates",
-        },
-        fromScope: {
-          type: "string",
-          enum: ["local", "global"],
-          description: "Source scope to copy from",
-        },
-        toScope: {
-          type: "string",
-          enum: ["local", "global"],
-          description: "Destination scope to copy to",
-        },
-      },
-      required: ["filename", "category", "fromScope", "toScope"],
-    },
-  },
-  {
-    name: "update_issue",
-    description:
-      "⚠️ Prefer 'dwf-manage-issue' skill for proper workflow. Updates an issue. Optionally regenerate plan after update (you'll need to call generate_plan separately if needed).",
-    inputSchema: {
-      type: "object",
-      properties: {
-        issueId: {
-          type: "string",
-          description: "Issue UUID",
-        },
-        issueNumber: {
-          type: "number",
-          description: "Issue number (e.g., 123 for #123) - alternative to issueId",
-        },
-        updates: {
-          type: "object",
-          properties: {
-            title: { type: "string" },
-            description: { type: "string" },
-            acceptanceCriteria: {
-              type: "array",
-              items: { type: "string" },
-            },
-            type: {
-              type: "string",
-              enum: ["FEATURE", "BUG", "ENHANCEMENT", "TASK"],
-            },
-            priority: {
-              type: "string",
-              enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
-            },
-            labels: {
-              type: "object",
-              description:
-                "Update labels. Supports simple labels (empty value) and key-value pairs. " +
-                "Pass null to clear all labels.",
-              additionalProperties: { type: "string" },
-            },
-          },
-          additionalProperties: false,
-          description: "Fields to update on the issue",
-        },
-        regeneratePlan: {
-          type: "boolean",
-          description: "Automatically regenerate plan after update (default: false)",
-        },
-      },
-      required: ["updates"],
-    },
-  },
-  {
-    name: "close_issue",
-    description:
-      "Close an issue. Validates all tasks are in terminal state (COMPLETED or ABANDONED). " +
-      "Syncs to GitHub if the issue has a linked GitHub issue. " +
-      "Use force=true to bypass task state validation when issue state has drifted.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        issueNumber: {
-          type: "number",
-          description: "Issue number (e.g., 123 for #123)",
-        },
-        force: {
-          type: "boolean",
-          description:
-            "Bypass task state validation. Use when issue state has drifted " +
-            "(e.g., all work is done but some tasks weren't marked complete). Requires user confirmation before use.",
-        },
-      },
-      required: ["issueNumber"],
-    },
-  },
-  {
-    name: "change_issue_type",
-    description:
-      "Change an issue's type. Validates the type against available types " +
-      "(from ./.track/types.md if present, otherwise defaults). " +
-      "Use this when auto-assigned type is incorrect.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        issueNumber: {
-          type: "number",
-          description: "Issue number (e.g., 123 for #123)",
-        },
-        type: {
-          type: "string",
-          description:
-            "New issue type. Defaults: FEATURE, BUG, ENHANCEMENT, TASK. " +
-            "Custom types can be defined in ./.track/types.md",
-        },
-      },
-      required: ["issueNumber", "type"],
-    },
-  },
-  {
-    name: "get_project_stats",
-    description:
-      "Get project statistics: issue and task counts by status. Use this for a quick overview without loading all issues.",
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
-  },
-  {
-    name: "search_issues",
-    description:
-      "Search issues by keyword in title or description. Returns slim results (number, title, status, type, priority). Max 10 results.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: {
-          type: "string",
-          description: "Search query (case-insensitive)",
-        },
-      },
-      required: ["query"],
-    },
-  },
-  {
-    name: "get_work_queue",
-    description:
-      "Get prioritized work queue: top 3 issues and top 3 tasks to work on next. Also includes issues that need planning (PLANNED status without a plan). Considers status, priority, milestone deadlines, and task readiness.",
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
-  },
-  {
-    name: "import_github_issue",
-    description:
-      "Import an existing GitHub issue into dev-workflow. Creates a dev-workflow issue from the GitHub issue's title and description. " +
-      "Does NOT create tasks - use generate_plan after import. Does NOT modify the original GitHub issue. " +
-      "The imported issue stores sourceGitHubIssueNumber to track the link.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        githubIssueNumber: {
-          type: "number",
-          description: "GitHub issue number to import (e.g., 42)",
-        },
-        githubIssueUrl: {
-          type: "string",
-          description:
-            "GitHub issue URL to import (e.g., https://github.com/owner/repo/issues/42). Alternative to githubIssueNumber.",
-        },
-      },
-    },
-  },
-];
+// Tool definitions are now in tool-definitions.ts (generated from Zod schemas)
 
 /**
  * Service context for issue handlers
@@ -536,18 +120,7 @@ export interface IssueToolContext {
   typeService?: TypeService;
 }
 
-/**
- * Create issue args
- */
-interface CreateIssueArgs {
-  title: string;
-  description: string;
-  acceptanceCriteria?: string[];
-  type?: IssueType;
-  priority?: IssuePriority;
-  useTemplate?: boolean;
-  labels?: Record<string, string>;
-}
+// CreateIssueArgs is now imported from ./schemas.js
 
 /**
  * Handle create_issue tool call
@@ -571,8 +144,8 @@ export async function handleCreateIssue(
 
   // Select template if requested and use metadata
   let templateUsed: string | undefined;
-  let finalType = type;
-  let finalPriority = priority;
+  let finalType: IssueType | undefined = type as IssueType | undefined;
+  let finalPriority: IssuePriority = priority as IssuePriority;
 
   if (useTemplate) {
     try {
@@ -593,7 +166,7 @@ export async function handleCreateIssue(
     }
   }
 
-  const resolvedType = finalType || "FEATURE";
+  const resolvedType: IssueType = finalType || "FEATURE";
 
   // Create issue in PLANNED status
   // GitHub sync happens at task level via move_issue_to_backlog
@@ -639,10 +212,7 @@ export async function handleCreateIssue(
  * When includePlan is true, returns enriched task data with worker and PR info
  * for each task in the plan.
  */
-export function handleGetIssue(
-  ctx: IssueToolContext,
-  args: { id?: string; issueNumber?: number; includePlan?: boolean }
-): ToolResponse {
+export function handleGetIssue(ctx: IssueToolContext, args: GetIssueArgs): ToolResponse {
   const { id, issueNumber, includePlan = false } = args;
 
   const issue = id ? ctx.issueService.findById(id) : ctx.issueService.findByNumber(issueNumber!);
@@ -697,7 +267,7 @@ export function handleGetIssue(
  */
 export async function handleDeleteIssue(
   ctx: IssueToolContext,
-  args: { issueId?: string; issueNumber?: number }
+  args: DeleteIssueArgs
 ): Promise<ToolResponse> {
   const { issueId, issueNumber } = args;
 
@@ -853,10 +423,7 @@ export async function handleDeleteIssue(
  *
  * Restores a soft-deleted issue. The issue will be included in list_issues again.
  */
-export function handleRestoreIssue(
-  ctx: IssueToolContext,
-  args: { issueId?: string; issueNumber?: number }
-): ToolResponse {
+export function handleRestoreIssue(ctx: IssueToolContext, args: RestoreIssueArgs): ToolResponse {
   const { issueId, issueNumber } = args;
 
   // For restore, we need to find including deleted issues
@@ -906,7 +473,7 @@ export function handleRestoreIssue(
  */
 export async function handleListTemplates(
   ctx: IssueToolContext,
-  args: { category?: TemplateCategory; scope?: TemplateScope; type?: string }
+  args: ListTemplatesArgs
 ): Promise<ToolResponse> {
   const category = args.category ?? "issue";
   const scope = args.scope ?? "all";
@@ -962,7 +529,7 @@ export async function handleListTemplates(
  */
 export async function handleGetTemplate(
   ctx: IssueToolContext,
-  args: { filename: string; category?: TemplateCategory; scope?: TemplateScope }
+  args: GetTemplateArgs
 ): Promise<ToolResponse> {
   const { filename, category = "issue", scope } = args;
 
@@ -999,12 +566,7 @@ export async function handleGetTemplate(
  */
 export async function handleCreateTemplate(
   ctx: IssueToolContext,
-  args: {
-    filename: string;
-    content: string;
-    category?: TemplateCategory;
-    scope?: TemplateScope;
-  }
+  args: CreateTemplateArgs
 ): Promise<ToolResponse> {
   const { filename, content, category = "issue", scope = "local" } = args;
 
@@ -1033,12 +595,7 @@ export async function handleCreateTemplate(
  */
 export async function handleUpdateTemplate(
   ctx: IssueToolContext,
-  args: {
-    filename: string;
-    content: string;
-    category?: TemplateCategory;
-    scope?: TemplateScope;
-  }
+  args: UpdateTemplateArgs
 ): Promise<ToolResponse> {
   const { filename, content, category = "issue", scope = "local" } = args;
 
@@ -1067,7 +624,7 @@ export async function handleUpdateTemplate(
  */
 export async function handleDeleteTemplate(
   ctx: IssueToolContext,
-  args: { filename: string; category?: TemplateCategory; scope?: TemplateScope }
+  args: DeleteTemplateArgs
 ): Promise<ToolResponse> {
   const { filename, category = "issue", scope = "local" } = args;
 
@@ -1088,12 +645,7 @@ export async function handleDeleteTemplate(
  */
 export async function handleCopyTemplate(
   ctx: IssueToolContext,
-  args: {
-    filename: string;
-    category: TemplateCategory;
-    fromScope: TemplateScope;
-    toScope: TemplateScope;
-  }
+  args: CopyTemplateArgs
 ): Promise<ToolResponse> {
   const { filename, category, fromScope, toScope } = args;
 
@@ -1122,22 +674,13 @@ export async function handleCopyTemplate(
  *
  * If GitHub sync is enabled and issue has a GitHub link, updates GitHub FIRST.
  * If GitHub sync fails, the entire operation fails (no partial state).
+ *
+ * Note: The `updates` object is validated by Zod with .strict(), which rejects
+ * unknown properties like `status`. Manual field filtering is no longer needed.
  */
 export async function handleUpdateIssue(
   ctx: IssueToolContext,
-  args: {
-    issueId?: string;
-    issueNumber?: number;
-    updates: Partial<{
-      title: string;
-      description: string;
-      acceptanceCriteria: string[];
-      type: IssueType;
-      priority: IssuePriority;
-      labels: Record<string, string>;
-    }>;
-    regeneratePlan?: boolean;
-  }
+  args: UpdateIssueArgs
 ): Promise<ToolResponse> {
   const { issueId, issueNumber, updates, regeneratePlan = false } = args;
 
@@ -1158,19 +701,12 @@ export async function handleUpdateIssue(
     );
   }
 
-  // Explicitly pick only allowed fields - status changes must go through close_issue
-  const allowedUpdates: typeof updates = {};
-  if (updates.title !== undefined) allowedUpdates.title = updates.title;
-  if (updates.description !== undefined) allowedUpdates.description = updates.description;
-  if (updates.acceptanceCriteria !== undefined)
-    allowedUpdates.acceptanceCriteria = updates.acceptanceCriteria;
-  if (updates.type !== undefined) allowedUpdates.type = updates.type;
-  if (updates.priority !== undefined) allowedUpdates.priority = updates.priority;
-  if (updates.labels !== undefined) allowedUpdates.labels = updates.labels;
+  // Zod validation with .strict() ensures only allowed fields are in updates
+  // No manual filtering needed - unknown properties like 'status' are rejected at validation
 
   // TODO: External sync for update operations should be added to ProjectManagementProvider
   // For now, we only update locally
-  const result = ctx.planningService.updateIssue(issue.id, allowedUpdates, regeneratePlan);
+  const result = ctx.planningService.updateIssue(issue.id, updates, regeneratePlan);
 
   return successResponse(result);
 }
@@ -1190,7 +726,7 @@ export async function handleUpdateIssue(
  */
 export async function handleCloseIssue(
   ctx: IssueToolContext,
-  args: { issueNumber: number; force?: boolean }
+  args: CloseIssueArgs
 ): Promise<ToolResponse> {
   const { issueNumber, force = false } = args;
 
@@ -1253,7 +789,7 @@ export async function handleCloseIssue(
  */
 export async function handleChangeIssueType(
   ctx: IssueToolContext,
-  args: { issueNumber: number; type: string }
+  args: ChangeIssueTypeArgs
 ): Promise<ToolResponse> {
   const { issueNumber, type } = args;
 
@@ -1335,7 +871,7 @@ export function handleGetProjectStats(ctx: IssueToolContext): ToolResponse {
  *
  * Searches issues by keyword in title or description.
  */
-export function handleSearchIssues(ctx: IssueToolContext, args: { query: string }): ToolResponse {
+export function handleSearchIssues(ctx: IssueToolContext, args: SearchIssuesArgs): ToolResponse {
   const { query } = args;
 
   if (!query || query.trim().length === 0) {
@@ -1664,13 +1200,7 @@ function inferPriorityFromLabels(labels: string[]): IssuePriority {
   return "MEDIUM";
 }
 
-/**
- * Import GitHub issue args
- */
-interface ImportGitHubIssueArgs {
-  githubIssueNumber?: number;
-  githubIssueUrl?: string;
-}
+// ImportGitHubIssueArgs is now imported from ./schemas.js
 
 /**
  * Handle import_github_issue tool call
@@ -1691,42 +1221,45 @@ export async function handleImportGitHubIssue(
   const { githubIssueNumber, githubIssueUrl } = args;
 
   // Resolve issue number from URL or direct parameter
-  let issueNumber: number | null = null;
+  let resolvedIssueNumber: number;
 
   if (githubIssueNumber !== undefined) {
-    issueNumber = githubIssueNumber;
+    resolvedIssueNumber = githubIssueNumber;
   } else if (githubIssueUrl) {
-    issueNumber = parseGitHubIssueUrl(githubIssueUrl);
-    if (issueNumber === null) {
+    const parsed = parseGitHubIssueUrl(githubIssueUrl);
+    if (parsed === null) {
       return errorResponse(
         `Invalid GitHub issue URL: ${githubIssueUrl}. Expected format: https://github.com/owner/repo/issues/42`
       );
     }
+    resolvedIssueNumber = parsed;
   } else {
     return errorResponse("Either githubIssueNumber or githubIssueUrl is required");
   }
 
   // Check if this issue was already imported
   const existingIssues = ctx.issueService.findMany({ includeDeleted: false });
-  const alreadyImported = existingIssues.find((i) => i.sourceGitHubIssueNumber === issueNumber);
+  const alreadyImported = existingIssues.find(
+    (i) => i.sourceGitHubIssueNumber === resolvedIssueNumber
+  );
   if (alreadyImported) {
     return errorResponse(
-      `GitHub issue #${issueNumber} was already imported as dev-workflow issue #${alreadyImported.number}`
+      `GitHub issue #${resolvedIssueNumber} was already imported as dev-workflow issue #${alreadyImported.number}`
     );
   }
 
   // Fetch GitHub issue
   let githubIssue;
   try {
-    githubIssue = await ctx.githubCLI.getIssue(issueNumber);
+    githubIssue = await ctx.githubCLI.getIssue(resolvedIssueNumber);
   } catch (error) {
     return errorResponse(
-      `Failed to fetch GitHub issue #${issueNumber}: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to fetch GitHub issue #${resolvedIssueNumber}: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 
   if (!githubIssue) {
-    return errorResponse(`GitHub issue #${issueNumber} not found`);
+    return errorResponse(`GitHub issue #${resolvedIssueNumber} not found`);
   }
 
   // Infer type and priority from labels
@@ -1736,13 +1269,13 @@ export async function handleImportGitHubIssue(
   // Create dev-workflow issue
   const issue = ctx.issueService.create({
     title: githubIssue.title,
-    description: githubIssue.body || `Imported from GitHub issue #${issueNumber}`,
+    description: githubIssue.body || `Imported from GitHub issue #${resolvedIssueNumber}`,
     acceptanceCriteria: [],
     type: inferredType,
     priority: inferredPriority,
     status: "PLANNED",
     createdBy: "claude-code",
-    sourceGitHubIssueNumber: issueNumber,
+    sourceGitHubIssueNumber: resolvedIssueNumber,
   });
 
   // Emit issue:created event for real-time UI updates
@@ -1754,7 +1287,7 @@ export async function handleImportGitHubIssue(
 
   return successResponse({
     success: true,
-    message: `Imported GitHub issue #${issueNumber} as dev-workflow issue #${issue.number}`,
+    message: `Imported GitHub issue #${resolvedIssueNumber} as dev-workflow issue #${issue.number}`,
     issue: {
       id: issue.id,
       number: issue.number,
@@ -1762,7 +1295,7 @@ export async function handleImportGitHubIssue(
       type: issue.type,
       priority: issue.priority,
       status: issue.status,
-      sourceGitHubIssueNumber: issue.sourceGitHubIssueNumber,
+      sourceGitHubIssueNumber: resolvedIssueNumber,
       url: `http://127.0.0.1:3456/projects/${ctx.project.slug}/issues/${issue.number}`,
     },
     githubIssue: {

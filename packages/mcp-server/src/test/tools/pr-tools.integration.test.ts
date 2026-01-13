@@ -32,6 +32,12 @@ import {
   handleCompleteTask,
   type PRToolContext,
 } from "../../tools/pr-tools.js";
+import {
+  GetTaskPRStatusSchema,
+  CreatePRSchema,
+  SubmitForReviewSchema,
+  CompleteTaskSchema,
+} from "../../tools/schemas.js";
 
 const TEST_PROJECT_ID = "test-project-pr";
 
@@ -1283,6 +1289,110 @@ describe("complete_task", () => {
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(true);
       expect(content.task.status).toBe("COMPLETED");
+    });
+  });
+});
+
+/**
+ * Schema Validation Tests for PR Tools
+ */
+describe("PR Tool Schema Validation", () => {
+  describe("GetTaskPRStatusSchema", () => {
+    it("should accept valid taskId", () => {
+      const result = GetTaskPRStatusSchema.safeParse({ taskId: "uuid-here" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing taskId", () => {
+      const result = GetTaskPRStatusSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("CreatePRSchema", () => {
+    it("should accept taskId only", () => {
+      const result = CreatePRSchema.safeParse({ taskId: "uuid-here" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept all optional fields", () => {
+      const input = {
+        taskId: "uuid-here",
+        title: "Custom PR title",
+        body: "Custom PR body",
+        baseBranch: "develop",
+        draft: true,
+        force: true,
+      };
+      const result = CreatePRSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing taskId", () => {
+      const result = CreatePRSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("SubmitForReviewSchema", () => {
+    it("should accept valid taskId", () => {
+      const result = SubmitForReviewSchema.safeParse({ taskId: "uuid-here" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept optional force flag", () => {
+      const result = SubmitForReviewSchema.safeParse({
+        taskId: "uuid-here",
+        force: true,
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing taskId", () => {
+      const result = SubmitForReviewSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("CompleteTaskSchema", () => {
+    it("should accept required fields", () => {
+      const input = {
+        taskId: "uuid-here",
+        sessionId: "session-id",
+        finalLogEntry: "Completed the task",
+      };
+      const result = CompleteTaskSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept all optional fields", () => {
+      const input = {
+        taskId: "uuid-here",
+        sessionId: "session-id",
+        finalLogEntry: "Completed the task",
+        force: true,
+        autoCloseIssue: true,
+      };
+      const result = CompleteTaskSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing taskId", () => {
+      const input = { sessionId: "session-id", finalLogEntry: "Done" };
+      const result = CompleteTaskSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject missing sessionId", () => {
+      const input = { taskId: "uuid-here", finalLogEntry: "Done" };
+      const result = CompleteTaskSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject missing finalLogEntry", () => {
+      const input = { taskId: "uuid-here", sessionId: "session-id" };
+      const result = CompleteTaskSchema.safeParse(input);
+      expect(result.success).toBe(false);
     });
   });
 });
