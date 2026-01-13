@@ -16,7 +16,7 @@ import {
   Markdown,
   GitHubLink,
 } from "@/components/ui";
-import { IssueMoveToBacklogButton } from "@/components/issues";
+import { IssueTransitionButton } from "@/components/issues";
 import type { Issue, Plan, Task, ComputedIssueStatus } from "@/lib/types";
 
 type TabId = "details" | "plan" | "tasks";
@@ -165,7 +165,12 @@ function IssuePreviewContent({
               tooltip={`View on GitHub: ${issue.githubSync.githubUrl}`}
             />
           )}
-          <IssueMoveToBacklogButton issue={issue} projectSlug={projectSlug} onSuccess={onRefetch} />
+          <IssueTransitionButton
+            issue={issue}
+            tasks={tasks}
+            projectSlug={projectSlug}
+            onSuccess={onRefetch}
+          />
         </div>
       </div>
 
