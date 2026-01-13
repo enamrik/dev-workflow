@@ -1093,14 +1093,15 @@ program
   .command("board")
   .description("Display a live terminal Kanban board of tasks (refreshes automatically)")
   .option("-i, --interval <seconds>", "Refresh interval in seconds", "3")
-  .action(async (options: { interval: string }) => {
+  .option("-s, --slugs <slugs>", "Comma-separated list of project slugs to filter")
+  .action(async (options: { interval: string; slugs?: string }) => {
     const { runBoard } = await import("./commands/board.js");
     const interval = parseInt(options.interval, 10);
     if (isNaN(interval) || interval < 1) {
       console.error("❌ Interval must be a positive integer");
       process.exit(1);
     }
-    await runBoard({ interval });
+    await runBoard({ interval, slugs: options.slugs });
   });
 
 // Backup command with subcommands
