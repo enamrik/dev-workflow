@@ -5,9 +5,27 @@
 // Types
 export * from "./types.js";
 
-// Issue tools
+// Schemas and validation utilities
+export * from "./schemas.js";
+export * from "./schema-utils.js";
+
+// Tool definitions (generated from Zod schemas)
 export {
   issueToolDefinitions,
+  planToolDefinitions,
+  taskToolDefinitions,
+  snapshotToolDefinitions,
+  settingsToolDefinitions,
+  milestoneToolDefinitions,
+  worktreeToolDefinitions,
+  prToolDefinitions,
+  mergeToolDefinitions,
+  typeToolDefinitions,
+  dispatchToolDefinitions,
+} from "./tool-definitions.js";
+
+// Issue handlers
+export {
   type IssueToolContext,
   handleCreateIssue,
   handleGetIssue,
@@ -28,9 +46,8 @@ export {
   handleImportGitHubIssue,
 } from "./issue-tools.js";
 
-// Plan tools
+// Plan handlers
 export {
-  planToolDefinitions,
   type PlanToolContext,
   handleGeneratePlan,
   handleGetPlan,
@@ -40,9 +57,8 @@ export {
   handleSyncIssue,
 } from "./plan-tools.js";
 
-// Task tools
+// Task handlers
 export {
-  taskToolDefinitions,
   type TaskToolContext,
   handleLoadTaskSession,
   handleAbandonTaskSession,
@@ -56,25 +72,19 @@ export {
   handleCheckTaskConflicts,
 } from "./task-tools.js";
 
-// Snapshot tools
+// Snapshot handlers
 export {
-  snapshotToolDefinitions,
   type SnapshotToolContext,
   handleGetSnapshotHistory,
   handleRevertToSnapshot,
   handleViewSnapshot,
 } from "./snapshot-tools.js";
 
-// Settings tools
-export {
-  settingsToolDefinitions,
-  type SettingsToolContext,
-  handleUpdateSettings,
-} from "./settings-tools.js";
+// Settings handlers
+export { type SettingsToolContext, handleUpdateSettings } from "./settings-tools.js";
 
-// Milestone tools
+// Milestone handlers
 export {
-  milestoneToolDefinitions,
   type MilestoneToolContext,
   handleCreateMilestone,
   handleGetMilestone,
@@ -85,17 +95,15 @@ export {
   handleRemoveIssueFromMilestone,
 } from "./milestone-tools.js";
 
-// Worktree tools
+// Worktree handlers
 export {
-  worktreeToolDefinitions,
   type WorktreeToolContext,
   handleListWorktrees,
   handlePruneStaleWorktrees,
 } from "./worktree-tools.js";
 
-// PR tools
+// PR handlers
 export {
-  prToolDefinitions,
   type PRToolContext,
   handleGetTaskPRStatus,
   handleCreatePR,
@@ -103,12 +111,11 @@ export {
   handleCompleteTask,
 } from "./pr-tools.js";
 
-// Merge tools
-export { mergeToolDefinitions, type MergeToolContext, handleMergeIssues } from "./merge-tools.js";
+// Merge handlers
+export { type MergeToolContext, handleMergeIssues } from "./merge-tools.js";
 
-// Type tools
+// Type handlers
 export {
-  typeToolDefinitions,
   type TypeToolContext,
   handleListTypes,
   handleCreateType,
@@ -116,9 +123,8 @@ export {
   handleDeleteType,
 } from "./type-tools.js";
 
-// Dispatch tools (worker task assignment)
+// Dispatch handlers (worker task assignment)
 export {
-  dispatchToolDefinitions,
   type DispatchToolContext,
   handleDispatchTask,
   handleGetDispatchStatus,
