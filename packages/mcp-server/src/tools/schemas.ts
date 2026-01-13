@@ -333,7 +333,7 @@ export const LoadTaskSessionSchema = z.object({
     ),
 });
 
-export const AbandonTaskSessionSchema = z.object({
+export const AbandonTaskSchema = z.object({
   taskId: z.string().describe("Task UUID"),
   sessionId: z.string().describe("Claude session ID"),
   reason: z.string().optional().describe("Reason for abandonment"),
@@ -716,7 +716,7 @@ export const toolSchemas = {
   sync_issue: SyncIssueSchema,
   // Task tools
   load_task_session: LoadTaskSessionSchema,
-  abandon_task_session: AbandonTaskSessionSchema,
+  abandon_task: AbandonTaskSchema,
   get_task: GetTaskSchema,
   list_available_tasks: ListAvailableTasksSchema,
   delete_task: DeleteTaskSchema,
@@ -788,7 +788,7 @@ export type MoveIssueToReadyArgs = z.infer<typeof MoveIssueToReadySchema>;
 export type MoveIssueToBacklogArgs = z.infer<typeof MoveIssueToBacklogSchema>;
 export type SyncIssueArgs = z.infer<typeof SyncIssueSchema>;
 export type LoadTaskSessionArgs = z.infer<typeof LoadTaskSessionSchema>;
-export type AbandonTaskSessionArgs = z.infer<typeof AbandonTaskSessionSchema>;
+export type AbandonTaskArgs = z.infer<typeof AbandonTaskSchema>;
 export type GetTaskArgs = z.infer<typeof GetTaskSchema>;
 export type ListAvailableTasksArgs = z.infer<typeof ListAvailableTasksSchema>;
 export type DeleteTaskArgs = z.infer<typeof DeleteTaskSchema>;

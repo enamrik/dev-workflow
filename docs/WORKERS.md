@@ -170,7 +170,7 @@ This is the **terminal action** for worker task execution. Think of it like `pro
 
 ### When to Call
 
-After `complete_task` or `abandon_task_session`:
+After `complete_task` or `abandon_task`:
 
 ```
 complete_task(taskId: "...", sessionId: "...", finalLogEntry: "...")

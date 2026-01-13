@@ -1,7 +1,7 @@
 ---
 name: dwf-worker-task
 description: Execute tasks - load, implement, create PR, and complete. Used by workers and for inline execution. Does NOT dispatch to workers. Auto-invoked for task execution after dispatch decision is made.
-allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-tracker:abandon_task_session, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:create_pr, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:log_task_progress, mcp:dev-workflow-tracker:get_task_execution_log, mcp:dev-workflow-tracker:end_worker_session
+allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-tracker:abandon_task, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:create_pr, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:log_task_progress, mcp:dev-workflow-tracker:get_task_execution_log, mcp:dev-workflow-tracker:end_worker_session
 ---
 
 # Worker Task Skill
@@ -139,7 +139,7 @@ Once I understand your requirements, I'll research and present a comparison.
 | IN_PROGRESS | PR_REVIEW   | `submit_for_review` (after PR exists - isolated/branch modes)                                           |
 | IN_PROGRESS | COMPLETED   | `complete_task` (main mode only)                                                                        |
 | PR_REVIEW   | COMPLETED   | `complete_task` (after PR merged)                                                                       |
-| Any         | ABANDONED   | `abandon_task_session`                                                                                  |
+| Any         | ABANDONED   | `abandon_task`                                                                                          |
 | COMPLETED   | (terminal)  | `end_worker_session` (workers only - signals worker process to terminate)                               |
 | ABANDONED   | (terminal)  | `end_worker_session` (workers only - signals worker process to terminate)                               |
 
@@ -354,7 +354,7 @@ end_worker_session({
    - Confirm they want to abandon (work will be lost for isolated/branch modes)
 
 2. **Abandon the session:**
-   - Call `abandon_task_session` with task ID, session ID, and reason
+   - Call `abandon_task` with task ID, session ID, and reason
    - For isolated/branch modes: worktree and branch will be deleted
 
 3. **Report and suggest:**
@@ -515,13 +515,13 @@ Sometimes the tracked state diverges from reality. This can happen when:
 
 ### Tools with Force Option
 
-| Tool                   | What force bypasses                                      |
-| ---------------------- | -------------------------------------------------------- |
-| `create_pr`            | IN_PROGRESS status check                                 |
-| `submit_for_review`    | IN_PROGRESS status check and PR existence check          |
-| `complete_task`        | Status check (allows completing from wrong status)       |
-| `abandon_task_session` | Session ownership check (allows abandoning orphan tasks) |
-| `close_issue`          | Task completion check (allows closing with open tasks)   |
+| Tool                | What force bypasses                                      |
+| ------------------- | -------------------------------------------------------- |
+| `create_pr`         | IN_PROGRESS status check                                 |
+| `submit_for_review` | IN_PROGRESS status check and PR existence check          |
+| `complete_task`     | Status check (allows completing from wrong status)       |
+| `abandon_task`      | Session ownership check (allows abandoning orphan tasks) |
+| `close_issue`       | Task completion check (allows closing with open tasks)   |
 
 ### When to Offer Force Mode
 

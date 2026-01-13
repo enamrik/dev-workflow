@@ -625,7 +625,7 @@ describe("toolSchemas registry", () => {
       "generate_plan",
       "get_plan",
       "load_task_session",
-      "abandon_task_session",
+      "abandon_task",
       "create_milestone",
       "update_settings",
       "dispatch_task",

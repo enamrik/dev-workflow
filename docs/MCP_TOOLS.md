@@ -420,7 +420,7 @@ Load a task for execution with full context.
 
 ---
 
-### abandon_task_session
+### abandon_task
 
 Abandon the current task.
 
@@ -470,7 +470,7 @@ Soft delete a task.
 | --------- | ------ | -------- | ----------- |
 | `taskId`  | string | Yes      | Task UUID   |
 
-**Restrictions:** Only PLANNED tasks can be deleted. Once an issue moves to BACKLOG, task numbers become immutable. Use `abandon_task_session` for tasks past PLANNED status.
+**Restrictions:** Only PLANNED tasks can be deleted. Once an issue moves to BACKLOG, task numbers become immutable. Use `abandon_task` for tasks past PLANNED status.
 
 ---
 
@@ -941,7 +941,7 @@ Signal that the Claude worker session is complete.
 - This is the TERMINAL action for worker tasks
 - Sets the `claudeDone` flag which workers poll for before terminating
 - Think of this like `process.exit()` - there is no "after"
-- Must be called after `complete_task` or `abandon_task_session`
+- Must be called after `complete_task` or `abandon_task`
 
 ---
 
@@ -986,13 +986,13 @@ Signal that the Claude worker session is complete.
 
 Several tools support `force=true` to bypass state machine validation when task/issue state has drifted:
 
-| Tool                   | What force bypasses                                |
-| ---------------------- | -------------------------------------------------- |
-| `create_pr`            | IN_PROGRESS status check                           |
-| `submit_for_review`    | IN_PROGRESS status and PR existence check          |
-| `complete_task`        | Status check (allows completing from wrong status) |
-| `abandon_task_session` | Session ownership check                            |
-| `close_issue`          | Task completion check                              |
+| Tool                | What force bypasses                                |
+| ------------------- | -------------------------------------------------- |
+| `create_pr`         | IN_PROGRESS status check                           |
+| `submit_for_review` | IN_PROGRESS status and PR existence check          |
+| `complete_task`     | Status check (allows completing from wrong status) |
+| `abandon_task`      | Session ownership check                            |
+| `close_issue`       | Task completion check                              |
 
 **Protocol:** Always get explicit user confirmation before using `force=true`.
 

@@ -581,7 +581,7 @@ describe("MCP Tool: delete_task", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("PLANNED status");
-    expect(result.error).toContain("abandon_task_session");
+    expect(result.error).toContain("abandon_task");
   });
 
   it("should not delete IN_PROGRESS task", async () => {
@@ -619,7 +619,7 @@ describe("MCP Tool: delete_task", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("PLANNED status");
-    expect(result.error).toContain("abandon_task_session");
+    expect(result.error).toContain("abandon_task");
   });
 });
 
