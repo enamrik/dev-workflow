@@ -29,6 +29,14 @@ import {
   handleMoveIssueToBacklog,
   type PlanToolContext,
 } from "../../tools/plan-tools.js";
+import {
+  GeneratePlanSchema,
+  GetPlanSchema,
+  MoveIssueToReadySchema,
+  MoveIssueToBacklogSchema,
+  PauseIssueSchema,
+  SyncIssueSchema,
+} from "../../tools/schemas.js";
 
 const TEST_PROJECT_ID = "test-project-plan";
 
@@ -420,6 +428,168 @@ describe("Plan Tools Integration", () => {
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
       expect(content.error).toContain("No plan exists");
+    });
+  });
+});
+
+/**
+ * Schema Validation Tests for Plan Tools
+ */
+describe("Plan Tool Schema Validation", () => {
+  describe("GeneratePlanSchema", () => {
+    it("should accept valid plan with tasks", () => {
+      const input = {
+        issueNumber: 1,
+        summary: "Implementation plan",
+        approach: "Step by step",
+        estimatedComplexity: "MEDIUM",
+        tasks: [
+          { id: "task-1", title: "Task 1", description: "First task", type: "TASK" },
+          {
+            id: "task-2",
+            title: "Task 2",
+            description: "Second task",
+            type: "FEATURE",
+            dependsOn: ["task-1"],
+            estimatedMinutes: 30,
+          },
+        ],
+      };
+      const result = GeneratePlanSchema.safeParse(input);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.tasks).toHaveLength(2);
+        expect(result.data.tasks[1].dependsOn).toEqual(["task-1"]);
+      }
+    });
+
+    it("should reject missing required fields", () => {
+      const input = { issueNumber: 1, summary: "Plan" };
+      const result = GeneratePlanSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject invalid complexity enum", () => {
+      const input = {
+        issueNumber: 1,
+        summary: "Plan",
+        approach: "Approach",
+        estimatedComplexity: "SUPER_HIGH",
+        tasks: [],
+      };
+      const result = GeneratePlanSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject tasks without required type field", () => {
+      const input = {
+        issueNumber: 1,
+        summary: "Plan",
+        approach: "Approach",
+        estimatedComplexity: "MEDIUM",
+        tasks: [{ id: "task-1", title: "Task without type", description: "Missing type" }],
+      };
+      const result = GeneratePlanSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should accept optional task fields", () => {
+      const input = {
+        issueNumber: 1,
+        summary: "Plan",
+        approach: "Approach",
+        estimatedComplexity: "LOW",
+        tasks: [
+          {
+            id: "task-1",
+            title: "Full task",
+            description: "Description",
+            type: "FEATURE",
+            acceptanceCriteria: ["AC 1", "AC 2"],
+            estimatedMinutes: 120,
+            implementationPlan: "Use existing patterns",
+            dependsOn: [],
+          },
+        ],
+      };
+      const result = GeneratePlanSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("GetPlanSchema", () => {
+    it("should accept issueNumber", () => {
+      const result = GetPlanSchema.safeParse({ issueNumber: 1 });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept issueId", () => {
+      const result = GetPlanSchema.safeParse({ issueId: "uuid-here" });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept empty object", () => {
+      const result = GetPlanSchema.safeParse({});
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("MoveIssueToReadySchema", () => {
+    it("should accept issueNumber", () => {
+      const result = MoveIssueToReadySchema.safeParse({ issueNumber: 1 });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing issueNumber", () => {
+      const result = MoveIssueToReadySchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("MoveIssueToBacklogSchema", () => {
+    it("should accept issueNumber", () => {
+      const result = MoveIssueToBacklogSchema.safeParse({ issueNumber: 1 });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept skipGitHubSync option", () => {
+      const result = MoveIssueToBacklogSchema.safeParse({
+        issueNumber: 1,
+        skipGitHubSync: true,
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.skipGitHubSync).toBe(true);
+      }
+    });
+
+    it("should reject missing issueNumber", () => {
+      const result = MoveIssueToBacklogSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("PauseIssueSchema", () => {
+    it("should accept issueNumber", () => {
+      const result = PauseIssueSchema.safeParse({ issueNumber: 1 });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing issueNumber", () => {
+      const result = PauseIssueSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("SyncIssueSchema", () => {
+    it("should accept issueNumber", () => {
+      const result = SyncIssueSchema.safeParse({ issueNumber: 1 });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing issueNumber", () => {
+      const result = SyncIssueSchema.safeParse({});
+      expect(result.success).toBe(false);
     });
   });
 });

@@ -17,6 +17,11 @@ import {
   handleEndWorkerSession,
   type DispatchToolContext,
 } from "../../tools/dispatch-tools.js";
+import {
+  DispatchTaskSchema,
+  GetDispatchStatusSchema,
+  EndWorkerSessionSchema,
+} from "../../tools/schemas.js";
 
 describe("Dispatch Tools Integration", () => {
   let testDb: TestDatabase;
@@ -327,6 +332,51 @@ describe("Dispatch Tools Integration", () => {
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
       expect(content.error).toContain("mismatch");
+    });
+  });
+});
+
+/**
+ * Schema Validation Tests for Dispatch Tools
+ */
+describe("Dispatch Tool Schema Validation", () => {
+  describe("DispatchTaskSchema", () => {
+    it("should accept valid task dispatch", () => {
+      const input = { taskId: "uuid-here" };
+      const result = DispatchTaskSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing taskId", () => {
+      const result = DispatchTaskSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("GetDispatchStatusSchema", () => {
+    it("should accept empty object", () => {
+      const result = GetDispatchStatusSchema.safeParse({});
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("EndWorkerSessionSchema", () => {
+    it("should accept valid input", () => {
+      const input = { workerId: "worker-uuid", taskId: "task-uuid" };
+      const result = EndWorkerSessionSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject missing workerId", () => {
+      const input = { taskId: "task-uuid" };
+      const result = EndWorkerSessionSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject missing taskId", () => {
+      const input = { workerId: "worker-uuid" };
+      const result = EndWorkerSessionSchema.safeParse(input);
+      expect(result.success).toBe(false);
     });
   });
 });
