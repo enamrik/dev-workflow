@@ -624,8 +624,10 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
           return;
         }
 
-        // Update terminal title with current status
-        this.updateTitle();
+        // Note: We intentionally do NOT call updateTitle() here.
+        // Claude Code sets its own terminal title, and calling updateTitle()
+        // would cause the title to flicker between worker title and Claude's title.
+        // The worker title is set before Claude starts and after it exits.
 
         // Check for claudeDone flag from the dispatch queue
         const queueEntry = this.queue.findByTaskId(taskId);
