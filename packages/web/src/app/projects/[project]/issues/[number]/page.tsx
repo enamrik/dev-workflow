@@ -62,9 +62,11 @@ export default function IssueDetailPage({ params }: PageProps) {
   }
 
   const { issue, plan, tasks } = data;
+  const completed = tasks.filter((t) => t.status === "COMPLETED").length;
+  const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
   const taskCounts = {
     total: tasks.length,
-    completed: tasks.filter((t) => t.status === "COMPLETED").length,
+    completed: completed + abandoned, // Terminal tasks (COMPLETED or ABANDONED)
     inProgress: tasks.filter((t) => t.status === "IN_PROGRESS").length,
   };
 

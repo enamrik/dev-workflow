@@ -35,7 +35,7 @@ export type ComputedIssueStatus = "PLANNED" | "OPEN" | "IN_PROGRESS" | "TASKS_DO
 export interface TaskCounts {
   /** Total number of tasks */
   readonly total: number;
-  /** Number of completed tasks */
+  /** Number of terminal tasks (COMPLETED or ABANDONED) for progress calculation */
   readonly completed: number;
   /** Number of in-progress tasks (includes PR_REVIEW) */
   readonly inProgress: number;
@@ -103,15 +103,16 @@ export class IssueStatusService {
     const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
     const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
 
+    const terminal = completed + abandoned;
     const taskCounts: TaskCounts = {
       total: tasks.length,
-      completed,
+      completed: terminal,
       inProgress: inProgress + prReview,
     };
 
     // Determine computed status
     let computedStatus: ComputedIssueStatus;
-    if (completed + abandoned === tasks.length) {
+    if (terminal === tasks.length) {
       computedStatus = "TASKS_DONE";
     } else if (inProgress === 0 && prReview === 0) {
       computedStatus = "OPEN";
@@ -158,15 +159,16 @@ export class IssueStatusService {
     const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
     const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
 
+    const terminal = completed + abandoned;
     const taskCounts: TaskCounts = {
       total: tasks.length,
-      completed,
+      completed: terminal,
       inProgress: inProgress + prReview,
     };
 
     // Determine computed status
     let computedStatus: ComputedIssueStatus;
-    if (completed + abandoned === tasks.length) {
+    if (terminal === tasks.length) {
       computedStatus = "TASKS_DONE";
     } else if (inProgress === 0 && prReview === 0) {
       computedStatus = "OPEN";
