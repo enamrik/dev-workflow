@@ -6,6 +6,7 @@ import {
   type Project,
   type TaskStatus,
   type BoardTask,
+  type ProjectInfo,
 } from "@dev-workflow/core";
 
 /**
@@ -143,4 +144,59 @@ export function useKanbanData(
   }, [refresh, intervalMs]);
 
   return { data, error, loading, refresh };
+}
+
+/**
+ * React hook for multi-project Kanban data with project switching
+ *
+ * Manages multiple projects and allows switching between them.
+ * Data is only fetched for the currently selected project.
+ */
+export function useMultiProjectKanbanData(
+  projects: ProjectInfo[],
+  intervalMs: number = 3000
+): {
+  data: KanbanData | null;
+  error: Error | null;
+  loading: boolean;
+  refresh: () => void;
+  currentProjectIndex: number;
+  setCurrentProjectIndex: (index: number) => void;
+  projectCount: number;
+} {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const currentProject = projects[currentIndex];
+
+  // Ensure index is valid if projects array changes
+  useEffect(() => {
+    if (currentIndex >= projects.length && projects.length > 0) {
+      setCurrentIndex(0);
+    }
+  }, [currentIndex, projects.length]);
+
+  // Use the single-project hook for the current project
+  const { data, error, loading, refresh } = useKanbanData(
+    currentProject?.sourceInfo.connectionString ?? "",
+    currentProject?.projectId ?? "",
+    intervalMs
+  );
+
+  const handleSetIndex = useCallback(
+    (index: number) => {
+      if (index >= 0 && index < projects.length) {
+        setCurrentIndex(index);
+      }
+    },
+    [projects.length]
+  );
+
+  return {
+    data,
+    error,
+    loading,
+    refresh,
+    currentProjectIndex: currentIndex,
+    setCurrentProjectIndex: handleSetIndex,
+    projectCount: projects.length,
+  };
 }

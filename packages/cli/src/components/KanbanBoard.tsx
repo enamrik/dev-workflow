@@ -69,12 +69,16 @@ function Header({
   lastUpdated,
   intervalMs,
   workers,
+  currentProjectIndex,
+  projectCount,
 }: {
   projectName: string;
   projectSlug: string;
   lastUpdated: Date;
   intervalMs: number;
   workers: WorkerCounts;
+  currentProjectIndex: number;
+  projectCount: number;
 }): React.ReactElement {
   const time = lastUpdated.toLocaleTimeString("en-US", {
     hour: "2-digit",
@@ -82,6 +86,8 @@ function Header({
     second: "2-digit",
     hour12: false,
   });
+
+  const showProjectSwitcher = projectCount > 1;
 
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="blue" paddingX={1}>
@@ -94,6 +100,14 @@ function Header({
           <Text color="gray"> • </Text>
           <Text>{projectName}</Text>
           <Text color="gray"> ({projectSlug})</Text>
+          {showProjectSwitcher && (
+            <>
+              <Text color="gray"> • </Text>
+              <Text color="cyan">
+                [{currentProjectIndex + 1}/{projectCount}]
+              </Text>
+            </>
+          )}
         </Text>
         <Text>
           {workers.total > 0 ? (
@@ -122,6 +136,12 @@ function Header({
           ↻ {intervalMs / 1000}s • {time}
         </Text>
         <Text color="gray">
+          {showProjectSwitcher && (
+            <>
+              <Text color="yellow">[/]</Text>
+              <Text> project • </Text>
+            </>
+          )}
           <Text color="yellow">↑↓←→</Text> select • <Text color="yellow">o</Text> open GH •{" "}
           <Text color="yellow">p</Text> open PR • <Text color="yellow">r</Text> refresh •{" "}
           <Text color="yellow">q</Text> quit
@@ -385,12 +405,18 @@ export function KanbanBoard({
   error,
   intervalMs,
   onRefresh,
+  currentProjectIndex = 0,
+  projectCount = 1,
+  onProjectChange,
 }: {
   data: KanbanData | null;
   loading: boolean;
   error: Error | null;
   intervalMs: number;
   onRefresh: () => void;
+  currentProjectIndex?: number;
+  projectCount?: number;
+  onProjectChange?: (index: number) => void;
 }): React.ReactElement {
   const { exit } = useApp();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -451,6 +477,24 @@ export function KanbanBoard({
     }
     if (input === "r") {
       onRefresh();
+    }
+
+    // Project switching with [ and ]
+    if (projectCount > 1 && onProjectChange) {
+      if (input === "[") {
+        // Previous project (wrap around)
+        const newIndex = currentProjectIndex === 0 ? projectCount - 1 : currentProjectIndex - 1;
+        onProjectChange(newIndex);
+        setSelectedTaskId(null); // Clear selection when switching projects
+        return;
+      }
+      if (input === "]") {
+        // Next project (wrap around)
+        const newIndex = (currentProjectIndex + 1) % projectCount;
+        onProjectChange(newIndex);
+        setSelectedTaskId(null); // Clear selection when switching projects
+        return;
+      }
     }
 
     // Arrow key navigation
@@ -557,6 +601,8 @@ export function KanbanBoard({
         lastUpdated={data.lastUpdated}
         intervalMs={intervalMs}
         workers={data.workers}
+        currentProjectIndex={currentProjectIndex}
+        projectCount={projectCount}
       />
 
       {/* Columns */}
