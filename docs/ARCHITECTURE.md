@@ -183,7 +183,7 @@ Task execution:
 
 - `start_task_session` - Begin work on a task
 - `complete_task_session` - Mark task complete (runs pre-complete hooks)
-- `abandon_task_session` - Abandon task with reason
+- `abandon_task` - Abandon task with reason
 - `update_task` - Update task fields (title, description, implementationPlan, etc.)
 - `get_task_execution_prompt` - Get prompt for subagent execution
 - `log_task_progress` - Record execution step (subagent audit trail)

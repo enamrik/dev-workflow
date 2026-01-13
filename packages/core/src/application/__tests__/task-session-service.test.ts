@@ -178,7 +178,7 @@ describe("TaskSessionService", () => {
     });
   });
 
-  describe("abandonTaskSession with force mode", () => {
+  describe("abandonTask with force mode", () => {
     it("should reject abandoning task with wrong session id without force", async () => {
       // Arrange: Create issue with plan and start a task
       const issue = createTestIssue(repos.issueRepository);
@@ -197,7 +197,7 @@ describe("TaskSessionService", () => {
 
       // Act & Assert: Try to abandon with session 2 - should fail
       await expect(
-        taskSessionService.abandonTaskSession(task.id, "session-2", "wrong session")
+        taskSessionService.abandonTask(task.id, "session-2", "wrong session")
       ).rejects.toThrow(/Task is not associated with session session-2/);
     });
 
@@ -218,7 +218,7 @@ describe("TaskSessionService", () => {
       });
 
       // Act: Abandon with session 2 using force=true
-      const abandonedTask = await taskSessionService.abandonTaskSession(
+      const abandonedTask = await taskSessionService.abandonTask(
         task.id,
         "session-2",
         "state drifted, forcing",
@@ -239,7 +239,7 @@ describe("TaskSessionService", () => {
       });
 
       // Act: Abandon with any session using force=true
-      const abandonedTask = await taskSessionService.abandonTaskSession(
+      const abandonedTask = await taskSessionService.abandonTask(
         task.id,
         "any-session",
         "recovering from orphaned state",

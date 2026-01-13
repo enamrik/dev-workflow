@@ -58,7 +58,7 @@ describe("TaskManagementService", () => {
 
       // Act & Assert: Deletion should fail
       expect(() => services.taskManagementService.deleteTask(task.id, "test-user")).toThrow(
-        /Cannot delete task with status BACKLOG.*PLANNED status.*abandon_task_session/
+        /Cannot delete task with status BACKLOG.*PLANNED status.*abandon_task/
       );
     });
 
@@ -73,7 +73,7 @@ describe("TaskManagementService", () => {
 
       // Act & Assert: Deletion should fail
       expect(() => services.taskManagementService.deleteTask(task.id, "test-user")).toThrow(
-        /Cannot delete task with status READY.*PLANNED status.*abandon_task_session/
+        /Cannot delete task with status READY.*PLANNED status.*abandon_task/
       );
     });
 
@@ -88,7 +88,7 @@ describe("TaskManagementService", () => {
 
       // Act & Assert: Deletion should fail
       expect(() => services.taskManagementService.deleteTask(task.id, "test-user")).toThrow(
-        /Cannot delete task with status IN_PROGRESS.*PLANNED status.*abandon_task_session/
+        /Cannot delete task with status IN_PROGRESS.*PLANNED status.*abandon_task/
       );
     });
 
@@ -103,7 +103,7 @@ describe("TaskManagementService", () => {
 
       // Act & Assert: Deletion should fail
       expect(() => services.taskManagementService.deleteTask(task.id, "test-user")).toThrow(
-        /Cannot delete task with status PR_REVIEW.*PLANNED status.*abandon_task_session/
+        /Cannot delete task with status PR_REVIEW.*PLANNED status.*abandon_task/
       );
     });
 

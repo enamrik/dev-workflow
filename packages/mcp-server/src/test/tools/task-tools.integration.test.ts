@@ -44,7 +44,7 @@ import {
   LogTaskProgressSchema,
   GetTaskExecutionLogSchema,
   LoadTaskSessionSchema,
-  AbandonTaskSessionSchema,
+  AbandonTaskSchema,
   DeleteTaskSchema,
   GetTaskExecutionPromptSchema,
   CheckTaskConflictsSchema,
@@ -1311,13 +1311,13 @@ describe("Task Tool Schema Validation", () => {
     });
   });
 
-  describe("AbandonTaskSessionSchema", () => {
+  describe("AbandonTaskSchema", () => {
     it("should accept required fields", () => {
       const input = {
         taskId: "uuid-here",
         sessionId: "session-here",
       };
-      const result = AbandonTaskSessionSchema.safeParse(input);
+      const result = AbandonTaskSchema.safeParse(input);
       expect(result.success).toBe(true);
     });
 
@@ -1328,13 +1328,13 @@ describe("Task Tool Schema Validation", () => {
         reason: "Task is blocked",
         force: true,
       };
-      const result = AbandonTaskSessionSchema.safeParse(input);
+      const result = AbandonTaskSchema.safeParse(input);
       expect(result.success).toBe(true);
     });
 
     it("should reject missing required fields", () => {
       const input = { taskId: "uuid-here" };
-      const result = AbandonTaskSessionSchema.safeParse(input);
+      const result = AbandonTaskSchema.safeParse(input);
       expect(result.success).toBe(false);
     });
   });

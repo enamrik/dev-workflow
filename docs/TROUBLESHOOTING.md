@@ -357,7 +357,7 @@ Usually a path or project mismatch.
 
 2. **Abandon if truly stuck:**
    ```
-   abandon_task_session
+   abandon_task
      taskId: "<task-id>"
      sessionId: "<session-id>"
      reason: "Session died unexpectedly"
@@ -461,7 +461,7 @@ Worker process died without calling `end_worker_session`.
 
 | Error                                      | Meaning                                                 | Solution                                                          |
 | ------------------------------------------ | ------------------------------------------------------- | ----------------------------------------------------------------- |
-| "Task numbers are immutable after PLANNED" | Can't delete/reorder tasks after issue moved to BACKLOG | Use `abandon_task_session` instead                                |
+| "Task numbers are immutable after PLANNED" | Can't delete/reorder tasks after issue moved to BACKLOG | Use `abandon_task` instead                                        |
 | "Cannot modify default template"           | Trying to edit a built-in template                      | Create a local template with same name to override                |
 | "Issue is already closed"                  | Calling `close_issue` on closed issue                   | No action needed - issue is already in desired state              |
 | "startDate must be before endDate"         | Invalid milestone date range                            | Swap the dates or adjust range                                    |

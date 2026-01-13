@@ -61,7 +61,7 @@ export {
 export {
   type TaskToolContext,
   handleLoadTaskSession,
-  handleAbandonTaskSession,
+  handleAbandonTask,
   handleGetTask,
   handleListAvailableTasks,
   handleDeleteTask,
