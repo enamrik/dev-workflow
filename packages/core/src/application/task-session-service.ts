@@ -1,5 +1,6 @@
 import type { Task } from "../domain/task.js";
-import { isTerminal } from "../domain/task.js";
+import { isTerminal, isActive } from "../domain/task.js";
+import { isIssueClosed } from "../domain/issue.js";
 import type { DbClient } from "../domain/db-client.js";
 import { EventBus } from "../infrastructure/events/event-bus.js";
 import { DependencyService } from "./dependency-service.js";
@@ -135,12 +136,9 @@ export class TaskSessionService {
     }
 
     // Determine if this is a fresh start or resume
-    // Resume if: startedAt is set, OR status is already IN_PROGRESS/PR_REVIEW
+    // Resume if: startedAt is set, OR task is already active (IN_PROGRESS/PR_REVIEW)
     // (handles inconsistent states where task was created directly without proper flow)
-    const isResume =
-      (task.startedAt !== undefined && task.startedAt !== null) ||
-      task.status === "IN_PROGRESS" ||
-      task.status === "PR_REVIEW";
+    const isResume = (task.startedAt !== undefined && task.startedAt !== null) || isActive(task);
 
     const now = new Date().toISOString();
     const issueNumber = this.getIssueNumberForTask(taskId);
@@ -498,11 +496,11 @@ export class TaskSessionService {
    * but can be resumed via load_task_session. COMPLETED/ABANDONED are terminal.
    */
   private isTaskAvailableSync(task: Task): boolean {
-    // Check if parent issue is closed
+    // Check if parent issue is closed - use trait function
     const plan = this.db.plans.findById(task.planId);
     if (plan) {
       const issue = this.db.issues.findById(plan.issueId);
-      if (issue && issue.status === "CLOSED") {
+      if (issue && isIssueClosed(issue)) {
         return false;
       }
     }

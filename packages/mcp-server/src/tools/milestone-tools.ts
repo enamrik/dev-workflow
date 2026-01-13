@@ -2,7 +2,13 @@
  * Milestone-related MCP tools
  */
 
-import { type MilestoneStatus, type MilestoneService, type IssueService } from "@dev-workflow/core";
+import {
+  isIssueClosed,
+  isIssueInPlanning,
+  type MilestoneStatus,
+  type MilestoneService,
+  type IssueService,
+} from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
 /**
@@ -246,9 +252,11 @@ export function handleGetMilestone(
     })),
     summary: {
       totalIssues: issues.length,
-      openIssues: issues.filter((i) => i.status === "OPEN").length,
-      inProgressIssues: issues.filter((i) => i.status === "IN_PROGRESS").length,
-      closedIssues: issues.filter((i) => i.status === "CLOSED").length,
+      // Active issues: not closed and not in planning
+      openIssues: issues.filter((i) => !isIssueClosed(i) && !isIssueInPlanning(i)).length,
+      // Note: inProgressIssues kept for API compatibility, counts same as openIssues
+      inProgressIssues: issues.filter((i) => !isIssueClosed(i) && !isIssueInPlanning(i)).length,
+      closedIssues: issues.filter(isIssueClosed).length,
     },
   });
 }
@@ -275,7 +283,7 @@ export function handleListMilestones(
       ...milestoneWithStatus,
       projectName: ctx.projectName,
       issueCount: issues.length,
-      closedCount: issues.filter((i) => i.status === "CLOSED").length,
+      closedCount: issues.filter(isIssueClosed).length,
     };
   });
 

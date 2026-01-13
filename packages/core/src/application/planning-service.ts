@@ -1,6 +1,8 @@
 import type { Issue } from "../domain/issue.js";
+import { isIssueInPlanning } from "../domain/issue.js";
 import type { Plan, PlanComplexity } from "../domain/plan.js";
 import type { Task } from "../domain/task.js";
+import { isTerminal, isActive } from "../domain/task.js";
 import type { DbClient } from "../domain/db-client.js";
 import { TaskMatchingService, type TaskDefinition } from "./task-matching-service.js";
 import type { VersioningService } from "./versioning-service.js";
@@ -198,7 +200,7 @@ export class PlanningService {
 
     // Renumber tasks to ensure sequential 1, 2, 3... when in PLANNED state
     // Once activated (OPEN), task numbers become immutable
-    if (issue.status === "PLANNED") {
+    if (isIssueInPlanning(issue)) {
       tasks = this.renumberTasks(plan.id);
     }
 
@@ -308,13 +310,10 @@ export class PlanningService {
 
     // Soft delete unmatched tasks BEFORE creating new tasks
     // This ensures task numbers reset properly (getNextTaskNumber excludes deleted tasks)
-    // Only PLANNED, BACKLOG, or READY tasks can be soft-deleted
+    // Only pre-work tasks (not active, not terminal) can be soft-deleted
     // IN_PROGRESS, PR_REVIEW, COMPLETED, ABANDONED are preserved
     for (const task of existingTasks) {
-      if (
-        !matchedTaskIds.has(task.id) &&
-        (task.status === "PLANNED" || task.status === "BACKLOG" || task.status === "READY")
-      ) {
+      if (!matchedTaskIds.has(task.id) && !isActive(task) && !isTerminal(task)) {
         this.db.tasks.softDelete(task.id, generatedBy);
       }
     }

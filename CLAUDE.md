@@ -864,6 +864,46 @@ const active = tasks.filter(isActive);
 
 **TypeScript enforces exhaustiveness**: Adding a new status requires adding it to `STATUS_TRAITS` or the build fails.
 
+### IssueStatus Traits (Table-Driven Methods)
+
+**Location**: `packages/core/src/domain/issue.ts`
+
+Issue status semantics are centralized in `ISSUE_STATUS_TRAITS` and `COMPUTED_ISSUE_STATUS_TRAITS`. **NEVER** check status identities directly:
+
+```typescript
+// ❌ BAD - Scattered identity checks
+const closed = issues.filter((i) => i.status === "CLOSED");
+const active = issues.filter((i) => i.status === "OPEN" || i.status === "IN_PROGRESS");
+
+// ✅ GOOD - Use trait functions (single source of truth)
+import { isIssueClosed, isIssueInPlanning } from "@dev-workflow/core";
+const closed = issues.filter(isIssueClosed);
+const active = issues.filter((i) => !isIssueClosed(i) && !isIssueInPlanning(i));
+```
+
+**Stored status trait functions** (check the stored issue.status):
+
+| Function                   | Returns true for | Use case            |
+| -------------------------- | ---------------- | ------------------- |
+| `isIssueInPlanning(issue)` | PLANNED          | "Not yet activated" |
+| `isIssueClosed(issue)`     | CLOSED           | "Issue is done"     |
+
+**Computed status trait functions** (require tasks to compute):
+
+| Function                           | Returns true for               | Use case            |
+| ---------------------------------- | ------------------------------ | ------------------- |
+| `isIssueDone(issue, tasks)`        | CLOSED or all tasks terminal   | "All work complete" |
+| `issueHasActiveWork(issue, tasks)` | Any task IN_PROGRESS/PR_REVIEW | "Work in progress"  |
+
+**Helper functions for task aggregation:**
+
+| Function                  | Returns true when              | Use case                |
+| ------------------------- | ------------------------------ | ----------------------- |
+| `allTasksTerminal(tasks)` | All tasks COMPLETED/ABANDONED  | Check if issue is done  |
+| `anyTaskActive(tasks)`    | Any task IN_PROGRESS/PR_REVIEW | Check if work is active |
+
+**Design principle**: The trait-based approach hides whether status is computed or stored. The ONE place to change when switching implementations is `getEffectiveIssueStatus()` (private function).
+
 ## Code Review Checklist
 
 - [ ] Follows SOLID principles

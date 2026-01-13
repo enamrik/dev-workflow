@@ -13,22 +13,14 @@
  */
 
 import type { Issue } from "../domain/issue.js";
+import { type ComputedIssueStatus, computeIssueStatus } from "../domain/issue.js";
 import type { Plan } from "../domain/plan.js";
 import type { Task } from "../domain/task.js";
 import { isTerminal, isActive } from "../domain/task.js";
 import type { DbClient } from "../domain/db-client.js";
 
-// =============================================================================
-// Types
-// =============================================================================
-
-/**
- * Computed issue status based on task states.
- *
- * This is distinct from Issue.status (PLANNED/OPEN/CLOSED) as it provides
- * a more granular view of issue progress.
- */
-export type ComputedIssueStatus = "PLANNED" | "OPEN" | "IN_PROGRESS" | "TASKS_DONE" | "CLOSED";
+// Re-export ComputedIssueStatus for backwards compatibility
+export type { ComputedIssueStatus } from "../domain/issue.js";
 
 /**
  * Task progress counts for an issue
@@ -79,23 +71,15 @@ export class IssueStatusService {
    * @returns Computed status and optional task counts
    */
   computeStatus(issue: Issue): ComputedStatusResult {
-    // Check explicit statuses first
-    if (issue.status === "PLANNED") {
-      return { computedStatus: "PLANNED" };
-    }
-    if (issue.status === "CLOSED") {
-      return { computedStatus: "CLOSED" };
-    }
-
     // Get plan and tasks
     const plan = this.db.plans.findByIssueId(issue.id);
-    if (!plan) {
-      return { computedStatus: "OPEN" };
-    }
+    const tasks = plan ? this.db.tasks.findByPlanId(plan.id) : [];
 
-    const tasks = this.db.tasks.findByPlanId(plan.id);
+    // Use domain function for status computation
+    const status = computeIssueStatus(issue, tasks);
+
     if (tasks.length === 0) {
-      return { computedStatus: "OPEN" };
+      return { computedStatus: status };
     }
 
     // Count task states using trait functions (single source of truth)
@@ -108,11 +92,7 @@ export class IssueStatusService {
       inProgress: active,
     };
 
-    // Determine computed status
-    const computedStatus: ComputedIssueStatus =
-      terminal === tasks.length ? "TASKS_DONE" : active === 0 ? "OPEN" : "IN_PROGRESS";
-
-    return { computedStatus, taskCounts };
+    return { computedStatus: status, taskCounts };
   }
 
   /**
@@ -126,23 +106,12 @@ export class IssueStatusService {
    * @param tasks - The tasks (empty array if no plan)
    * @returns Computed status and optional task counts
    */
-  computeStatusFromData(issue: Issue, plan: Plan | null, tasks: Task[]): ComputedStatusResult {
-    // Check explicit statuses first
-    if (issue.status === "PLANNED") {
-      return { computedStatus: "PLANNED" };
-    }
-    if (issue.status === "CLOSED") {
-      return { computedStatus: "CLOSED" };
-    }
+  computeStatusFromData(issue: Issue, _plan: Plan | null, tasks: Task[]): ComputedStatusResult {
+    // Use domain function for status computation
+    const status = computeIssueStatus(issue, tasks);
 
-    // No plan = OPEN
-    if (!plan) {
-      return { computedStatus: "OPEN" };
-    }
-
-    // No tasks = OPEN
     if (tasks.length === 0) {
-      return { computedStatus: "OPEN" };
+      return { computedStatus: status };
     }
 
     // Count task states using trait functions (single source of truth)
@@ -155,11 +124,7 @@ export class IssueStatusService {
       inProgress: active,
     };
 
-    // Determine computed status
-    const computedStatus: ComputedIssueStatus =
-      terminal === tasks.length ? "TASKS_DONE" : active === 0 ? "OPEN" : "IN_PROGRESS";
-
-    return { computedStatus, taskCounts };
+    return { computedStatus: status, taskCounts };
   }
 }
 
@@ -167,36 +132,5 @@ export class IssueStatusService {
 // Standalone Function (for cases where DI is not available)
 // =============================================================================
 
-/**
- * Compute issue status from pre-loaded data without a service instance
- *
- * This is a pure function that doesn't require repository access.
- * Useful for client-side computation where repositories aren't available.
- *
- * @param issue - The issue
- * @param tasks - The tasks (empty array if no plan)
- * @returns Computed status
- */
-export function computeIssueStatus(issue: Issue, tasks: Task[]): ComputedIssueStatus {
-  if (issue.status === "PLANNED") {
-    return "PLANNED";
-  }
-  if (issue.status === "CLOSED") {
-    return "CLOSED";
-  }
-  if (tasks.length === 0) {
-    return "OPEN";
-  }
-
-  // Use trait functions (single source of truth)
-  const terminal = tasks.filter(isTerminal).length;
-  const active = tasks.filter(isActive).length;
-
-  if (terminal === tasks.length) {
-    return "TASKS_DONE";
-  }
-  if (active === 0) {
-    return "OPEN";
-  }
-  return "IN_PROGRESS";
-}
+// Re-export the domain function for backwards compatibility
+export { computeIssueStatus } from "../domain/issue.js";

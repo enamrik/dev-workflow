@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { ProjectsResolver, DbSourceProvider, WebDIContext } from "@/server";
 import {
   computeMilestoneStatus,
+  isIssueClosed,
+  isIssueInPlanning,
   type MilestoneIssueStats,
   type ComputedIssueStatus,
 } from "@dev-workflow/core";
@@ -62,14 +64,14 @@ export async function GET(request: NextRequest) {
 
         for (const milestone of milestones) {
           const issues = context.db.issues.findMany({ milestoneId: milestone.id });
-          const closedIssues = issues.filter((i) => i.status === "CLOSED").length;
+          const closedIssues = issues.filter(isIssueClosed).length;
 
           const milestoneIssueStats: MilestoneIssueStats = {
             totalIssues: issues.length,
             closedIssues,
-            openOrInProgressIssues: issues.filter(
-              (i) => i.status === "OPEN" || i.status === "IN_PROGRESS"
-            ).length,
+            // Active issues: not closed and not still in planning
+            openOrInProgressIssues: issues.filter((i) => !isIssueClosed(i) && !isIssueInPlanning(i))
+              .length,
           };
 
           const computedMilestoneStatus = computeMilestoneStatus(

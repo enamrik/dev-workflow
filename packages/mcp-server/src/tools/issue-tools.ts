@@ -6,6 +6,10 @@ import {
   EventBus,
   isTerminal,
   isActive,
+  isWorkable,
+  isIssueClosed,
+  isIssueInPlanning,
+  issueHasActiveWork,
   type TemplateService,
   type PlanningService,
   type IssueType,
@@ -737,8 +741,8 @@ export async function handleCloseIssue(
     return errorResponse(`Issue not found: #${issueNumber}`);
   }
 
-  // Check if already closed
-  if (issue.status === "CLOSED") {
+  // Check if already closed - use trait function
+  if (isIssueClosed(issue)) {
     return errorResponse(`Issue #${issueNumber} is already closed`);
   }
 
@@ -960,10 +964,8 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
   const milestoneEndDates = new Map(milestones.map((m) => [m.id, m.endDate]));
   const milestoneNames = new Map(milestones.map((m) => [m.id, m.title]));
 
-  // Get actionable issues (PLANNED needs confirmation, OPEN/IN_PROGRESS need work)
-  const activeIssues = ctx.issueService
-    .findMany({})
-    .filter((i) => i.status === "IN_PROGRESS" || i.status === "OPEN" || i.status === "PLANNED");
+  // Get actionable issues (not closed) - PLANNED needs confirmation, OPEN/IN_PROGRESS need work
+  const activeIssues = ctx.issueService.findMany({}).filter((i) => !isIssueClosed(i));
 
   // Identify issues that need planning (PLANNED status without a plan)
   const issuesNeedingPlanning: Array<{
@@ -974,7 +976,7 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
   }> = [];
 
   for (const issue of activeIssues) {
-    if (issue.status === "PLANNED") {
+    if (isIssueInPlanning(issue)) {
       const plan = ctx.planService.findByIssueId(issue.id);
       if (!plan) {
         issuesNeedingPlanning.push({
@@ -1012,8 +1014,8 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
 
     const tasks = ctx.taskService.findByPlanId(plan.id);
 
-    // Only include available tasks (READY or BACKLOG with satisfied dependencies)
-    const availableTasks = tasks.filter((t) => t.status === "READY" || t.status === "BACKLOG");
+    // Only include available tasks (workable but not yet active)
+    const availableTasks = tasks.filter((t) => isWorkable(t) && !isActive(t));
 
     for (const task of availableTasks) {
       let score = 0;
@@ -1021,8 +1023,8 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
       // Task status weight
       score += TASK_STATUS_WEIGHTS[task.status] ?? 0;
 
-      // Bonus for parent issue being IN_PROGRESS (continue what's started)
-      if (issue.status === "IN_PROGRESS") {
+      // Bonus for parent issue having active work (continue what's started)
+      if (issueHasActiveWork(issue, tasks)) {
         score += 50;
       }
 

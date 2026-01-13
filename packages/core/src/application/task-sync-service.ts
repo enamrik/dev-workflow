@@ -13,7 +13,9 @@
  */
 
 import type { Task, TaskStatus } from "../domain/task.js";
+import { isWorkable, isActive as isTaskActive } from "../domain/task.js";
 import type { Issue } from "../domain/issue.js";
+import { isIssueInPlanning } from "../domain/issue.js";
 import type { GitHubSyncState } from "../domain/github.js";
 import type { ProjectManagementProvider } from "../domain/project-management-provider.js";
 import type { DbClient } from "../domain/db-client.js";
@@ -151,7 +153,7 @@ export class TaskSyncService {
 
     if (plannedTasks.length === 0) {
       // No PLANNED tasks - just ensure issue is OPEN
-      const issueTransitioned = issue.status === "PLANNED";
+      const issueTransitioned = isIssueInPlanning(issue);
       if (issueTransitioned) {
         this.db.issues.update(issue.id, { status: "OPEN" });
       }
@@ -213,7 +215,7 @@ export class TaskSyncService {
     }
 
     // Transition issue from PLANNED → OPEN
-    const issueTransitioned = issue.status === "PLANNED";
+    const issueTransitioned = isIssueInPlanning(issue);
     if (issueTransitioned) {
       this.db.issues.update(issue.id, { status: "OPEN" });
     }
@@ -573,13 +575,8 @@ export class TaskSyncService {
     const allTasks = this.db.tasks.findByPlanId(plan.id);
 
     // Only sync non-terminal tasks (exclude PLANNED, COMPLETED, ABANDONED)
-    const tasksToSync = allTasks.filter(
-      (t) =>
-        t.status === "BACKLOG" ||
-        t.status === "READY" ||
-        t.status === "IN_PROGRESS" ||
-        t.status === "PR_REVIEW"
-    );
+    // Workable OR active covers: BACKLOG, READY, IN_PROGRESS, PR_REVIEW
+    const tasksToSync = allTasks.filter((t) => isWorkable(t) || isTaskActive(t));
 
     if (tasksToSync.length === 0) {
       return {

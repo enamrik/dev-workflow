@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ProjectsResolver, DbSourceProvider, WebDIContext } from "@/server";
-import { isValidStatusTransition, type TaskStatus } from "@dev-workflow/core";
+import { isValidStatusTransition, isIssueInPlanning, type TaskStatus } from "@dev-workflow/core";
 
 export const dynamic = "force-dynamic";
 
@@ -87,7 +87,7 @@ export async function POST(
       const plan = context.db.plans.findById(task.planId);
       if (plan) {
         const issue = context.db.issues.findById(plan.issueId);
-        if (issue && issue.status === "PLANNED") {
+        if (issue && isIssueInPlanning(issue)) {
           // Transition the issue to OPEN
           context.issueService.update(issue.id, { status: "OPEN" });
         }

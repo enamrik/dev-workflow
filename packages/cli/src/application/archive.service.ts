@@ -4,6 +4,7 @@ import {
   NodeGitWorktreeService,
   GitOperations,
   resolveConfig,
+  isIssueClosed,
   type Project,
 } from "@dev-workflow/core";
 import { UninstallService } from "./uninstall.service.js";
@@ -128,8 +129,8 @@ export class ArchiveService {
       // Get all non-deleted issues
       const issues = client.issues.findMany({ includeDeleted: false });
 
-      // Check if any are not CLOSED
-      return issues.some((issue: { status: string }) => issue.status !== "CLOSED");
+      // Check if any are not CLOSED (open issues exist)
+      return issues.some((issue) => !isIssueClosed(issue));
     } finally {
       sourceProvider.closeAll();
     }

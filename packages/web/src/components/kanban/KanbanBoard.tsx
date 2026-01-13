@@ -1,40 +1,7 @@
 import { KanbanColumn } from "./KanbanColumn";
 import { EmptyState } from "../ui";
-import { isTerminal, isActive } from "@/lib/types";
-import type {
-  ProjectIssueWithTasks,
-  Task,
-  CompletedTask,
-  Issue,
-  ComputedIssueStatus,
-} from "@/lib/types";
-
-/**
- * Compute issue status based on issue state and task progress.
- * Uses trait functions (single source of truth).
- */
-function computeIssueStatus(issue: Issue, tasks: Task[]): ComputedIssueStatus {
-  if (issue.status === "PLANNED") {
-    return "PLANNED";
-  }
-  if (issue.status === "CLOSED") {
-    return "CLOSED";
-  }
-  if (tasks.length === 0) {
-    return "OPEN";
-  }
-
-  const terminal = tasks.filter(isTerminal).length;
-  const active = tasks.filter(isActive).length;
-
-  if (terminal === tasks.length) {
-    return "TASKS_DONE";
-  }
-  if (active === 0) {
-    return "OPEN";
-  }
-  return "IN_PROGRESS";
-}
+import { isTerminal, computeIssueStatus } from "@/lib/types";
+import type { ProjectIssueWithTasks, Task, CompletedTask, ComputedIssueStatus } from "@/lib/types";
 
 interface KanbanTask extends Task {
   issueNumber: number;

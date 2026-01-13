@@ -17,6 +17,7 @@ import {
   Dropdown,
   DropdownToggle,
 } from "@/components/ui";
+import { isActive } from "@/lib/types";
 
 interface PreviewTarget {
   projectSlug: string;
@@ -102,10 +103,9 @@ function BoardPageContent() {
   }
 
   // Count active tasks (excluding BACKLOG, COMPLETED, and ABANDONED)
+  // Uses isActive for IN_PROGRESS + PR_REVIEW, plus READY
   const activeTasks = issuesWithTasks.reduce((sum, item) => {
-    const activeCount = item.tasks.filter(
-      (t) => t.status === "READY" || t.status === "IN_PROGRESS" || t.status === "PR_REVIEW"
-    ).length;
+    const activeCount = item.tasks.filter((t) => isActive(t) || t.status === "READY").length;
     return sum + activeCount;
   }, 0);
 
