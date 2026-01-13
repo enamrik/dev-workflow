@@ -94,10 +94,6 @@ function Header({
       {/* Top row: project info and workers */}
       <Box justifyContent="space-between">
         <Text>
-          <Text bold color="blue">
-            dev-workflow
-          </Text>
-          <Text color="gray"> • </Text>
           <Text>{projectName}</Text>
           <Text color="gray"> ({projectSlug})</Text>
           {showProjectSwitcher && (
