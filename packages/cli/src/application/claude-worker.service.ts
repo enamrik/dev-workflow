@@ -487,9 +487,7 @@ export class ClaudeWorkerService {
             continue;
           }
 
-          console.log(
-            term.cyan(`Auto-claimed: ${task.title} (project: ${projectInfo.slug})`)
-          );
+          console.log(term.cyan(`Auto-claimed: ${task.title} (project: ${projectInfo.slug})`));
 
           // Stop polling while working
           if (this.pollInterval) {
