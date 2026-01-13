@@ -18,14 +18,17 @@ type TransitionAction = "activate" | "ready" | null;
  * Determine which transition action is available for an issue.
  *
  * Actions:
- * - "activate": Issue is PLANNED → moves to BACKLOG (tasks PLANNED → BACKLOG)
+ * - "activate": Issue is PLANNED with PLANNED tasks → moves to BACKLOG (tasks PLANNED → BACKLOG)
  * - "ready": Issue is OPEN with BACKLOG tasks → moves tasks to READY
  * - null: No transition available
  */
 function getTransitionAction(issue: Issue, tasks: Task[]): TransitionAction {
-  // PLANNED issues can be activated
+  // PLANNED issues with PLANNED tasks can be activated (requires a plan with tasks)
   if (issue.status === "PLANNED") {
-    return "activate";
+    const hasPlannedTasks = tasks.some((t) => t.status === "PLANNED");
+    if (hasPlannedTasks) {
+      return "activate";
+    }
   }
 
   // OPEN issues with BACKLOG tasks can be readied
