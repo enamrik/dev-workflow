@@ -1,3 +1,4 @@
+export { TaskAbandonButton } from "./TaskAbandonButton";
 export { TaskItem } from "./TaskItem";
 export { TaskList } from "./TaskList";
 export { TaskTiming } from "./TaskTiming";
