@@ -185,6 +185,68 @@ export const registerPackageRoot: ContainerMiddleware = (container) => {
 export const defaultMiddleware = composeMiddleware(registerWorkingDirectory, registerPackageRoot);
 
 // =============================================================================
+// Project Config Middleware
+// =============================================================================
+
+/**
+ * Middleware: resolves project config from git and registers in container.
+ *
+ * Registers:
+ * - trackDirectoryResolver: TrackDirectoryResolver from gitRoot + slug
+ * - config: ProjectConfig (full config object)
+ * - databaseConnectionString: string (from config.database)
+ *
+ * Errors are handled by handleCliError (ProjectConfigError cases).
+ */
+export const resolveConfigMiddleware: ContainerMiddleware = async (container) => {
+  const { resolveConfigFromGit, TrackDirectoryResolver } = await import("@dev-workflow/core");
+  const workingDirectory = container.cradle.workingDirectory;
+
+  const config = await resolveConfigFromGit(workingDirectory);
+  const resolver = new TrackDirectoryResolver(config.gitRoot, config.slug);
+
+  container.register({
+    trackDirectoryResolver: asValue(resolver),
+    config: asValue(config),
+    databaseConnectionString: asValue(config.database),
+  });
+};
+
+/**
+ * Convenience: default middleware + config resolution.
+ * Use for commands that need project config (update, uninit, archive, etc.)
+ */
+export const withConfigMiddleware = composeMiddleware(defaultMiddleware, resolveConfigMiddleware);
+
+/**
+ * Middleware: resolves just the trackDirectoryResolver from git (no full config).
+ *
+ * Use for commands that work with archived/uninitialized projects where
+ * config.json may not exist (e.g., unarchive).
+ *
+ * Errors are handled by handleCliError (ProjectConfigError cases).
+ */
+export const resolveResolverMiddleware: ContainerMiddleware = async (container) => {
+  const { createTrackDirectoryResolver } = await import("@dev-workflow/core");
+  const workingDirectory = container.cradle.workingDirectory;
+
+  const resolver = createTrackDirectoryResolver(workingDirectory);
+
+  container.register({
+    trackDirectoryResolver: asValue(resolver),
+  });
+};
+
+/**
+ * Convenience: default middleware + resolver-only resolution.
+ * Use for commands that only need resolver, not full config (e.g., unarchive).
+ */
+export const withResolverMiddleware = composeMiddleware(
+  defaultMiddleware,
+  resolveResolverMiddleware
+);
+
+// =============================================================================
 // Handler Factory
 // =============================================================================
 
