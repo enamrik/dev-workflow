@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { clsx } from "clsx";
 import { ConfirmDialog, Tooltip } from "../ui";
-import { isIssueClosed } from "@/lib/types";
+import { isIssueClosed, isIssueInPlanning } from "@/lib/types";
 import type { Issue } from "@/lib/types";
 
 interface IssueCloseButtonProps {
@@ -23,8 +23,9 @@ export function IssueCloseButton({ issue, projectSlug, onSuccess }: IssueCloseBu
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Don't render if issue is already closed
-  if (isIssueClosed(issue)) {
+  // Don't render if issue is already closed or still in planning
+  // PLANNED issues should be deleted, not closed
+  if (isIssueClosed(issue) || isIssueInPlanning(issue)) {
     return null;
   }
 
