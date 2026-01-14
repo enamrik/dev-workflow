@@ -102,7 +102,7 @@ export function IssueCloseButton({ issue, tasks, projectSlug, onSuccess }: Issue
       aria-label="Close issue"
     >
       <CheckCircleIcon className="w-4 h-4" />
-      <span>Close Out</span>
+      <span>Close Issue</span>
     </button>
   );
 
