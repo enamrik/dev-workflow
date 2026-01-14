@@ -263,7 +263,7 @@ export class TaskTool {
     private readonly issueService: IssueService,
     private readonly dbClient: DbClient,
     private readonly workerQueueDb: WorkerQueueDb | null,
-    private readonly taskSyncService: TaskSyncService | null,
+    private readonly taskSyncService: TaskSyncService,
     private readonly conflictDetectionService: ConflictDetectionService | null,
     private readonly providerRegistry: ProviderRegistry | null,
     private readonly project: Project | null,
@@ -354,31 +354,17 @@ export class TaskTool {
     }
 
     // Sync to external project management provider
-    if (this.taskSyncService) {
-      try {
-        await this.taskSyncService.syncTaskStatus(taskId, result.task.status);
-      } catch (error) {
-        console.warn(`Failed to sync task status: ${error}`);
-      }
+    await this.taskSyncService.syncTaskStatus(taskId, result.task.status);
 
-      // On fresh start only: auto-assign and sync siblings
-      if (!result.resumed) {
-        try {
-          await this.taskSyncService.assignIssue(taskId);
-        } catch (error) {
-          console.warn(`Failed to auto-assign issue: ${error}`);
-        }
+    // On fresh start only: auto-assign and sync siblings
+    if (!result.resumed) {
+      await this.taskSyncService.assignIssue(taskId);
 
-        // Sync sibling tasks that transitioned from BACKLOG to READY
-        const siblingTasks = this.taskService.findByPlanId(result.task.planId);
-        for (const sibling of siblingTasks) {
-          if (sibling.id !== taskId && sibling.status === "READY") {
-            try {
-              await this.taskSyncService.syncTaskStatus(sibling.id, "READY");
-            } catch (error) {
-              console.warn(`Failed to sync sibling task READY status: ${error}`);
-            }
-          }
+      // Sync sibling tasks that transitioned from BACKLOG to READY
+      const siblingTasks = this.taskService.findByPlanId(result.task.planId);
+      for (const sibling of siblingTasks) {
+        if (sibling.id !== taskId && sibling.status === "READY") {
+          await this.taskSyncService.syncTaskStatus(sibling.id, "READY");
         }
       }
     }
@@ -398,13 +384,7 @@ export class TaskTool {
     const task = await this.taskSessionService.abandonTask(taskId, sessionId, reason, force);
 
     // Sync to external project management provider
-    if (this.taskSyncService) {
-      try {
-        await this.taskSyncService.syncTaskStatus(taskId, "ABANDONED");
-      } catch (error) {
-        console.warn(`Failed to sync task status: ${error}`);
-      }
-    }
+    await this.taskSyncService.syncTaskStatus(taskId, "ABANDONED");
 
     // Get issue context for close_issue prompting
     const plan = this.planService.findById(task.planId);

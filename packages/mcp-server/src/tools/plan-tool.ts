@@ -143,7 +143,7 @@ export class PlanTool {
     private readonly taskService: TaskService,
     private readonly planningService: PlanningService,
     private readonly typeService: TypeService,
-    private readonly taskSyncService: TaskSyncService | null
+    private readonly taskSyncService: TaskSyncService
   ) {}
 
   // ===========================================================================
@@ -302,11 +302,9 @@ export class PlanTool {
 
     const result = this.planningService.readyIssue(issueNumber);
 
-    // Sync each task's READY status to GitHub (if sync enabled)
-    if (this.taskSyncService && result.tasks.length > 0) {
-      for (const task of result.tasks) {
-        await this.taskSyncService.syncTaskStatus(task.id, "READY");
-      }
+    // Sync each task's READY status to GitHub
+    for (const task of result.tasks) {
+      await this.taskSyncService.syncTaskStatus(task.id, "READY");
     }
 
     return {
@@ -362,8 +360,8 @@ export class PlanTool {
       };
     }
 
-    // Use TaskSyncService if available and not skipped
-    if (this.taskSyncService && !skipGitHubSync) {
+    // Use TaskSyncService unless user explicitly skipped GitHub sync
+    if (!skipGitHubSync) {
       const result = await this.taskSyncService.activatePlannedTasks(issue.id);
 
       if (!result.success) {

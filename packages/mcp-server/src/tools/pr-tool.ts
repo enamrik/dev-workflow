@@ -60,7 +60,7 @@ export class PRTool {
     private readonly planService: PlanService,
     private readonly taskService: TaskService,
     private readonly gitWorktreeService: GitWorktreeService | null,
-    private readonly taskSyncService: TaskSyncService | null,
+    private readonly taskSyncService: TaskSyncService,
     private readonly dbClient: DbClient
   ) {}
 
@@ -331,13 +331,7 @@ export class PRTool {
     this.taskService.updateTaskStatus(taskId, "PR_REVIEW", undefined, "Submitted for review");
 
     // Sync to external project management provider
-    if (this.taskSyncService) {
-      try {
-        await this.taskSyncService.syncTaskStatus(taskId, "PR_REVIEW");
-      } catch (error) {
-        console.warn(`Failed to sync task status: ${error}`);
-      }
-    }
+    await this.taskSyncService.syncTaskStatus(taskId, "PR_REVIEW");
 
     return {
       success: true,
@@ -427,14 +421,7 @@ export class PRTool {
       "Completed (main mode, no PR)"
     );
     this.taskService.clearSession(taskId);
-
-    if (this.taskSyncService) {
-      try {
-        await this.taskSyncService.syncTaskStatus(taskId, "COMPLETED");
-      } catch (error) {
-        console.warn(`Failed to sync task status: ${error}`);
-      }
-    }
+    await this.taskSyncService.syncTaskStatus(taskId, "COMPLETED");
 
     const issueStatus = await this.checkAndMaybeCloseIssue(task!.planId, autoCloseIssue);
     const nextTask = this.findNextAvailableTask(task!.planId);
@@ -539,14 +526,7 @@ export class PRTool {
       : `PR #${task.prNumber} merged`;
     this.taskService.updateTaskStatus(taskId, "COMPLETED", sessionId, completionNote);
     this.taskService.clearSession(taskId);
-
-    if (this.taskSyncService) {
-      try {
-        await this.taskSyncService.syncTaskStatus(taskId, "COMPLETED");
-      } catch (error) {
-        console.warn(`Failed to sync task status: ${error}`);
-      }
-    }
+    await this.taskSyncService.syncTaskStatus(taskId, "COMPLETED");
 
     const issueStatus = await this.checkAndMaybeCloseIssue(task.planId, autoCloseIssue);
     const nextTask = this.findNextAvailableTask(task.planId);
