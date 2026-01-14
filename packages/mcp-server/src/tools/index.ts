@@ -47,7 +47,7 @@ export {
   handleSearchIssues,
   handleGetWorkQueue,
   handleImportGitHubIssue,
-} from "./issue-tools.js";
+} from "./issue-tool-def.js";
 
 // Plan handlers
 export {
@@ -57,7 +57,7 @@ export {
   handleMoveIssueToReady,
   handleMoveIssueToBacklog,
   handleSyncIssue,
-} from "./plan-tools.js";
+} from "./plan-tool-def.js";
 
 // Task handlers
 export {
@@ -71,17 +71,27 @@ export {
   handleLogTaskProgress,
   handleGetTaskExecutionLog,
   handleCheckTaskConflicts,
-} from "./task-tools.js";
+} from "./task-tool-def.js";
+
+// Task types and helpers (used by IssueTool)
+export {
+  enrichTaskData,
+  createSlimEnrichedTaskData,
+  type EnrichedTaskData,
+  type SlimEnrichedTaskData,
+  type TaskWorkerInfo,
+  type TaskPRInfo,
+} from "./task-tool.js";
 
 // Snapshot handlers
 export {
   handleGetSnapshotHistory,
   handleRevertToSnapshot,
   handleViewSnapshot,
-} from "./snapshot-tools.js";
+} from "./snapshot-tool-def.js";
 
 // Settings handlers
-export { handleUpdateSettings } from "./settings-tools.js";
+export { handleUpdateSettings } from "./settings-tool-def.js";
 
 // Milestone handlers
 export {
@@ -92,10 +102,10 @@ export {
   handleDeleteMilestone,
   handleAssignIssueToMilestone,
   handleRemoveIssueFromMilestone,
-} from "./milestone-tools.js";
+} from "./milestone-tool-def.js";
 
 // Worktree handlers
-export { handleListWorktrees, handlePruneStaleWorktrees } from "./worktree-tools.js";
+export { handleListWorktrees, handlePruneStaleWorktrees } from "./worktree-tool-def.js";
 
 // PR handlers
 export {
@@ -103,10 +113,10 @@ export {
   handleCreatePR,
   handleSubmitForReview,
   handleCompleteTask,
-} from "./pr-tools.js";
+} from "./pr-tool-def.js";
 
 // Merge handlers
-export { handleMergeIssues } from "./merge-tools.js";
+export { handleMergeIssues } from "./merge-tool-def.js";
 
 // Type handlers
 export {
@@ -114,11 +124,11 @@ export {
   handleCreateType,
   handleUpdateType,
   handleDeleteType,
-} from "./type-tools.js";
+} from "./type-tool-def.js";
 
 // Dispatch handlers (worker task assignment)
 export {
   handleDispatchTask,
   handleGetDispatchStatus,
   handleEndWorkerSession,
-} from "./dispatch-tools.js";
+} from "./dispatch-tool-def.js";

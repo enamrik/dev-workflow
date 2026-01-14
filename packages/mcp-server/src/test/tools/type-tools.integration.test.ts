@@ -1,13 +1,18 @@
 /**
  * Type Tools Integration Tests
  *
- * Tests actual MCP tool handlers with real TypeService backed by database.
+ * Tests MCP tool handlers with real TypeService backed by database.
+ * Uses createMcpTool with test containers to test the full pipeline.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { createContainer, asValue, asClass, InjectionMode } from "awilix";
+import type { AwilixContainer } from "awilix";
 import { TypeService } from "@dev-workflow/core";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
-import { handleListTypes } from "../../tools/type-tools.js";
+import { handleListTypes } from "../../tools/type-tool-def.js";
+import { TypeTool } from "../../tools/type-tool.js";
+import { createMcpTool, type McpTool } from "../../di/bootstrap.js";
 import {
   ListTypesSchema,
   CreateTypeSchema,
@@ -16,25 +21,37 @@ import {
 } from "../../tools/schemas.js";
 
 /**
- * Test database instance
+ * Test cradle interface - subset of McpCradle for type tools
  */
-let testDb: TestDatabase;
-
-/**
- * Create a TypeToolContext for testing
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createTypeToolContext(testDb: TestDatabase): any {
-  const typeService = new TypeService(testDb.source.types);
-
-  return {
-    typeService,
-  };
+interface TypeTestCradle {
+  typeService: TypeService;
+  typeTool: TypeTool;
 }
 
 describe("Type Tools Integration", () => {
+  let testDb: TestDatabase;
+  let testContainer: AwilixContainer<TypeTestCradle>;
+
+  // Bound tools for testing
+  let listTypes: McpTool;
+
   beforeEach(() => {
     testDb = createTestDatabase();
+
+    const typeService = new TypeService(testDb.source.types);
+
+    // Create test container with dependencies + tool class
+    testContainer = createContainer<TypeTestCradle>({
+      injectionMode: InjectionMode.CLASSIC,
+    });
+
+    testContainer.register({
+      typeService: asValue(typeService),
+      typeTool: asClass(TypeTool).singleton(),
+    });
+
+    // Bind handlers to test container - tests the full pipeline
+    listTypes = createMcpTool(handleListTypes, testContainer);
   });
 
   afterEach(() => {
@@ -43,9 +60,7 @@ describe("Type Tools Integration", () => {
 
   describe("handleListTypes", () => {
     it("should return default types when database is empty", async () => {
-      const ctx = createTypeToolContext(testDb);
-
-      const result = await handleListTypes({}, { cradle: ctx });
+      const result = await listTypes({});
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -70,8 +85,7 @@ describe("Type Tools Integration", () => {
         keywords: ["custom"],
       });
 
-      const ctx = createTypeToolContext(testDb);
-      const result = await handleListTypes({}, { cradle: ctx });
+      const result = await listTypes({});
 
       const content = JSON.parse(result.content[0].text);
 
@@ -81,9 +95,7 @@ describe("Type Tools Integration", () => {
     });
 
     it("should include name, description, and remoteLabel for each type", async () => {
-      const ctx = createTypeToolContext(testDb);
-
-      const result = await handleListTypes({}, { cradle: ctx });
+      const result = await listTypes({});
 
       const content = JSON.parse(result.content[0].text);
 
@@ -104,9 +116,7 @@ describe("Type Tools Integration", () => {
     });
 
     it("should include helpful message about usage", async () => {
-      const ctx = createTypeToolContext(testDb);
-
-      const result = await handleListTypes({}, { cradle: ctx });
+      const result = await listTypes({});
 
       const content = JSON.parse(result.content[0].text);
 

@@ -14,7 +14,8 @@ import {
   createTestTask,
 } from "../helpers.js";
 import { VersioningService, MockGitHubCLI, MergeService, type DbClient } from "@dev-workflow/core";
-import { handleMergeIssues } from "../../tools/merge-tools.js";
+import { handleMergeIssues } from "../../tools/merge-tool-def.js";
+import { MergeTool } from "../../tools/merge-tool.js";
 import { MergeIssuesSchema } from "../../tools/schemas.js";
 
 /** Test project ID */
@@ -23,7 +24,7 @@ const TEST_PROJECT_ID = "test-project-merge-integration";
 /**
  * Create a test context for merge tools
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 async function createMergeToolContext(testDb: TestDatabase): Promise<{
   ctx: any;
   client: DbClient;
@@ -51,8 +52,12 @@ async function createMergeToolContext(testDb: TestDatabase): Promise<{
     mockGitHubCLI
   );
 
+  // Create MergeTool
+  const mergeTool = new MergeTool(mergeService);
+
   return {
     ctx: {
+      mergeTool,
       mergeService,
     },
     client,
@@ -61,7 +66,7 @@ async function createMergeToolContext(testDb: TestDatabase): Promise<{
 
 describe("Merge Tools Integration", () => {
   let testDb: TestDatabase;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   let ctx: any;
   let client: DbClient;
 
@@ -98,7 +103,7 @@ describe("Merge Tools Integration", () => {
             targetIssueNumber: issue2.number,
             mode: "create_new",
           },
-          { cradle: ctx }
+          ctx
         );
 
         expect(result.isError).toBeUndefined();
@@ -127,7 +132,7 @@ describe("Merge Tools Integration", () => {
             newTitle: "Combined Feature",
             newDescription: "This is the merged description",
           },
-          { cradle: ctx }
+          ctx
         );
 
         expect(result.isError).toBeUndefined();
@@ -163,7 +168,7 @@ describe("Merge Tools Integration", () => {
             targetIssueNumber: targetIssue.number,
             mode: "merge_into",
           },
-          { cradle: ctx }
+          ctx
         );
 
         expect(result.isError).toBeUndefined();
@@ -202,7 +207,7 @@ describe("Merge Tools Integration", () => {
             targetIssueNumber: issue2.number,
             mode: "create_new",
           },
-          { cradle: ctx }
+          ctx
         );
 
         expect(result.isError).toBeUndefined();
@@ -230,7 +235,7 @@ describe("Merge Tools Integration", () => {
             targetIssueNumber: issue2.number,
             mode: "merge_into",
           },
-          { cradle: ctx }
+          ctx
         );
 
         expect(result.isError).toBeUndefined();
@@ -253,7 +258,7 @@ describe("Merge Tools Integration", () => {
             targetIssueNumber: issue.number,
             mode: "merge_into",
           },
-          { cradle: ctx }
+          ctx
         );
 
         expect(result.isError).toBe(true);
@@ -275,7 +280,7 @@ describe("Merge Tools Integration", () => {
             targetIssueNumber: openIssue.number,
             mode: "merge_into",
           },
-          { cradle: ctx }
+          ctx
         );
 
         expect(result.isError).toBe(true);
@@ -297,7 +302,7 @@ describe("Merge Tools Integration", () => {
             targetIssueNumber: closedIssue.number,
             mode: "merge_into",
           },
-          { cradle: ctx }
+          ctx
         );
 
         expect(result.isError).toBe(true);
@@ -315,7 +320,7 @@ describe("Merge Tools Integration", () => {
             targetIssueNumber: issue.number,
             mode: "merge_into",
           },
-          { cradle: ctx }
+          ctx
         );
 
         expect(result.isError).toBe(true);
@@ -334,7 +339,7 @@ describe("Merge Tools Integration", () => {
             targetIssueNumber: issue2.number,
             mode: "invalid_mode" as any,
           },
-          { cradle: ctx }
+          ctx
         );
 
         expect(result.isError).toBe(true);

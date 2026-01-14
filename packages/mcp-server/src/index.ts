@@ -12,12 +12,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 // Import DI container and types
-import {
-  createMcpContainer,
-  initializeContainer,
-  type McpContainer,
-  type McpCradle,
-} from "./di/index.js";
+import { createMcpContainer, type McpContainer, type McpCradle } from "./di/index.js";
 import { ProviderRegistry } from "@dev-workflow/core";
 
 // Import tools - handlers perform their own validation via validateToolArgs
@@ -162,198 +157,198 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
   try {
     // Issue tools
     if (name === "create_issue") {
-      return await handleCreateIssue(args ?? {}, container);
+      return await handleCreateIssue(args ?? {}, container.cradle);
     }
     if (name === "get_issue") {
-      return handleGetIssue(args ?? {}, container);
+      return handleGetIssue(args ?? {}, container.cradle);
     }
     if (name === "list_templates") {
-      return await handleListTemplates(args ?? {}, container);
+      return await handleListTemplates(args ?? {}, container.cradle);
     }
     if (name === "get_template") {
-      return await handleGetTemplate(args ?? {}, container);
+      return await handleGetTemplate(args ?? {}, container.cradle);
     }
     if (name === "create_template") {
-      return await handleCreateTemplate(args ?? {}, container);
+      return await handleCreateTemplate(args ?? {}, container.cradle);
     }
     if (name === "update_template") {
-      return await handleUpdateTemplate(args ?? {}, container);
+      return await handleUpdateTemplate(args ?? {}, container.cradle);
     }
     if (name === "delete_template") {
-      return await handleDeleteTemplate(args ?? {}, container);
+      return await handleDeleteTemplate(args ?? {}, container.cradle);
     }
     if (name === "copy_template") {
-      return await handleCopyTemplate(args ?? {}, container);
+      return await handleCopyTemplate(args ?? {}, container.cradle);
     }
     if (name === "update_issue") {
-      return await handleUpdateIssue(args ?? {}, container);
+      return await handleUpdateIssue(args ?? {}, container.cradle);
     }
     if (name === "close_issue") {
-      return await handleCloseIssue(args ?? {}, container);
+      return await handleCloseIssue(args ?? {}, container.cradle);
     }
     if (name === "change_issue_type") {
-      return await handleChangeIssueType(args ?? {}, container);
+      return await handleChangeIssueType(args ?? {}, container.cradle);
     }
     if (name === "delete_issue") {
-      return await handleDeleteIssue(args ?? {}, container);
+      return await handleDeleteIssue(args ?? {}, container.cradle);
     }
     if (name === "restore_issue") {
-      return handleRestoreIssue(args ?? {}, container);
+      return handleRestoreIssue(args ?? {}, container.cradle);
     }
     if (name === "get_project_stats") {
-      return handleGetProjectStats(container);
+      return handleGetProjectStats(args ?? {}, container.cradle);
     }
     if (name === "search_issues") {
-      return handleSearchIssues(args ?? {}, container);
+      return handleSearchIssues(args ?? {}, container.cradle);
     }
     if (name === "get_work_queue") {
-      return handleGetWorkQueue(container);
+      return handleGetWorkQueue(args ?? {}, container.cradle);
     }
     if (name === "import_github_issue") {
-      return await handleImportGitHubIssue(args ?? {}, container);
+      return await handleImportGitHubIssue(args ?? {}, container.cradle);
     }
 
     // Plan tools
     if (name === "generate_plan") {
-      return await handleGeneratePlan(args ?? {}, container);
+      return await handleGeneratePlan(args ?? {}, container.cradle);
     }
     if (name === "get_plan") {
-      return handleGetPlan(args ?? {}, container);
+      return handleGetPlan(args ?? {}, container.cradle);
     }
     if (name === "pause_issue") {
-      return handlePauseIssue(args ?? {}, container);
+      return handlePauseIssue(args ?? {}, container.cradle);
     }
     if (name === "move_issue_to_ready") {
-      return await handleMoveIssueToReady(args ?? {}, container);
+      return await handleMoveIssueToReady(args ?? {}, container.cradle);
     }
     if (name === "move_issue_to_backlog") {
-      return await handleMoveIssueToBacklog(args ?? {}, container);
+      return await handleMoveIssueToBacklog(args ?? {}, container.cradle);
     }
     if (name === "sync_issue") {
-      return await handleSyncIssue(args ?? {}, container);
+      return await handleSyncIssue(args ?? {}, container.cradle);
     }
 
     // Task tools
     if (name === "load_task_session") {
-      return await handleLoadTaskSession(args ?? {}, container);
+      return await handleLoadTaskSession(args ?? {}, container.cradle);
     }
     if (name === "abandon_task") {
-      return await handleAbandonTask(args ?? {}, container);
+      return await handleAbandonTask(args ?? {}, container.cradle);
     }
     if (name === "get_task") {
-      return handleGetTask(args ?? {}, container);
+      return handleGetTask(args ?? {}, container.cradle);
     }
     if (name === "list_available_tasks") {
-      return await handleListAvailableTasks(args ?? {}, container);
+      return await handleListAvailableTasks(args ?? {}, container.cradle);
     }
     if (name === "delete_task") {
-      return handleDeleteTask(args ?? {}, container);
+      return handleDeleteTask(args ?? {}, container.cradle);
     }
     if (name === "update_task") {
-      return await handleUpdateTask(args ?? {}, container);
+      return await handleUpdateTask(args ?? {}, container.cradle);
     }
     if (name === "get_task_execution_prompt") {
-      return handleGetTaskExecutionPrompt(args ?? {}, container);
+      return handleGetTaskExecutionPrompt(args ?? {}, container.cradle);
     }
     if (name === "log_task_progress") {
-      return handleLogTaskProgress(args ?? {}, container);
+      return handleLogTaskProgress(args ?? {}, container.cradle);
     }
     if (name === "get_task_execution_log") {
-      return handleGetTaskExecutionLog(args ?? {}, container);
+      return handleGetTaskExecutionLog(args ?? {}, container.cradle);
     }
     if (name === "check_task_conflicts") {
-      return handleCheckTaskConflicts(args ?? {}, container);
+      return handleCheckTaskConflicts(args ?? {}, container.cradle);
     }
 
     // Snapshot tools
     if (name === "get_snapshot_history") {
-      return handleGetSnapshotHistory(args ?? {}, container);
+      return handleGetSnapshotHistory(args ?? {}, container.cradle);
     }
     if (name === "revert_to_snapshot") {
-      return handleRevertToSnapshot(args ?? {}, container);
+      return handleRevertToSnapshot(args ?? {}, container.cradle);
     }
     if (name === "view_snapshot") {
-      return handleViewSnapshot(args ?? {}, container);
+      return handleViewSnapshot(args ?? {}, container.cradle);
     }
 
     // Settings tools
     if (name === "update_settings") {
-      return await handleUpdateSettings(args ?? {}, container);
+      return await handleUpdateSettings(args ?? {}, container.cradle);
     }
 
     // Milestone tools
     if (name === "create_milestone") {
-      return handleCreateMilestone(args ?? {}, container);
+      return handleCreateMilestone(args ?? {}, container.cradle);
     }
     if (name === "get_milestone") {
-      return handleGetMilestone(args ?? {}, container);
+      return handleGetMilestone(args ?? {}, container.cradle);
     }
     if (name === "list_milestones") {
-      return handleListMilestones(args ?? {}, container);
+      return handleListMilestones(args ?? {}, container.cradle);
     }
     if (name === "update_milestone") {
-      return handleUpdateMilestone(args ?? {}, container);
+      return handleUpdateMilestone(args ?? {}, container.cradle);
     }
     if (name === "delete_milestone") {
-      return handleDeleteMilestone(args ?? {}, container);
+      return handleDeleteMilestone(args ?? {}, container.cradle);
     }
     if (name === "assign_issue_to_milestone") {
-      return handleAssignIssueToMilestone(args ?? {}, container);
+      return handleAssignIssueToMilestone(args ?? {}, container.cradle);
     }
     if (name === "remove_issue_from_milestone") {
-      return handleRemoveIssueFromMilestone(args ?? {}, container);
+      return handleRemoveIssueFromMilestone(args ?? {}, container.cradle);
     }
 
     // Worktree tools
     if (name === "list_worktrees") {
-      return await handleListWorktrees(container);
+      return await handleListWorktrees(args ?? {}, container.cradle);
     }
     if (name === "prune_stale_worktrees") {
-      return await handlePruneStaleWorktrees(container);
+      return await handlePruneStaleWorktrees(args ?? {}, container.cradle);
     }
 
     // PR tools
     if (name === "get_task_pr_status") {
-      return await handleGetTaskPRStatus(args ?? {}, container);
+      return await handleGetTaskPRStatus(args ?? {}, container.cradle);
     }
     if (name === "create_pr") {
-      return await handleCreatePR(args ?? {}, container);
+      return await handleCreatePR(args ?? {}, container.cradle);
     }
     if (name === "submit_for_review") {
-      return await handleSubmitForReview(args ?? {}, container);
+      return await handleSubmitForReview(args ?? {}, container.cradle);
     }
     if (name === "complete_task") {
-      return await handleCompleteTask(args ?? {}, container);
+      return await handleCompleteTask(args ?? {}, container.cradle);
     }
 
     // Merge tools
     if (name === "merge_issues") {
-      return await handleMergeIssues(args ?? {}, container);
+      return await handleMergeIssues(args ?? {}, container.cradle);
     }
 
     // Type tools
     if (name === "list_types") {
-      return await handleListTypes(container);
+      return await handleListTypes(args ?? {}, container.cradle);
     }
     if (name === "create_type") {
-      return handleCreateType(args ?? {}, container);
+      return handleCreateType(args ?? {}, container.cradle);
     }
     if (name === "update_type") {
-      return handleUpdateType(args ?? {}, container);
+      return handleUpdateType(args ?? {}, container.cradle);
     }
     if (name === "delete_type") {
-      return handleDeleteType(args ?? {}, container);
+      return handleDeleteType(args ?? {}, container.cradle);
     }
 
     // Dispatch tools (worker task assignment)
     if (name === "dispatch_task") {
-      return handleDispatchTask(args ?? {}, container);
+      return handleDispatchTask(args ?? {}, container.cradle);
     }
     if (name === "get_dispatch_status") {
-      return handleGetDispatchStatus(container);
+      return handleGetDispatchStatus(args ?? {}, container.cradle);
     }
     if (name === "end_worker_session") {
-      return handleEndWorkerSession(args ?? {}, container);
+      return handleEndWorkerSession(args ?? {}, container.cradle);
     }
 
     return errorResponse(`Unknown tool: ${name}`);
@@ -400,9 +395,6 @@ async function main() {
   try {
     // Create Awilix container - this wires up all dependencies
     container = await createMcpContainer(PROJECT_SLUG);
-
-    // Initialize default container for createMcpHandler pattern
-    initializeContainer(container);
   } catch (error) {
     console.error(`Error: Failed to initialize for slug "${PROJECT_SLUG}"`);
     console.error(error instanceof Error ? error.message : String(error));

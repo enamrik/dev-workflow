@@ -27,7 +27,8 @@ import {
   handleGetPlan,
   handleMoveIssueToReady,
   handleMoveIssueToBacklog,
-} from "../../tools/plan-tools.js";
+} from "../../tools/plan-tool-def.js";
+import { PlanTool } from "../../tools/plan-tool.js";
 import {
   GeneratePlanSchema,
   GetPlanSchema,
@@ -42,7 +43,7 @@ const TEST_PROJECT_ID = "test-project-plan";
 /**
  * Create a test context for plan tools
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 async function createPlanToolContext(testDb: TestDatabase): Promise<{
   ctx: any;
   client: DbClient;
@@ -73,8 +74,20 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<{
   const taskService = new TaskService(client, noOpProvider, null);
   const issueService = new IssueService(client, taskService, noOpProvider);
 
+  // Create PlanTool with all dependencies
+  const planTool = new PlanTool(
+    project,
+    issueService,
+    planService,
+    taskService,
+    planningService,
+    typeService,
+    taskSyncService
+  );
+
   return {
     ctx: {
+      planTool,
       project,
       issueService,
       planService,
@@ -89,7 +102,7 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<{
 
 describe("Plan Tools Integration", () => {
   let testDb: TestDatabase;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   let ctx: any;
   let client: DbClient;
 
@@ -125,7 +138,7 @@ describe("Plan Tools Integration", () => {
           ],
           estimatedComplexity: "MEDIUM",
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -152,7 +165,7 @@ describe("Plan Tools Integration", () => {
           tasks: [],
           estimatedComplexity: "LOW",
         },
-        { cradle: ctx }
+        ctx
       );
 
       const content = JSON.parse(result.content[0].text);
@@ -174,7 +187,7 @@ describe("Plan Tools Integration", () => {
           tasks: [{ id: "t1", title: "Task 1", description: "First task" } as any],
           estimatedComplexity: "MEDIUM",
         },
-        { cradle: ctx }
+        ctx
       );
 
       const content = JSON.parse(result.content[0].text);
@@ -199,7 +212,7 @@ describe("Plan Tools Integration", () => {
           ],
           estimatedComplexity: "MEDIUM",
         },
-        { cradle: ctx }
+        ctx
       );
 
       const content = JSON.parse(result.content[0].text);
@@ -233,7 +246,7 @@ describe("Plan Tools Integration", () => {
           ],
           estimatedComplexity: "MEDIUM",
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -262,10 +275,10 @@ describe("Plan Tools Integration", () => {
           tasks: [{ id: "t1", title: "Task 1", description: "Desc", type: "TASK" }],
           estimatedComplexity: "LOW",
         },
-        { cradle: ctx }
+        ctx
       );
 
-      const result = await handleGetPlan({ issueNumber: issue.number }, { cradle: ctx });
+      const result = await handleGetPlan({ issueNumber: issue.number }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -276,7 +289,7 @@ describe("Plan Tools Integration", () => {
     it("should return error when no plan exists", async () => {
       const issue = createTestIssue(client.issues);
 
-      const result = await handleGetPlan({ issueNumber: issue.number }, { cradle: ctx });
+      const result = await handleGetPlan({ issueNumber: issue.number }, ctx);
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
@@ -298,14 +311,14 @@ describe("Plan Tools Integration", () => {
           ],
           estimatedComplexity: "LOW",
         },
-        { cradle: ctx }
+        ctx
       );
 
       const result = await handleMoveIssueToBacklog(
         {
           issueNumber: issue.number,
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -336,7 +349,7 @@ describe("Plan Tools Integration", () => {
           ],
           estimatedComplexity: "LOW",
         },
-        { cradle: ctx }
+        ctx
       );
 
       const result = await handleMoveIssueToBacklog(
@@ -344,7 +357,7 @@ describe("Plan Tools Integration", () => {
           issueNumber: issue.number,
           skipGitHubSync: true,
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -378,7 +391,7 @@ describe("Plan Tools Integration", () => {
           tasks: [{ id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" }],
           estimatedComplexity: "LOW",
         },
-        { cradle: ctx }
+        ctx
       );
 
       // Call without skipGitHubSync (defaults to false)
@@ -386,7 +399,7 @@ describe("Plan Tools Integration", () => {
         {
           issueNumber: issue.number,
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -412,14 +425,14 @@ describe("Plan Tools Integration", () => {
           ],
           estimatedComplexity: "LOW",
         },
-        { cradle: ctx }
+        ctx
       );
 
       // Move to backlog first (PLANNED -> BACKLOG)
-      await handleMoveIssueToBacklog({ issueNumber: issue.number }, { cradle: ctx });
+      await handleMoveIssueToBacklog({ issueNumber: issue.number }, ctx);
 
       // Now move to ready (BACKLOG -> READY)
-      const result = await handleMoveIssueToReady({ issueNumber: issue.number }, { cradle: ctx });
+      const result = await handleMoveIssueToReady({ issueNumber: issue.number }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -443,14 +456,14 @@ describe("Plan Tools Integration", () => {
           tasks: [{ id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" }],
           estimatedComplexity: "LOW",
         },
-        { cradle: ctx }
+        ctx
       );
 
-      await handleMoveIssueToBacklog({ issueNumber: issue.number }, { cradle: ctx });
-      await handleMoveIssueToReady({ issueNumber: issue.number }, { cradle: ctx });
+      await handleMoveIssueToBacklog({ issueNumber: issue.number }, ctx);
+      await handleMoveIssueToReady({ issueNumber: issue.number }, ctx);
 
       // Call again - should be idempotent (no BACKLOG tasks to move)
-      const result = await handleMoveIssueToReady({ issueNumber: issue.number }, { cradle: ctx });
+      const result = await handleMoveIssueToReady({ issueNumber: issue.number }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -459,7 +472,7 @@ describe("Plan Tools Integration", () => {
     });
 
     it("should return error for non-existent issue", async () => {
-      const result = await handleMoveIssueToReady({ issueNumber: 99999 }, { cradle: ctx });
+      const result = await handleMoveIssueToReady({ issueNumber: 99999 }, ctx);
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
@@ -470,7 +483,7 @@ describe("Plan Tools Integration", () => {
       // Create issue without a plan
       const issue = createTestIssue(client.issues);
 
-      const result = await handleMoveIssueToReady({ issueNumber: issue.number }, { cradle: ctx });
+      const result = await handleMoveIssueToReady({ issueNumber: issue.number }, ctx);
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);

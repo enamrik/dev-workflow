@@ -35,7 +35,8 @@ import {
   handleLogTaskProgress,
   handleGetTaskExecutionLog,
   handleLoadTaskSession,
-} from "../../tools/task-tools.js";
+} from "../../tools/task-tool-def.js";
+import { TaskTool } from "../../tools/task-tool.js";
 import {
   GetTaskSchema,
   ListAvailableTasksSchema,
@@ -134,7 +135,7 @@ function createLocalMockProvider(
 /**
  * Extended context type for testing
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 type TestTaskToolContext = any;
 
 /**
@@ -185,8 +186,26 @@ async function createTaskToolContext(
   const taskService = new TaskService(client, mockProvider, mockGitWorktreeService);
   const issueService = new IssueService(client, taskService, mockProvider);
 
+  // Create TaskTool with all dependencies
+  const taskTool = new TaskTool(
+    taskService,
+    taskSessionService,
+    taskManagementService,
+    planService,
+    issueService,
+    client,
+    workerQueueDb,
+    taskSyncService,
+    conflictDetectionService,
+    null, // providerRegistry
+    null, // project
+    null, // dbSource
+    null // githubCLI
+  );
+
   return {
     ctx: {
+      taskTool,
       dbClient: client,
       issueService,
       planService,
@@ -204,7 +223,7 @@ async function createTaskToolContext(
 
 describe("Task Tools Integration", () => {
   let testDb: TestDatabase;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   let ctx: any;
   let client: DbClient;
   let workerQueueDbPath: string;
@@ -244,7 +263,7 @@ describe("Task Tools Integration", () => {
         status: "BACKLOG",
       });
 
-      const result = await handleGetTask({ taskId: task.id }, { cradle: ctx });
+      const result = await handleGetTask({ taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -263,7 +282,7 @@ describe("Task Tools Integration", () => {
           issueNumber: issue.number,
           taskNumber: 1,
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -272,7 +291,7 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return error for non-existent task", async () => {
-      const result = await handleGetTask({ taskId: "non-existent-id" }, { cradle: ctx });
+      const result = await handleGetTask({ taskId: "non-existent-id" }, ctx);
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
@@ -284,8 +303,8 @@ describe("Task Tools Integration", () => {
       const task1 = createTestTask(client.tasks, plan.id, { title: "Task 1" });
       const task2 = createTestTask(client.tasks, plan.id, { title: "Task 2" });
 
-      const result1 = await handleGetTask({ taskId: task1.id }, { cradle: ctx });
-      const result2 = await handleGetTask({ taskId: task2.id }, { cradle: ctx });
+      const result1 = await handleGetTask({ taskId: task1.id }, ctx);
+      const result2 = await handleGetTask({ taskId: task2.id }, ctx);
 
       const content1 = JSON.parse(result1.content[0].text);
       const content2 = JSON.parse(result2.content[0].text);
@@ -305,7 +324,7 @@ describe("Task Tools Integration", () => {
           issueNumber: issue.number,
           taskNumber: 2,
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -323,7 +342,7 @@ describe("Task Tools Integration", () => {
         labels: { priority: "high", sprint: "sprint-1" },
       });
 
-      const result = await handleGetTask({ taskId: task.id }, { cradle: ctx });
+      const result = await handleGetTask({ taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -342,7 +361,7 @@ describe("Task Tools Integration", () => {
       // Simulate a task with sessionId (as would happen during load_task_session)
       client.tasks.update(task.id, { sessionId: "test-session-123" });
 
-      const result = await handleGetTask({ taskId: task.id }, { cradle: ctx });
+      const result = await handleGetTask({ taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -361,7 +380,7 @@ describe("Task Tools Integration", () => {
         status: "BACKLOG",
       });
 
-      const result = await handleGetTask({ taskId: task.id }, { cradle: ctx });
+      const result = await handleGetTask({ taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -384,7 +403,7 @@ describe("Task Tools Integration", () => {
         prStatus: "OPEN",
       });
 
-      const result = await handleGetTask({ taskId: task.id }, { cradle: ctx });
+      const result = await handleGetTask({ taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -402,7 +421,7 @@ describe("Task Tools Integration", () => {
         status: "IN_PROGRESS",
       });
 
-      const result = await handleGetTask({ taskId: task.id }, { cradle: ctx });
+      const result = await handleGetTask({ taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -425,7 +444,7 @@ describe("Task Tools Integration", () => {
         prStatus: "DRAFT",
       });
 
-      const result = await handleGetTask({ taskId: task.id }, { cradle: ctx });
+      const result = await handleGetTask({ taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -447,7 +466,7 @@ describe("Task Tools Integration", () => {
       createTestTask(client.tasks, plan.id, { title: "Task 2", status: "READY" });
       createTestTask(client.tasks, plan.id, { title: "Task 3", status: "IN_PROGRESS" });
 
-      const result = await handleListAvailableTasks({}, { cradle: ctx });
+      const result = await handleListAvailableTasks({}, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -467,7 +486,7 @@ describe("Task Tools Integration", () => {
         {
           issueNumber: issue1.number,
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -482,7 +501,7 @@ describe("Task Tools Integration", () => {
       createTestTask(client.tasks, plan.id, { title: "Task 1", status: "BACKLOG" });
       createTestTask(client.tasks, plan.id, { title: "Task 2", status: "BACKLOG" });
 
-      const result = await handleListAvailableTasks({ issueNumber: issue.number }, { cradle: ctx });
+      const result = await handleListAvailableTasks({ issueNumber: issue.number }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -509,7 +528,7 @@ describe("Task Tools Integration", () => {
           description: "New description",
           estimatedMinutes: 60,
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -539,7 +558,7 @@ describe("Task Tools Integration", () => {
             urgent: "", // Simple tag (empty value)
           },
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -575,7 +594,7 @@ describe("Task Tools Integration", () => {
             newLabel: "added", // Add new
           },
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -602,7 +621,7 @@ describe("Task Tools Integration", () => {
             remove: null, // Remove this label
           },
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -632,7 +651,7 @@ describe("Task Tools Integration", () => {
             only: null, // Remove the only label
           },
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -660,13 +679,13 @@ describe("Task Tools Integration", () => {
           message: "Started implementation",
           filesModified: ["src/file1.ts", "src/file2.ts"],
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(logResult.isError).toBeUndefined();
 
       // Retrieve log
-      const getResult = await handleGetTaskExecutionLog({ taskId: task.id }, { cradle: ctx });
+      const getResult = await handleGetTaskExecutionLog({ taskId: task.id }, ctx);
 
       expect(getResult.isError).toBeUndefined();
       const content = JSON.parse(getResult.content[0].text);
@@ -726,7 +745,7 @@ describe("Task Tools Integration", () => {
             sessionId: "test-session",
             mode: "main", // Use main mode to skip worktree creation
           },
-          { cradle: ctxWithAssignee }
+          ctxWithAssignee
         );
 
         expect(result.isError).toBeUndefined();
@@ -796,7 +815,7 @@ describe("Task Tools Integration", () => {
             sessionId: "test-session",
             mode: "main",
           },
-          { cradle: ctxNoAssignee }
+          ctxNoAssignee
         );
 
         expect(result.isError).toBeUndefined();
@@ -860,7 +879,7 @@ describe("Task Tools Integration", () => {
             sessionId: "test-session",
             mode: "main",
           },
-          { cradle: ctxDisabled }
+          ctxDisabled
         );
 
         expect(result.isError).toBeUndefined();
@@ -918,7 +937,7 @@ describe("Task Tools Integration", () => {
             sessionId: "test-session",
             mode: "main",
           },
-          { cradle: ctxNoSync }
+          ctxNoSync
         );
 
         expect(result.isError).toBeUndefined();
@@ -970,7 +989,7 @@ describe("Task Tools Integration", () => {
             sessionId: "test-session",
             mode: "main",
           },
-          { cradle: ctxQueue }
+          ctxQueue
         );
 
         // Should fail with error about needing a worker
@@ -1029,7 +1048,7 @@ describe("Task Tools Integration", () => {
             workerId,
             // mode defaults to "isolated"
           },
-          { cradle: ctxQueue }
+          ctxQueue
         );
 
         const content = JSON.parse(result.content[0].text);
@@ -1066,7 +1085,7 @@ describe("Task Tools Integration", () => {
           sessionId: "new-session",
           mode: "main",
         },
-        { cradle: ctx }
+        ctx
       );
 
       const content = JSON.parse(result.content[0].text);
@@ -1090,7 +1109,7 @@ describe("Task Tools Integration", () => {
           sessionId: "new-session",
           mode: "main",
         },
-        { cradle: ctx }
+        ctx
       );
 
       const content = JSON.parse(result.content[0].text);
@@ -1115,7 +1134,7 @@ describe("Task Tools Integration", () => {
           sessionId: "new-session",
           mode: "main",
         },
-        { cradle: ctx }
+        ctx
       );
 
       const content = JSON.parse(result.content[0].text);
@@ -1143,7 +1162,7 @@ describe("Task Tools Integration", () => {
           sessionId: "new-session",
           mode: "main",
         },
-        { cradle: ctx }
+        ctx
       );
 
       const content = JSON.parse(result.content[0].text);
@@ -1169,7 +1188,7 @@ describe("Task Tools Integration", () => {
           sessionId: "test-session",
           mode: "main",
         },
-        { cradle: ctx }
+        ctx
       );
 
       const content = JSON.parse(result.content[0].text);
@@ -1193,7 +1212,7 @@ describe("Task Tools Integration", () => {
           sessionId: "test-session",
           mode: "main",
         },
-        { cradle: ctx }
+        ctx
       );
 
       const content = JSON.parse(result.content[0].text);

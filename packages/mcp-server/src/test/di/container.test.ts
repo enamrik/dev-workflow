@@ -15,7 +15,6 @@ import {
   createMcpHandler,
   createNoArgsHandler,
   validateToolArgs,
-  initializeContainer,
   compose,
 } from "../../di/bootstrap.js";
 import { successResponse, errorResponse, type ToolResponse } from "../../tools/types.js";
@@ -115,9 +114,7 @@ describe("createMcpHandler", () => {
   });
 
   // Initialize container before tests
-  beforeEach(() => {
-    initializeContainer(createTestContainer() as unknown as AwilixContainer<never>);
-  });
+  beforeEach(() => {});
 
   it("should create handler that receives full cradle", async () => {
     // Handler destructures what it needs from cradle
@@ -137,7 +134,7 @@ describe("createMcpHandler", () => {
 
     const result = await handler(
       { title: "Test", description: "Test desc" },
-      createTestContainer()
+      createTestContainer().cradle
     );
 
     expect(result.isError).toBeUndefined();
@@ -167,7 +164,7 @@ describe("createMcpHandler", () => {
       issueService: asValue({ create: mockCreate, list: vi.fn() }),
     });
 
-    const result = await handler({ title: "Test", description: "Test desc" }, testContainer);
+    const result = await handler({ title: "Test", description: "Test desc" }, testContainer.cradle);
 
     expect(mockCreate).toHaveBeenCalled();
     expect(JSON.parse(result.content[0].text)).toMatchObject({
@@ -182,7 +179,7 @@ describe("createMcpHandler", () => {
 
     const handler = createMcpHandler<TestCradle>(failingHandler);
 
-    const result = await handler({}, createTestContainer());
+    const result = await handler({}, createTestContainer().cradle);
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("Something went wrong");
@@ -194,9 +191,7 @@ describe("createMcpHandler", () => {
 // =============================================================================
 
 describe("middleware", () => {
-  beforeEach(() => {
-    initializeContainer(createTestContainer() as unknown as AwilixContainer<never>);
-  });
+  beforeEach(() => {});
 
   it("should run middleware before handler", async () => {
     const middlewareOrder: string[] = [];
@@ -214,7 +209,7 @@ describe("middleware", () => {
     // Middleware is second argument
     const handler = createMcpHandler<TestCradle>(trackingHandler, trackingMiddleware);
 
-    await handler({}, createTestContainer());
+    await handler({}, createTestContainer().cradle);
 
     expect(middlewareOrder).toEqual(["middleware", "handler"]);
   });
@@ -232,7 +227,7 @@ describe("middleware", () => {
 
     const wrappedHandler = createMcpHandler<TestCradle>(handler, shortCircuitMiddleware);
 
-    const result = await wrappedHandler({}, createTestContainer());
+    const result = await wrappedHandler({}, createTestContainer().cradle);
 
     expect(handlerCalled).not.toHaveBeenCalled();
     expect(result.isError).toBe(true);
@@ -260,7 +255,7 @@ describe("middleware", () => {
 
     const wrappedHandler = createMcpHandler<TestCradle>(handler, composedMiddleware);
 
-    await wrappedHandler({}, createTestContainer());
+    await wrappedHandler({}, createTestContainer().cradle);
 
     expect(order).toEqual(["first", "second", "handler"]);
   });
@@ -286,7 +281,7 @@ describe("middleware", () => {
 
     const wrappedHandler = createMcpHandler<TestCradle>(handler, composedMiddleware);
 
-    const result = await wrappedHandler({}, createTestContainer());
+    const result = await wrappedHandler({}, createTestContainer().cradle);
 
     expect(order).toEqual(["first"]);
     expect(result.isError).toBe(true);
@@ -298,9 +293,7 @@ describe("middleware", () => {
 // =============================================================================
 
 describe("createNoArgsHandler", () => {
-  beforeEach(() => {
-    initializeContainer(createTestContainer() as unknown as AwilixContainer<never>);
-  });
+  beforeEach(() => {});
 
   it("should create handler for tools with no arguments", async () => {
     // Handler destructures what it needs
@@ -309,7 +302,7 @@ describe("createNoArgsHandler", () => {
       return successResponse({ issues, count: issues.length });
     });
 
-    const result = await handler({}, createTestContainer());
+    const result = await handler({}, createTestContainer().cradle);
 
     expect(result.isError).toBeUndefined();
     const parsed = JSON.parse(result.content[0].text);
@@ -322,9 +315,7 @@ describe("createNoArgsHandler", () => {
 // =============================================================================
 
 describe("Integration Pattern", () => {
-  beforeEach(() => {
-    initializeContainer(createTestContainer() as unknown as AwilixContainer<never>);
-  });
+  beforeEach(() => {});
 
   it("demonstrates the recommended pattern for MCP handlers", async () => {
     // 1. Define validation schema
@@ -361,7 +352,7 @@ describe("Integration Pattern", () => {
     // 5. Use in production (would use default container)
     const prodResult = await handleCreateIssue(
       { title: "Test Issue", description: "Test description" },
-      createTestContainer()
+      createTestContainer().cradle
     );
 
     expect(prodResult.isError).toBeUndefined();
@@ -383,7 +374,7 @@ describe("Integration Pattern", () => {
 
     const testResult = await handleCreateIssue(
       { title: "Test Issue", description: "Test description" },
-      testContainer
+      testContainer.cradle
     );
 
     expect(mockIssueService.create).toHaveBeenCalledWith({

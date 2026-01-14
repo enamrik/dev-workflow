@@ -22,6 +22,7 @@ import {
   PlanService,
   MilestoneService,
   GlobalDbWorkerQueueDb,
+  TypeService,
   type DbClient,
 } from "@dev-workflow/core";
 import {
@@ -31,7 +32,8 @@ import {
   handleCloseIssue,
   handleImportGitHubIssue,
   handleGetIssue,
-} from "../../tools/issue-tools.js";
+} from "../../tools/issue-tool-def.js";
+import { IssueTool } from "../../tools/issue-tool.js";
 import {
   CreateIssueSchema,
   GetIssueSchema,
@@ -51,7 +53,6 @@ async function createIssueToolContext(
   testDb: TestDatabase,
   workerQueueDb: GlobalDbWorkerQueueDb
 ): Promise<{
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ctx: any;
   client: DbClient;
 }> {
@@ -91,9 +92,27 @@ async function createIssueToolContext(
   const taskService = new TaskService(client, noOpProvider, null);
   const issueService = new IssueService(client, taskService, noOpProvider);
   const milestoneService = new MilestoneService(client);
+  const typeService = new TypeService(testDb.source.types);
+
+  // Create IssueTool with all dependencies
+  const issueTool = new IssueTool(
+    project,
+    issueService,
+    planService,
+    taskService,
+    milestoneService,
+    workerQueueDb,
+    mockTemplateService,
+    planningService,
+    mockProvider,
+    null, // gitWorktreeService
+    mockGitHubCLI,
+    typeService
+  );
 
   return {
     ctx: {
+      issueTool,
       project,
       issueService,
       planService,
@@ -104,6 +123,7 @@ async function createIssueToolContext(
       planningService,
       projectManagementProvider: mockProvider,
       githubCLI: mockGitHubCLI,
+      typeService,
     },
     client,
   };
@@ -111,7 +131,7 @@ async function createIssueToolContext(
 
 describe("Issue Tools Integration", () => {
   let testDb: TestDatabase;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   let ctx: any; // Cradle-like object passed to handlers
   let client: DbClient;
   let workerQueueDbPath: string;
@@ -149,7 +169,7 @@ describe("Issue Tools Integration", () => {
           title: "Test Issue",
           description: "Test description",
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined(); // Success responses don't set isError
@@ -174,7 +194,7 @@ describe("Issue Tools Integration", () => {
           type: "BUG",
           priority: "HIGH",
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -190,7 +210,7 @@ describe("Issue Tools Integration", () => {
           description: "Feature description",
           acceptanceCriteria: ["AC 1", "AC 2", "AC 3"],
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -210,7 +230,7 @@ describe("Issue Tools Integration", () => {
           title: "Original Title",
           description: "Original description",
         },
-        { cradle: ctx }
+        ctx
       );
       const created = JSON.parse(createResult.content[0].text);
 
@@ -223,7 +243,7 @@ describe("Issue Tools Integration", () => {
             description: "Updated description",
           },
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(updateResult.isError).toBeUndefined();
@@ -242,7 +262,7 @@ describe("Issue Tools Integration", () => {
           issueNumber: 99999,
           updates: { title: "Won't work" },
         },
-        { cradle: ctx }
+        ctx
       );
 
       // Error responses have success: false in the content
@@ -259,7 +279,7 @@ describe("Issue Tools Integration", () => {
           title: "To Be Deleted",
           description: "This will be deleted",
         },
-        { cradle: ctx }
+        ctx
       );
       const created = JSON.parse(createResult.content[0].text);
 
@@ -268,7 +288,7 @@ describe("Issue Tools Integration", () => {
         {
           issueNumber: created.issue.number,
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(deleteResult.isError).toBeUndefined();
@@ -287,7 +307,7 @@ describe("Issue Tools Integration", () => {
         {
           issueNumber: 99999,
         },
-        { cradle: ctx }
+        ctx
       );
 
       const content = JSON.parse(result.content[0].text);
@@ -303,7 +323,7 @@ describe("Issue Tools Integration", () => {
           title: "To Be Closed",
           description: "This will be closed",
         },
-        { cradle: ctx }
+        ctx
       );
       const created = JSON.parse(createResult.content[0].text);
 
@@ -315,7 +335,7 @@ describe("Issue Tools Integration", () => {
         {
           issueNumber: created.issue.number,
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(closeResult.isError).toBeUndefined();
@@ -348,7 +368,7 @@ describe("Issue Tools Integration", () => {
         {
           githubIssueNumber: 42,
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -383,7 +403,7 @@ describe("Issue Tools Integration", () => {
         {
           githubIssueUrl: "https://github.com/owner/repo/issues/123",
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -411,7 +431,7 @@ describe("Issue Tools Integration", () => {
         {
           githubIssueNumber: 10,
         },
-        { cradle: ctx }
+        ctx
       );
 
       const content = JSON.parse(result.content[0].text);
@@ -436,7 +456,7 @@ describe("Issue Tools Integration", () => {
         {
           githubIssueNumber: 11,
         },
-        { cradle: ctx }
+        ctx
       );
 
       const content = JSON.parse(result.content[0].text);
@@ -461,7 +481,7 @@ describe("Issue Tools Integration", () => {
         {
           githubIssueNumber: 12,
         },
-        { cradle: ctx }
+        ctx
       );
 
       const content = JSON.parse(result.content[0].text);
@@ -486,7 +506,7 @@ describe("Issue Tools Integration", () => {
         {
           githubIssueNumber: 13,
         },
-        { cradle: ctx }
+        ctx
       );
 
       const content = JSON.parse(result.content[0].text);
@@ -511,7 +531,7 @@ describe("Issue Tools Integration", () => {
         {
           githubIssueNumber: 14,
         },
-        { cradle: ctx }
+        ctx
       );
 
       const content = JSON.parse(result.content[0].text);
@@ -533,10 +553,10 @@ describe("Issue Tools Integration", () => {
       ]);
 
       // First import
-      await handleImportGitHubIssue({ githubIssueNumber: 50 }, { cradle: ctx });
+      await handleImportGitHubIssue({ githubIssueNumber: 50 }, ctx);
 
       // Try to import again
-      const result = await handleImportGitHubIssue({ githubIssueNumber: 50 }, { cradle: ctx });
+      const result = await handleImportGitHubIssue({ githubIssueNumber: 50 }, ctx);
 
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
@@ -548,7 +568,7 @@ describe("Issue Tools Integration", () => {
         {
           githubIssueUrl: "https://example.com/not-a-github-url",
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBe(true);
@@ -564,7 +584,7 @@ describe("Issue Tools Integration", () => {
         {
           githubIssueNumber: 99999,
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBe(true);
@@ -573,7 +593,7 @@ describe("Issue Tools Integration", () => {
     });
 
     it("should require either number or URL", async () => {
-      const result = await handleImportGitHubIssue({}, { cradle: ctx });
+      const result = await handleImportGitHubIssue({}, ctx);
 
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
@@ -589,7 +609,7 @@ describe("Issue Tools Integration", () => {
           title: "Issue to close",
           description: "Will be closed",
         },
-        { cradle: ctx }
+        ctx
       );
       const created = JSON.parse(createResult.content[0].text);
 
@@ -598,7 +618,7 @@ describe("Issue Tools Integration", () => {
         {
           issueNumber: created.issue.number,
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(closeResult.isError).toBeUndefined();
@@ -639,7 +659,7 @@ describe("Issue Tools Integration", () => {
         {
           githubIssueNumber: 42,
         },
-        { cradle: ctx }
+        ctx
       );
       const imported = JSON.parse(importResult.content[0].text);
       expect(imported.issue.sourceGitHubIssueNumber).toBe(42);
@@ -649,7 +669,7 @@ describe("Issue Tools Integration", () => {
         {
           issueNumber: imported.issue.number,
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(closeResult.isError).toBeUndefined();
@@ -672,7 +692,7 @@ describe("Issue Tools Integration", () => {
           title: "Regular Issue",
           description: "Not imported",
         },
-        { cradle: ctx }
+        ctx
       );
       const created = JSON.parse(createResult.content[0].text);
 
@@ -681,7 +701,7 @@ describe("Issue Tools Integration", () => {
         {
           issueNumber: created.issue.number,
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(closeResult.isError).toBeUndefined();
@@ -702,11 +722,11 @@ describe("Issue Tools Integration", () => {
           title: "Test Issue",
           description: "Test description",
         },
-        { cradle: ctx }
+        ctx
       );
       const created = JSON.parse(createResult.content[0].text);
 
-      const result = await handleGetIssue({ issueNumber: created.issue.number }, { cradle: ctx });
+      const result = await handleGetIssue({ issueNumber: created.issue.number }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -721,7 +741,7 @@ describe("Issue Tools Integration", () => {
           title: "Issue with Plan",
           description: "Has tasks",
         },
-        { cradle: ctx }
+        ctx
       );
       const created = JSON.parse(createResult.content[0].text);
 
@@ -773,7 +793,7 @@ describe("Issue Tools Integration", () => {
           issueNumber: created.issue.number,
           includePlan: true,
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();
@@ -808,7 +828,7 @@ describe("Issue Tools Integration", () => {
           title: "Issue without Plan",
           description: "No plan requested",
         },
-        { cradle: ctx }
+        ctx
       );
       const created = JSON.parse(createResult.content[0].text);
 
@@ -839,7 +859,7 @@ describe("Issue Tools Integration", () => {
           issueNumber: created.issue.number,
           includePlan: false,
         },
-        { cradle: ctx }
+        ctx
       );
 
       expect(result.isError).toBeUndefined();

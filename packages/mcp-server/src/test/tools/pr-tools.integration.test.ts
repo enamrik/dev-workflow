@@ -26,7 +26,12 @@ import {
   PlanService,
   type DbClient,
 } from "@dev-workflow/core";
-import { handleCreatePR, handleSubmitForReview, handleCompleteTask } from "../../tools/pr-tools.js";
+import {
+  handleCreatePR,
+  handleSubmitForReview,
+  handleCompleteTask,
+} from "../../tools/pr-tool-def.js";
+import { PRTool } from "../../tools/pr-tool.js";
 import {
   GetTaskPRStatusSchema,
   CreatePRSchema,
@@ -56,7 +61,7 @@ function createTestProject(): Project {
 /**
  * Create a PRToolContext for testing
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 async function createPRToolContext(
   testDb: TestDatabase,
   mockGitHubCLI?: MockGitHubCLI,
@@ -81,8 +86,20 @@ async function createPRToolContext(
   const taskService = new TaskService(client, mockProvider, gitWorktreeService);
   const issueService = new IssueService(client, taskService, mockProvider);
 
+  // Create PRTool with all dependencies
+  const prTool = new PRTool(
+    githubCLI,
+    issueService,
+    planService,
+    taskService,
+    gitWorktreeService,
+    taskSyncService,
+    client
+  );
+
   return {
     ctx: {
+      prTool,
       project: { ...createTestProject(), id: project.id },
       githubCLI,
       issueService,
@@ -127,7 +144,7 @@ describe("create_pr", () => {
       });
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, { cradle: ctx });
+      const result = await handleCreatePR({ taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -168,7 +185,7 @@ describe("create_pr", () => {
       });
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, { cradle: ctx });
+      const result = await handleCreatePR({ taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -209,7 +226,7 @@ describe("create_pr", () => {
       });
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, { cradle: ctx });
+      const result = await handleCreatePR({ taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -251,7 +268,7 @@ describe("create_pr", () => {
       });
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, { cradle: ctx });
+      const result = await handleCreatePR({ taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -308,7 +325,7 @@ describe("create_pr", () => {
       });
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, { cradle: ctx });
+      const result = await handleCreatePR({ taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -369,7 +386,7 @@ describe("create_pr", () => {
       });
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, { cradle: ctx });
+      const result = await handleCreatePR({ taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -398,7 +415,7 @@ describe("create_pr", () => {
       });
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, { cradle: ctx });
+      const result = await handleCreatePR({ taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBe(true);
@@ -428,7 +445,7 @@ describe("create_pr", () => {
       });
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id, force: true }, { cradle: ctx });
+      const result = await handleCreatePR({ taskId: task.id, force: true }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -449,7 +466,7 @@ describe("create_pr", () => {
       // No branch set
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, { cradle: ctx });
+      const result = await handleCreatePR({ taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBe(true);
@@ -480,7 +497,7 @@ describe("create_pr", () => {
       client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/123", 123, "OPEN");
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, { cradle: ctx });
+      const result = await handleCreatePR({ taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBe(true);
@@ -522,7 +539,7 @@ describe("submit_for_review", () => {
       client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
 
       // Act
-      const result = await handleSubmitForReview({ taskId: task.id }, { cradle: ctx });
+      const result = await handleSubmitForReview({ taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -559,7 +576,7 @@ describe("submit_for_review", () => {
       client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
 
       // Act
-      await handleSubmitForReview({ taskId: task.id }, { cradle: ctx });
+      await handleSubmitForReview({ taskId: task.id }, ctx);
 
       // Assert - NO PR creation should happen
       const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
@@ -579,7 +596,7 @@ describe("submit_for_review", () => {
       });
 
       // Act
-      const result = await handleSubmitForReview({ taskId: task.id }, { cradle: ctx });
+      const result = await handleSubmitForReview({ taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBe(true);
@@ -598,7 +615,7 @@ describe("submit_for_review", () => {
       // No PR set
 
       // Act
-      const result = await handleSubmitForReview({ taskId: task.id }, { cradle: ctx });
+      const result = await handleSubmitForReview({ taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBe(true);
@@ -620,7 +637,7 @@ describe("submit_for_review", () => {
       // No PR set
 
       // Act
-      const result = await handleSubmitForReview({ taskId: task.id, force: true }, { cradle: ctx });
+      const result = await handleSubmitForReview({ taskId: task.id, force: true }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -645,7 +662,7 @@ describe("submit_for_review", () => {
       client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
 
       // Act
-      const result = await handleSubmitForReview({ taskId: task.id, force: true }, { cradle: ctx });
+      const result = await handleSubmitForReview({ taskId: task.id, force: true }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -695,8 +712,19 @@ describe("submit_for_review", () => {
       const taskService = new TaskService(client, mockProvider, mockGitWorktreeService);
       const issueService = new IssueService(client, taskService, mockProvider);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // Create PRTool with all dependencies
+      const prTool = new PRTool(
+        mockGitHubCLI,
+        issueService,
+        planService,
+        taskService,
+        mockGitWorktreeService,
+        taskSyncService,
+        client
+      );
+
       const ctx: any = {
+        prTool,
         project,
         githubCLI: mockGitHubCLI,
         issueService,
@@ -732,7 +760,7 @@ describe("submit_for_review", () => {
       });
 
       // Act
-      const result = await handleSubmitForReview({ taskId: task.id }, { cradle: ctx });
+      const result = await handleSubmitForReview({ taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -774,7 +802,7 @@ describe("two-step PR workflow", () => {
     });
 
     // Step 1: Create PR
-    const createResult = await handleCreatePR({ taskId: task.id }, { cradle: ctx });
+    const createResult = await handleCreatePR({ taskId: task.id }, ctx);
     expect(createResult.isError).toBeFalsy();
 
     // Verify status is still IN_PROGRESS after create_pr
@@ -783,7 +811,7 @@ describe("two-step PR workflow", () => {
     expect(taskAfterCreate?.prNumber).toBeDefined();
 
     // Step 2: Submit for review
-    const submitResult = await handleSubmitForReview({ taskId: task.id }, { cradle: ctx });
+    const submitResult = await handleSubmitForReview({ taskId: task.id }, ctx);
     expect(submitResult.isError).toBeFalsy();
 
     // Verify status is now PR_REVIEW
@@ -814,13 +842,13 @@ describe("two-step PR workflow", () => {
     });
 
     // Step 1: Create PR
-    await handleCreatePR({ taskId: task.id }, { cradle: ctx });
+    await handleCreatePR({ taskId: task.id }, ctx);
 
     // Simulate time passing - task is still IN_PROGRESS with PR open
     // User might push more commits before submitting for review
 
     // Step 2: Submit for review later
-    const submitResult = await handleSubmitForReview({ taskId: task.id }, { cradle: ctx });
+    const submitResult = await handleSubmitForReview({ taskId: task.id }, ctx);
     expect(submitResult.isError).toBeFalsy();
 
     const content = JSON.parse(submitResult.content[0].text);
@@ -860,7 +888,7 @@ describe("complete_task", () => {
           sessionId: "test-session",
           finalLogEntry: "Completed second task",
         },
-        { cradle: ctx }
+        ctx
       );
 
       // Assert
@@ -895,7 +923,7 @@ describe("complete_task", () => {
           sessionId: "test-session",
           finalLogEntry: "Completed first task",
         },
-        { cradle: ctx }
+        ctx
       );
 
       // Assert
@@ -926,7 +954,7 @@ describe("complete_task", () => {
           finalLogEntry: "Completed only task",
           autoCloseIssue: true,
         },
-        { cradle: ctx }
+        ctx
       );
 
       // Assert
@@ -966,7 +994,7 @@ describe("complete_task", () => {
           finalLogEntry: "Completed first task",
           autoCloseIssue: true,
         },
-        { cradle: ctx }
+        ctx
       );
 
       // Assert
@@ -1004,7 +1032,7 @@ describe("complete_task", () => {
           sessionId: "test-session",
           finalLogEntry: "Completed final task",
         },
-        { cradle: ctx }
+        ctx
       );
 
       // Assert
@@ -1038,7 +1066,7 @@ describe("complete_task", () => {
           sessionId: "test-session",
           finalLogEntry: "Completed task",
         },
-        { cradle: ctx }
+        ctx
       );
 
       // Assert
@@ -1066,7 +1094,7 @@ describe("complete_task", () => {
           sessionId: "test-session",
           finalLogEntry: "",
         },
-        { cradle: ctx }
+        ctx
       );
 
       // Assert
@@ -1091,7 +1119,7 @@ describe("complete_task", () => {
           sessionId: "test-session",
           finalLogEntry: "   \n\t  ",
         },
-        { cradle: ctx }
+        ctx
       );
 
       // Assert
@@ -1117,7 +1145,7 @@ describe("complete_task", () => {
           sessionId: "test-session",
           finalLogEntry: "Implemented feature X with tests",
         },
-        { cradle: ctx }
+        ctx
       );
 
       // Assert
@@ -1169,7 +1197,7 @@ describe("complete_task", () => {
           sessionId: "test-session",
           finalLogEntry: "Completed all work",
         },
-        { cradle: ctx }
+        ctx
       );
 
       // Assert
@@ -1224,7 +1252,7 @@ describe("complete_task", () => {
           finalLogEntry: "Attempted force complete",
           force: true,
         },
-        { cradle: ctx }
+        ctx
       );
 
       // Assert - should fail even with force=true
@@ -1272,7 +1300,7 @@ describe("complete_task", () => {
           finalLogEntry: "Force completed with PR not found",
           force: true,
         },
-        { cradle: ctx }
+        ctx
       );
 
       // Assert - should succeed with force=true when PR is not found
@@ -1317,7 +1345,7 @@ describe("complete_task", () => {
           finalLogEntry: "Force completed from wrong status",
           force: true,
         },
-        { cradle: ctx }
+        ctx
       );
 
       // Assert - should succeed because PR is merged

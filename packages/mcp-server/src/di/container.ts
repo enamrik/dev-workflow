@@ -7,9 +7,20 @@
  */
 
 import * as path from "node:path";
-import { createContainer, asFunction, asValue, InjectionMode } from "awilix";
+import { createContainer, asFunction, asValue, asClass, InjectionMode } from "awilix";
 import type { AwilixContainer } from "awilix";
 import { createTestContainer } from "@dev-workflow/core/infrastructure/di";
+import { DispatchTool } from "../tools/dispatch-tool.js";
+import { MilestoneTool } from "../tools/milestone-tool.js";
+import { TypeTool } from "../tools/type-tool.js";
+import { WorktreeTool } from "../tools/worktree-tool.js";
+import { SnapshotTool } from "../tools/snapshot-tool.js";
+import { MergeTool } from "../tools/merge-tool.js";
+import { SettingsTool } from "../tools/settings-tool.js";
+import { PRTool } from "../tools/pr-tool.js";
+import { IssueTool } from "../tools/issue-tool.js";
+import { TaskTool } from "../tools/task-tool.js";
+import { PlanTool } from "../tools/plan-tool.js";
 import {
   DbSourceProvider,
   type DbSource,
@@ -100,6 +111,19 @@ export interface McpCradle {
   issueService: IssueService;
   milestoneService: MilestoneService;
   mergeService: MergeService;
+
+  // Tool classes
+  dispatchTool: DispatchTool;
+  milestoneTool: MilestoneTool;
+  typeTool: TypeTool;
+  worktreeTool: WorktreeTool;
+  snapshotTool: SnapshotTool;
+  mergeTool: MergeTool;
+  settingsTool: SettingsTool;
+  prTool: PRTool;
+  issueTool: IssueTool;
+  taskTool: TaskTool;
+  planTool: PlanTool;
 }
 
 /**
@@ -259,6 +283,19 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
       ({ dbSource, versioningService, config, githubCLI }) =>
         new MergeService(dbSource, versioningService, config.projectId, githubCLI)
     ).singleton(),
+
+    // Tool classes
+    dispatchTool: asClass(DispatchTool).singleton(),
+    milestoneTool: asClass(MilestoneTool).singleton(),
+    typeTool: asClass(TypeTool).singleton(),
+    worktreeTool: asClass(WorktreeTool).singleton(),
+    snapshotTool: asClass(SnapshotTool).singleton(),
+    mergeTool: asClass(MergeTool).singleton(),
+    settingsTool: asClass(SettingsTool).singleton(),
+    prTool: asClass(PRTool).singleton(),
+    issueTool: asClass(IssueTool).singleton(),
+    taskTool: asClass(TaskTool).singleton(),
+    planTool: asClass(PlanTool).singleton(),
   });
 
   return container;

@@ -31,12 +31,5 @@ export { createMcpContainer, createTestScope } from "./container.js";
 export type { McpConfig, McpCradle, McpContainer } from "./container.js";
 
 // Handler bootstrap
-export {
-  createMcpHandler,
-  createNoArgsHandler,
-  validateToolArgs,
-  initializeContainer,
-  getContainer,
-  compose,
-} from "./bootstrap.js";
-export type { McpHandler, McpMiddleware, McpToolHandler, ValidationResult } from "./bootstrap.js";
+export { createMcpHandler, createMcpTool, validateSchema, compose } from "./bootstrap.js";
+export type { McpHandler, McpMiddleware, WrappedMcpHandler, McpTool } from "./bootstrap.js";
