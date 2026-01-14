@@ -167,20 +167,23 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
         workingDirectory,
         packageRoot,
         trackDirectoryResolver,
-        databaseConnectionString,
+        sourceProvider,
+        gitOps,
       }: {
         fileSystem: FileSystem;
         workingDirectory: string;
         packageRoot: string;
         trackDirectoryResolver: TrackDirectoryResolver;
-        databaseConnectionString: string;
+        sourceProvider: DbSourceProvider;
+        gitOps: GitOperations;
       }) => {
         return new InstallService(
           fileSystem,
           workingDirectory,
           packageRoot,
           trackDirectoryResolver,
-          databaseConnectionString
+          sourceProvider,
+          gitOps
         );
       }
     ).scoped(),
@@ -216,14 +219,14 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
         trackDirectoryResolver,
         sourceProvider,
         gitOps,
-        packageRoot,
+        installService,
       }: {
         fileSystem: FileSystem;
         workingDirectory: string;
         trackDirectoryResolver: TrackDirectoryResolver;
         sourceProvider: DbSourceProvider;
         gitOps: GitOperations;
-        packageRoot: string;
+        installService: InstallService;
       }) => {
         return new ArchiveService(
           fileSystem,
@@ -231,7 +234,7 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
           trackDirectoryResolver,
           sourceProvider,
           gitOps,
-          packageRoot
+          installService
         );
       }
     ).scoped(),
@@ -254,17 +257,17 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
 
     initCommand: asFunction(
       ({
-        fileSystem,
         gitOps,
         workingDirectory,
-        packageRoot,
+        installService,
+        archiveService,
       }: {
-        fileSystem: FileSystem;
         gitOps: GitOperations;
         workingDirectory: string;
-        packageRoot: string;
+        installService: InstallService;
+        archiveService: ArchiveService;
       }) => {
-        return new InitCommand(fileSystem, gitOps, workingDirectory, packageRoot);
+        return new InitCommand(gitOps, workingDirectory, installService, archiveService);
       }
     ).scoped(),
 

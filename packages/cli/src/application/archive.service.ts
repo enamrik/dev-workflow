@@ -33,7 +33,7 @@ export class ArchiveService {
     private readonly resolver: TrackDirectoryResolver,
     private readonly sourceProvider: DbSourceProvider,
     private readonly gitOps: GitOperations,
-    private readonly packageRoot?: string
+    private readonly installService: InstallService
   ) {}
 
   /**
@@ -307,10 +307,6 @@ export class ArchiveService {
       throw new ArchiveError("Project is not archived.");
     }
 
-    if (!this.packageRoot) {
-      throw new ArchiveError("Package root not provided. Cannot reinstall skills.");
-    }
-
     // Get database connection string from config - must exist for unarchive
     const slug = this.resolver.getProjectId();
     let databaseConnectionString: string;
@@ -324,36 +320,26 @@ export class ArchiveService {
       );
     }
 
-    const dbPath = this.resolver.getDatabasePath();
-    const source = this.sourceProvider.getOrCreate({ connectionString: dbPath });
+    const source = this.sourceProvider.getOrCreate({ connectionString: databaseConnectionString });
 
     // Mark project as unarchived in database first
     const unarchivedProject = await source.projects.unarchive(project.id);
 
-    // Re-install Claude integration
-    const installer = new InstallService(
-      this.fileSystem,
-      this.workingDirectory,
-      this.packageRoot,
-      this.resolver,
-      databaseConnectionString
-    );
-
     // Set the project so installer can use it
-    installer.setProject(unarchivedProject);
+    this.installService.setProject(unarchivedProject);
 
     // Ensure track directory exists (it should, since archive preserves it)
     const trackDir = this.resolver.getTrackDirectory();
     const trackDirExists = await this.fileSystem.exists(trackDir);
     if (!trackDirExists) {
-      await installer.createTrackDirectory();
+      await this.installService.createTrackDirectory();
     }
 
     // Re-install skills
-    await installer.installSkills();
+    await this.installService.installSkills();
 
     // Re-register MCP server
-    await installer.registerMCPServer();
+    await this.installService.registerMCPServer();
 
     return unarchivedProject;
   }

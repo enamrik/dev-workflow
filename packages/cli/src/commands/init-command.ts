@@ -11,13 +11,11 @@ import { execSync } from "node:child_process";
 import {
   TrackDirectoryResolver,
   GitOperations,
-  DbSourceProvider,
   writeConfig,
   resolveConfig,
   getGlobalDatabasePath,
   type Project,
 } from "@dev-workflow/core";
-import type { FileSystem } from "../infrastructure/file-system.js";
 import { InstallService } from "../application/install.service.js";
 import { ArchiveService } from "../application/archive.service.js";
 import { DatabaseConfigService } from "../application/database.service.js";
@@ -29,10 +27,10 @@ export interface InitOptions {
 
 export class InitCommand {
   constructor(
-    private readonly fileSystem: FileSystem,
     private readonly gitOps: GitOperations,
     private readonly workingDirectory: string,
-    private readonly packageRoot: string
+    private readonly installService: InstallService,
+    private readonly archiveService: ArchiveService
   ) {}
 
   /**
@@ -107,16 +105,8 @@ export class InitCommand {
       }
     }
 
-    const installer = new InstallService(
-      this.fileSystem,
-      this.workingDirectory,
-      this.packageRoot,
-      resolver,
-      databaseConnectionString
-    );
-
     // Check if this project already exists in the database
-    const existingProject = await installer.findExistingProject();
+    const existingProject = await this.installService.findExistingProject(databaseConnectionString);
     const trackDir = resolver.getTrackDirectory();
     const trackDirExists = fs.existsSync(trackDir);
 
@@ -130,8 +120,6 @@ export class InitCommand {
     if (existingProject) {
       await this.handleRepairMode(
         existingProject,
-        installer,
-        resolver,
         gitRoot,
         slug,
         databaseConnectionString,
@@ -142,15 +130,7 @@ export class InitCommand {
     }
 
     // Fresh install mode
-    await this.handleFreshInstall(
-      installer,
-      resolver,
-      gitRoot,
-      slug,
-      databaseConnectionString,
-      options,
-      trackDir
-    );
+    await this.handleFreshInstall(gitRoot, slug, databaseConnectionString, options, trackDir);
   }
 
   private hasGitCommit(): boolean {
@@ -178,23 +158,13 @@ export class InitCommand {
 
   private async handleArchivedProject(
     existingProject: Project,
-    resolver: TrackDirectoryResolver
+    _resolver: TrackDirectoryResolver
   ): Promise<void> {
     console.log("📦 Detected archived project, restoring...");
     console.log(`   Project: ${existingProject.name} (${existingProject.id.slice(0, 8)}...)\n`);
 
     try {
-      const sourceProvider = new DbSourceProvider();
-      const archiveService = new ArchiveService(
-        this.fileSystem,
-        this.workingDirectory,
-        resolver,
-        sourceProvider,
-        this.gitOps,
-        this.packageRoot
-      );
-      await archiveService.unarchive(existingProject);
-      sourceProvider.closeAll();
+      await this.archiveService.unarchive(existingProject);
 
       console.log("✓ Marked project as unarchived");
       console.log("✓ Restored local config");
@@ -212,8 +182,6 @@ export class InitCommand {
 
   private async handleRepairMode(
     existingProject: Project,
-    installer: InstallService,
-    _resolver: TrackDirectoryResolver,
     gitRoot: string,
     slug: string,
     databaseConnectionString: string,
@@ -224,10 +192,10 @@ export class InitCommand {
     console.log(`   Project: ${existingProject.name} (${existingProject.id.slice(0, 8)}...)\n`);
 
     try {
-      installer.setProject(existingProject);
-      await installer.initializeDatabase();
+      this.installService.setProject(existingProject);
+      await this.installService.initializeDatabase(databaseConnectionString);
 
-      const seedResult = await installer.seedDefaultTypes();
+      const seedResult = await this.installService.seedDefaultTypes(databaseConnectionString);
       if (seedResult.seeded > 0) {
         console.log(`✓ Seeded ${seedResult.seeded} default types`);
       }
@@ -245,27 +213,27 @@ export class InitCommand {
       console.log(`✓ Updated config.json`);
 
       if (!trackDirExists) {
-        await installer.createTrackDirectory();
+        await this.installService.createTrackDirectory();
         console.log(`✓ Recreated ${trackDir}`);
       }
 
-      await installer.installGlobalTemplates();
+      await this.installService.installGlobalTemplates();
       console.log("✓ Updated global default templates");
 
-      const worktreeResult = await installer.repairWorktrees();
+      const worktreeResult = await this.installService.repairWorktrees();
       if (worktreeResult.repaired) {
         console.log("✓ Repaired git worktrees");
       } else {
         console.log(`⚠ Worktree repair: ${worktreeResult.output}`);
       }
 
-      await installer.installSkills();
+      await this.installService.installSkills();
       console.log("✓ Updated skills");
 
-      await installer.registerMCPServer();
+      await this.installService.registerMCPServer();
       console.log("✓ Re-registered MCP server with new paths");
 
-      const permResult = await installer.configureClaudePermissions();
+      const permResult = await this.installService.configureClaudePermissions();
       if (permResult.configured) {
         console.log("✓ Updated Claude permissions");
       }
@@ -280,8 +248,6 @@ export class InitCommand {
   }
 
   private async handleFreshInstall(
-    installer: InstallService,
-    _resolver: TrackDirectoryResolver,
     gitRoot: string,
     slug: string,
     databaseConnectionString: string,
@@ -301,13 +267,13 @@ export class InitCommand {
       }
       console.log();
 
-      await installer.initializeDatabase();
+      await this.installService.initializeDatabase(databaseConnectionString);
       console.log("✓ Initialized database");
 
-      const seedResult = await installer.seedDefaultTypes();
+      const seedResult = await this.installService.seedDefaultTypes(databaseConnectionString);
       console.log(`✓ Seeded ${seedResult.seeded} default types`);
 
-      const project = await installer.registerProject();
+      const project = await this.installService.registerProject(databaseConnectionString);
       console.log(`✓ Registered project: ${project.name} (${project.id.slice(0, 8)}...)`);
 
       this.gitOps.writeSlugToGitConfig(gitRoot, slug);
@@ -322,19 +288,19 @@ export class InitCommand {
       });
       console.log(`✓ Created config.json`);
 
-      await installer.createTrackDirectory();
+      await this.installService.createTrackDirectory();
       console.log(`✓ Created ${trackDir}`);
 
-      await installer.installGlobalTemplates();
+      await this.installService.installGlobalTemplates();
       console.log("✓ Installed global default templates");
 
-      await installer.installSkills();
+      await this.installService.installSkills();
       console.log("✓ Installed skills");
 
-      await installer.registerMCPServer();
+      await this.installService.registerMCPServer();
       console.log("✓ Registered MCP server");
 
-      const permResult = await installer.configureClaudePermissions();
+      const permResult = await this.installService.configureClaudePermissions();
       if (permResult.configured) {
         console.log("✓ Configured Claude permissions for worktrees");
         for (const perm of permResult.permissions) {

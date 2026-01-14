@@ -2,19 +2,22 @@
  * InitCommand Behavioral Tests
  *
  * Tests actual behavior through the Awilix container with low-level mocks.
- * Mocks infrastructure (GitOperations, FileSystem) while letting the real
- * InitCommand run its validation logic.
- *
- * Note: Full testing of installation flows would require refactoring InitCommand
- * to accept InstallService and ArchiveService via constructor injection.
- * These tests focus on validation logic that can be tested with current dependencies.
+ * Mocks infrastructure (GitOperations, FileSystem, DbSourceProvider) while letting
+ * the real InitCommand run its validation logic.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 import { asValue, asFunction } from "awilix";
 import { createCliContainer, type CliContainer } from "../../di/container.js";
 import type { FileSystem } from "../../infrastructure/file-system.js";
-import type { GitOperations } from "@dev-workflow/core";
+import type {
+  TrackDirectoryResolver,
+  DbSourceProvider,
+  GitOperations,
+  DbSource,
+} from "@dev-workflow/core";
+import { InstallService } from "../../application/install.service.js";
+import { ArchiveService } from "../../application/archive.service.js";
 import { InitCommand } from "../init-command.js";
 
 // Mock console methods - these are at module level
@@ -56,7 +59,10 @@ function createMockFileSystem(): FileSystem {
     writeFile: vi.fn().mockResolvedValue(undefined),
     unlink: vi.fn().mockResolvedValue(undefined),
     mkdir: vi.fn().mockResolvedValue(undefined),
+    rmdir: vi.fn().mockResolvedValue(undefined),
     readdirWithFileTypes: vi.fn().mockResolvedValue([]),
+    copyDirectory: vi.fn().mockResolvedValue(undefined),
+    copyFile: vi.fn().mockResolvedValue(undefined),
   } as unknown as FileSystem;
 }
 
@@ -75,6 +81,45 @@ function createMockGitOps(options: { isWorktree?: boolean } = {}): GitOperations
 }
 
 /**
+ * Create mock TrackDirectoryResolver
+ */
+function createMockResolver(): TrackDirectoryResolver {
+  return {
+    getTrackDirectory: vi.fn().mockReturnValue("/test/.track"),
+    getLocalTrackDirectory: vi.fn().mockReturnValue("/test/repo/.track"),
+    getGlobalTrackDirectory: vi.fn().mockReturnValue("/home/user/.track"),
+    getDatabasePath: vi.fn().mockReturnValue("/test/.track/workflow.db"),
+    getProjectId: vi.fn().mockReturnValue("test-slug"),
+    getGitRoot: vi.fn().mockReturnValue("/test/repo"),
+    getLocalIssueTemplatesPath: vi.fn().mockReturnValue("/test/repo/.track/templates/issues"),
+    getLocalTaskTemplatesPath: vi.fn().mockReturnValue("/test/repo/.track/templates/tasks"),
+    getGlobalIssueTemplatesPath: vi.fn().mockReturnValue("/home/user/.track/templates/issues"),
+    getGlobalTaskTemplatesPath: vi.fn().mockReturnValue("/home/user/.track/templates/tasks"),
+    getOldGlobalConfigDirectory: vi.fn().mockReturnValue("/home/user/.track/config"),
+  } as unknown as TrackDirectoryResolver;
+}
+
+/**
+ * Create mock DbSourceProvider
+ */
+function createMockSourceProvider() {
+  const mockSource: DbSource = {
+    projects: {
+      findByGitRootHash: vi.fn().mockReturnValue(null),
+    },
+    types: {
+      findAll: vi.fn().mockReturnValue([]),
+      seedTypes: vi.fn(),
+    },
+  } as unknown as DbSource;
+
+  return {
+    getOrCreate: vi.fn().mockReturnValue(mockSource),
+    closeAll: vi.fn(),
+  } as unknown as DbSourceProvider;
+}
+
+/**
  * Setup test container with mocked infrastructure
  */
 function setupTestContainer(options: { isWorktree?: boolean } = {}): CliContainer {
@@ -82,6 +127,8 @@ function setupTestContainer(options: { isWorktree?: boolean } = {}): CliContaine
 
   const mockFileSystem = createMockFileSystem();
   const mockGitOps = createMockGitOps({ isWorktree: options.isWorktree });
+  const mockResolver = createMockResolver();
+  const mockSourceProvider = createMockSourceProvider();
 
   // Register mocked infrastructure
   container.register({
@@ -89,16 +136,61 @@ function setupTestContainer(options: { isWorktree?: boolean } = {}): CliContaine
     packageRoot: asValue("/test/cli"),
     fileSystem: asValue(mockFileSystem),
     gitOps: asValue(mockGitOps),
+    trackDirectoryResolver: asValue(mockResolver),
+    sourceProvider: asValue(mockSourceProvider),
+  });
+
+  // Register services with injected dependencies
+  container.register({
+    installService: asFunction(
+      ({
+        fileSystem,
+        workingDirectory,
+        packageRoot,
+        trackDirectoryResolver,
+        sourceProvider,
+        gitOps,
+      }) => {
+        return new InstallService(
+          fileSystem as FileSystem,
+          workingDirectory as string,
+          packageRoot as string,
+          trackDirectoryResolver as TrackDirectoryResolver,
+          sourceProvider as DbSourceProvider,
+          gitOps as GitOperations
+        );
+      }
+    ).scoped(),
+
+    archiveService: asFunction(
+      ({
+        fileSystem,
+        workingDirectory,
+        trackDirectoryResolver,
+        sourceProvider,
+        gitOps,
+        installService,
+      }) => {
+        return new ArchiveService(
+          fileSystem as FileSystem,
+          workingDirectory as string,
+          trackDirectoryResolver as TrackDirectoryResolver,
+          sourceProvider as DbSourceProvider,
+          gitOps as GitOperations,
+          installService as InstallService
+        );
+      }
+    ).scoped(),
   });
 
   // Register the command with injected dependencies
   container.register({
-    initCommand: asFunction(({ fileSystem, gitOps, workingDirectory, packageRoot }) => {
+    initCommand: asFunction(({ gitOps, workingDirectory, installService, archiveService }) => {
       return new InitCommand(
-        fileSystem as FileSystem,
         gitOps as GitOperations,
         workingDirectory as string,
-        packageRoot as string
+        installService as InstallService,
+        archiveService as ArchiveService
       );
     }).scoped(),
   });

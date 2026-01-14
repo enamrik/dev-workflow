@@ -19,6 +19,7 @@ import type {
   Project,
 } from "@dev-workflow/core";
 import type { DatabaseConfigService } from "../../application/database.service.js";
+import { InstallService } from "../../application/install.service.js";
 import { ArchiveService } from "../../application/archive.service.js";
 import { ArchiveCommand, UnarchiveCommand, NukeCommand } from "../archive-command.js";
 
@@ -230,6 +231,26 @@ function setupTestContainer(
 
   // Register services that use injected dependencies
   container.register({
+    installService: asFunction(
+      ({
+        fileSystem,
+        workingDirectory,
+        packageRoot,
+        trackDirectoryResolver,
+        sourceProvider,
+        gitOps,
+      }) => {
+        return new InstallService(
+          fileSystem as FileSystem,
+          workingDirectory as string,
+          packageRoot as string,
+          trackDirectoryResolver as TrackDirectoryResolver,
+          sourceProvider as DbSourceProvider,
+          gitOps as GitOperations
+        );
+      }
+    ).scoped(),
+
     archiveService: asFunction(
       ({
         fileSystem,
@@ -237,7 +258,7 @@ function setupTestContainer(
         trackDirectoryResolver,
         sourceProvider,
         gitOps,
-        packageRoot,
+        installService,
       }) => {
         return new ArchiveService(
           fileSystem as FileSystem,
@@ -245,7 +266,7 @@ function setupTestContainer(
           trackDirectoryResolver as TrackDirectoryResolver,
           sourceProvider as DbSourceProvider,
           gitOps as GitOperations,
-          packageRoot as string
+          installService as InstallService
         );
       }
     ).scoped(),
