@@ -20,6 +20,8 @@ import {
   GlobalDbWorkerQueueDb,
 } from "@dev-workflow/core";
 import { NodeFileSystem, type FileSystem } from "../infrastructure/file-system.js";
+import { UninstallService } from "../application/uninstall.service.js";
+import { UninitTool } from "../tools/uninit-tool.js";
 
 /**
  * Cradle interface defining all available dependencies in the CLI container.
@@ -32,7 +34,7 @@ export interface CliCradle {
   gitOps: GitOperations;
   sourceProvider: DbSourceProvider;
 
-  // Values (provided at runtime)
+  // Values (provided at runtime by middleware)
   workingDirectory: string;
   packageRoot: string;
 
@@ -42,6 +44,12 @@ export interface CliCradle {
 
   // Resolver (derived from workingDirectory)
   trackDirectoryResolver: TrackDirectoryResolver;
+
+  // Application services (lazily resolved after middleware registers dependencies)
+  uninstallService: UninstallService;
+
+  // Tools (lazily resolved after middleware registers dependencies)
+  uninitTool: UninitTool;
 }
 
 /**
@@ -85,6 +93,26 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
     // Resolver factory (depends on workingDirectory being registered)
     trackDirectoryResolver: asFunction(({ workingDirectory }: { workingDirectory: string }) => {
       return createTrackDirectoryResolver(workingDirectory);
+    }).scoped(),
+
+    // Application services (lazily resolved - depend on middleware-registered values)
+    uninstallService: asFunction(
+      ({
+        fileSystem,
+        workingDirectory,
+        trackDirectoryResolver,
+      }: {
+        fileSystem: FileSystem;
+        workingDirectory: string;
+        trackDirectoryResolver: TrackDirectoryResolver;
+      }) => {
+        return new UninstallService(fileSystem, workingDirectory, trackDirectoryResolver);
+      }
+    ).scoped(),
+
+    // Tools (lazily resolved - depend on services)
+    uninitTool: asFunction(({ uninstallService }: { uninstallService: UninstallService }) => {
+      return new UninitTool(uninstallService);
     }).scoped(),
   });
 

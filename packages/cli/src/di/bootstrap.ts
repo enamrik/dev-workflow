@@ -1,28 +1,43 @@
 /**
- * CLI Bootstrap Functions
+ * CLI Handler Bootstrap
  *
- * Provides wrapper functions for CLI command handlers:
- * 1. createCommand(handler, middleware?) - Wraps handler with middleware + error handling
- * 2. createCommandHandler(command) - Creates transient container, runs command, disposes
+ * Provides utilities for creating CLI command handlers with:
+ * - Container middleware (for registering dynamic values)
+ * - Dependency injection from Awilix cradle
+ * - Consistent error handling (console output + exit codes)
+ *
+ * Design (mirrors MCP pattern with CLI-specific container middleware):
+ * - Tool classes encapsulate business logic with constructor DI
+ * - Handlers are thin wrappers: (opts, { tool }) => tool.action()
+ * - Container middleware injects dynamic values before handler runs
+ * - createCliHandler wraps with error handling: (opts, cradle) => void
+ * - createCliRunner binds to container: (opts) => void
  *
  * @example
  * ```typescript
- * // Define middleware for common setup
- * const registerWorkingDir: CliMiddleware = (opts, container) => {
- *   container.register({ workingDirectory: asValue(process.cwd()) });
- * };
- *
- * // Define handler that uses cradle dependencies
- * async function uninitHandler(options: UninitOptions, cradle: CliCradle): Promise<void> {
- *   const service = new UninstallService(cradle.fileSystem, ...);
- *   await service.uninstall();
+ * // 1. Tool class with constructor DI
+ * class UninitTool {
+ *   constructor(private readonly uninstallService: UninstallService) {}
+ *   async uninit(): Promise<void> { ... }
  * }
  *
- * // Compose command with middleware
- * export const command = createCommand(uninitHandler, compose(registerWorkingDir, resolveConfig));
+ * // 2. Container middleware - registers dynamic values
+ * const resolveConfigMiddleware: ContainerMiddleware = async (container) => {
+ *   const config = await resolveConfigFromGit(container.cradle.workingDirectory);
+ *   container.register({ trackDirectoryResolver: asValue(new Resolver(config)) });
+ * };
  *
- * // Create executable handler
- * export const runUninit = createCommandHandler(command);
+ * // 3. Handler - thin wrapper that destructures what it needs
+ * export const handleUninit = createCliHandler(
+ *   async (_opts: UninitOptions, { uninitTool }: { uninitTool: UninitTool }) => {
+ *     await uninitTool.uninit();
+ *   },
+ *   resolveConfigMiddleware
+ * );
+ *
+ * // 4. Runner - binds to container for CLI entry point
+ * const container = createCliContainer();
+ * const runUninit = createCliRunner(handleUninit, container);
  * ```
  */
 
@@ -35,6 +50,10 @@ import {
 } from "@dev-workflow/core";
 import { createCliContainer, type CliCradle, type CliContainer } from "./container.js";
 
+// =============================================================================
+// Type Definitions
+// =============================================================================
+
 /**
  * CLI validation error for simple user input errors.
  */
@@ -46,39 +65,38 @@ export class CliValidationError extends Error {
 }
 
 /**
- * Middleware function that operates on (options, container).
- * Use to inject dynamic values into the container before handler runs.
+ * A handler function that receives options and cradle.
+ * Handler destructures what it needs from cradle (typically just the tool class).
  */
-export type CliMiddleware<TOpts = unknown> = (
+export type CliHandler<TOpts, TCradle = CliCradle> = (
   options: TOpts,
-  container: CliContainer
+  cradle: TCradle
 ) => Promise<void> | void;
 
 /**
- * Handler function that operates on (options, cradle).
- * Contains the command's business logic.
+ * A wrapped handler with error handling.
+ * Signature: (opts, container) => Promise<void>
  */
-export type CliHandler<TOpts = unknown> = (options: TOpts, cradle: CliCradle) => Promise<void>;
+export type WrappedCliHandler<TOpts> = (options: TOpts, container: CliContainer) => Promise<void>;
 
 /**
- * Command function that operates on (options, container).
- * This is what createCommand produces.
+ * A bound runner ready for invocation.
+ * Signature: (opts) => Promise<void>
  */
-export type CliCommand<TOpts = unknown> = (
-  options: TOpts,
-  container: CliContainer
-) => Promise<void>;
+export type CliRunner<TOpts> = (options: TOpts) => Promise<void>;
+
+/**
+ * Container middleware for registering dynamic values.
+ * Runs before handler, can access cradle and register new values.
+ */
+export type ContainerMiddleware = (container: CliContainer) => Promise<void> | void;
+
+// =============================================================================
+// Error Handling
+// =============================================================================
 
 /**
  * Handle CLI errors by converting them to console output and exit codes.
- *
- * Error mapping:
- * - CliValidationError → "❌ Invalid: ..." + exit(1)
- * - ValidationError → "❌ Invalid: ..." + exit(1)
- * - EntityNotFoundError → "❌ Not found: ..." + exit(1)
- * - BusinessRuleError → "❌ ..." + exit(1)
- * - ProjectConfigError → Specific message based on error code + exit(1)
- * - Other errors → "❌ Error: ..." + exit(1)
  */
 export function handleCliError(error: unknown): never {
   if (error instanceof CliValidationError) {
@@ -124,37 +142,38 @@ export function handleCliError(error: unknown): never {
   process.exit(1);
 }
 
+// =============================================================================
+// Middleware Composition
+// =============================================================================
+
 /**
- * Compose multiple CLI middleware functions into a single middleware.
- *
- * Middleware is executed in order. Each middleware can:
- * - Complete successfully → next middleware runs
- * - Throw an error → chain stops, error propagates
- *
- * @param middlewares - Array of middleware functions to compose
- * @returns A single middleware that runs all composed middleware in order
+ * Compose multiple container middleware functions into a single middleware.
  */
-export function compose<TOpts>(...middlewares: CliMiddleware<TOpts>[]): CliMiddleware<TOpts> {
-  return async (options: TOpts, container: CliContainer): Promise<void> => {
+export function composeMiddleware(...middlewares: ContainerMiddleware[]): ContainerMiddleware {
+  return async (container: CliContainer): Promise<void> => {
     for (const middleware of middlewares) {
-      await middleware(options, container);
+      await middleware(container);
     }
   };
 }
 
+// =============================================================================
+// Default Middleware
+// =============================================================================
+
 /**
- * Common middleware: registers workingDirectory in container.
+ * Middleware: registers workingDirectory in container.
  */
-export const registerWorkingDirectory: CliMiddleware = (_opts, container) => {
+export const registerWorkingDirectory: ContainerMiddleware = (container) => {
   container.register({
     workingDirectory: asValue(process.cwd()),
   });
 };
 
 /**
- * Common middleware: registers packageRoot in container.
+ * Middleware: registers packageRoot in container.
  */
-export const registerPackageRoot: CliMiddleware = (_opts, container) => {
+export const registerPackageRoot: ContainerMiddleware = (container) => {
   container.register({
     packageRoot: asValue(getDefaultPackageRoot()),
   });
@@ -163,51 +182,64 @@ export const registerPackageRoot: CliMiddleware = (_opts, container) => {
 /**
  * Default middleware chain for most commands.
  */
-export const defaultMiddleware = compose(registerWorkingDirectory, registerPackageRoot);
+export const defaultMiddleware = composeMiddleware(registerWorkingDirectory, registerPackageRoot);
+
+// =============================================================================
+// Handler Factory
+// =============================================================================
 
 /**
- * Wrap a handler with optional middleware and error handling.
+ * Wraps a handler with container middleware and error handling.
+ * Returns: (opts, container) => Promise<void>
  *
- * @param handler - The handler function (options, cradle) => Promise<void>
- * @param middleware - Optional middleware chain to run before handler
- * @returns Command function (options, container) => Promise<void>
+ * @param handler - The handler function (options, cradle) => void
+ * @param middleware - Optional container middleware to run before handler
  */
-export function createCommand<TOpts>(
-  handler: CliHandler<TOpts>,
-  middleware?: CliMiddleware<TOpts>
-): CliCommand<TOpts> {
+export function createCliHandler<TOpts, TCradle = CliCradle>(
+  handler: CliHandler<TOpts, TCradle>,
+  middleware?: ContainerMiddleware
+): WrappedCliHandler<TOpts> {
   return async (options: TOpts, container: CliContainer): Promise<void> => {
     try {
-      // Run middleware if provided
+      // Run container middleware first (can register dynamic values)
       if (middleware) {
-        await middleware(options, container);
+        await middleware(container);
       }
-      // Run handler with cradle
-      await handler(options, container.cradle);
+
+      // Execute handler with cradle
+      await handler(options, container.cradle as TCradle);
     } catch (error) {
       handleCliError(error);
     }
   };
 }
 
+// =============================================================================
+// Runner Binding
+// =============================================================================
+
 /**
- * Create an executable command handler that manages container lifecycle.
+ * Binds a wrapped handler to a new container, disposing after execution.
+ * Returns: (opts) => Promise<void>
  *
- * @param command - The command function from createCommand
- * @returns Executable function for use with commander
+ * For CLI commands - each invocation gets a fresh container.
+ *
+ * @param handler - The wrapped handler from createCliHandler
  */
-export function createCommandHandler<TOpts>(
-  command: CliCommand<TOpts>
-): (options: TOpts) => Promise<void> {
+export function createCliRunner<TOpts>(handler: WrappedCliHandler<TOpts>): CliRunner<TOpts> {
   return async (options: TOpts): Promise<void> => {
     const container = createCliContainer();
     try {
-      await command(options, container);
+      await handler(options, container);
     } finally {
       await container.dispose();
     }
   };
 }
+
+// =============================================================================
+// Helpers
+// =============================================================================
 
 /**
  * Get the CLI package root directory.

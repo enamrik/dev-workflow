@@ -17,15 +17,20 @@ export {
 
 // Bootstrap functions for command handlers
 export {
-  createCommand,
-  createCommandHandler,
+  // Handler/runner factories
+  createCliHandler,
+  createCliRunner,
+  // Error handling
   handleCliError,
   CliValidationError,
-  compose,
+  // Middleware
+  composeMiddleware,
+  defaultMiddleware,
   registerWorkingDirectory,
   registerPackageRoot,
-  defaultMiddleware,
+  // Types
   type CliHandler,
-  type CliMiddleware,
-  type CliCommand,
+  type WrappedCliHandler,
+  type CliRunner,
+  type ContainerMiddleware,
 } from "./bootstrap.js";
