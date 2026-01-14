@@ -57,6 +57,9 @@ export interface BoardTask {
   issueType: string;
   taskNumber: number;
   title: string;
+  description: string;
+  acceptanceCriteria: string[];
+  implementationPlan?: string;
   type: string;
   status: TaskStatus;
   branchName?: string;
@@ -241,6 +244,9 @@ export class BoardQueryService {
           issueType: issue.type,
           taskNumber: task.number,
           title: task.title,
+          description: task.description,
+          acceptanceCriteria: task.acceptanceCriteria,
+          implementationPlan: task.implementationPlan,
           type: task.type,
           status: task.status,
           branchName: task.branchName,

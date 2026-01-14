@@ -1,8 +1,22 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Box, Text, useInput, useApp } from "ink";
 import { exec } from "child_process";
 import type { KanbanData, KanbanTask, WorkerCounts } from "../hooks/useKanbanData.js";
 import type { TaskStatus } from "@dev-workflow/core";
+
+/**
+ * View modes for the detail panel
+ */
+type ViewMode = "task" | "plan" | "details";
+
+/**
+ * View mode labels for display
+ */
+const VIEW_MODE_LABELS: Record<ViewMode, string> = {
+  task: "Task",
+  plan: "Plan",
+  details: "Details",
+};
 
 /**
  * Status colors for visual distinction
@@ -138,9 +152,9 @@ function Header({
               <Text> project • </Text>
             </>
           )}
-          <Text color="yellow">↑↓←→</Text> select • <Text color="yellow">o</Text> open GH •{" "}
-          <Text color="yellow">p</Text> open PR • <Text color="yellow">r</Text> refresh •{" "}
-          <Text color="yellow">q</Text> quit
+          <Text color="yellow">↑↓←→</Text> select • <Text color="yellow">Tab</Text> view •{" "}
+          <Text color="yellow">o</Text> open GH • <Text color="yellow">p</Text> open PR •{" "}
+          <Text color="yellow">r</Text> refresh • <Text color="yellow">q</Text> quit
         </Text>
       </Box>
     </Box>
@@ -208,45 +222,71 @@ function TaskCard({
 }
 
 /**
- * Detail panel showing full task information
+ * Task view content - shows description and acceptance criteria
  */
-function DetailPanel({ task }: { task: KanbanTask }): React.ReactElement {
-  const taskId = `#${task.issueNumber}.${task.taskNumber}`;
-  const typeColor = TYPE_COLORS[task.type] ?? "gray";
-
+function TaskViewContent({ task }: { task: KanbanTask }): React.ReactElement {
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="single"
-      borderColor="cyan"
-      paddingX={2}
-      paddingY={1}
-      marginTop={1}
-    >
-      {/* Header row */}
-      <Box>
-        <Text bold color="cyan">
-          {taskId}
+    <>
+      {/* Description */}
+      <Box marginTop={1} flexDirection="column">
+        <Text bold color="white">
+          Description
         </Text>
-        <Text color="gray"> • </Text>
-        <Text color={typeColor}>{TYPE_LABELS[task.type] ?? task.type}</Text>
-        <Text color="gray"> • </Text>
-        <Text color={STATUS_COLORS[task.status]}>{task.status}</Text>
-        {task.branchName && (
-          <>
-            <Text color="gray"> • ⎇ </Text>
-            <Text color="gray">{task.branchName}</Text>
-          </>
-        )}
+        <Text color="gray">{task.description || "No description"}</Text>
       </Box>
 
-      {/* Full title */}
-      <Box marginTop={1}>
-        <Text bold>{task.title}</Text>
-      </Box>
+      {/* Acceptance Criteria */}
+      {task.acceptanceCriteria && task.acceptanceCriteria.length > 0 && (
+        <Box marginTop={1} flexDirection="column">
+          <Text bold color="white">
+            Acceptance Criteria
+          </Text>
+          {task.acceptanceCriteria.map((criterion, index) => (
+            <Text key={index} color="gray">
+              • {criterion}
+            </Text>
+          ))}
+        </Box>
+      )}
+    </>
+  );
+}
+
+/**
+ * Plan view content - shows implementation plan
+ */
+function PlanViewContent({ task }: { task: KanbanTask }): React.ReactElement {
+  return (
+    <Box marginTop={1} flexDirection="column">
+      <Text bold color="white">
+        Implementation Plan
+      </Text>
+      <Text color="gray">{task.implementationPlan || "No implementation plan available"}</Text>
+    </Box>
+  );
+}
+
+/**
+ * Details view content - shows branch, PR, GitHub link, and timing
+ */
+function DetailsViewContent({ task }: { task: KanbanTask }): React.ReactElement {
+  return (
+    <>
+      {/* Branch info */}
+      {task.branchName && (
+        <Box marginTop={1} flexDirection="column">
+          <Text bold color="white">
+            Branch
+          </Text>
+          <Text color="gray">⎇ {task.branchName}</Text>
+        </Box>
+      )}
 
       {/* Links row */}
-      <Box marginTop={1} gap={2}>
+      <Box marginTop={1} flexDirection="column">
+        <Text bold color="white">
+          Links
+        </Text>
         {task.githubUrl ? (
           <Text>
             <Text color="yellow">o</Text>
@@ -258,9 +298,7 @@ function DetailPanel({ task }: { task: KanbanTask }): React.ReactElement {
         ) : (
           <Text color="gray">No GitHub link</Text>
         )}
-      </Box>
 
-      <Box gap={2}>
         {task.prUrl ? (
           <Text>
             <Text color="yellow">p</Text>
@@ -275,12 +313,86 @@ function DetailPanel({ task }: { task: KanbanTask }): React.ReactElement {
       </Box>
 
       {/* Time info */}
-      {task.startedAt && (
-        <Box marginTop={1}>
-          <Text color="gray">Started: {new Date(task.startedAt).toLocaleString()}</Text>
-          <Text color="gray"> • Elapsed: {formatTimeElapsed(task.startedAt)}</Text>
+      <Box marginTop={1} flexDirection="column">
+        <Text bold color="white">
+          Timing
+        </Text>
+        <Text color="gray">Created: {new Date(task.createdAt).toLocaleString()}</Text>
+        {task.startedAt && (
+          <>
+            <Text color="gray">Started: {new Date(task.startedAt).toLocaleString()}</Text>
+            <Text color="gray">Elapsed: {formatTimeElapsed(task.startedAt)}</Text>
+          </>
+        )}
+        {task.submittedForReviewAt && (
+          <Text color="gray">
+            Submitted for review: {new Date(task.submittedForReviewAt).toLocaleString()}
+          </Text>
+        )}
+        {task.completedAt && (
+          <Text color="gray">Completed: {new Date(task.completedAt).toLocaleString()}</Text>
+        )}
+        {task.abandonedAt && (
+          <Text color="gray">Abandoned: {new Date(task.abandonedAt).toLocaleString()}</Text>
+        )}
+      </Box>
+    </>
+  );
+}
+
+/**
+ * Detail panel showing full task information with multiple views
+ */
+function DetailPanel({
+  task,
+  viewMode,
+}: {
+  task: KanbanTask;
+  viewMode: ViewMode;
+}): React.ReactElement {
+  const taskId = `#${task.issueNumber}.${task.taskNumber}`;
+  const typeColor = TYPE_COLORS[task.type] ?? "gray";
+
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="single"
+      borderColor="cyan"
+      paddingX={2}
+      paddingY={1}
+      marginTop={1}
+    >
+      {/* Header row with view indicator */}
+      <Box justifyContent="space-between">
+        <Box>
+          <Text bold color="cyan">
+            {taskId}
+          </Text>
+          <Text color="gray"> • </Text>
+          <Text color={typeColor}>{TYPE_LABELS[task.type] ?? task.type}</Text>
+          <Text color="gray"> • </Text>
+          <Text color={STATUS_COLORS[task.status]}>{task.status}</Text>
         </Box>
-      )}
+        <Box>
+          <Text color="gray">[</Text>
+          <Text bold color="cyan">
+            {VIEW_MODE_LABELS[viewMode]}
+          </Text>
+          <Text color="gray">] </Text>
+          <Text color="yellow">[Tab]</Text>
+          <Text color="gray"> cycle view</Text>
+        </Box>
+      </Box>
+
+      {/* Full title */}
+      <Box marginTop={1}>
+        <Text bold>{task.title}</Text>
+      </Box>
+
+      {/* View-specific content */}
+      {viewMode === "task" && <TaskViewContent task={task} />}
+      {viewMode === "plan" && <PlanViewContent task={task} />}
+      {viewMode === "details" && <DetailsViewContent task={task} />}
     </Box>
   );
 }
@@ -416,6 +528,26 @@ export function KanbanBoard({
 }): React.ReactElement {
   const { exit } = useApp();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("task");
+
+  // Reset view mode when selected task changes
+  useEffect(() => {
+    setViewMode("task");
+  }, [selectedTaskId]);
+
+  // Cycle through view modes: task -> plan -> details -> task
+  const cycleViewMode = (): void => {
+    setViewMode((current) => {
+      switch (current) {
+        case "task":
+          return "plan";
+        case "plan":
+          return "details";
+        case "details":
+          return "task";
+      }
+    });
+  };
 
   // Build flat list of all tasks for navigation
   const allTasks = useMemo(() => {
@@ -491,6 +623,12 @@ export function KanbanBoard({
         setSelectedTaskId(null); // Clear selection when switching projects
         return;
       }
+    }
+
+    // Tab key to cycle view modes (only when a task is selected)
+    if (key.tab && selectedTaskId) {
+      cycleViewMode();
+      return;
     }
 
     // Arrow key navigation
@@ -617,7 +755,7 @@ export function KanbanBoard({
       </Box>
 
       {/* Detail panel when task selected */}
-      {selectedTask && <DetailPanel task={selectedTask} />}
+      {selectedTask && <DetailPanel task={selectedTask} viewMode={viewMode} />}
 
       {/* Error indicator if there's a background error */}
       {error && (
