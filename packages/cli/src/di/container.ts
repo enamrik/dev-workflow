@@ -86,7 +86,8 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
 
     // Scoped services (new instance per resolution)
     projectsResolver: asClass(ProjectsResolver).scoped(),
-    workerQueueDb: asClass(GlobalDbWorkerQueueDb)
+    // Use asFunction to avoid Awilix trying to resolve optional dbPath parameter
+    workerQueueDb: asFunction(() => new GlobalDbWorkerQueueDb())
       .scoped()
       .disposer((db) => db.close()),
 
