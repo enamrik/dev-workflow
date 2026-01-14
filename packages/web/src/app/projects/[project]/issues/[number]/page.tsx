@@ -17,7 +17,7 @@ import {
   Markdown,
   GitHubLink,
 } from "@/components/ui";
-import { IssueTransitionButton } from "@/components/issues";
+import { IssueTransitionButton, IssueCloseButton, IssueDeleteButton } from "@/components/issues";
 import { isTerminal, isActive, computeIssueStatus } from "@/lib/types";
 import type { Issue, Plan, Task } from "@/lib/types";
 
@@ -111,12 +111,6 @@ export default function IssueDetailPage({ params }: PageProps) {
               tooltip={`View on GitHub: ${issue.githubSync.githubUrl}`}
             />
           )}
-          <IssueTransitionButton
-            issue={issue}
-            tasks={tasks}
-            projectSlug={projectSlug}
-            onSuccess={() => refetch()}
-          />
         </div>
       </div>
 
@@ -134,6 +128,18 @@ export default function IssueDetailPage({ params }: PageProps) {
           issueNumber={issue.number}
         />
       )}
+
+      {/* Action buttons - sticky footer */}
+      <div className="sticky bottom-0 flex flex-wrap items-center gap-2 mt-6 pt-4 pb-2 border-t border-gray-200 bg-white -mx-6 px-6 -mb-6">
+        <IssueTransitionButton
+          issue={issue}
+          tasks={tasks}
+          projectSlug={projectSlug}
+          onSuccess={() => refetch()}
+        />
+        <IssueCloseButton issue={issue} projectSlug={projectSlug} onSuccess={() => refetch()} />
+        <IssueDeleteButton issue={issue} projectSlug={projectSlug} onSuccess={() => refetch()} />
+      </div>
     </Card>
   );
 }
