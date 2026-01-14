@@ -5,6 +5,7 @@ import Link from "next/link";
 import { clsx } from "clsx";
 import { Badge, Modal, Markdown, Tooltip, GitHubLink } from "../ui";
 import {
+  TaskAbandonButton,
   TaskTiming,
   TaskMetadataPanel,
   TaskActions,
@@ -70,6 +71,8 @@ interface TaskModalContentProps {
   issueUrl: string;
   issueGithubUrl?: string;
   projectId?: string;
+  projectSlug?: string;
+  onAbandonComplete?: () => void;
 }
 
 function TaskModalContent({
@@ -80,6 +83,8 @@ function TaskModalContent({
   issueUrl,
   issueGithubUrl,
   projectId,
+  projectSlug,
+  onAbandonComplete,
 }: TaskModalContentProps) {
   const taskDisplay = formatTaskDisplay(issueNumber, task);
   const tooltipContent = getTaskTooltip(issueType, issueNumber, issueTitle);
@@ -179,13 +184,22 @@ function TaskModalContent({
               <span className="text-gray-500">Est: {task.estimatedMinutes}m</span>
             )}
           </div>
-          {issueGithubUrl && (
-            <GitHubLink
-              url={issueGithubUrl}
-              label="Issue"
-              tooltip={`View issue on GitHub: ${issueGithubUrl}`}
-            />
-          )}
+          <div className="flex items-center gap-2">
+            {projectSlug && (
+              <TaskAbandonButton
+                task={task}
+                projectSlug={projectSlug}
+                onSuccess={onAbandonComplete}
+              />
+            )}
+            {issueGithubUrl && (
+              <GitHubLink
+                url={issueGithubUrl}
+                label="Issue"
+                tooltip={`View issue on GitHub: ${issueGithubUrl}`}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -426,6 +440,8 @@ export function KanbanCard({
         issueUrl={issueUrl}
         issueGithubUrl={issueGithubUrl}
         projectId={projectId}
+        projectSlug={projectSlug}
+        onAbandonComplete={onTransitionComplete}
       />
     </Modal>
   );

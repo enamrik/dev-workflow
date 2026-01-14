@@ -1,5 +1,6 @@
 export { Card, CardHeader, CardTitle } from "./Card";
 export { Badge } from "./Badge";
+export { ConfirmDialog } from "./ConfirmDialog";
 export { LoadingState, LoadingSpinner } from "./LoadingState";
 export { ErrorState } from "./ErrorState";
 export { EmptyState } from "./EmptyState";
