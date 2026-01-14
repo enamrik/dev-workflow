@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { clsx } from "clsx";
 import { Tooltip } from "../ui";
+import { isTerminal, isActive } from "@/lib/types";
 import type { ProjectIssueWithTasks, Task, ComputedIssueStatus } from "@/lib/types";
 
 interface IssuePreviewTarget {
@@ -21,7 +22,7 @@ const statusTagConfig: Record<ComputedIssueStatus, { label: string; style: strin
 
 /**
  * Compute issue status based on issue state and task progress.
- * Mirrors the server-side logic.
+ * Uses trait functions (single source of truth).
  */
 function computeIssueStatus(issueStatus: string, tasks: Task[]): ComputedIssueStatus {
   if (issueStatus === "PLANNED") {
@@ -34,15 +35,13 @@ function computeIssueStatus(issueStatus: string, tasks: Task[]): ComputedIssueSt
     return "OPEN";
   }
 
-  const completed = tasks.filter((t) => t.status === "COMPLETED").length;
-  const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
-  const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
-  const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
+  const terminal = tasks.filter(isTerminal).length;
+  const active = tasks.filter(isActive).length;
 
-  if (completed + abandoned === tasks.length) {
+  if (terminal === tasks.length) {
     return "TASKS_DONE";
   }
-  if (inProgress === 0 && prReview === 0) {
+  if (active === 0) {
     return "OPEN";
   }
   return "IN_PROGRESS";
@@ -82,9 +81,7 @@ function IssueCard({ item, onIssueClick }: IssueCardProps) {
     : `/issues/${item.issue.number}`;
 
   const taskProgress =
-    item.tasks.length > 0
-      ? `${item.tasks.filter((t) => t.status === "COMPLETED").length}/${item.tasks.length}`
-      : null;
+    item.tasks.length > 0 ? `${item.tasks.filter(isTerminal).length}/${item.tasks.length}` : null;
 
   const statusConfig = statusTagConfig[item.computedStatus];
 

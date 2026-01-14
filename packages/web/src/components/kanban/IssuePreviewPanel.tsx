@@ -17,7 +17,8 @@ import {
   GitHubLink,
 } from "@/components/ui";
 import { IssueTransitionButton } from "@/components/issues";
-import type { Issue, Plan, Task, ComputedIssueStatus } from "@/lib/types";
+import { isTerminal, isActive, computeIssueStatus } from "@/lib/types";
+import type { Issue, Plan, Task } from "@/lib/types";
 
 type TabId = "details" | "plan" | "tasks";
 
@@ -134,11 +135,11 @@ function IssuePreviewContent({
   const { issue, plan, tasks } = data;
   const taskCounts = {
     total: tasks.length,
-    completed: tasks.filter((t) => t.status === "COMPLETED").length,
-    inProgress: tasks.filter((t) => t.status === "IN_PROGRESS").length,
+    completed: tasks.filter(isTerminal).length,
+    inProgress: tasks.filter(isActive).length,
   };
 
-  const computedStatus = computeIssueStatus(issue, plan, tasks);
+  const computedStatus = computeIssueStatus(issue, tasks);
 
   const tabs = [
     { id: "details", label: "Details" },
@@ -325,36 +326,4 @@ function TasksTab({ tasks, taskCounts, projectId, issueNumber }: TasksTabProps) 
 
 function formatDate(isoString: string): string {
   return format(new Date(isoString), "MMM d, yyyy");
-}
-
-/**
- * Compute single issue status from issue state and tasks.
- */
-function computeIssueStatus(issue: Issue, plan: Plan | null, tasks: Task[]): ComputedIssueStatus {
-  if (issue.status === "CLOSED") {
-    return "CLOSED";
-  }
-
-  if (issue.status === "PLANNED") {
-    return "PLANNED";
-  }
-
-  if (!plan || tasks.length === 0) {
-    return "OPEN";
-  }
-
-  const completed = tasks.filter((t) => t.status === "COMPLETED").length;
-  const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
-  const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
-  const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
-
-  if (completed + abandoned === tasks.length) {
-    return "TASKS_DONE";
-  }
-
-  if (inProgress === 0 && prReview === 0) {
-    return "OPEN";
-  }
-
-  return "IN_PROGRESS";
 }

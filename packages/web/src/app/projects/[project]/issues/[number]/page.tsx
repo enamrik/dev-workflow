@@ -18,7 +18,8 @@ import {
   GitHubLink,
 } from "@/components/ui";
 import { IssueTransitionButton } from "@/components/issues";
-import type { Issue, Plan, Task, ComputedIssueStatus } from "@/lib/types";
+import { isTerminal, isActive, computeIssueStatus } from "@/lib/types";
+import type { Issue, Plan, Task } from "@/lib/types";
 
 type TabId = "details" | "plan" | "tasks";
 
@@ -62,16 +63,14 @@ export default function IssueDetailPage({ params }: PageProps) {
   }
 
   const { issue, plan, tasks } = data;
-  const completed = tasks.filter((t) => t.status === "COMPLETED").length;
-  const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
   const taskCounts = {
     total: tasks.length,
-    completed: completed + abandoned, // Terminal tasks (COMPLETED or ABANDONED)
-    inProgress: tasks.filter((t) => t.status === "IN_PROGRESS").length,
+    completed: tasks.filter(isTerminal).length,
+    inProgress: tasks.filter(isActive).length,
   };
 
   // Compute single status from issue state and tasks
-  const computedStatus = computeIssueStatus(issue, plan, tasks);
+  const computedStatus = computeIssueStatus(issue, tasks);
 
   // Back URL just goes to root - the useUrlState hook will restore _state on navigation
   const backUrl = "/";
@@ -280,48 +279,4 @@ function TasksTab({ tasks, taskCounts, projectId, issueNumber }: TasksTabProps) 
 
 function formatDate(isoString: string): string {
   return format(new Date(isoString), "MMM d, yyyy 'at' h:mm a");
-}
-
-/**
- * Compute single issue status from issue state and tasks.
- *
- * Status rules:
- * - CLOSED: Issue is explicitly closed
- * - TASKS_DONE: All tasks are COMPLETED or ABANDONED (issue ready to be closed)
- * - IN_PROGRESS: Some tasks not completed AND no tasks in BACKLOG/READY (work has started)
- * - OPEN: Plan exists but work not started (tasks in BACKLOG/READY), or no plan/tasks yet
- */
-function computeIssueStatus(issue: Issue, plan: Plan | null, tasks: Task[]): ComputedIssueStatus {
-  // Explicitly closed issues stay CLOSED
-  if (issue.status === "CLOSED") {
-    return "CLOSED";
-  }
-
-  // PLANNED issues stay PLANNED
-  if (issue.status === "PLANNED") {
-    return "PLANNED";
-  }
-
-  // No plan means OPEN
-  if (!plan || tasks.length === 0) {
-    return "OPEN";
-  }
-
-  const completed = tasks.filter((t) => t.status === "COMPLETED").length;
-  const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
-  const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
-  const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
-
-  // All tasks done (completed or abandoned) = TASKS_DONE
-  if (completed + abandoned === tasks.length) {
-    return "TASKS_DONE";
-  }
-
-  // No tasks have progressed past READY (all are BACKLOG, READY, or terminal) = OPEN
-  if (inProgress === 0 && prReview === 0) {
-    return "OPEN";
-  }
-
-  // At least one task is IN_PROGRESS or PR_REVIEW = IN_PROGRESS
-  return "IN_PROGRESS";
 }

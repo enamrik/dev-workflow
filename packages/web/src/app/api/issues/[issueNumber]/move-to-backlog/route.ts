@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ProjectsResolver, DbSourceProvider, WebDIContext } from "@/server";
+import { isIssueInPlanning } from "@dev-workflow/core";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Validate issue status - only PLANNED issues can be moved to backlog
-    if (issue.status !== "PLANNED") {
+    if (!isIssueInPlanning(issue)) {
       return NextResponse.json(
         {
           error: `Issue must be in PLANNED status to move to backlog. Current status: ${issue.status}`,

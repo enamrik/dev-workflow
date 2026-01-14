@@ -1,41 +1,7 @@
 import { KanbanColumn } from "./KanbanColumn";
 import { EmptyState } from "../ui";
-import type {
-  ProjectIssueWithTasks,
-  Task,
-  CompletedTask,
-  Issue,
-  ComputedIssueStatus,
-} from "@/lib/types";
-
-/**
- * Compute issue status based on issue state and task progress.
- * Mirrors the server-side logic in IssueStatusService.
- */
-function computeIssueStatus(issue: Issue, tasks: Task[]): ComputedIssueStatus {
-  if (issue.status === "PLANNED") {
-    return "PLANNED";
-  }
-  if (issue.status === "CLOSED") {
-    return "CLOSED";
-  }
-  if (tasks.length === 0) {
-    return "OPEN";
-  }
-
-  const completed = tasks.filter((t) => t.status === "COMPLETED").length;
-  const abandoned = tasks.filter((t) => t.status === "ABANDONED").length;
-  const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
-  const prReview = tasks.filter((t) => t.status === "PR_REVIEW").length;
-
-  if (completed + abandoned === tasks.length) {
-    return "TASKS_DONE";
-  }
-  if (inProgress === 0 && prReview === 0) {
-    return "OPEN";
-  }
-  return "IN_PROGRESS";
-}
+import { isTerminal, computeIssueStatus } from "@/lib/types";
+import type { ProjectIssueWithTasks, Task, CompletedTask, ComputedIssueStatus } from "@/lib/types";
 
 interface KanbanTask extends Task {
   issueNumber: number;
@@ -117,14 +83,10 @@ export function KanbanBoard({
 
   // For Done column: merge completed tasks from open issues with completedTasks prop
   // The completedTasks prop includes tasks from closed issues (last 7 days, max 20)
-  const openIssueCompletedIds = new Set(
-    allTasks.filter((t) => t.status === "COMPLETED" || t.status === "ABANDONED").map((t) => t.id)
-  );
+  const openIssueCompletedIds = new Set(allTasks.filter(isTerminal).map((t) => t.id));
 
   // Add completed tasks from completedTasks that aren't already in openIssueCompletedIds
-  const doneTasks: KanbanTask[] = allTasks.filter(
-    (t) => t.status === "COMPLETED" || t.status === "ABANDONED"
-  );
+  const doneTasks: KanbanTask[] = allTasks.filter(isTerminal);
 
   for (const task of completedTasks) {
     if (!openIssueCompletedIds.has(task.id)) {

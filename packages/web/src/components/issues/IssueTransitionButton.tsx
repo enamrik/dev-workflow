@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { clsx } from "clsx";
 import { Tooltip } from "../ui";
+import { isIssueInPlanning } from "@/lib/types";
 import type { Issue, Task } from "@/lib/types";
 
 interface IssueTransitionButtonProps {
@@ -24,7 +25,7 @@ type TransitionAction = "activate" | "ready" | null;
  */
 function getTransitionAction(issue: Issue, tasks: Task[]): TransitionAction {
   // PLANNED issues with PLANNED tasks can be activated (requires a plan with tasks)
-  if (issue.status === "PLANNED") {
+  if (isIssueInPlanning(issue)) {
     const hasPlannedTasks = tasks.some((t) => t.status === "PLANNED");
     if (hasPlannedTasks) {
       return "activate";
@@ -32,6 +33,7 @@ function getTransitionAction(issue: Issue, tasks: Task[]): TransitionAction {
   }
 
   // OPEN issues with BACKLOG tasks can be readied
+  // Note: Checking specific status for state machine transition
   if (issue.status === "OPEN") {
     const hasBacklogTasks = tasks.some((t) => t.status === "BACKLOG");
     if (hasBacklogTasks) {

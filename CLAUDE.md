@@ -547,6 +547,7 @@ Our `tsconfig.json` enforces maximum type safety:
 ❌ **Bypassing DataSourceFactory** - calling `createSqlite()` or `createNeon()` directly, checking `isRemote()` before creating data source
 ❌ **Bypassing Service Layer** - calling repository mutations directly from MCP tools, API routes, or CLI instead of through services
 ❌ **Duplicated Logic Across Services** - implementing the same operation in multiple services instead of one service calling another
+❌ **Scattered Status Identity Checks** - checking `status === "COMPLETED" || status === "ABANDONED"` instead of using trait functions like `isTerminal(task)`. Status semantics are defined in `packages/core/src/domain/task.ts` via `STATUS_TRAITS`. Use `isTerminal()`, `isWorkable()`, `isActive()` for all status queries.
 
 ## Dependency Injection Patterns
 
@@ -836,6 +837,73 @@ getNextTaskNumber(planId: string): number {
 
 **Exception**: Methods like `getNextTaskNumber()` that need deleted records for immutability should NOT filter, and should have a comment explaining why.
 
+### TaskStatus Traits (Table-Driven Methods)
+
+**Location**: `packages/core/src/domain/task.ts`
+
+Status semantics are centralized in `STATUS_TRAITS`. **NEVER** check status identities directly:
+
+```typescript
+// ❌ BAD - Scattered identity checks, breaks when new status added
+const terminal = tasks.filter((t) => t.status === "COMPLETED" || t.status === "ABANDONED");
+const active = tasks.filter((t) => t.status === "IN_PROGRESS" || t.status === "PR_REVIEW");
+
+// ✅ GOOD - Use trait functions (single source of truth)
+import { isTerminal, isActive } from "@dev-workflow/core";
+const terminal = tasks.filter(isTerminal);
+const active = tasks.filter(isActive);
+```
+
+**Available trait functions:**
+
+| Function           | Returns true for            | Use case                   |
+| ------------------ | --------------------------- | -------------------------- |
+| `isTerminal(task)` | COMPLETED, ABANDONED        | Progress counts, "is done" |
+| `isWorkable(task)` | BACKLOG, READY, IN_PROGRESS | "Can be worked on"         |
+| `isActive(task)`   | IN_PROGRESS, PR_REVIEW      | "Work in progress"         |
+
+**TypeScript enforces exhaustiveness**: Adding a new status requires adding it to `STATUS_TRAITS` or the build fails.
+
+### IssueStatus Traits (Table-Driven Methods)
+
+**Location**: `packages/core/src/domain/issue.ts`
+
+Issue status semantics are centralized in `ISSUE_STATUS_TRAITS` and `COMPUTED_ISSUE_STATUS_TRAITS`. **NEVER** check status identities directly:
+
+```typescript
+// ❌ BAD - Scattered identity checks
+const closed = issues.filter((i) => i.status === "CLOSED");
+const active = issues.filter((i) => i.status === "OPEN" || i.status === "IN_PROGRESS");
+
+// ✅ GOOD - Use trait functions (single source of truth)
+import { isIssueClosed, isIssueInPlanning } from "@dev-workflow/core";
+const closed = issues.filter(isIssueClosed);
+const active = issues.filter((i) => !isIssueClosed(i) && !isIssueInPlanning(i));
+```
+
+**Stored status trait functions** (check the stored issue.status):
+
+| Function                   | Returns true for | Use case            |
+| -------------------------- | ---------------- | ------------------- |
+| `isIssueInPlanning(issue)` | PLANNED          | "Not yet activated" |
+| `isIssueClosed(issue)`     | CLOSED           | "Issue is done"     |
+
+**Computed status trait functions** (require tasks to compute):
+
+| Function                           | Returns true for               | Use case            |
+| ---------------------------------- | ------------------------------ | ------------------- |
+| `isIssueDone(issue, tasks)`        | CLOSED or all tasks terminal   | "All work complete" |
+| `issueHasActiveWork(issue, tasks)` | Any task IN_PROGRESS/PR_REVIEW | "Work in progress"  |
+
+**Helper functions for task aggregation:**
+
+| Function                  | Returns true when              | Use case                |
+| ------------------------- | ------------------------------ | ----------------------- |
+| `allTasksTerminal(tasks)` | All tasks COMPLETED/ABANDONED  | Check if issue is done  |
+| `anyTaskActive(tasks)`    | Any task IN_PROGRESS/PR_REVIEW | Check if work is active |
+
+**Design principle**: The trait-based approach hides whether status is computed or stored. The ONE place to change when switching implementations is `getEffectiveIssueStatus()` (private function).
+
 ## Code Review Checklist
 
 - [ ] Follows SOLID principles
@@ -851,6 +919,7 @@ getNextTaskNumber(planId: string): number {
 - [ ] **New tables/repositories follow DataSourceProvider pattern** (both schemas, factory methods, both implementations)
 - [ ] **Mutations go through services** (not direct repository calls from MCP/API/CLI)
 - [ ] **Services call services** (not duplicating logic - one service delegates to another)
+- [ ] **Status checks use trait functions** (use `isTerminal()`, `isActive()` - not direct `status === "COMPLETED"` checks)
 
 ## Testing GitHub Sync
 

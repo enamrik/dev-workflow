@@ -20,6 +20,7 @@ import {
   DbSourceProvider,
   ProjectsResolver,
   DependencyService,
+  isTerminal,
   type WorkerQueueDb,
   type DbSource,
   type WorkerStatus,
@@ -697,9 +698,9 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
    */
   private async releaseTask(taskId: string): Promise<void> {
     const task = this.findTaskById(taskId);
-    const isTerminal = task?.status === "COMPLETED" || task?.status === "ABANDONED";
+    const taskIsTerminal = task ? isTerminal(task) : false;
 
-    if (isTerminal) {
+    if (taskIsTerminal) {
       this.queue.remove(taskId);
       console.log(`Task ${task?.status}, removed from queue: ${taskId}`);
     } else {
