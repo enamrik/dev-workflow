@@ -214,17 +214,23 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
         fileSystem,
         workingDirectory,
         trackDirectoryResolver,
+        sourceProvider,
+        gitOps,
         packageRoot,
       }: {
         fileSystem: FileSystem;
         workingDirectory: string;
         trackDirectoryResolver: TrackDirectoryResolver;
+        sourceProvider: DbSourceProvider;
+        gitOps: GitOperations;
         packageRoot: string;
       }) => {
         return new ArchiveService(
           fileSystem,
           workingDirectory,
           trackDirectoryResolver,
+          sourceProvider,
+          gitOps,
           packageRoot
         );
       }

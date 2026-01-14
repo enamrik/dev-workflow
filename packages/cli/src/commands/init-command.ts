@@ -11,6 +11,7 @@ import { execSync } from "node:child_process";
 import {
   TrackDirectoryResolver,
   GitOperations,
+  DbSourceProvider,
   writeConfig,
   resolveConfig,
   getGlobalDatabasePath,
@@ -183,13 +184,17 @@ export class InitCommand {
     console.log(`   Project: ${existingProject.name} (${existingProject.id.slice(0, 8)}...)\n`);
 
     try {
+      const sourceProvider = new DbSourceProvider();
       const archiveService = new ArchiveService(
         this.fileSystem,
         this.workingDirectory,
         resolver,
+        sourceProvider,
+        this.gitOps,
         this.packageRoot
       );
       await archiveService.unarchive(existingProject);
+      sourceProvider.closeAll();
 
       console.log("✓ Marked project as unarchived");
       console.log("✓ Restored local config");

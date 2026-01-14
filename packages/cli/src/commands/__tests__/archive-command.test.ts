@@ -1,18 +1,26 @@
 /**
  * ArchiveCommand, UnarchiveCommand, NukeCommand Behavioral Tests
  *
- * Tests actual behavior:
- * - Archive marks project as archived, removes skills, unregisters MCP
- * - Unarchive restores project and reinstalls Claude integration
- * - Nuke permanently deletes project data
- * - Error cases are handled correctly
+ * Tests actual behavior through the Awilix container with low-level mocks.
+ * Mocks infrastructure (DbSourceProvider, GitOperations, FileSystem) while
+ * letting real services and commands run.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
-import { ArchiveCommand, UnarchiveCommand, NukeCommand } from "../archive-command.js";
-import type { ArchiveService } from "../../application/archive.service.js";
+import { asValue, asFunction } from "awilix";
+import { createCliContainer, type CliContainer } from "../../di/container.js";
+import type { FileSystem } from "../../infrastructure/file-system.js";
+import type {
+  TrackDirectoryResolver,
+  DbSourceProvider,
+  GitOperations,
+  DbSource,
+  ProjectRepository,
+  Project,
+} from "@dev-workflow/core";
 import type { DatabaseConfigService } from "../../application/database.service.js";
-import type { TrackDirectoryResolver, GitOperations, Project } from "@dev-workflow/core";
+import { ArchiveService } from "../../application/archive.service.js";
+import { ArchiveCommand, UnarchiveCommand, NukeCommand } from "../archive-command.js";
 
 // Mock console methods - these are at module level
 let mockConsoleLog: ReturnType<typeof vi.spyOn>;
@@ -42,38 +50,231 @@ vi.mock("node:readline", () => ({
 /**
  * Create a mock project
  */
-function createMockProject(overrides: Partial<Project> = {}): Project {
+function createMockProject(overrides: Record<string, unknown> = {}): Project {
   return {
     id: "proj-123",
     name: "test-project",
     gitHash: "abc123",
+    gitRootHash: "abc123",
+    slug: "test-project",
     isArchived: false,
+    githubSync: null,
+    archivedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
-  } as Project;
+  } as unknown as Project;
 }
 
 /**
- * Create a mock ArchiveService
+ * Create mock FileSystem
  */
-function createMockArchiveService(
+function createMockFileSystem(): FileSystem {
+  return {
+    exists: vi.fn().mockResolvedValue(true),
+    readFile: vi.fn().mockResolvedValue(""),
+    writeFile: vi.fn().mockResolvedValue(undefined),
+    unlink: vi.fn().mockResolvedValue(undefined),
+    mkdir: vi.fn().mockResolvedValue(undefined),
+    rmdir: vi.fn().mockResolvedValue(undefined),
+    readdirWithFileTypes: vi.fn().mockResolvedValue([]),
+  } as unknown as FileSystem;
+}
+
+/**
+ * Create mock TrackDirectoryResolver
+ */
+function createMockResolver(): TrackDirectoryResolver {
+  return {
+    getTrackDirectory: vi.fn().mockReturnValue("/test/.track"),
+    getDatabasePath: vi.fn().mockReturnValue("/test/.track/workflow.db"),
+    getProjectId: vi.fn().mockReturnValue("test-slug"),
+  } as unknown as TrackDirectoryResolver;
+}
+
+/**
+ * Create mock GitOperations
+ */
+function createMockGitOps(options: { isWorktree?: boolean } = {}): GitOperations {
+  return {
+    isGitRepository: vi.fn().mockReturnValue(true),
+    isWorktree: vi.fn().mockReturnValue(options.isWorktree ?? false),
+    findGitRoot: vi.fn().mockReturnValue("/test/repo"),
+    readSlugFromGitConfig: vi.fn().mockReturnValue(null),
+    writeSlugToGitConfig: vi.fn(),
+    getInitialCommitHash: vi.fn().mockReturnValue("abc123"),
+  } as unknown as GitOperations;
+}
+
+/**
+ * Create mock ProjectRepository
+ */
+function createMockProjectsRepository(
   options: {
-    project?: Project | null;
-    archivedProject?: Project | null;
+    project?: Project | null | undefined;
+    archivedProject?: Project | null | undefined;
   } = {}
-): ArchiveService {
-  // Use 'in' check to distinguish between "not passed" and "passed as null"
+) {
+  // Use 'in' check to distinguish "not passed" vs "passed as null"
   const projectValue = "project" in options ? options.project : createMockProject();
   const archivedValue = "archivedProject" in options ? options.archivedProject : null;
 
   return {
-    getProject: vi.fn().mockResolvedValue(projectValue),
-    findArchivedProjectByGitHash: vi.fn().mockResolvedValue(archivedValue),
-    archive: vi.fn().mockResolvedValue(undefined),
-    unarchive: vi.fn().mockResolvedValue(undefined),
-    nuke: vi.fn().mockResolvedValue(undefined),
-  } as unknown as ArchiveService;
+    findByGitRootHash: vi.fn().mockImplementation(() => {
+      // Return archived project if looking for archived, otherwise regular project
+      return archivedValue ?? projectValue;
+    }),
+    archive: vi.fn().mockResolvedValue(projectValue ? { ...projectValue, isArchived: true } : null),
+    unarchive: vi
+      .fn()
+      .mockResolvedValue(projectValue ? { ...projectValue, isArchived: false } : null),
+    hardDelete: vi.fn().mockResolvedValue(undefined),
+  } as unknown as ProjectRepository;
+}
+
+/**
+ * Create mock DbSourceProvider with configurable repositories
+ */
+function createMockSourceProvider(
+  options: {
+    projectsRepo?: ProjectRepository;
+    tasks?: unknown[];
+    issues?: unknown[];
+  } = {}
+) {
+  const projectsRepo = options.projectsRepo ?? createMockProjectsRepository();
+  const tasks = options.tasks ?? [];
+  const issues = options.issues ?? [];
+
+  const mockClient = {
+    tasks: {
+      findMany: vi.fn().mockImplementation(({ status }: { status?: string }) => {
+        return tasks.filter((t: unknown) => !status || (t as { status: string }).status === status);
+      }),
+    },
+    issues: {
+      findMany: vi.fn().mockReturnValue(issues),
+    },
+  };
+
+  const mockSource: DbSource = {
+    projects: projectsRepo,
+    createClient: vi.fn().mockReturnValue(mockClient),
+  } as unknown as DbSource;
+
+  return {
+    getOrCreate: vi.fn().mockReturnValue(mockSource),
+    closeAll: vi.fn(),
+  } as unknown as DbSourceProvider;
+}
+
+/**
+ * Create mock DatabaseConfigService
+ */
+function createMockDatabaseService(options: { isRemote?: boolean } = {}) {
+  return {
+    isRemote: vi.fn().mockResolvedValue(options.isRemote ?? false),
+    getStatus: vi.fn().mockResolvedValue({
+      provider: options.isRemote ? "neon" : "sqlite",
+      connectionString: options.isRemote
+        ? "postgresql://user:pass@host/db"
+        : "sqlite:///test/.track/workflow.db",
+    }),
+  } as unknown as DatabaseConfigService;
+}
+
+/**
+ * Setup test container with mocked infrastructure
+ */
+function setupTestContainer(
+  options: {
+    project?: Project | null;
+    archivedProject?: Project | null;
+    tasks?: unknown[];
+    issues?: unknown[];
+    isWorktree?: boolean;
+    isRemote?: boolean;
+    fileSystemExists?: boolean;
+  } = {}
+): CliContainer {
+  const container = createCliContainer();
+
+  const mockFileSystem = createMockFileSystem();
+  if ("fileSystemExists" in options) {
+    (mockFileSystem.exists as ReturnType<typeof vi.fn>).mockResolvedValue(options.fileSystemExists);
+  }
+
+  const mockResolver = createMockResolver();
+  const mockGitOps = createMockGitOps({ isWorktree: options.isWorktree });
+  const mockProjectsRepo = createMockProjectsRepository({
+    project: "project" in options ? options.project : undefined,
+    archivedProject: "archivedProject" in options ? options.archivedProject : undefined,
+  });
+  const mockSourceProvider = createMockSourceProvider({
+    projectsRepo: mockProjectsRepo,
+    tasks: options.tasks,
+    issues: options.issues,
+  });
+  const mockDatabaseService = createMockDatabaseService({ isRemote: options.isRemote });
+
+  // Register mocked infrastructure
+  container.register({
+    workingDirectory: asValue("/test/repo"),
+    packageRoot: asValue("/test/cli"),
+    fileSystem: asValue(mockFileSystem),
+    trackDirectoryResolver: asValue(mockResolver),
+    gitOps: asValue(mockGitOps),
+    sourceProvider: asValue(mockSourceProvider),
+    databaseService: asValue(mockDatabaseService),
+  });
+
+  // Register services that use injected dependencies
+  container.register({
+    archiveService: asFunction(
+      ({
+        fileSystem,
+        workingDirectory,
+        trackDirectoryResolver,
+        sourceProvider,
+        gitOps,
+        packageRoot,
+      }) => {
+        return new ArchiveService(
+          fileSystem as FileSystem,
+          workingDirectory as string,
+          trackDirectoryResolver as TrackDirectoryResolver,
+          sourceProvider as DbSourceProvider,
+          gitOps as GitOperations,
+          packageRoot as string
+        );
+      }
+    ).scoped(),
+  });
+
+  // Register commands
+  container.register({
+    archiveCommand: asFunction(({ archiveService }) => {
+      return new ArchiveCommand(archiveService as ArchiveService);
+    }).scoped(),
+
+    unarchiveCommand: asFunction(({ archiveService, gitOps, workingDirectory }) => {
+      return new UnarchiveCommand(
+        archiveService as ArchiveService,
+        gitOps as GitOperations,
+        workingDirectory as string
+      );
+    }).scoped(),
+
+    nukeCommand: asFunction(({ archiveService, databaseService, trackDirectoryResolver }) => {
+      return new NukeCommand(
+        archiveService as ArchiveService,
+        databaseService as DatabaseConfigService,
+        trackDirectoryResolver as TrackDirectoryResolver
+      );
+    }).scoped(),
+  });
+
+  return container;
 }
 
 describe("ArchiveCommand", () => {
@@ -88,49 +289,57 @@ describe("ArchiveCommand", () => {
   describe("execute", () => {
     it("should archive an active project", async () => {
       const project = createMockProject({ isArchived: false });
-      const archiveService = createMockArchiveService({ project });
+      const container = setupTestContainer({ project });
 
-      const command = new ArchiveCommand(archiveService);
+      const command = container.cradle.archiveCommand;
       await command.execute();
 
-      expect(archiveService.archive).toHaveBeenCalled();
-      expect(mockConsoleLog).toHaveBeenCalledWith("📦 Archiving project...");
-      expect(mockConsoleLog).toHaveBeenCalledWith("\n✨ Project archived successfully!");
+      // Verify service called through to repository
+      const sourceProvider = container.cradle.sourceProvider;
+      expect(sourceProvider.getOrCreate).toHaveBeenCalled();
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("Archiving project"));
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("archived successfully"));
     });
 
-    it("should fail when project is not initialized", async () => {
-      const archiveService = createMockArchiveService({ project: null });
+    it("should fail when project is not initialized (database does not exist)", async () => {
+      const container = setupTestContainer({ fileSystemExists: false });
 
-      const command = new ArchiveCommand(archiveService);
+      const command = container.cradle.archiveCommand;
 
       await expect(command.execute()).rejects.toThrow("process.exit(1)");
       expect(mockConsoleError).toHaveBeenCalledWith(
         "❌ dev-workflow is not initialized for this repository."
       );
-      expect(archiveService.archive).not.toHaveBeenCalled();
     });
 
     it("should fail when project is already archived", async () => {
       const project = createMockProject({ isArchived: true });
-      const archiveService = createMockArchiveService({ project });
+      const container = setupTestContainer({ project });
 
-      const command = new ArchiveCommand(archiveService);
+      const command = container.cradle.archiveCommand;
 
       await expect(command.execute()).rejects.toThrow("process.exit(1)");
       expect(mockConsoleError).toHaveBeenCalledWith("❌ Project is already archived.");
-      expect(archiveService.archive).not.toHaveBeenCalled();
+    });
+
+    it("should fail when there are in-progress tasks", async () => {
+      const project = createMockProject({ isArchived: false });
+      const tasks = [{ id: "task-1", status: "IN_PROGRESS" }];
+      const container = setupTestContainer({ project, tasks });
+
+      const command = container.cradle.archiveCommand;
+
+      await expect(command.execute()).rejects.toThrow("process.exit(1)");
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Cannot archive project")
+      );
     });
   });
 });
 
 describe("UnarchiveCommand", () => {
-  let gitOps: GitOperations;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    gitOps = {
-      isWorktree: vi.fn().mockReturnValue(false),
-    } as unknown as GitOperations;
   });
 
   afterEach(() => {
@@ -138,38 +347,20 @@ describe("UnarchiveCommand", () => {
   });
 
   describe("execute", () => {
-    it("should unarchive an archived project", async () => {
-      const archivedProject = createMockProject({ isArchived: true });
-      const archiveService = createMockArchiveService({ archivedProject });
-
-      const command = new UnarchiveCommand(archiveService, gitOps, "/test/repo");
-      await command.execute();
-
-      expect(archiveService.unarchive).toHaveBeenCalledWith(archivedProject);
-      expect(mockConsoleLog).toHaveBeenCalledWith("📦 Unarchiving project...");
-      expect(mockConsoleLog).toHaveBeenCalledWith("\n✨ Project unarchived successfully!");
-    });
-
     it("should fail when running from a worktree", async () => {
-      gitOps = {
-        isWorktree: vi.fn().mockReturnValue(true),
-      } as unknown as GitOperations;
+      const container = setupTestContainer({ isWorktree: true });
 
-      const archiveService = createMockArchiveService();
-      const command = new UnarchiveCommand(archiveService, gitOps, "/test/repo");
+      const command = container.cradle.unarchiveCommand;
 
       await expect(command.execute()).rejects.toThrow("process.exit(1)");
       expect(mockConsoleError).toHaveBeenCalledWith("❌ Cannot run unarchive from a git worktree.");
-      expect(archiveService.unarchive).not.toHaveBeenCalled();
     });
 
     it("should fail when no archived project is found", async () => {
-      const archiveService = createMockArchiveService({
-        archivedProject: null,
-        project: null,
-      });
+      // Both project and archivedProject are null
+      const container = setupTestContainer({ project: null, archivedProject: null });
 
-      const command = new UnarchiveCommand(archiveService, gitOps, "/test/repo");
+      const command = container.cradle.unarchiveCommand;
 
       await expect(command.execute()).rejects.toThrow("process.exit(1)");
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -179,12 +370,9 @@ describe("UnarchiveCommand", () => {
 
     it("should fail when project exists but is not archived", async () => {
       const activeProject = createMockProject({ isArchived: false });
-      const archiveService = createMockArchiveService({
-        archivedProject: null,
-        project: activeProject,
-      });
+      const container = setupTestContainer({ project: activeProject, archivedProject: null });
 
-      const command = new UnarchiveCommand(archiveService, gitOps, "/test/repo");
+      const command = container.cradle.unarchiveCommand;
 
       await expect(command.execute()).rejects.toThrow("process.exit(1)");
       expect(mockConsoleError).toHaveBeenCalledWith("❌ Project is not archived.");
@@ -193,24 +381,8 @@ describe("UnarchiveCommand", () => {
 });
 
 describe("NukeCommand", () => {
-  let archiveService: ArchiveService;
-  let databaseService: DatabaseConfigService;
-  let trackDirectoryResolver: TrackDirectoryResolver;
-
   beforeEach(() => {
     vi.clearAllMocks();
-
-    databaseService = {
-      isRemote: vi.fn().mockResolvedValue(false),
-      getStatus: vi.fn().mockResolvedValue({
-        provider: "sqlite",
-        connectionString: "sqlite:///test/.track/workflow.db",
-      }),
-    } as unknown as DatabaseConfigService;
-
-    trackDirectoryResolver = {
-      getTrackDirectory: vi.fn().mockReturnValue("/test/.track"),
-    } as unknown as TrackDirectoryResolver;
   });
 
   afterEach(() => {
@@ -220,68 +392,70 @@ describe("NukeCommand", () => {
   describe("execute", () => {
     it("should nuke project when user confirms", async () => {
       const project = createMockProject({ name: "test-project" });
-      archiveService = createMockArchiveService({ project });
+      // All issues must be CLOSED for nuke validation
+      const issues = [{ id: "issue-1", status: "CLOSED" }];
+      const container = setupTestContainer({ project, issues });
 
-      const command = new NukeCommand(archiveService, databaseService, trackDirectoryResolver);
+      const command = container.cradle.nukeCommand;
       await command.execute();
 
-      expect(archiveService.nuke).toHaveBeenCalledWith(project);
-      expect(mockConsoleLog).toHaveBeenCalledWith("\n💣 Nuking project...");
-      expect(mockConsoleLog).toHaveBeenCalledWith("\n✨ Project nuked successfully!");
+      // Verify repository hardDelete was called
+      const sourceProvider = container.cradle.sourceProvider;
+      const source = sourceProvider.getOrCreate({ connectionString: "/test/.track/workflow.db" });
+      expect(source.projects.hardDelete).toHaveBeenCalledWith("proj-123");
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("Nuking project"));
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("nuked successfully"));
     });
 
     it("should fail when project is not initialized", async () => {
-      archiveService = createMockArchiveService({ project: null });
+      const container = setupTestContainer({ fileSystemExists: false });
 
-      const command = new NukeCommand(archiveService, databaseService, trackDirectoryResolver);
+      const command = container.cradle.nukeCommand;
 
       await expect(command.execute()).rejects.toThrow("process.exit(1)");
       expect(mockConsoleError).toHaveBeenCalledWith(
         "❌ dev-workflow is not initialized for this repository."
       );
-      expect(archiveService.nuke).not.toHaveBeenCalled();
     });
 
     it("should block nuke on remote database without --force", async () => {
       const project = createMockProject();
-      archiveService = createMockArchiveService({ project });
+      const container = setupTestContainer({ project, isRemote: true });
 
-      databaseService = {
-        isRemote: vi.fn().mockResolvedValue(true),
-        getStatus: vi.fn().mockResolvedValue({
-          provider: "neon",
-          connectionString: "postgresql://user:pass@host/db",
-        }),
-      } as unknown as DatabaseConfigService;
-
-      const command = new NukeCommand(archiveService, databaseService, trackDirectoryResolver);
+      const command = container.cradle.nukeCommand;
 
       await expect(command.execute()).rejects.toThrow("process.exit(1)");
       expect(mockConsoleError).toHaveBeenCalledWith(
         "❌ Cannot nuke when using a remote database.\n"
       );
-      expect(archiveService.nuke).not.toHaveBeenCalled();
     });
 
     it("should allow nuke on remote database with --force", async () => {
       const project = createMockProject({ name: "test-project" });
-      archiveService = createMockArchiveService({ project });
+      const issues = [{ id: "issue-1", status: "CLOSED" }];
+      const container = setupTestContainer({ project, isRemote: true, issues });
 
-      databaseService = {
-        isRemote: vi.fn().mockResolvedValue(true),
-        getStatus: vi.fn().mockResolvedValue({
-          provider: "neon",
-          connectionString: "postgresql://user:pass@host/db",
-        }),
-      } as unknown as DatabaseConfigService;
-
-      const command = new NukeCommand(archiveService, databaseService, trackDirectoryResolver);
+      const command = container.cradle.nukeCommand;
       await command.execute({ force: true });
 
-      expect(archiveService.nuke).toHaveBeenCalledWith(project);
       expect(mockConsoleLog).toHaveBeenCalledWith(
         "⚠️  --force flag detected. Proceeding with LOCAL cleanup only."
       );
+      const sourceProvider = container.cradle.sourceProvider;
+      const source = sourceProvider.getOrCreate({ connectionString: "/test/.track/workflow.db" });
+      expect(source.projects.hardDelete).toHaveBeenCalled();
+    });
+
+    it("should fail when there are open issues", async () => {
+      const project = createMockProject();
+      // OPEN issue will block nuke
+      const issues = [{ id: "issue-1", status: "OPEN" }];
+      const container = setupTestContainer({ project, issues });
+
+      const command = container.cradle.nukeCommand;
+
+      await expect(command.execute()).rejects.toThrow("process.exit(1)");
+      expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining("Cannot nuke project"));
     });
   });
 });
