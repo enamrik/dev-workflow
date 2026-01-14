@@ -9,14 +9,14 @@
 
 import { Command } from "commander";
 
-// Import runners from command handler files
-import { runInit } from "./commands/init.js";
-import { runUpdate } from "./commands/update.js";
-import { runUninit } from "./commands/uninit.js";
-import { runArchive, runUnarchive, runNuke } from "./commands/archive.js";
-import { runUI, runUIInstall, runUIUninstall } from "./commands/ui.js";
-import { runWorkers, runClaudeWorker } from "./commands/workers.js";
-import { runMCP } from "./commands/mcp.js";
+// Import runners from command definition files
+import { runInit } from "./commands/init-command-def.js";
+import { runUpdate } from "./commands/update-command-def.js";
+import { runUninit } from "./commands/uninit-command-def.js";
+import { runArchive, runUnarchive, runNuke } from "./commands/archive-command-def.js";
+import { runUI, runUIInstall, runUIUninstall } from "./commands/ui-command-def.js";
+import { runWorkers, runClaudeWorker } from "./commands/worker-command-def.js";
+import { runMCP } from "./commands/mcp-command-def.js";
 import {
   runBackupCreate,
   runBackupConfigure,
@@ -25,9 +25,9 @@ import {
   runBackupList,
   runBackupUnconfigure,
   runRestore,
-} from "./commands/backup.js";
-import { runDatabaseConfigure, runDatabaseStatus } from "./commands/database.js";
-import { runCleanClaudeConfig } from "./commands/claude-config.js";
+} from "./commands/backup-command-def.js";
+import { runDatabaseConfigure, runDatabaseStatus } from "./commands/database-command-def.js";
+import { runCleanClaudeConfig } from "./commands/claude-config-command-def.js";
 
 const program = new Command();
 
