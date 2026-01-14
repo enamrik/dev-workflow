@@ -3,6 +3,7 @@ import { Box, Text, useInput, useApp } from "ink";
 import { exec } from "child_process";
 import type { KanbanData, KanbanTask, WorkerCounts } from "../hooks/useKanbanData.js";
 import type { TaskStatus } from "@dev-workflow/core";
+import { ScrollableContent } from "./ScrollableContent.js";
 
 /**
  * View modes for the detail panel
@@ -224,44 +225,61 @@ function TaskCard({
 /**
  * Task view content - shows description and acceptance criteria
  */
-function TaskViewContent({ task }: { task: KanbanTask }): React.ReactElement {
-  return (
-    <>
-      {/* Description */}
-      <Box marginTop={1} flexDirection="column">
-        <Text bold color="white">
-          Description
-        </Text>
-        <Text color="gray">{task.description || "No description"}</Text>
-      </Box>
+function TaskViewContent({
+  task,
+  scrollOffset,
+  maxLines,
+}: {
+  task: KanbanTask;
+  scrollOffset: number;
+  maxLines: number;
+}): React.ReactElement {
+  // Build the full content as a single string for scrolling
+  const contentLines: string[] = [];
 
-      {/* Acceptance Criteria */}
-      {task.acceptanceCriteria && task.acceptanceCriteria.length > 0 && (
-        <Box marginTop={1} flexDirection="column">
-          <Text bold color="white">
-            Acceptance Criteria
-          </Text>
-          {task.acceptanceCriteria.map((criterion, index) => (
-            <Text key={index} color="gray">
-              • {criterion}
-            </Text>
-          ))}
-        </Box>
-      )}
-    </>
+  // Description section
+  contentLines.push("Description");
+  contentLines.push(task.description || "No description");
+
+  // Acceptance Criteria section
+  if (task.acceptanceCriteria && task.acceptanceCriteria.length > 0) {
+    contentLines.push(""); // blank line separator
+    contentLines.push("Acceptance Criteria");
+    task.acceptanceCriteria.forEach((criterion) => {
+      contentLines.push(`• ${criterion}`);
+    });
+  }
+
+  const content = contentLines.join("\n");
+
+  return (
+    <Box marginTop={1} flexDirection="column">
+      <ScrollableContent content={content} maxLines={maxLines} scrollOffset={scrollOffset} />
+    </Box>
   );
 }
 
 /**
  * Plan view content - shows implementation plan
  */
-function PlanViewContent({ task }: { task: KanbanTask }): React.ReactElement {
+function PlanViewContent({
+  task,
+  scrollOffset,
+  maxLines,
+}: {
+  task: KanbanTask;
+  scrollOffset: number;
+  maxLines: number;
+}): React.ReactElement {
+  const contentLines: string[] = [];
+  contentLines.push("Implementation Plan");
+  contentLines.push(task.implementationPlan || "No implementation plan available");
+
+  const content = contentLines.join("\n");
+
   return (
     <Box marginTop={1} flexDirection="column">
-      <Text bold color="white">
-        Implementation Plan
-      </Text>
-      <Text color="gray">{task.implementationPlan || "No implementation plan available"}</Text>
+      <ScrollableContent content={content} maxLines={maxLines} scrollOffset={scrollOffset} />
     </Box>
   );
 }
@@ -269,74 +287,69 @@ function PlanViewContent({ task }: { task: KanbanTask }): React.ReactElement {
 /**
  * Details view content - shows branch, PR, GitHub link, and timing
  */
-function DetailsViewContent({ task }: { task: KanbanTask }): React.ReactElement {
+function DetailsViewContent({
+  task,
+  scrollOffset,
+  maxLines,
+}: {
+  task: KanbanTask;
+  scrollOffset: number;
+  maxLines: number;
+}): React.ReactElement {
+  const contentLines: string[] = [];
+
+  // Branch info
+  if (task.branchName) {
+    contentLines.push("Branch");
+    contentLines.push(`⎇ ${task.branchName}`);
+    contentLines.push(""); // separator
+  }
+
+  // Links section
+  contentLines.push("Links");
+  if (task.githubUrl) {
+    contentLines.push(`[o] ${task.githubUrl}`);
+  } else if (task.githubIssueNumber) {
+    contentLines.push(`GH #${task.githubIssueNumber} (no URL)`);
+  } else {
+    contentLines.push("No GitHub link");
+  }
+
+  if (task.prUrl) {
+    contentLines.push(`[p] ${task.prUrl}`);
+  } else if (task.prNumber) {
+    contentLines.push(`PR #${task.prNumber} (no URL)`);
+  } else {
+    contentLines.push("No PR");
+  }
+
+  contentLines.push(""); // separator
+
+  // Timing section
+  contentLines.push("Timing");
+  contentLines.push(`Created: ${new Date(task.createdAt).toLocaleString()}`);
+  if (task.startedAt) {
+    contentLines.push(`Started: ${new Date(task.startedAt).toLocaleString()}`);
+    contentLines.push(`Elapsed: ${formatTimeElapsed(task.startedAt)}`);
+  }
+  if (task.submittedForReviewAt) {
+    contentLines.push(
+      `Submitted for review: ${new Date(task.submittedForReviewAt).toLocaleString()}`
+    );
+  }
+  if (task.completedAt) {
+    contentLines.push(`Completed: ${new Date(task.completedAt).toLocaleString()}`);
+  }
+  if (task.abandonedAt) {
+    contentLines.push(`Abandoned: ${new Date(task.abandonedAt).toLocaleString()}`);
+  }
+
+  const content = contentLines.join("\n");
+
   return (
-    <>
-      {/* Branch info */}
-      {task.branchName && (
-        <Box marginTop={1} flexDirection="column">
-          <Text bold color="white">
-            Branch
-          </Text>
-          <Text color="gray">⎇ {task.branchName}</Text>
-        </Box>
-      )}
-
-      {/* Links row */}
-      <Box marginTop={1} flexDirection="column">
-        <Text bold color="white">
-          Links
-        </Text>
-        {task.githubUrl ? (
-          <Text>
-            <Text color="yellow">o</Text>
-            <Text color="gray">:</Text>
-            <Text color="blue"> {task.githubUrl}</Text>
-          </Text>
-        ) : task.githubIssueNumber ? (
-          <Text color="gray">GH #{task.githubIssueNumber} (no URL)</Text>
-        ) : (
-          <Text color="gray">No GitHub link</Text>
-        )}
-
-        {task.prUrl ? (
-          <Text>
-            <Text color="yellow">p</Text>
-            <Text color="gray">:</Text>
-            <Text color="magenta"> {task.prUrl}</Text>
-          </Text>
-        ) : task.prNumber ? (
-          <Text color="gray">PR #{task.prNumber} (no URL)</Text>
-        ) : (
-          <Text color="gray">No PR</Text>
-        )}
-      </Box>
-
-      {/* Time info */}
-      <Box marginTop={1} flexDirection="column">
-        <Text bold color="white">
-          Timing
-        </Text>
-        <Text color="gray">Created: {new Date(task.createdAt).toLocaleString()}</Text>
-        {task.startedAt && (
-          <>
-            <Text color="gray">Started: {new Date(task.startedAt).toLocaleString()}</Text>
-            <Text color="gray">Elapsed: {formatTimeElapsed(task.startedAt)}</Text>
-          </>
-        )}
-        {task.submittedForReviewAt && (
-          <Text color="gray">
-            Submitted for review: {new Date(task.submittedForReviewAt).toLocaleString()}
-          </Text>
-        )}
-        {task.completedAt && (
-          <Text color="gray">Completed: {new Date(task.completedAt).toLocaleString()}</Text>
-        )}
-        {task.abandonedAt && (
-          <Text color="gray">Abandoned: {new Date(task.abandonedAt).toLocaleString()}</Text>
-        )}
-      </Box>
-    </>
+    <Box marginTop={1} flexDirection="column">
+      <ScrollableContent content={content} maxLines={maxLines} scrollOffset={scrollOffset} />
+    </Box>
   );
 }
 
@@ -346,9 +359,13 @@ function DetailsViewContent({ task }: { task: KanbanTask }): React.ReactElement 
 function DetailPanel({
   task,
   viewMode,
+  scrollOffset,
+  maxLines,
 }: {
   task: KanbanTask;
   viewMode: ViewMode;
+  scrollOffset: number;
+  maxLines: number;
 }): React.ReactElement {
   const taskId = `#${task.issueNumber}.${task.taskNumber}`;
   const typeColor = TYPE_COLORS[task.type] ?? "gray";
@@ -380,7 +397,9 @@ function DetailPanel({
           </Text>
           <Text color="gray">] </Text>
           <Text color="yellow">[Tab]</Text>
-          <Text color="gray"> cycle view</Text>
+          <Text color="gray"> view • </Text>
+          <Text color="yellow">[PgUp/Dn]</Text>
+          <Text color="gray"> scroll</Text>
         </Box>
       </Box>
 
@@ -390,9 +409,15 @@ function DetailPanel({
       </Box>
 
       {/* View-specific content */}
-      {viewMode === "task" && <TaskViewContent task={task} />}
-      {viewMode === "plan" && <PlanViewContent task={task} />}
-      {viewMode === "details" && <DetailsViewContent task={task} />}
+      {viewMode === "task" && (
+        <TaskViewContent task={task} scrollOffset={scrollOffset} maxLines={maxLines} />
+      )}
+      {viewMode === "plan" && (
+        <PlanViewContent task={task} scrollOffset={scrollOffset} maxLines={maxLines} />
+      )}
+      {viewMode === "details" && (
+        <DetailsViewContent task={task} scrollOffset={scrollOffset} maxLines={maxLines} />
+      )}
     </Box>
   );
 }
@@ -529,11 +554,23 @@ export function KanbanBoard({
   const { exit } = useApp();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("task");
+  const [detailScrollOffset, setDetailScrollOffset] = useState(0);
 
-  // Reset view mode when selected task changes
+  // Calculate max visible lines for detail panel based on terminal height
+  // Reserve space for: header (~4), columns (~10 minimum), detail panel border/header (~4)
+  const terminalRows = process.stdout.rows || 24;
+  const detailMaxLines = Math.max(5, terminalRows - 20);
+
+  // Reset view mode and scroll when selected task changes
   useEffect(() => {
     setViewMode("task");
+    setDetailScrollOffset(0);
   }, [selectedTaskId]);
+
+  // Reset scroll when view mode changes
+  useEffect(() => {
+    setDetailScrollOffset(0);
+  }, [viewMode]);
 
   // Cycle through view modes: task -> plan -> details -> task
   const cycleViewMode = (): void => {
@@ -701,6 +738,14 @@ export function KanbanBoard({
     if (key.escape) {
       setSelectedTaskId(null);
     }
+
+    // PageUp/PageDown to scroll detail panel content
+    if (selectedTaskId && key.pageUp) {
+      setDetailScrollOffset((prev) => Math.max(0, prev - 5));
+    }
+    if (selectedTaskId && key.pageDown) {
+      setDetailScrollOffset((prev) => prev + 5);
+    }
   });
 
   // Loading state (only on first load)
@@ -755,7 +800,14 @@ export function KanbanBoard({
       </Box>
 
       {/* Detail panel when task selected */}
-      {selectedTask && <DetailPanel task={selectedTask} viewMode={viewMode} />}
+      {selectedTask && (
+        <DetailPanel
+          task={selectedTask}
+          viewMode={viewMode}
+          scrollOffset={detailScrollOffset}
+          maxLines={detailMaxLines}
+        />
+      )}
 
       {/* Error indicator if there's a background error */}
       {error && (
