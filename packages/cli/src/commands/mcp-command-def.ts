@@ -4,7 +4,7 @@
  * Uses the Awilix DI pattern with MCPCommand class for testability.
  */
 
-import { createCliHandler, createCliRunner, defaultMiddleware } from "../di/bootstrap.js";
+import { createCliHandler, createCliCommand, defaultMiddleware } from "../di/bootstrap.js";
 import type { MCPCommand } from "./mcp-command.js";
 
 /**
@@ -25,4 +25,4 @@ export const handleMCP = createCliHandler(
 /**
  * Executable runner.
  */
-export const runMCP = createCliRunner(handleMCP);
+export const runMCP = createCliCommand(handleMCP);

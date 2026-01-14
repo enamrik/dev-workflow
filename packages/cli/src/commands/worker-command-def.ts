@@ -4,7 +4,7 @@
  * Uses the Awilix DI pattern with WorkerCommand class for testability.
  */
 
-import { createCliHandler, createCliRunner, defaultMiddleware } from "../di/bootstrap.js";
+import { createCliHandler, createCliCommand, defaultMiddleware } from "../di/bootstrap.js";
 import type { WorkerCommand, StartWorkerOptions } from "./worker-command.js";
 
 /**
@@ -35,5 +35,5 @@ export const handleClaudeWorker = createCliHandler(
 /**
  * Executable runners.
  */
-export const runWorkers = createCliRunner(handleWorkers);
-export const runClaudeWorker = createCliRunner(handleClaudeWorker);
+export const runWorkers = createCliCommand(handleWorkers);
+export const runClaudeWorker = createCliCommand(handleClaudeWorker);

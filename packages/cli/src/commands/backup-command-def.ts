@@ -4,7 +4,7 @@
  * Uses the Awilix DI pattern with BackupCommand class for testability.
  */
 
-import { createCliHandler, createCliRunner, defaultMiddleware } from "../di/bootstrap.js";
+import { createCliHandler, createCliCommand, defaultMiddleware } from "../di/bootstrap.js";
 import type { BackupCommand, S3ConfigOptions, RestoreOptions } from "./backup-command.js";
 
 /**
@@ -89,10 +89,10 @@ export const handleRestore = createCliHandler(
 /**
  * Executable runners.
  */
-export const runBackupCreate = createCliRunner(handleBackupCreate);
-export const runBackupConfigure = createCliRunner(handleBackupConfigure);
-export const runBackupSetup = createCliRunner(handleBackupSetup);
-export const runBackupStatus = createCliRunner(handleBackupStatus);
-export const runBackupList = createCliRunner(handleBackupList);
-export const runBackupUnconfigure = createCliRunner(handleBackupUnconfigure);
-export const runRestore = createCliRunner(handleRestore);
+export const runBackupCreate = createCliCommand(handleBackupCreate);
+export const runBackupConfigure = createCliCommand(handleBackupConfigure);
+export const runBackupSetup = createCliCommand(handleBackupSetup);
+export const runBackupStatus = createCliCommand(handleBackupStatus);
+export const runBackupList = createCliCommand(handleBackupList);
+export const runBackupUnconfigure = createCliCommand(handleBackupUnconfigure);
+export const runRestore = createCliCommand(handleRestore);

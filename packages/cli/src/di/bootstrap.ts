@@ -11,7 +11,7 @@
  * - Handlers are thin wrappers: (opts, { tool }) => tool.action()
  * - Container middleware injects dynamic values before handler runs
  * - createCliHandler wraps with error handling: (opts, cradle) => void
- * - createCliRunner binds to container: (opts) => void
+ * - createCliCommand binds to container: (opts) => void
  *
  * @example
  * ```typescript
@@ -37,7 +37,7 @@
  *
  * // 4. Runner - binds to container for CLI entry point
  * const container = createCliContainer();
- * const runUninit = createCliRunner(handleUninit, container);
+ * const runUninit = createCliCommand(handleUninit, container);
  * ```
  */
 
@@ -83,7 +83,7 @@ export type WrappedCliHandler<TOpts> = (options: TOpts, container: CliContainer)
  * A bound runner ready for invocation.
  * Signature: (opts) => Promise<void>
  */
-export type CliRunner<TOpts> = (options: TOpts) => Promise<void>;
+export type CliCommand<TOpts> = (options: TOpts) => Promise<void>;
 
 /**
  * Container middleware for registering dynamic values.
@@ -288,7 +288,7 @@ export function createCliHandler<TOpts, TCradle = CliCradle>(
  *
  * @param handler - The wrapped handler from createCliHandler
  */
-export function createCliRunner<TOpts>(handler: WrappedCliHandler<TOpts>): CliRunner<TOpts> {
+export function createCliCommand<TOpts>(handler: WrappedCliHandler<TOpts>): CliCommand<TOpts> {
   return async (options: TOpts): Promise<void> => {
     const container = createCliContainer();
     try {
@@ -296,6 +296,35 @@ export function createCliRunner<TOpts>(handler: WrappedCliHandler<TOpts>): CliRu
     } finally {
       await container.dispose();
     }
+  };
+}
+
+// =============================================================================
+// Test Helper
+// =============================================================================
+
+/**
+ * Creates a CLI command bound to a provided test container.
+ * Used for testing - allows injecting mocked dependencies.
+ *
+ * @param handler - The wrapped handler from createCliHandler
+ * @param container - Test container with mocked dependencies
+ *
+ * @example
+ * ```typescript
+ * const container = createTestContainer();
+ * container.register({ archiveService: asValue(mockArchiveService) });
+ * const runArchive = createTestCliCommand(handleArchive, container);
+ * await runArchive({});
+ * expect(mockArchiveService.archive).toHaveBeenCalled();
+ * ```
+ */
+export function createTestCliCommand<TOpts>(
+  handler: WrappedCliHandler<TOpts>,
+  container: CliContainer
+): CliCommand<TOpts> {
+  return async (options: TOpts): Promise<void> => {
+    await handler(options, container);
   };
 }
 

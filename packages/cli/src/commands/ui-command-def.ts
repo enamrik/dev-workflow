@@ -4,7 +4,7 @@
  * Uses the Awilix DI pattern with UICommand class for testability.
  */
 
-import { createCliHandler, createCliRunner, defaultMiddleware } from "../di/bootstrap.js";
+import { createCliHandler, createCliCommand, defaultMiddleware } from "../di/bootstrap.js";
 import type { UICommand } from "./ui-command.js";
 
 /**
@@ -45,6 +45,6 @@ export const handleUIUninstall = createCliHandler(
 /**
  * Executable runners.
  */
-export const runUI = createCliRunner(handleUI);
-export const runUIInstall = createCliRunner(handleUIInstall);
-export const runUIUninstall = createCliRunner(handleUIUninstall);
+export const runUI = createCliCommand(handleUI);
+export const runUIInstall = createCliCommand(handleUIInstall);
+export const runUIUninstall = createCliCommand(handleUIUninstall);

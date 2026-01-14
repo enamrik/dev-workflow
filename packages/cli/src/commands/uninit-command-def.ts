@@ -4,7 +4,7 @@
  * Uses the Awilix DI pattern with UninitCommand class for testability.
  */
 
-import { createCliHandler, createCliRunner, withConfigMiddleware } from "../di/bootstrap.js";
+import { createCliHandler, createCliCommand, withConfigMiddleware } from "../di/bootstrap.js";
 import type { UninitCommand } from "./uninit-command.js";
 
 /**
@@ -25,4 +25,4 @@ export const handleUninit = createCliHandler(
 /**
  * Executable runner for the uninit command.
  */
-export const runUninit = createCliRunner(handleUninit);
+export const runUninit = createCliCommand(handleUninit);

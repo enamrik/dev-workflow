@@ -6,7 +6,7 @@
 
 import {
   createCliHandler,
-  createCliRunner,
+  createCliCommand,
   withConfigMiddleware,
   withResolverMiddleware,
 } from "../di/bootstrap.js";
@@ -59,6 +59,6 @@ export const handleNuke = createCliHandler(
 /**
  * Executable runners.
  */
-export const runArchive = createCliRunner(handleArchive);
-export const runUnarchive = createCliRunner(handleUnarchive);
-export const runNuke = createCliRunner(handleNuke);
+export const runArchive = createCliCommand(handleArchive);
+export const runUnarchive = createCliCommand(handleUnarchive);
+export const runNuke = createCliCommand(handleNuke);

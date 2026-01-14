@@ -4,7 +4,7 @@
  * Uses the Awilix DI pattern with InitCommand class for testability.
  */
 
-import { createCliHandler, createCliRunner, defaultMiddleware } from "../di/bootstrap.js";
+import { createCliHandler, createCliCommand, defaultMiddleware } from "../di/bootstrap.js";
 import type { InitCommand, InitOptions } from "./init-command.js";
 
 /**
@@ -20,4 +20,4 @@ export const handleInit = createCliHandler(
 /**
  * Executable runner for the init command.
  */
-export const runInit = createCliRunner(handleInit);
+export const runInit = createCliCommand(handleInit);

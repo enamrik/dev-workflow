@@ -4,7 +4,7 @@
  * Uses the Awilix DI pattern with ClaudeConfigCommand class for testability.
  */
 
-import { createCliHandler, createCliRunner, defaultMiddleware } from "../di/bootstrap.js";
+import { createCliHandler, createCliCommand, defaultMiddleware } from "../di/bootstrap.js";
 import type { ClaudeConfigCommand, CleanOptions } from "./claude-config-command.js";
 
 /**
@@ -23,4 +23,4 @@ export const handleCleanClaudeConfig = createCliHandler(
 /**
  * Executable runner.
  */
-export const runCleanClaudeConfig = createCliRunner(handleCleanClaudeConfig);
+export const runCleanClaudeConfig = createCliCommand(handleCleanClaudeConfig);

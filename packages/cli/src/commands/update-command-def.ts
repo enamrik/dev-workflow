@@ -4,7 +4,7 @@
  * Uses the Awilix DI pattern with UpdateCommand class for testability.
  */
 
-import { createCliHandler, createCliRunner, withConfigMiddleware } from "../di/bootstrap.js";
+import { createCliHandler, createCliCommand, withConfigMiddleware } from "../di/bootstrap.js";
 import type { UpdateCommand } from "./update-command.js";
 
 /**
@@ -25,4 +25,4 @@ export const handleUpdate = createCliHandler(
 /**
  * Executable runner for the update command.
  */
-export const runUpdate = createCliRunner(handleUpdate);
+export const runUpdate = createCliCommand(handleUpdate);

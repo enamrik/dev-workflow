@@ -4,7 +4,7 @@
  * Uses the Awilix DI pattern with DatabaseCommand class for testability.
  */
 
-import { createCliHandler, createCliRunner, defaultMiddleware } from "../di/bootstrap.js";
+import { createCliHandler, createCliCommand, defaultMiddleware } from "../di/bootstrap.js";
 import type { DatabaseCommand, ConfigureOptions } from "./database-command.js";
 
 /**
@@ -38,5 +38,5 @@ export const handleDatabaseStatus = createCliHandler(
 /**
  * Executable runners.
  */
-export const runDatabaseConfigure = createCliRunner(handleDatabaseConfigure);
-export const runDatabaseStatus = createCliRunner(handleDatabaseStatus);
+export const runDatabaseConfigure = createCliCommand(handleDatabaseConfigure);
+export const runDatabaseStatus = createCliCommand(handleDatabaseStatus);

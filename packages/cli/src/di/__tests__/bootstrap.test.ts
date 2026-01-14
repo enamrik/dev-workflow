@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { asValue } from "awilix";
 import {
   createCliHandler,
-  createCliRunner,
+  createCliCommand,
   handleCliError,
   CliValidationError,
   composeMiddleware,
@@ -168,7 +168,7 @@ describe("bootstrap", () => {
     });
   });
 
-  describe("createCliRunner", () => {
+  describe("createCliCommand", () => {
     it("should create a runner that manages container lifecycle", async () => {
       let handlerCalled = false;
 
@@ -179,7 +179,7 @@ describe("bootstrap", () => {
       };
 
       const wrapped = createCliHandler(handler, registerWorkingDirectory);
-      const runCommand = createCliRunner(wrapped);
+      const runCommand = createCliCommand(wrapped);
 
       await runCommand({});
 
@@ -192,7 +192,7 @@ describe("bootstrap", () => {
       };
 
       const wrapped = createCliHandler(handler);
-      const runCommand = createCliRunner(wrapped);
+      const runCommand = createCliCommand(wrapped);
 
       // Should catch error via handleCliError
       await expect(runCommand({})).rejects.toThrow("process.exit called");
@@ -209,7 +209,7 @@ describe("bootstrap", () => {
       };
 
       const wrapped = createCliHandler(handler, failingMiddleware);
-      const runCommand = createCliRunner(wrapped);
+      const runCommand = createCliCommand(wrapped);
 
       await expect(runCommand({})).rejects.toThrow("process.exit called");
       expect(mockConsoleError).toHaveBeenCalledWith("❌ Invalid: Middleware error");
