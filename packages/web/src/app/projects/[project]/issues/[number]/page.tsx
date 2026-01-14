@@ -137,7 +137,12 @@ export default function IssueDetailPage({ params }: PageProps) {
           projectSlug={projectSlug}
           onSuccess={() => refetch()}
         />
-        <IssueCloseButton issue={issue} projectSlug={projectSlug} onSuccess={() => refetch()} />
+        <IssueCloseButton
+          issue={issue}
+          tasks={tasks}
+          projectSlug={projectSlug}
+          onSuccess={() => refetch()}
+        />
         <IssueDeleteButton issue={issue} projectSlug={projectSlug} onSuccess={() => refetch()} />
       </div>
     </Card>
