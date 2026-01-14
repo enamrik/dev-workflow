@@ -82,8 +82,9 @@ export function IssueCloseButton({ issue, projectSlug, onSuccess }: IssueCloseBu
         "inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium transition-colors",
         "focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1",
         isLoading && "opacity-50 cursor-wait",
-        error && "bg-red-50 text-red-600 hover:bg-red-100",
-        !error && "bg-gray-100 text-gray-600 hover:bg-gray-200"
+        error
+          ? "bg-red-100 text-red-700 hover:bg-red-200"
+          : "bg-red-50 text-red-600 hover:bg-red-100"
       )}
       aria-label="Close issue"
     >
@@ -115,7 +116,7 @@ export function IssueCloseButton({ issue, projectSlug, onSuccess }: IssueCloseBu
           </div>
         }
         confirmLabel="Close Issue"
-        variant="warning"
+        variant="danger"
         isLoading={isLoading}
       />
     </>
