@@ -1,5 +1,8 @@
 /**
  * Worktree-related MCP tools
+ *
+ * Handlers follow the pattern: (cradle) => ToolResponse
+ * Each handler destructures what it needs from the cradle.
  */
 
 import {
@@ -8,6 +11,8 @@ import {
   type WorktreeInfo,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
+import { createNoArgsHandler } from "../di/bootstrap.js";
+import type { McpCradle } from "../di/container.js";
 
 /**
  * Tool definitions for worktree operations
@@ -33,12 +38,9 @@ export const worktreeToolDefinitions: ToolDefinition[] = [
   },
 ];
 
-/**
- * Context required for worktree tool handlers
- */
-export interface WorktreeToolContext {
-  projectRoot: string;
-}
+// =============================================================================
+// Helper Functions
+// =============================================================================
 
 /**
  * Format bytes into human-readable string
@@ -50,15 +52,18 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
+// =============================================================================
+// Handler Implementations
+// =============================================================================
+
 /**
- * Handle list_worktrees tool
+ * Handle list_worktrees tool call
  */
-export async function handleListWorktrees(
-  _args: Record<string, unknown>,
-  context: WorktreeToolContext
-): Promise<ToolResponse> {
+async function listWorktreesHandler({
+  projectRoot,
+}: Pick<McpCradle, "projectRoot">): Promise<ToolResponse> {
   try {
-    const gitWorktreeService: GitWorktreeService = new NodeGitWorktreeService(context.projectRoot);
+    const gitWorktreeService: GitWorktreeService = new NodeGitWorktreeService(projectRoot);
 
     // Check if git is available
     const gitAvailable = await gitWorktreeService.checkGitAvailable();
@@ -101,14 +106,13 @@ export async function handleListWorktrees(
 }
 
 /**
- * Handle prune_stale_worktrees tool
+ * Handle prune_stale_worktrees tool call
  */
-export async function handlePruneStaleWorktrees(
-  _args: Record<string, unknown>,
-  context: WorktreeToolContext
-): Promise<ToolResponse> {
+async function pruneStaleWorktreesHandler({
+  projectRoot,
+}: Pick<McpCradle, "projectRoot">): Promise<ToolResponse> {
   try {
-    const gitWorktreeService: GitWorktreeService = new NodeGitWorktreeService(context.projectRoot);
+    const gitWorktreeService: GitWorktreeService = new NodeGitWorktreeService(projectRoot);
 
     // Check if git is available
     const gitAvailable = await gitWorktreeService.checkGitAvailable();
@@ -141,3 +145,10 @@ export async function handlePruneStaleWorktrees(
     return errorResponse(`Failed to prune worktrees: ${message}`);
   }
 }
+
+// =============================================================================
+// Wrapped Handlers (for tool registry)
+// =============================================================================
+
+export const handleListWorktrees = createNoArgsHandler(listWorktreesHandler);
+export const handlePruneStaleWorktrees = createNoArgsHandler(pruneStaleWorktreesHandler);

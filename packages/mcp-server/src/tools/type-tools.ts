@@ -6,7 +6,16 @@
  */
 
 import type { TypeService } from "@dev-workflow/core";
-import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
+import { type ToolDefinition, type ToolResponse, successResponse } from "./types.js";
+import { createMcpHandler, createNoArgsHandler, validateToolArgs } from "../di/bootstrap.js";
+import {
+  CreateTypeSchema,
+  UpdateTypeSchema,
+  DeleteTypeSchema,
+  type CreateTypeArgs,
+  type UpdateTypeArgs,
+  type DeleteTypeArgs,
+} from "./schemas.js";
 
 /**
  * Tool definitions for type operations
@@ -116,21 +125,19 @@ export const typeToolDefinitions: ToolDefinition[] = [
   },
 ];
 
-/**
- * Service context for type handlers
- */
-export interface TypeToolContext {
-  typeService: TypeService;
-}
+// =============================================================================
+// Handler Implementations
+// =============================================================================
 
 /**
  * Handle list_types tool call
- *
- * Returns all valid types with their metadata (name, description, remoteLabel).
- * This allows Claude to know what types are valid before calling generate_plan.
  */
-export async function handleListTypes(ctx: TypeToolContext): Promise<ToolResponse> {
-  const types = await ctx.typeService.getTypes();
+async function listTypesHandler({
+  typeService,
+}: {
+  typeService: TypeService;
+}): Promise<ToolResponse> {
+  const types = await typeService.getTypes();
 
   return successResponse({
     types: types.map((t) => ({
@@ -143,109 +150,90 @@ export async function handleListTypes(ctx: TypeToolContext): Promise<ToolRespons
 }
 
 /**
- * Arguments for create_type tool
- */
-interface CreateTypeArgs {
-  name: string;
-  displayName: string;
-  description: string;
-  keywords?: string[];
-  color?: string;
-}
-
-/**
  * Handle create_type tool call
- *
- * Creates a new type in the global database.
  */
-export function handleCreateType(ctx: TypeToolContext, args: CreateTypeArgs): ToolResponse {
-  try {
-    const type = ctx.typeService.createType({
-      name: args.name,
-      displayName: args.displayName,
-      description: args.description,
-      keywords: args.keywords,
-      color: args.color,
-    });
+function createTypeHandler(
+  args: unknown,
+  { typeService }: { typeService: TypeService }
+): ToolResponse {
+  const validation = validateToolArgs<CreateTypeArgs>(CreateTypeSchema, args);
+  if (!validation.success) return validation.response;
 
-    return successResponse({
-      type: {
-        name: type.name,
-        displayName: args.displayName,
-        description: type.description,
-        keywords: type.keywords,
-        remoteLabel: type.remoteLabel,
-      },
-      message: `Type '${type.name}' created successfully.`,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return errorResponse(message);
-  }
-}
+  const { name, displayName, description, keywords, color } = validation.data;
 
-/**
- * Arguments for update_type tool
- */
-interface UpdateTypeArgs {
-  name: string;
-  updates: {
-    displayName?: string;
-    description?: string;
-    keywords?: string[];
-    color?: string | null;
-  };
+  const type = typeService.createType({
+    name,
+    displayName,
+    description,
+    keywords,
+    color,
+  });
+
+  return successResponse({
+    type: {
+      name: type.name,
+      displayName,
+      description: type.description,
+      keywords: type.keywords,
+      remoteLabel: type.remoteLabel,
+    },
+    message: `Type '${type.name}' created successfully.`,
+  });
 }
 
 /**
  * Handle update_type tool call
- *
- * Updates an existing type's properties.
  */
-export function handleUpdateType(ctx: TypeToolContext, args: UpdateTypeArgs): ToolResponse {
-  try {
-    const type = ctx.typeService.updateType(args.name, args.updates);
+function updateTypeHandler(
+  args: unknown,
+  { typeService }: { typeService: TypeService }
+): ToolResponse {
+  const validation = validateToolArgs<UpdateTypeArgs>(UpdateTypeSchema, args);
+  if (!validation.success) return validation.response;
 
-    return successResponse({
-      type: {
-        name: type.name,
-        description: type.description,
-        keywords: type.keywords,
-        remoteLabel: type.remoteLabel,
-      },
-      message: `Type '${type.name}' updated successfully.`,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return errorResponse(message);
-  }
-}
+  const { name, updates } = validation.data;
 
-/**
- * Arguments for delete_type tool
- */
-interface DeleteTypeArgs {
-  name: string;
+  const type = typeService.updateType(name, updates);
+
+  return successResponse({
+    type: {
+      name: type.name,
+      description: type.description,
+      keywords: type.keywords,
+      remoteLabel: type.remoteLabel,
+    },
+    message: `Type '${type.name}' updated successfully.`,
+  });
 }
 
 /**
  * Handle delete_type tool call
- *
- * Soft-deletes a type. It will no longer be available for new issues/tasks.
  */
-export function handleDeleteType(ctx: TypeToolContext, args: DeleteTypeArgs): ToolResponse {
-  try {
-    const type = ctx.typeService.deleteType(args.name);
+function deleteTypeHandler(
+  args: unknown,
+  { typeService }: { typeService: TypeService }
+): ToolResponse {
+  const validation = validateToolArgs<DeleteTypeArgs>(DeleteTypeSchema, args);
+  if (!validation.success) return validation.response;
 
-    return successResponse({
-      type: {
-        name: type.name,
-        description: type.description,
-      },
-      message: `Type '${type.name}' deleted successfully. Existing records are preserved.`,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return errorResponse(message);
-  }
+  const { name } = validation.data;
+
+  const type = typeService.deleteType(name);
+
+  return successResponse({
+    type: {
+      name: type.name,
+      description: type.description,
+    },
+    message: `Type '${type.name}' deleted successfully. Existing records are preserved.`,
+  });
 }
+
+// =============================================================================
+// Wrapped Handlers (for tool registry)
+// =============================================================================
+
+export const handleListTypes = createNoArgsHandler(listTypesHandler);
+export const handleCreateType = createMcpHandler(createTypeHandler);
+export const handleUpdateType = createMcpHandler(updateTypeHandler);
+export const handleDeleteType = createMcpHandler(deleteTypeHandler);

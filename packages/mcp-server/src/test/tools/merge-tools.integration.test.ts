@@ -14,17 +14,18 @@ import {
   createTestTask,
 } from "../helpers.js";
 import { VersioningService, MockGitHubCLI, MergeService, type DbClient } from "@dev-workflow/core";
-import { handleMergeIssues, type MergeToolContext } from "../../tools/merge-tools.js";
+import { handleMergeIssues } from "../../tools/merge-tools.js";
 import { MergeIssuesSchema } from "../../tools/schemas.js";
 
 /** Test project ID */
 const TEST_PROJECT_ID = "test-project-merge-integration";
 
 /**
- * Create a MergeToolContext for testing
+ * Create a test context for merge tools
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function createMergeToolContext(testDb: TestDatabase): Promise<{
-  ctx: MergeToolContext;
+  ctx: any;
   client: DbClient;
 }> {
   // Create project first to get the generated ID
@@ -60,7 +61,8 @@ async function createMergeToolContext(testDb: TestDatabase): Promise<{
 
 describe("Merge Tools Integration", () => {
   let testDb: TestDatabase;
-  let ctx: MergeToolContext;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let ctx: any;
   let client: DbClient;
 
   beforeEach(async () => {
@@ -90,11 +92,14 @@ describe("Merge Tools Integration", () => {
         createTestTask(client.tasks, plan2.id, { title: "Task B1" });
 
         // Merge in create_new mode
-        const result = await handleMergeIssues(ctx, {
-          sourceIssueNumber: issue1.number,
-          targetIssueNumber: issue2.number,
-          mode: "create_new",
-        });
+        const result = await handleMergeIssues(
+          {
+            sourceIssueNumber: issue1.number,
+            targetIssueNumber: issue2.number,
+            mode: "create_new",
+          },
+          { cradle: ctx }
+        );
 
         expect(result.isError).toBeUndefined();
         const content = JSON.parse(result.content[0].text);
@@ -114,13 +119,16 @@ describe("Merge Tools Integration", () => {
         const issue1 = createTestIssue(client.issues, { title: "Issue 1" });
         const issue2 = createTestIssue(client.issues, { title: "Issue 2" });
 
-        const result = await handleMergeIssues(ctx, {
-          sourceIssueNumber: issue1.number,
-          targetIssueNumber: issue2.number,
-          mode: "create_new",
-          newTitle: "Combined Feature",
-          newDescription: "This is the merged description",
-        });
+        const result = await handleMergeIssues(
+          {
+            sourceIssueNumber: issue1.number,
+            targetIssueNumber: issue2.number,
+            mode: "create_new",
+            newTitle: "Combined Feature",
+            newDescription: "This is the merged description",
+          },
+          { cradle: ctx }
+        );
 
         expect(result.isError).toBeUndefined();
         const content = JSON.parse(result.content[0].text);
@@ -149,11 +157,14 @@ describe("Merge Tools Integration", () => {
         createTestTask(client.tasks, targetPlan.id, { title: "Target Task 1" });
 
         // Merge source into target
-        const result = await handleMergeIssues(ctx, {
-          sourceIssueNumber: sourceIssue.number,
-          targetIssueNumber: targetIssue.number,
-          mode: "merge_into",
-        });
+        const result = await handleMergeIssues(
+          {
+            sourceIssueNumber: sourceIssue.number,
+            targetIssueNumber: targetIssue.number,
+            mode: "merge_into",
+          },
+          { cradle: ctx }
+        );
 
         expect(result.isError).toBeUndefined();
         const content = JSON.parse(result.content[0].text);
@@ -185,11 +196,14 @@ describe("Merge Tools Integration", () => {
 
         const issue2 = createTestIssue(client.issues, { title: "Issue 2" });
 
-        const result = await handleMergeIssues(ctx, {
-          sourceIssueNumber: issue1.number,
-          targetIssueNumber: issue2.number,
-          mode: "create_new",
-        });
+        const result = await handleMergeIssues(
+          {
+            sourceIssueNumber: issue1.number,
+            targetIssueNumber: issue2.number,
+            mode: "create_new",
+          },
+          { cradle: ctx }
+        );
 
         expect(result.isError).toBeUndefined();
         const content = JSON.parse(result.content[0].text);
@@ -210,11 +224,14 @@ describe("Merge Tools Integration", () => {
 
         const issue2 = createTestIssue(client.issues, { title: "Issue 2" });
 
-        const result = await handleMergeIssues(ctx, {
-          sourceIssueNumber: issue1.number,
-          targetIssueNumber: issue2.number,
-          mode: "merge_into",
-        });
+        const result = await handleMergeIssues(
+          {
+            sourceIssueNumber: issue1.number,
+            targetIssueNumber: issue2.number,
+            mode: "merge_into",
+          },
+          { cradle: ctx }
+        );
 
         expect(result.isError).toBeUndefined();
         const content = JSON.parse(result.content[0].text);
@@ -230,11 +247,14 @@ describe("Merge Tools Integration", () => {
       it("should fail when trying to merge an issue with itself", async () => {
         const issue = createTestIssue(client.issues, { title: "Self Issue" });
 
-        const result = await handleMergeIssues(ctx, {
-          sourceIssueNumber: issue.number,
-          targetIssueNumber: issue.number,
-          mode: "merge_into",
-        });
+        const result = await handleMergeIssues(
+          {
+            sourceIssueNumber: issue.number,
+            targetIssueNumber: issue.number,
+            mode: "merge_into",
+          },
+          { cradle: ctx }
+        );
 
         expect(result.isError).toBe(true);
         const content = JSON.parse(result.content[0].text);
@@ -249,11 +269,14 @@ describe("Merge Tools Integration", () => {
         });
         const openIssue = createTestIssue(client.issues, { title: "Open Issue" });
 
-        const result = await handleMergeIssues(ctx, {
-          sourceIssueNumber: closedIssue.number,
-          targetIssueNumber: openIssue.number,
-          mode: "merge_into",
-        });
+        const result = await handleMergeIssues(
+          {
+            sourceIssueNumber: closedIssue.number,
+            targetIssueNumber: openIssue.number,
+            mode: "merge_into",
+          },
+          { cradle: ctx }
+        );
 
         expect(result.isError).toBe(true);
         const content = JSON.parse(result.content[0].text);
@@ -268,11 +291,14 @@ describe("Merge Tools Integration", () => {
           status: "CLOSED",
         });
 
-        const result = await handleMergeIssues(ctx, {
-          sourceIssueNumber: openIssue.number,
-          targetIssueNumber: closedIssue.number,
-          mode: "merge_into",
-        });
+        const result = await handleMergeIssues(
+          {
+            sourceIssueNumber: openIssue.number,
+            targetIssueNumber: closedIssue.number,
+            mode: "merge_into",
+          },
+          { cradle: ctx }
+        );
 
         expect(result.isError).toBe(true);
         const content = JSON.parse(result.content[0].text);
@@ -283,11 +309,14 @@ describe("Merge Tools Integration", () => {
       it("should fail when source issue does not exist", async () => {
         const issue = createTestIssue(client.issues, { title: "Existing Issue" });
 
-        const result = await handleMergeIssues(ctx, {
-          sourceIssueNumber: 9999,
-          targetIssueNumber: issue.number,
-          mode: "merge_into",
-        });
+        const result = await handleMergeIssues(
+          {
+            sourceIssueNumber: 9999,
+            targetIssueNumber: issue.number,
+            mode: "merge_into",
+          },
+          { cradle: ctx }
+        );
 
         expect(result.isError).toBe(true);
         const content = JSON.parse(result.content[0].text);
@@ -299,16 +328,19 @@ describe("Merge Tools Integration", () => {
         const issue1 = createTestIssue(client.issues, { title: "Issue 1" });
         const issue2 = createTestIssue(client.issues, { title: "Issue 2" });
 
-        const result = await handleMergeIssues(ctx, {
-          sourceIssueNumber: issue1.number,
-          targetIssueNumber: issue2.number,
-          mode: "invalid_mode" as any,
-        });
+        const result = await handleMergeIssues(
+          {
+            sourceIssueNumber: issue1.number,
+            targetIssueNumber: issue2.number,
+            mode: "invalid_mode" as any,
+          },
+          { cradle: ctx }
+        );
 
         expect(result.isError).toBe(true);
         const content = JSON.parse(result.content[0].text);
         expect(content.success).toBe(false);
-        expect(content.error).toContain("Invalid mode");
+        expect(content.error).toContain("Invalid enum value");
       });
     });
   });

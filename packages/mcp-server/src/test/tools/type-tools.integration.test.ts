@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { TypeService } from "@dev-workflow/core";
 import { createTestDatabase, type TestDatabase } from "../setup.js";
-import { handleListTypes, type TypeToolContext } from "../../tools/type-tools.js";
+import { handleListTypes } from "../../tools/type-tools.js";
 import {
   ListTypesSchema,
   CreateTypeSchema,
@@ -23,7 +23,8 @@ let testDb: TestDatabase;
 /**
  * Create a TypeToolContext for testing
  */
-function createTypeToolContext(testDb: TestDatabase): TypeToolContext {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createTypeToolContext(testDb: TestDatabase): any {
   const typeService = new TypeService(testDb.source.types);
 
   return {
@@ -44,7 +45,7 @@ describe("Type Tools Integration", () => {
     it("should return default types when database is empty", async () => {
       const ctx = createTypeToolContext(testDb);
 
-      const result = await handleListTypes(ctx);
+      const result = await handleListTypes({}, { cradle: ctx });
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -70,7 +71,7 @@ describe("Type Tools Integration", () => {
       });
 
       const ctx = createTypeToolContext(testDb);
-      const result = await handleListTypes(ctx);
+      const result = await handleListTypes({}, { cradle: ctx });
 
       const content = JSON.parse(result.content[0].text);
 
@@ -82,7 +83,7 @@ describe("Type Tools Integration", () => {
     it("should include name, description, and remoteLabel for each type", async () => {
       const ctx = createTypeToolContext(testDb);
 
-      const result = await handleListTypes(ctx);
+      const result = await handleListTypes({}, { cradle: ctx });
 
       const content = JSON.parse(result.content[0].text);
 
@@ -105,7 +106,7 @@ describe("Type Tools Integration", () => {
     it("should include helpful message about usage", async () => {
       const ctx = createTypeToolContext(testDb);
 
-      const result = await handleListTypes(ctx);
+      const result = await handleListTypes({}, { cradle: ctx });
 
       const content = JSON.parse(result.content[0].text);
 

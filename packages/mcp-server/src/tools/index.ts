@@ -1,5 +1,9 @@
 /**
  * MCP Tools - barrel export
+ *
+ * All tool handlers follow the pattern: (args, cradle) => ToolResponse
+ * where handlers destructure what they need from the cradle.
+ * Use createMcpHandler() or createNoArgsHandler() to wrap handlers.
  */
 
 // Types
@@ -26,7 +30,6 @@ export {
 
 // Issue handlers
 export {
-  type IssueToolContext,
   handleCreateIssue,
   handleGetIssue,
   handleListTemplates,
@@ -48,7 +51,6 @@ export {
 
 // Plan handlers
 export {
-  type PlanToolContext,
   handleGeneratePlan,
   handleGetPlan,
   handlePauseIssue,
@@ -59,7 +61,6 @@ export {
 
 // Task handlers
 export {
-  type TaskToolContext,
   handleLoadTaskSession,
   handleAbandonTask,
   handleGetTask,
@@ -74,18 +75,16 @@ export {
 
 // Snapshot handlers
 export {
-  type SnapshotToolContext,
   handleGetSnapshotHistory,
   handleRevertToSnapshot,
   handleViewSnapshot,
 } from "./snapshot-tools.js";
 
 // Settings handlers
-export { type SettingsToolContext, handleUpdateSettings } from "./settings-tools.js";
+export { handleUpdateSettings } from "./settings-tools.js";
 
 // Milestone handlers
 export {
-  type MilestoneToolContext,
   handleCreateMilestone,
   handleGetMilestone,
   handleListMilestones,
@@ -96,15 +95,10 @@ export {
 } from "./milestone-tools.js";
 
 // Worktree handlers
-export {
-  type WorktreeToolContext,
-  handleListWorktrees,
-  handlePruneStaleWorktrees,
-} from "./worktree-tools.js";
+export { handleListWorktrees, handlePruneStaleWorktrees } from "./worktree-tools.js";
 
 // PR handlers
 export {
-  type PRToolContext,
   handleGetTaskPRStatus,
   handleCreatePR,
   handleSubmitForReview,
@@ -112,11 +106,10 @@ export {
 } from "./pr-tools.js";
 
 // Merge handlers
-export { type MergeToolContext, handleMergeIssues } from "./merge-tools.js";
+export { handleMergeIssues } from "./merge-tools.js";
 
 // Type handlers
 export {
-  type TypeToolContext,
   handleListTypes,
   handleCreateType,
   handleUpdateType,
@@ -125,7 +118,6 @@ export {
 
 // Dispatch handlers (worker task assignment)
 export {
-  type DispatchToolContext,
   handleDispatchTask,
   handleGetDispatchStatus,
   handleEndWorkerSession,

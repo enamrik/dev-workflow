@@ -4,11 +4,22 @@
  * These tools use the global WorkerQueueDb (~/.track/worker-queue.db) for
  * worker registration and task dispatch. This is separate from the tracking
  * database to allow workers to run from any directory.
+ *
+ * Handlers follow the pattern: (args, cradle) => ToolResponse
+ * Each handler destructures what it needs from the cradle.
  */
 
-import type { TaskService, WorkerQueueDb } from "@dev-workflow/core";
+import type { WorkerQueueDb } from "@dev-workflow/core";
 import { DEFAULT_HEARTBEAT_THRESHOLD_SECONDS } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
+import { createMcpHandler, createNoArgsHandler, validateToolArgs } from "../di/bootstrap.js";
+import type { McpCradle } from "../di/container.js";
+import {
+  DispatchTaskSchema,
+  EndWorkerSessionSchema,
+  type DispatchTaskArgs,
+  type EndWorkerSessionArgs,
+} from "./schemas.js";
 
 /**
  * Tool definitions for dispatch operations
@@ -69,79 +80,9 @@ export const dispatchToolDefinitions: ToolDefinition[] = [
   },
 ];
 
-/**
- * Context required for dispatch tool handlers
- *
- * Uses WorkerQueueDb directly instead of per-project services.
- * The projectSlug is needed for enqueue operations.
- */
-export interface DispatchToolContext {
-  workerQueueDb: WorkerQueueDb;
-  taskService: TaskService;
-  projectSlug: string;
-}
-
-/**
- * Handle dispatch_task tool
- *
- * Adds a task to the dispatch queue for worker execution.
- * Returns success if queued, or indicates if already queued.
- */
-export function handleDispatchTask(
-  context: DispatchToolContext,
-  args: { taskId?: string }
-): ToolResponse {
-  const { taskId } = args;
-
-  if (!taskId) {
-    return errorResponse("taskId is required");
-  }
-
-  // Verify task exists
-  const task = context.taskService.findById(taskId);
-  if (!task) {
-    return errorResponse(`Task not found: ${taskId}`);
-  }
-
-  // Verify task is in a dispatchable state (BACKLOG or READY)
-  if (task.status !== "BACKLOG" && task.status !== "READY") {
-    return errorResponse(
-      `Task cannot be dispatched: status is ${task.status}. Only BACKLOG or READY tasks can be dispatched.`
-    );
-  }
-
-  // Get worker summary for the response (so Claude knows worker availability)
-  const workerSummary = getWorkerSummary(context);
-
-  // Check if already queued
-  const existing = context.workerQueueDb.findByTaskId(taskId);
-  if (existing) {
-    // Get the queue entry with health info and claiming worker if any
-    const queueEntry = getQueueEntryWithWorker(context, taskId);
-
-    return successResponse({
-      success: true,
-      alreadyQueued: true,
-      message: "Task was already in dispatch queue",
-      ...queueEntry,
-      workerSummary,
-    });
-  }
-
-  // Add to queue with projectSlug for worker to resolve the tracking database
-  context.workerQueueDb.enqueue(taskId, context.projectSlug);
-
-  // Get the queue entry with health info
-  const queueEntry = getQueueEntryWithWorker(context, taskId);
-
-  return successResponse({
-    success: true,
-    alreadyQueued: false,
-    message: "Task added to dispatch queue. A worker will pick it up.",
-    ...queueEntry,
-    workerSummary,
-  });
-}
+// =============================================================================
+// Helper Types
+// =============================================================================
 
 /**
  * Worker summary counts - alive workers only
@@ -174,61 +115,6 @@ interface QueueEntryWithWorker {
     heartbeatAge: number;
     currentTaskId: string | null;
   } | null;
-}
-
-/**
- * Get worker summary counts (alive workers only)
- */
-function getWorkerSummary(context: DispatchToolContext): WorkerSummary {
-  return context.workerQueueDb.getWorkerSummary(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
-}
-
-/**
- * Get queue entry for a task with the claiming worker if any
- */
-function getQueueEntryWithWorker(
-  context: DispatchToolContext,
-  taskId: string
-): QueueEntryWithWorker {
-  const entries = context.workerQueueDb.findAllEntriesWithHealth(
-    DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
-  );
-  const entry = entries.find((e) => e.taskId === taskId);
-
-  if (!entry) {
-    throw new Error(`Queue entry not found for task: ${taskId}`);
-  }
-
-  const queueEntry = {
-    taskId: entry.taskId,
-    status: entry.status,
-    workerId: entry.workerId,
-    workerName: entry.workerName,
-    claimedAt: entry.claimedAt,
-    isStale: entry.isStale,
-    createdAt: entry.createdAt,
-  };
-
-  // If claimed, get the worker details
-  let claimedByWorker = null;
-  if (entry.workerId) {
-    const workers = context.workerQueueDb.findAllWorkersWithHealth(
-      DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
-    );
-    const worker = workers.find((w) => w.id === entry.workerId);
-    if (worker) {
-      claimedByWorker = {
-        id: worker.id,
-        name: worker.name,
-        status: worker.status,
-        isAlive: worker.isAlive,
-        heartbeatAge: worker.heartbeatAge,
-        currentTaskId: worker.currentTaskId,
-      };
-    }
-  }
-
-  return { queueEntry, claimedByWorker };
 }
 
 /**
@@ -266,12 +152,67 @@ interface DispatchStatus {
   };
 }
 
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/**
+ * Get worker summary counts (alive workers only)
+ */
+function getWorkerSummary(workerQueueDb: WorkerQueueDb): WorkerSummary {
+  return workerQueueDb.getWorkerSummary(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
+}
+
+/**
+ * Get queue entry for a task with the claiming worker if any
+ */
+function getQueueEntryWithWorker(
+  workerQueueDb: WorkerQueueDb,
+  taskId: string
+): QueueEntryWithWorker {
+  const entries = workerQueueDb.findAllEntriesWithHealth(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
+  const entry = entries.find((e) => e.taskId === taskId);
+
+  if (!entry) {
+    throw new Error(`Queue entry not found for task: ${taskId}`);
+  }
+
+  const queueEntry = {
+    taskId: entry.taskId,
+    status: entry.status,
+    workerId: entry.workerId,
+    workerName: entry.workerName,
+    claimedAt: entry.claimedAt,
+    isStale: entry.isStale,
+    createdAt: entry.createdAt,
+  };
+
+  // If claimed, get the worker details
+  let claimedByWorker = null;
+  if (entry.workerId) {
+    const workers = workerQueueDb.findAllWorkersWithHealth(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
+    const worker = workers.find((w) => w.id === entry.workerId);
+    if (worker) {
+      claimedByWorker = {
+        id: worker.id,
+        name: worker.name,
+        status: worker.status,
+        isAlive: worker.isAlive,
+        heartbeatAge: worker.heartbeatAge,
+        currentTaskId: worker.currentTaskId,
+      };
+    }
+  }
+
+  return { queueEntry, claimedByWorker };
+}
+
 /**
  * Get full dispatch status - workers, queue, and stats
  * Used by both dispatch_task and get_dispatch_status for consistency
  */
-function getDispatchStatus(context: DispatchToolContext): DispatchStatus {
-  const workersWithHealth = context.workerQueueDb.findAllWorkersWithHealth(
+function getDispatchStatus(workerQueueDb: WorkerQueueDb): DispatchStatus {
+  const workersWithHealth = workerQueueDb.findAllWorkersWithHealth(
     DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
   );
 
@@ -286,12 +227,10 @@ function getDispatchStatus(context: DispatchToolContext): DispatchStatus {
   }));
 
   // Get worker summary (only alive workers)
-  const workerSummary = context.workerQueueDb.getWorkerSummary(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
+  const workerSummary = workerQueueDb.getWorkerSummary(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
 
   // Get dispatch queue
-  const queueEntries = context.workerQueueDb.findAllEntriesWithHealth(
-    DEFAULT_HEARTBEAT_THRESHOLD_SECONDS
-  );
+  const queueEntries = workerQueueDb.findAllEntriesWithHealth(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
   const queue = queueEntries.map((e) => ({
     taskId: e.taskId,
     status: e.status,
@@ -303,51 +242,117 @@ function getDispatchStatus(context: DispatchToolContext): DispatchStatus {
   }));
 
   // Queue stats
-  const queueStats = context.workerQueueDb.getQueueStats(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
+  const queueStats = workerQueueDb.getQueueStats(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
 
   return { workers, workerSummary, queue, queueStats };
 }
 
+// =============================================================================
+// Handler Implementations
+// =============================================================================
+
 /**
- * Handle get_dispatch_status tool
+ * Handle dispatch_task tool call
+ *
+ * Adds a task to the dispatch queue for worker execution.
+ * Returns success if queued, or indicates if already queued.
+ */
+function dispatchTaskHandler(
+  args: unknown,
+  {
+    workerQueueDb,
+    taskService,
+    projectSlug,
+  }: Pick<McpCradle, "workerQueueDb" | "taskService" | "projectSlug">
+): ToolResponse {
+  const validation = validateToolArgs<DispatchTaskArgs>(DispatchTaskSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { taskId } = validation.data;
+
+  // Verify task exists
+  const task = taskService.findById(taskId);
+  if (!task) {
+    return errorResponse(`Task not found: ${taskId}`);
+  }
+
+  // Verify task is in a dispatchable state (BACKLOG or READY)
+  if (task.status !== "BACKLOG" && task.status !== "READY") {
+    return errorResponse(
+      `Task cannot be dispatched: status is ${task.status}. Only BACKLOG or READY tasks can be dispatched.`
+    );
+  }
+
+  // Get worker summary for the response (so Claude knows worker availability)
+  const workerSummary = getWorkerSummary(workerQueueDb);
+
+  // Check if already queued
+  const existing = workerQueueDb.findByTaskId(taskId);
+  if (existing) {
+    // Get the queue entry with health info and claiming worker if any
+    const queueEntry = getQueueEntryWithWorker(workerQueueDb, taskId);
+
+    return successResponse({
+      success: true,
+      alreadyQueued: true,
+      message: "Task was already in dispatch queue",
+      ...queueEntry,
+      workerSummary,
+    });
+  }
+
+  // Add to queue with projectSlug for worker to resolve the tracking database
+  workerQueueDb.enqueue(taskId, projectSlug);
+
+  // Get the queue entry with health info
+  const queueEntry = getQueueEntryWithWorker(workerQueueDb, taskId);
+
+  return successResponse({
+    success: true,
+    alreadyQueued: false,
+    message: "Task added to dispatch queue. A worker will pick it up.",
+    ...queueEntry,
+    workerSummary,
+  });
+}
+
+/**
+ * Handle get_dispatch_status tool call
  *
  * Returns all registered workers with their status and health information.
  * Includes current task if the worker is working on one.
  * Also includes the dispatch queue so Claude can verify tasks are queued.
  */
-export function handleGetDispatchStatus(context: DispatchToolContext): ToolResponse {
-  return successResponse(getDispatchStatus(context));
+function getDispatchStatusHandler({
+  workerQueueDb,
+}: Pick<McpCradle, "workerQueueDb">): ToolResponse {
+  return successResponse(getDispatchStatus(workerQueueDb));
 }
 
 /**
- * Handle end_worker_session tool
+ * Handle end_worker_session tool call
  *
  * Signals that Claude is done with the worker session.
  * Sets the claudeDone flag on the dispatch queue entry.
  * This is the TERMINAL action - nothing happens after this.
  */
-export function handleEndWorkerSession(
-  context: DispatchToolContext,
-  args: { workerId?: string; taskId?: string }
+function endWorkerSessionHandler(
+  args: unknown,
+  { workerQueueDb, taskService }: Pick<McpCradle, "workerQueueDb" | "taskService">
 ): ToolResponse {
-  const { workerId, taskId } = args;
+  const validation = validateToolArgs<EndWorkerSessionArgs>(EndWorkerSessionSchema, args);
+  if (!validation.success) return validation.response;
 
-  if (!workerId) {
-    return errorResponse("workerId is required");
-  }
-
-  if (!taskId) {
-    return errorResponse("taskId is required");
-  }
+  const { workerId, taskId } = validation.data;
 
   // Verify task exists
-  const task = context.taskService.findById(taskId);
+  const task = taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
 
   // Find the queue entry
-  const entry = context.workerQueueDb.findByTaskId(taskId);
+  const entry = workerQueueDb.findByTaskId(taskId);
   if (!entry) {
     return errorResponse(
       `Task is not in the dispatch queue: ${taskId}. ` +
@@ -373,7 +378,7 @@ export function handleEndWorkerSession(
   }
 
   // Set the claudeDone flag
-  const updated = context.workerQueueDb.setClaudeDone(taskId, workerId);
+  const updated = workerQueueDb.setClaudeDone(taskId, workerId);
   if (!updated) {
     return errorResponse("Failed to set claudeDone flag. The queue entry may have been modified.");
   }
@@ -386,3 +391,11 @@ export function handleEndWorkerSession(
       "The worker process will terminate shortly.",
   });
 }
+
+// =============================================================================
+// Wrapped Handlers (for tool registry)
+// =============================================================================
+
+export const handleDispatchTask = createMcpHandler(dispatchTaskHandler);
+export const handleGetDispatchStatus = createNoArgsHandler(getDispatchStatusHandler);
+export const handleEndWorkerSession = createMcpHandler(endWorkerSessionHandler);

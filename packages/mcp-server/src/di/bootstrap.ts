@@ -48,11 +48,18 @@ export type McpMiddleware<TCradle extends object = McpCradle> = Middleware<
 >;
 
 /**
+ * A container-like object that provides a cradle.
+ * Can be a full AwilixContainer or a simple { cradle: T } for testing.
+ */
+export type ContainerLike<TCradle extends object> = AwilixContainer<TCradle> | { cradle: TCradle };
+
+/**
  * The final handler function signature.
+ * Accepts either a full AwilixContainer or a simple { cradle: T } for testing.
  */
 export type McpToolHandler<TCradle extends object = McpCradle> = (
   args: unknown,
-  container?: AwilixContainer<TCradle>
+  container?: ContainerLike<TCradle>
 ) => Promise<ToolResponse>;
 
 // =============================================================================
@@ -163,9 +170,9 @@ export function createMcpHandler<TCradle extends object = McpCradle>(
   handler: McpHandler<TCradle>,
   middleware?: McpMiddleware<TCradle>
 ): McpToolHandler<TCradle> {
-  return async (args: unknown, container?: AwilixContainer<TCradle>): Promise<ToolResponse> => {
+  return async (args: unknown, container?: ContainerLike<TCradle>): Promise<ToolResponse> => {
     // Use provided container or fall back to default
-    const resolvedContainer = container ?? (getContainer() as AwilixContainer<TCradle>);
+    const resolvedContainer = container ?? (getContainer() as ContainerLike<TCradle>);
 
     try {
       // Run middleware chain first

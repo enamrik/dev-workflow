@@ -15,7 +15,6 @@ import {
   handleDispatchTask,
   handleGetDispatchStatus,
   handleEndWorkerSession,
-  type DispatchToolContext,
 } from "../../tools/dispatch-tools.js";
 import {
   DispatchTaskSchema,
@@ -26,7 +25,8 @@ import {
 describe("Dispatch Tools Integration", () => {
   let testDb: TestDatabase;
   let client: DbClient;
-  let ctx: DispatchToolContext;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let ctx: any; // Cradle-like object passed to handlers
   let workerQueueDbPath: string;
   let workerQueueDb: GlobalDbWorkerQueueDb;
 
@@ -61,8 +61,8 @@ describe("Dispatch Tools Integration", () => {
   });
 
   describe("handleGetDispatchStatus", () => {
-    it("should return empty workers and queue when none exist", () => {
-      const result = handleGetDispatchStatus(ctx);
+    it("should return empty workers and queue when none exist", async () => {
+      const result = await handleGetDispatchStatus({}, { cradle: ctx });
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -83,13 +83,13 @@ describe("Dispatch Tools Integration", () => {
       });
     });
 
-    it("should return registered workers with their status", () => {
+    it("should return registered workers with their status", async () => {
       // Register workers using workerQueueDb
       workerQueueDb.registerWorker("worker-1", "worker-1");
       workerQueueDb.registerWorker("worker-2", "worker-2");
       workerQueueDb.updateStatus("worker-2", "WORKING");
 
-      const result = handleGetDispatchStatus(ctx);
+      const result = await handleGetDispatchStatus({}, { cradle: ctx });
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -112,7 +112,7 @@ describe("Dispatch Tools Integration", () => {
       expect(content.workerSummary.working).toBe(1);
     });
 
-    it("should include dispatch queue entries", () => {
+    it("should include dispatch queue entries", async () => {
       // Create issue, plan, and task
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
@@ -124,7 +124,7 @@ describe("Dispatch Tools Integration", () => {
       // Enqueue task using workerQueueDb
       workerQueueDb.enqueue(task.id, "test-project");
 
-      const result = handleGetDispatchStatus(ctx);
+      const result = await handleGetDispatchStatus({}, { cradle: ctx });
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -138,7 +138,7 @@ describe("Dispatch Tools Integration", () => {
       expect(content.queueStats.unclaimed).toBe(1);
     });
 
-    it("should show current task for workers that have claimed tasks", () => {
+    it("should show current task for workers that have claimed tasks", async () => {
       // Create issue, plan, and task
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
@@ -154,7 +154,7 @@ describe("Dispatch Tools Integration", () => {
       workerQueueDb.enqueue(task.id, "test-project");
       workerQueueDb.claimTask("worker-1");
 
-      const result = handleGetDispatchStatus(ctx);
+      const result = await handleGetDispatchStatus({}, { cradle: ctx });
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -172,7 +172,7 @@ describe("Dispatch Tools Integration", () => {
   });
 
   describe("handleDispatchTask", () => {
-    it("should dispatch a task and return queue entry", () => {
+    it("should dispatch a task and return queue entry", async () => {
       // Create issue, plan, and task
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
@@ -181,7 +181,7 @@ describe("Dispatch Tools Integration", () => {
         status: "BACKLOG",
       });
 
-      const result = handleDispatchTask(ctx, { taskId: task.id });
+      const result = await handleDispatchTask({ taskId: task.id }, { cradle: ctx });
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -199,7 +199,7 @@ describe("Dispatch Tools Integration", () => {
       expect(content.claimedByWorker).toBeNull();
     });
 
-    it("should return alreadyQueued=true for duplicate dispatch", () => {
+    it("should return alreadyQueued=true for duplicate dispatch", async () => {
       // Create issue, plan, and task
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
@@ -209,8 +209,8 @@ describe("Dispatch Tools Integration", () => {
       });
 
       // Dispatch task twice
-      handleDispatchTask(ctx, { taskId: task.id });
-      const result = handleDispatchTask(ctx, { taskId: task.id });
+      await handleDispatchTask({ taskId: task.id }, { cradle: ctx });
+      const result = await handleDispatchTask({ taskId: task.id }, { cradle: ctx });
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -220,7 +220,7 @@ describe("Dispatch Tools Integration", () => {
       expect(content.queueEntry).toBeDefined();
     });
 
-    it("should return claimedByWorker when task is claimed", () => {
+    it("should return claimedByWorker when task is claimed", async () => {
       // Create issue, plan, and task
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
@@ -235,7 +235,7 @@ describe("Dispatch Tools Integration", () => {
       workerQueueDb.claimTask("worker-1");
 
       // Dispatch again (already queued and claimed)
-      const result = handleDispatchTask(ctx, { taskId: task.id });
+      const result = await handleDispatchTask({ taskId: task.id }, { cradle: ctx });
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -251,7 +251,7 @@ describe("Dispatch Tools Integration", () => {
       expect(content.claimedByWorker.isAlive).toBe(true);
     });
 
-    it("should reject dispatch for non-BACKLOG/READY tasks", () => {
+    it("should reject dispatch for non-BACKLOG/READY tasks", async () => {
       // Create issue, plan, and task with IN_PROGRESS status
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
@@ -262,15 +262,15 @@ describe("Dispatch Tools Integration", () => {
       // Start the task so it's IN_PROGRESS
       client.tasks.updateStatus(task.id, "IN_PROGRESS", "test-session", "Started");
 
-      const result = handleDispatchTask(ctx, { taskId: task.id });
+      const result = await handleDispatchTask({ taskId: task.id }, { cradle: ctx });
 
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
       expect(content.error).toContain("IN_PROGRESS");
     });
 
-    it("should reject dispatch for non-existent task", () => {
-      const result = handleDispatchTask(ctx, { taskId: "non-existent-uuid" });
+    it("should reject dispatch for non-existent task", async () => {
+      const result = await handleDispatchTask({ taskId: "non-existent-uuid" }, { cradle: ctx });
 
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
@@ -279,7 +279,7 @@ describe("Dispatch Tools Integration", () => {
   });
 
   describe("handleEndWorkerSession", () => {
-    it("should set claudeDone flag for a worker's task", () => {
+    it("should set claudeDone flag for a worker's task", async () => {
       // Create issue, plan, and task
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
@@ -293,10 +293,13 @@ describe("Dispatch Tools Integration", () => {
       workerQueueDb.enqueue(task.id, "test-project");
       workerQueueDb.claimTask("worker-1");
 
-      const result = handleEndWorkerSession(ctx, {
-        workerId: "worker-1",
-        taskId: task.id,
-      });
+      const result = await handleEndWorkerSession(
+        {
+          workerId: "worker-1",
+          taskId: task.id,
+        },
+        { cradle: ctx }
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -309,7 +312,7 @@ describe("Dispatch Tools Integration", () => {
       expect(entry?.claudeDone).toBe(true);
     });
 
-    it("should reject end_worker_session with wrong workerId", () => {
+    it("should reject end_worker_session with wrong workerId", async () => {
       // Create issue, plan, and task
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
@@ -324,10 +327,13 @@ describe("Dispatch Tools Integration", () => {
       workerQueueDb.claimTask("worker-1");
 
       // Try to end with wrong worker ID
-      const result = handleEndWorkerSession(ctx, {
-        workerId: "wrong-worker-id",
-        taskId: task.id,
-      });
+      const result = await handleEndWorkerSession(
+        {
+          workerId: "wrong-worker-id",
+          taskId: task.id,
+        },
+        { cradle: ctx }
+      );
 
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);

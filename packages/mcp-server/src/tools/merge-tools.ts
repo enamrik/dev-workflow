@@ -2,10 +2,15 @@
  * Merge-related MCP tools
  *
  * Provides the merge_issues tool for combining two issues into one.
+ * Handlers follow the pattern: (args, cradle) => ToolResponse
+ * Each handler destructures what it needs from the cradle.
  */
 
-import { MergeValidationError, type MergeMode, type MergeService } from "@dev-workflow/core";
+import { MergeValidationError } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
+import { createMcpHandler, validateToolArgs } from "../di/bootstrap.js";
+import type { McpCradle } from "../di/container.js";
+import { MergeIssuesSchema, type MergeIssuesArgs } from "./schemas.js";
 
 /**
  * Tool definitions for merge operations
@@ -52,23 +57,9 @@ export const mergeToolDefinitions: ToolDefinition[] = [
   },
 ];
 
-/**
- * Service context for merge handlers
- */
-export interface MergeToolContext {
-  mergeService: MergeService;
-}
-
-/**
- * Arguments for merge_issues tool
- */
-interface MergeIssuesArgs {
-  sourceIssueNumber: number;
-  targetIssueNumber: number;
-  mode: MergeMode;
-  newTitle?: string;
-  newDescription?: string;
-}
+// =============================================================================
+// Handler Implementations
+// =============================================================================
 
 /**
  * Handle merge_issues tool call
@@ -76,11 +67,14 @@ interface MergeIssuesArgs {
  * Creates a MergeService instance and executes the merge operation.
  * Returns structured result with the merged issue, task count, and any warnings.
  */
-export async function handleMergeIssues(
-  ctx: MergeToolContext,
-  args: MergeIssuesArgs
+async function mergeIssuesHandler(
+  args: unknown,
+  { mergeService }: Pick<McpCradle, "mergeService">
 ): Promise<ToolResponse> {
-  const { sourceIssueNumber, targetIssueNumber, mode, newTitle, newDescription } = args;
+  const validation = validateToolArgs<MergeIssuesArgs>(MergeIssuesSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { sourceIssueNumber, targetIssueNumber, mode, newTitle, newDescription } = validation.data;
 
   // Validate mode
   if (mode !== "create_new" && mode !== "merge_into") {
@@ -88,7 +82,7 @@ export async function handleMergeIssues(
   }
 
   try {
-    const result = await ctx.mergeService.merge({
+    const result = await mergeService.merge({
       sourceIssueNumber,
       targetIssueNumber,
       mode,
@@ -132,3 +126,9 @@ export async function handleMergeIssues(
     return errorResponse(error instanceof Error ? error.message : String(error));
   }
 }
+
+// =============================================================================
+// Wrapped Handlers (for tool registry)
+// =============================================================================
+
+export const handleMergeIssues = createMcpHandler(mergeIssuesHandler);

@@ -3,30 +3,20 @@
  *
  * Provides configuration for project settings, primarily GitHub integration.
  * Settings are stored in the projects table in the database.
+ *
+ * Handlers follow the pattern: (args, cradle) => ToolResponse
+ * Each handler destructures what it needs from the cradle.
  */
 
 import {
   DEFAULT_COLUMN_MAPPING,
-  type DbSource,
-  type GitHubCLI,
   type GitHubIssueSyncConfig,
-  type Project,
   type StatusColumnMapping,
-  type ProviderRegistry,
-  type TypeService,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
-
-/**
- * Type for GitHub labels configuration (used in tool arguments)
- *
- * typeLabels is a Record<string, string> to support user-defined types.
- * The keys are validated against active types in the database at runtime.
- */
-interface GitHubLabels {
-  typeLabels?: Record<string, string>;
-  customLabels?: string[];
-}
+import { UpdateSettingsSchema, type UpdateSettingsArgs } from "./schemas.js";
+import { createMcpHandler, validateToolArgs } from "../di/bootstrap.js";
+import type { McpCradle } from "../di/container.js";
 
 /**
  * Tool definitions for settings operations
@@ -123,47 +113,12 @@ export const settingsToolDefinitions: ToolDefinition[] = [
 ];
 
 /**
- * Service context for settings handlers
- *
- * Uses project and projectRepository to store GitHub sync config
- * in the projects table. Includes providerRegistry for provider validation.
- */
-export interface SettingsToolContext {
-  project: Project;
-  source: DbSource; // For accessing global repositories (projects, types)
-  githubCLI: GitHubCLI;
-  gitRoot: string; // From env var, not database (machine-specific)
-  providerRegistry: ProviderRegistry; // For validating available providers
-  typeService: TypeService; // For validating typeLabels against active types
-}
-
-/**
- * Arguments for update_settings tool
- */
-interface UpdateSettingsArgs {
-  action:
-    | "get_settings"
-    | "enable_github"
-    | "disable_github"
-    | "configure_github"
-    | "configure_column_mapping"
-    | "list_available_labels";
-  github?: {
-    projectId?: string;
-    assignee?: string;
-    labels?: Partial<GitHubLabels>;
-    columnMapping?: Partial<StatusColumnMapping>;
-  };
-  resetColumnMapping?: boolean;
-}
-
-/**
  * Validate typeLabels keys against active types in the database
  *
  * Returns null if all types are valid, error message if any are invalid.
  */
 async function validateTypeLabels(
-  typeService: TypeService,
+  typeService: McpCradle["typeService"],
   typeLabels: Record<string, string>
 ): Promise<string | null> {
   const providedTypes = Object.keys(typeLabels);
@@ -219,40 +174,9 @@ function validateGitHubUsername(username: string): string | null {
   return null;
 }
 
-/**
- * Handle update_settings tool call
- *
- * Routes to appropriate handler based on action.
- */
-export async function handleUpdateSettings(
-  ctx: SettingsToolContext,
-  args: UpdateSettingsArgs
-): Promise<ToolResponse> {
-  const { action, github, resetColumnMapping } = args;
-
-  switch (action) {
-    case "get_settings":
-      return handleGetSettings(ctx);
-
-    case "enable_github":
-      return handleEnableGitHub(ctx, github);
-
-    case "disable_github":
-      return handleDisableGitHub(ctx);
-
-    case "configure_github":
-      return handleConfigureGitHub(ctx, github);
-
-    case "configure_column_mapping":
-      return handleConfigureColumnMapping(ctx, github?.columnMapping, resetColumnMapping);
-
-    case "list_available_labels":
-      return handleListAvailableLabels(ctx);
-
-    default:
-      return errorResponse(`Unknown action: ${action}`);
-  }
-}
+// =============================================================================
+// Internal Helper Handlers
+// =============================================================================
 
 /**
  * Get current settings and gh CLI status
@@ -260,26 +184,32 @@ export async function handleUpdateSettings(
  * Re-fetches project from database to ensure we have the latest config
  * (ctx.project may be stale if settings were updated in this session).
  */
-async function handleGetSettings(ctx: SettingsToolContext): Promise<ToolResponse> {
+async function handleGetSettings(
+  dbSource: McpCradle["dbSource"],
+  project: McpCradle["project"],
+  config: McpCradle["config"],
+  githubCLI: McpCradle["githubCLI"],
+  providerRegistry: McpCradle["providerRegistry"]
+): Promise<ToolResponse> {
   try {
     // Re-fetch project from database to get latest config
-    const project = await ctx.source.projects.findById(ctx.project.id);
-    if (!project) {
-      return errorResponse(`Project not found: ${ctx.project.id}`);
+    const latestProject = await dbSource.projects.findById(project.id);
+    if (!latestProject) {
+      return errorResponse(`Project not found: ${project.id}`);
     }
 
-    const isGitHubAuthenticated = await ctx.githubCLI.checkAuth();
+    const isGitHubAuthenticated = await githubCLI.checkAuth();
 
     // Build effective column mapping (defaults + any custom overrides)
-    const effectiveColumnMapping = project.githubSync
+    const effectiveColumnMapping = latestProject.githubSync
       ? {
           ...DEFAULT_COLUMN_MAPPING,
-          ...(project.githubSync.columnMapping ?? {}),
+          ...(latestProject.githubSync.columnMapping ?? {}),
         }
       : null;
 
     // Get available providers from registry
-    const availableProviders = ctx.providerRegistry.list(ctx).map((p) => ({
+    const availableProviders = providerRegistry.list({ githubCLI }).map((p) => ({
       id: p.providerId,
       name: p.displayName,
       available: p.available,
@@ -287,24 +217,24 @@ async function handleGetSettings(ctx: SettingsToolContext): Promise<ToolResponse
     }));
 
     return successResponse({
-      projectId: project.id,
-      projectName: project.name,
-      gitRoot: ctx.gitRoot,
-      gitRootHash: project.gitRootHash,
+      projectId: latestProject.id,
+      projectName: latestProject.name,
+      gitRoot: config.gitRoot,
+      gitRootHash: latestProject.gitRootHash,
       // Provider abstraction info
       providers: {
         available: availableProviders,
-        current: project.githubSync?.enabled ? "github" : null,
+        current: latestProject.githubSync?.enabled ? "github" : null,
       },
       // GitHub-specific config (backwards compatible)
-      github: project.githubSync
+      github: latestProject.githubSync
         ? {
-            syncIssues: project.githubSync,
-            assignee: project.githubSync.assignee ?? null,
+            syncIssues: latestProject.githubSync,
+            assignee: latestProject.githubSync.assignee ?? null,
             columnMapping: {
               effective: effectiveColumnMapping,
-              custom: project.githubSync.columnMapping,
-              isDefault: !project.githubSync.columnMapping,
+              custom: latestProject.githubSync.columnMapping,
+              isDefault: !latestProject.githubSync.columnMapping,
             },
           }
         : null,
@@ -319,26 +249,22 @@ async function handleGetSettings(ctx: SettingsToolContext): Promise<ToolResponse
 
 /**
  * Enable GitHub integration with full validation
- *
- * Validates:
- * 1. gh CLI authentication
- * 2. Current directory is a GitHub repository
- * 3. Project accessibility (if projectId provided)
- *
- * Repository owner/repo are auto-detected from git remotes.
  */
 async function handleEnableGitHub(
-  ctx: SettingsToolContext,
+  dbSource: McpCradle["dbSource"],
+  project: McpCradle["project"],
+  githubCLI: McpCradle["githubCLI"],
+  typeService: McpCradle["typeService"],
   github?: UpdateSettingsArgs["github"]
 ): Promise<ToolResponse> {
   // Step 1: Check gh CLI authentication
-  const isAuthenticated = await ctx.githubCLI.checkAuth();
+  const isAuthenticated = await githubCLI.checkAuth();
   if (!isAuthenticated) {
     return errorResponse("GitHub CLI (gh) is not authenticated. Run 'gh auth login' first.");
   }
 
   // Step 2: Verify we're in a GitHub repository and get repo URL
-  const isGitHubRepo = await ctx.githubCLI.checkCurrentRepository();
+  const isGitHubRepo = await githubCLI.checkCurrentRepository();
   if (!isGitHubRepo) {
     return errorResponse(
       "Not in a GitHub repository. Ensure this directory is a git repo with a GitHub remote."
@@ -346,12 +272,12 @@ async function handleEnableGitHub(
   }
 
   // Get the repository URL for linking
-  const repoUrl = await ctx.githubCLI.getRepoUrl();
+  const repoUrl = await githubCLI.getRepoUrl();
 
   // Step 3: Verify project if provided and get URL
   let projectUrl: string | undefined;
   if (github?.projectId) {
-    const projectDetails = await ctx.githubCLI.getProjectDetails(github.projectId);
+    const projectDetails = await githubCLI.getProjectDetails(github.projectId);
     if (!projectDetails) {
       return errorResponse(
         `GitHub Project ${github.projectId} not found or not accessible. ` +
@@ -372,7 +298,7 @@ async function handleEnableGitHub(
   // Step 5: Validate typeLabels against active types if provided
   if (github?.labels?.typeLabels) {
     const typeValidationError = await validateTypeLabels(
-      ctx.typeService,
+      typeService,
       github.labels.typeLabels as Record<string, string>
     );
     if (typeValidationError) {
@@ -409,7 +335,7 @@ async function handleEnableGitHub(
 
   try {
     // Update project in database with GitHub sync config
-    ctx.source.projects.update(ctx.project.id, { githubSync: syncConfig });
+    dbSource.projects.update(project.id, { githubSync: syncConfig });
 
     return successResponse({
       success: true,
@@ -426,19 +352,22 @@ async function handleEnableGitHub(
 /**
  * Disable GitHub issue sync
  */
-async function handleDisableGitHub(ctx: SettingsToolContext): Promise<ToolResponse> {
+async function handleDisableGitHub(
+  dbSource: McpCradle["dbSource"],
+  project: McpCradle["project"]
+): Promise<ToolResponse> {
   try {
     // Re-fetch project from database to get latest config
-    const project = await ctx.source.projects.findById(ctx.project.id);
-    if (!project) {
-      return errorResponse(`Project not found: ${ctx.project.id}`);
+    const latestProject = await dbSource.projects.findById(project.id);
+    if (!latestProject) {
+      return errorResponse(`Project not found: ${project.id}`);
     }
 
-    const currentSync = project.githubSync;
+    const currentSync = latestProject.githubSync;
 
     if (currentSync) {
       // Preserve config but set enabled to false
-      await ctx.source.projects.update(project.id, {
+      await dbSource.projects.update(latestProject.id, {
         githubSync: { ...currentSync, enabled: false },
       });
     }
@@ -454,12 +383,12 @@ async function handleDisableGitHub(ctx: SettingsToolContext): Promise<ToolRespon
 
 /**
  * Update GitHub issue sync configuration without re-validating repository access
- *
- * Use this for updating labels, projectId, etc. after initial setup.
- * If changing projectId, validates the new project.
  */
 async function handleConfigureGitHub(
-  ctx: SettingsToolContext,
+  dbSource: McpCradle["dbSource"],
+  project: McpCradle["project"],
+  githubCLI: McpCradle["githubCLI"],
+  typeService: McpCradle["typeService"],
   github?: UpdateSettingsArgs["github"]
 ): Promise<ToolResponse> {
   if (!github) {
@@ -468,12 +397,12 @@ async function handleConfigureGitHub(
 
   try {
     // Re-fetch project from database to get latest config
-    const project = await ctx.source.projects.findById(ctx.project.id);
-    if (!project) {
-      return errorResponse(`Project not found: ${ctx.project.id}`);
+    const latestProject = await dbSource.projects.findById(project.id);
+    if (!latestProject) {
+      return errorResponse(`Project not found: ${project.id}`);
     }
 
-    const currentSync = project.githubSync;
+    const currentSync = latestProject.githubSync;
 
     if (!currentSync) {
       return errorResponse("GitHub issue sync is not enabled. Use enable_github action first.");
@@ -482,7 +411,7 @@ async function handleConfigureGitHub(
     // If projectId is being added/changed, validate it and get URL
     let projectUrl = currentSync.projectUrl;
     if (github.projectId && github.projectId !== currentSync.projectId) {
-      const projectDetails = await ctx.githubCLI.getProjectDetails(github.projectId);
+      const projectDetails = await githubCLI.getProjectDetails(github.projectId);
       if (!projectDetails) {
         return errorResponse(`GitHub Project ${github.projectId} not found or not accessible.`);
       }
@@ -500,7 +429,7 @@ async function handleConfigureGitHub(
     // Validate typeLabels against active types if provided
     if (github.labels?.typeLabels) {
       const typeValidationError = await validateTypeLabels(
-        ctx.typeService,
+        typeService,
         github.labels.typeLabels as Record<string, string>
       );
       if (typeValidationError) {
@@ -546,7 +475,7 @@ async function handleConfigureGitHub(
     };
 
     // Update project in database
-    await ctx.source.projects.update(project.id, { githubSync: updatedConfig });
+    await dbSource.projects.update(latestProject.id, { githubSync: updatedConfig });
 
     return successResponse({
       success: true,
@@ -560,24 +489,21 @@ async function handleConfigureGitHub(
 
 /**
  * Configure status-to-column mapping for project boards
- *
- * Allows teams to customize which project board columns correspond to each
- * task status. For example, teams might use different column names than
- * our defaults ("In Review" vs "PR Review", "Backlog" vs "To Do", etc.)
  */
 async function handleConfigureColumnMapping(
-  ctx: SettingsToolContext,
+  dbSource: McpCradle["dbSource"],
+  project: McpCradle["project"],
   columnMapping?: Partial<StatusColumnMapping>,
   resetColumnMapping?: boolean
 ): Promise<ToolResponse> {
   try {
     // Re-fetch project from database to get latest config
-    const project = await ctx.source.projects.findById(ctx.project.id);
-    if (!project) {
-      return errorResponse(`Project not found: ${ctx.project.id}`);
+    const latestProject = await dbSource.projects.findById(project.id);
+    if (!latestProject) {
+      return errorResponse(`Project not found: ${project.id}`);
     }
 
-    const currentSync = project.githubSync;
+    const currentSync = latestProject.githubSync;
 
     if (!currentSync) {
       return errorResponse("GitHub issue sync is not enabled. Use enable_github action first.");
@@ -590,7 +516,7 @@ async function handleConfigureColumnMapping(
         columnMapping: undefined, // Remove custom mapping, will use defaults
       };
 
-      await ctx.source.projects.update(project.id, { githubSync: updatedConfig });
+      await dbSource.projects.update(latestProject.id, { githubSync: updatedConfig });
 
       return successResponse({
         success: true,
@@ -628,7 +554,7 @@ async function handleConfigureColumnMapping(
       columnMapping: mergedMapping,
     };
 
-    await ctx.source.projects.update(project.id, { githubSync: updatedConfig });
+    await dbSource.projects.update(latestProject.id, { githubSync: updatedConfig });
 
     // Show the effective mapping (defaults + custom)
     const effectiveMapping = {
@@ -650,32 +576,28 @@ async function handleConfigureColumnMapping(
 
 /**
  * List available labels from the project management provider
- *
- * Returns the available label fields that can be set on issues and tasks.
- * The available labels depend on the configured project management provider
- * (e.g., custom fields for GitHub Projects, excluding Status).
- * Each label includes its name and valid values (if constrained).
- *
- * Use this to discover what labels are available before setting them
- * on issues or tasks. The returned label names can be used as keys
- * in the labels parameter of create_issue, update_issue, or update_task.
  */
-async function handleListAvailableLabels(ctx: SettingsToolContext): Promise<ToolResponse> {
+async function handleListAvailableLabels(
+  dbSource: McpCradle["dbSource"],
+  project: McpCradle["project"],
+  githubCLI: McpCradle["githubCLI"],
+  providerRegistry: McpCradle["providerRegistry"]
+): Promise<ToolResponse> {
   try {
     // Re-fetch project from database to get latest config
-    const project = await ctx.source.projects.findById(ctx.project.id);
-    if (!project) {
-      return errorResponse(`Project not found: ${ctx.project.id}`);
+    const latestProject = await dbSource.projects.findById(project.id);
+    if (!latestProject) {
+      return errorResponse(`Project not found: ${project.id}`);
     }
 
-    const currentSync = project.githubSync;
+    const currentSync = latestProject.githubSync;
 
     if (!currentSync?.enabled) {
       return errorResponse("GitHub issue sync is not enabled. Use enable_github action first.");
     }
 
     // Create provider to query available labels
-    const provider = ctx.providerRegistry.createProvider(project, ctx);
+    const provider = providerRegistry.createProvider(latestProject, { githubCLI });
 
     const result = await provider.getAvailableLabels();
 
@@ -705,3 +627,66 @@ async function handleListAvailableLabels(ctx: SettingsToolContext): Promise<Tool
     return errorResponse(error instanceof Error ? error.message : String(error));
   }
 }
+
+// =============================================================================
+// Handler Implementation
+// =============================================================================
+
+/**
+ * Handle update_settings tool call
+ *
+ * Routes to appropriate handler based on action.
+ */
+async function updateSettingsHandler(
+  args: unknown,
+  {
+    project,
+    config,
+    dbSource,
+    githubCLI,
+    providerRegistry,
+    typeService,
+  }: Pick<
+    McpCradle,
+    "project" | "config" | "dbSource" | "githubCLI" | "providerRegistry" | "typeService"
+  >
+): Promise<ToolResponse> {
+  const validation = validateToolArgs<UpdateSettingsArgs>(UpdateSettingsSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { action, github, resetColumnMapping } = validation.data;
+
+  switch (action) {
+    case "get_settings":
+      return handleGetSettings(dbSource, project, config, githubCLI, providerRegistry);
+
+    case "enable_github":
+      return handleEnableGitHub(dbSource, project, githubCLI, typeService, github);
+
+    case "disable_github":
+      return handleDisableGitHub(dbSource, project);
+
+    case "configure_github":
+      return handleConfigureGitHub(dbSource, project, githubCLI, typeService, github);
+
+    case "configure_column_mapping":
+      return handleConfigureColumnMapping(
+        dbSource,
+        project,
+        github?.columnMapping,
+        resetColumnMapping
+      );
+
+    case "list_available_labels":
+      return handleListAvailableLabels(dbSource, project, githubCLI, providerRegistry);
+
+    default:
+      return errorResponse(`Unknown action: ${action}`);
+  }
+}
+
+// =============================================================================
+// Wrapped Handlers (for tool registry)
+// =============================================================================
+
+export const handleUpdateSettings = createMcpHandler(updateSettingsHandler);

@@ -31,7 +31,6 @@ import {
   handleCloseIssue,
   handleImportGitHubIssue,
   handleGetIssue,
-  type IssueToolContext,
 } from "../../tools/issue-tools.js";
 import {
   CreateIssueSchema,
@@ -46,13 +45,14 @@ import {
 const TEST_PROJECT_ID = "test-project-integration";
 
 /**
- * Create a full IssueToolContext for testing
+ * Create a cradle-like context for testing handlers
  */
 async function createIssueToolContext(
   testDb: TestDatabase,
   workerQueueDb: GlobalDbWorkerQueueDb
 ): Promise<{
-  ctx: IssueToolContext;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: any;
   client: DbClient;
 }> {
   // Create project first to get the generated ID
@@ -111,7 +111,8 @@ async function createIssueToolContext(
 
 describe("Issue Tools Integration", () => {
   let testDb: TestDatabase;
-  let ctx: IssueToolContext;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let ctx: any; // Cradle-like object passed to handlers
   let client: DbClient;
   let workerQueueDbPath: string;
   let workerQueueDb: GlobalDbWorkerQueueDb;
@@ -143,10 +144,13 @@ describe("Issue Tools Integration", () => {
 
   describe("handleCreateIssue", () => {
     it("should create an issue with default values", async () => {
-      const result = await handleCreateIssue(ctx, {
-        title: "Test Issue",
-        description: "Test description",
-      });
+      const result = await handleCreateIssue(
+        {
+          title: "Test Issue",
+          description: "Test description",
+        },
+        { cradle: ctx }
+      );
 
       expect(result.isError).toBeUndefined(); // Success responses don't set isError
       const content = JSON.parse(result.content[0].text);
@@ -163,12 +167,15 @@ describe("Issue Tools Integration", () => {
     });
 
     it("should create an issue with custom type and priority", async () => {
-      const result = await handleCreateIssue(ctx, {
-        title: "Bug Report",
-        description: "Something is broken",
-        type: "BUG",
-        priority: "HIGH",
-      });
+      const result = await handleCreateIssue(
+        {
+          title: "Bug Report",
+          description: "Something is broken",
+          type: "BUG",
+          priority: "HIGH",
+        },
+        { cradle: ctx }
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -177,11 +184,14 @@ describe("Issue Tools Integration", () => {
     });
 
     it("should create an issue with acceptance criteria", async () => {
-      const result = await handleCreateIssue(ctx, {
-        title: "Feature with AC",
-        description: "Feature description",
-        acceptanceCriteria: ["AC 1", "AC 2", "AC 3"],
-      });
+      const result = await handleCreateIssue(
+        {
+          title: "Feature with AC",
+          description: "Feature description",
+          acceptanceCriteria: ["AC 1", "AC 2", "AC 3"],
+        },
+        { cradle: ctx }
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -195,20 +205,26 @@ describe("Issue Tools Integration", () => {
   describe("handleUpdateIssue", () => {
     it("should update issue title and description", async () => {
       // Create an issue first
-      const createResult = await handleCreateIssue(ctx, {
-        title: "Original Title",
-        description: "Original description",
-      });
+      const createResult = await handleCreateIssue(
+        {
+          title: "Original Title",
+          description: "Original description",
+        },
+        { cradle: ctx }
+      );
       const created = JSON.parse(createResult.content[0].text);
 
       // Update it
-      const updateResult = await handleUpdateIssue(ctx, {
-        issueNumber: created.issue.number,
-        updates: {
-          title: "Updated Title",
-          description: "Updated description",
+      const updateResult = await handleUpdateIssue(
+        {
+          issueNumber: created.issue.number,
+          updates: {
+            title: "Updated Title",
+            description: "Updated description",
+          },
         },
-      });
+        { cradle: ctx }
+      );
 
       expect(updateResult.isError).toBeUndefined();
       const content = JSON.parse(updateResult.content[0].text);
@@ -221,10 +237,13 @@ describe("Issue Tools Integration", () => {
     });
 
     it("should return error for non-existent issue", async () => {
-      const result = await handleUpdateIssue(ctx, {
-        issueNumber: 99999,
-        updates: { title: "Won't work" },
-      });
+      const result = await handleUpdateIssue(
+        {
+          issueNumber: 99999,
+          updates: { title: "Won't work" },
+        },
+        { cradle: ctx }
+      );
 
       // Error responses have success: false in the content
       const content = JSON.parse(result.content[0].text);
@@ -235,16 +254,22 @@ describe("Issue Tools Integration", () => {
   describe("handleDeleteIssue", () => {
     it("should soft delete an issue", async () => {
       // Create an issue first
-      const createResult = await handleCreateIssue(ctx, {
-        title: "To Be Deleted",
-        description: "This will be deleted",
-      });
+      const createResult = await handleCreateIssue(
+        {
+          title: "To Be Deleted",
+          description: "This will be deleted",
+        },
+        { cradle: ctx }
+      );
       const created = JSON.parse(createResult.content[0].text);
 
       // Delete it
-      const deleteResult = await handleDeleteIssue(ctx, {
-        issueNumber: created.issue.number,
-      });
+      const deleteResult = await handleDeleteIssue(
+        {
+          issueNumber: created.issue.number,
+        },
+        { cradle: ctx }
+      );
 
       expect(deleteResult.isError).toBeUndefined();
       const content = JSON.parse(deleteResult.content[0].text);
@@ -258,9 +283,12 @@ describe("Issue Tools Integration", () => {
     });
 
     it("should return error for non-existent issue", async () => {
-      const result = await handleDeleteIssue(ctx, {
-        issueNumber: 99999,
-      });
+      const result = await handleDeleteIssue(
+        {
+          issueNumber: 99999,
+        },
+        { cradle: ctx }
+      );
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
@@ -270,19 +298,25 @@ describe("Issue Tools Integration", () => {
   describe("handleCloseIssue", () => {
     it("should close an issue", async () => {
       // Create an issue first
-      const createResult = await handleCreateIssue(ctx, {
-        title: "To Be Closed",
-        description: "This will be closed",
-      });
+      const createResult = await handleCreateIssue(
+        {
+          title: "To Be Closed",
+          description: "This will be closed",
+        },
+        { cradle: ctx }
+      );
       const created = JSON.parse(createResult.content[0].text);
 
       // Need to transition to OPEN first (issues start as PLANNED)
       client.issues.update(created.issue.id, { status: "OPEN" });
 
       // Close it
-      const closeResult = await handleCloseIssue(ctx, {
-        issueNumber: created.issue.number,
-      });
+      const closeResult = await handleCloseIssue(
+        {
+          issueNumber: created.issue.number,
+        },
+        { cradle: ctx }
+      );
 
       expect(closeResult.isError).toBeUndefined();
       const content = JSON.parse(closeResult.content[0].text);
@@ -310,9 +344,12 @@ describe("Issue Tools Integration", () => {
         },
       ]);
 
-      const result = await handleImportGitHubIssue(ctx, {
-        githubIssueNumber: 42,
-      });
+      const result = await handleImportGitHubIssue(
+        {
+          githubIssueNumber: 42,
+        },
+        { cradle: ctx }
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -342,9 +379,12 @@ describe("Issue Tools Integration", () => {
         },
       ]);
 
-      const result = await handleImportGitHubIssue(ctx, {
-        githubIssueUrl: "https://github.com/owner/repo/issues/123",
-      });
+      const result = await handleImportGitHubIssue(
+        {
+          githubIssueUrl: "https://github.com/owner/repo/issues/123",
+        },
+        { cradle: ctx }
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -367,9 +407,12 @@ describe("Issue Tools Integration", () => {
         },
       ]);
 
-      const result = await handleImportGitHubIssue(ctx, {
-        githubIssueNumber: 10,
-      });
+      const result = await handleImportGitHubIssue(
+        {
+          githubIssueNumber: 10,
+        },
+        { cradle: ctx }
+      );
 
       const content = JSON.parse(result.content[0].text);
       expect(content.inferred.type).toBe("BUG");
@@ -389,9 +432,12 @@ describe("Issue Tools Integration", () => {
         },
       ]);
 
-      const result = await handleImportGitHubIssue(ctx, {
-        githubIssueNumber: 11,
-      });
+      const result = await handleImportGitHubIssue(
+        {
+          githubIssueNumber: 11,
+        },
+        { cradle: ctx }
+      );
 
       const content = JSON.parse(result.content[0].text);
       expect(content.inferred.type).toBe("FEATURE");
@@ -411,9 +457,12 @@ describe("Issue Tools Integration", () => {
         },
       ]);
 
-      const result = await handleImportGitHubIssue(ctx, {
-        githubIssueNumber: 12,
-      });
+      const result = await handleImportGitHubIssue(
+        {
+          githubIssueNumber: 12,
+        },
+        { cradle: ctx }
+      );
 
       const content = JSON.parse(result.content[0].text);
       expect(content.inferred.type).toBe("ENHANCEMENT");
@@ -433,9 +482,12 @@ describe("Issue Tools Integration", () => {
         },
       ]);
 
-      const result = await handleImportGitHubIssue(ctx, {
-        githubIssueNumber: 13,
-      });
+      const result = await handleImportGitHubIssue(
+        {
+          githubIssueNumber: 13,
+        },
+        { cradle: ctx }
+      );
 
       const content = JSON.parse(result.content[0].text);
       expect(content.inferred.priority).toBe("HIGH");
@@ -455,9 +507,12 @@ describe("Issue Tools Integration", () => {
         },
       ]);
 
-      const result = await handleImportGitHubIssue(ctx, {
-        githubIssueNumber: 14,
-      });
+      const result = await handleImportGitHubIssue(
+        {
+          githubIssueNumber: 14,
+        },
+        { cradle: ctx }
+      );
 
       const content = JSON.parse(result.content[0].text);
       expect(content.inferred.priority).toBe("CRITICAL");
@@ -478,10 +533,10 @@ describe("Issue Tools Integration", () => {
       ]);
 
       // First import
-      await handleImportGitHubIssue(ctx, { githubIssueNumber: 50 });
+      await handleImportGitHubIssue({ githubIssueNumber: 50 }, { cradle: ctx });
 
       // Try to import again
-      const result = await handleImportGitHubIssue(ctx, { githubIssueNumber: 50 });
+      const result = await handleImportGitHubIssue({ githubIssueNumber: 50 }, { cradle: ctx });
 
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
@@ -489,9 +544,12 @@ describe("Issue Tools Integration", () => {
     });
 
     it("should reject invalid URL format", async () => {
-      const result = await handleImportGitHubIssue(ctx, {
-        githubIssueUrl: "https://example.com/not-a-github-url",
-      });
+      const result = await handleImportGitHubIssue(
+        {
+          githubIssueUrl: "https://example.com/not-a-github-url",
+        },
+        { cradle: ctx }
+      );
 
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
@@ -502,9 +560,12 @@ describe("Issue Tools Integration", () => {
       const mockCLI = ctx.githubCLI as MockGitHubCLI;
       mockCLI.setIssues([]); // No issues available
 
-      const result = await handleImportGitHubIssue(ctx, {
-        githubIssueNumber: 99999,
-      });
+      const result = await handleImportGitHubIssue(
+        {
+          githubIssueNumber: 99999,
+        },
+        { cradle: ctx }
+      );
 
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
@@ -512,7 +573,7 @@ describe("Issue Tools Integration", () => {
     });
 
     it("should require either number or URL", async () => {
-      const result = await handleImportGitHubIssue(ctx, {});
+      const result = await handleImportGitHubIssue({}, { cradle: ctx });
 
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
@@ -523,16 +584,22 @@ describe("Issue Tools Integration", () => {
   describe("handleCloseIssue", () => {
     it("should close an issue with no tasks", async () => {
       // Create an issue first
-      const createResult = await handleCreateIssue(ctx, {
-        title: "Issue to close",
-        description: "Will be closed",
-      });
+      const createResult = await handleCreateIssue(
+        {
+          title: "Issue to close",
+          description: "Will be closed",
+        },
+        { cradle: ctx }
+      );
       const created = JSON.parse(createResult.content[0].text);
 
       // Close it
-      const closeResult = await handleCloseIssue(ctx, {
-        issueNumber: created.issue.number,
-      });
+      const closeResult = await handleCloseIssue(
+        {
+          issueNumber: created.issue.number,
+        },
+        { cradle: ctx }
+      );
 
       expect(closeResult.isError).toBeUndefined();
       const content = JSON.parse(closeResult.content[0].text);
@@ -568,16 +635,22 @@ describe("Issue Tools Integration", () => {
       });
 
       // Import the GitHub issue
-      const importResult = await handleImportGitHubIssue(ctx, {
-        githubIssueNumber: 42,
-      });
+      const importResult = await handleImportGitHubIssue(
+        {
+          githubIssueNumber: 42,
+        },
+        { cradle: ctx }
+      );
       const imported = JSON.parse(importResult.content[0].text);
       expect(imported.issue.sourceGitHubIssueNumber).toBe(42);
 
       // Close the imported issue
-      const closeResult = await handleCloseIssue(ctx, {
-        issueNumber: imported.issue.number,
-      });
+      const closeResult = await handleCloseIssue(
+        {
+          issueNumber: imported.issue.number,
+        },
+        { cradle: ctx }
+      );
 
       expect(closeResult.isError).toBeUndefined();
       const content = JSON.parse(closeResult.content[0].text);
@@ -594,16 +667,22 @@ describe("Issue Tools Integration", () => {
       const mockCLI = ctx.githubCLI as MockGitHubCLI;
 
       // Create a regular (non-imported) issue
-      const createResult = await handleCreateIssue(ctx, {
-        title: "Regular Issue",
-        description: "Not imported",
-      });
+      const createResult = await handleCreateIssue(
+        {
+          title: "Regular Issue",
+          description: "Not imported",
+        },
+        { cradle: ctx }
+      );
       const created = JSON.parse(createResult.content[0].text);
 
       // Close it
-      const closeResult = await handleCloseIssue(ctx, {
-        issueNumber: created.issue.number,
-      });
+      const closeResult = await handleCloseIssue(
+        {
+          issueNumber: created.issue.number,
+        },
+        { cradle: ctx }
+      );
 
       expect(closeResult.isError).toBeUndefined();
       const content = JSON.parse(closeResult.content[0].text);
@@ -618,13 +697,16 @@ describe("Issue Tools Integration", () => {
   describe("handleGetIssue", () => {
     it("should get issue by number", async () => {
       // Create an issue
-      const createResult = await handleCreateIssue(ctx, {
-        title: "Test Issue",
-        description: "Test description",
-      });
+      const createResult = await handleCreateIssue(
+        {
+          title: "Test Issue",
+          description: "Test description",
+        },
+        { cradle: ctx }
+      );
       const created = JSON.parse(createResult.content[0].text);
 
-      const result = handleGetIssue(ctx, { issueNumber: created.issue.number });
+      const result = await handleGetIssue({ issueNumber: created.issue.number }, { cradle: ctx });
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -634,10 +716,13 @@ describe("Issue Tools Integration", () => {
 
     it("should return enriched task data when includePlan is true", async () => {
       // Create issue with plan and tasks
-      const createResult = await handleCreateIssue(ctx, {
-        title: "Issue with Plan",
-        description: "Has tasks",
-      });
+      const createResult = await handleCreateIssue(
+        {
+          title: "Issue with Plan",
+          description: "Has tasks",
+        },
+        { cradle: ctx }
+      );
       const created = JSON.parse(createResult.content[0].text);
 
       // Create a plan with tasks
@@ -683,10 +768,13 @@ describe("Issue Tools Integration", () => {
         prStatus: "OPEN",
       });
 
-      const result = handleGetIssue(ctx, {
-        issueNumber: created.issue.number,
-        includePlan: true,
-      });
+      const result = await handleGetIssue(
+        {
+          issueNumber: created.issue.number,
+          includePlan: true,
+        },
+        { cradle: ctx }
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -715,10 +803,13 @@ describe("Issue Tools Integration", () => {
 
     it("should not include enriched data when includePlan is false", async () => {
       // Create issue with plan and tasks
-      const createResult = await handleCreateIssue(ctx, {
-        title: "Issue without Plan",
-        description: "No plan requested",
-      });
+      const createResult = await handleCreateIssue(
+        {
+          title: "Issue without Plan",
+          description: "No plan requested",
+        },
+        { cradle: ctx }
+      );
       const created = JSON.parse(createResult.content[0].text);
 
       // Create a plan with tasks
@@ -743,10 +834,13 @@ describe("Issue Tools Integration", () => {
       });
 
       // Request without includePlan
-      const result = handleGetIssue(ctx, {
-        issueNumber: created.issue.number,
-        includePlan: false,
-      });
+      const result = await handleGetIssue(
+        {
+          issueNumber: created.issue.number,
+          includePlan: false,
+        },
+        { cradle: ctx }
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);

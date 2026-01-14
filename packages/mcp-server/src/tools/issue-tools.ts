@@ -1,5 +1,8 @@
 /**
  * Issue-related MCP tools
+ *
+ * Handlers follow the pattern: (args, cradle) => ToolResponse
+ * Each handler destructures what it needs from the cradle.
  */
 
 import {
@@ -10,41 +13,46 @@ import {
   isIssueClosed,
   isIssueInPlanning,
   issueHasActiveWork,
-  type TemplateService,
-  type PlanningService,
   type IssueType,
   type IssuePriority,
   type IssueStatus,
-  type GitHubCLI,
-  type GitWorktreeService,
-  type Project,
-  type TypeService,
-  type IssueService,
-  type TaskService,
-  type PlanService,
-  type MilestoneService,
-  type WorkerQueueDb,
-  type ProjectManagementProvider,
 } from "@dev-workflow/core";
 import { type ToolResponse, successResponse, errorResponse } from "./types.js";
 import { createSlimEnrichedTaskData } from "./task-tools.js";
-import type {
-  CreateIssueArgs,
-  GetIssueArgs,
-  DeleteIssueArgs,
-  RestoreIssueArgs,
-  ListTemplatesArgs,
-  GetTemplateArgs,
-  CreateTemplateArgs,
-  UpdateTemplateArgs,
-  DeleteTemplateArgs,
-  CopyTemplateArgs,
-  UpdateIssueArgs,
-  CloseIssueArgs,
-  ChangeIssueTypeArgs,
-  SearchIssuesArgs,
-  ImportGitHubIssueArgs,
+import {
+  CreateIssueSchema,
+  GetIssueSchema,
+  DeleteIssueSchema,
+  RestoreIssueSchema,
+  ListTemplatesSchema,
+  GetTemplateSchema,
+  CreateTemplateSchema,
+  UpdateTemplateSchema,
+  DeleteTemplateSchema,
+  CopyTemplateSchema,
+  UpdateIssueSchema,
+  CloseIssueSchema,
+  ChangeIssueTypeSchema,
+  SearchIssuesSchema,
+  ImportGitHubIssueSchema,
+  type CreateIssueArgs,
+  type GetIssueArgs,
+  type DeleteIssueArgs,
+  type RestoreIssueArgs,
+  type ListTemplatesArgs,
+  type GetTemplateArgs,
+  type CreateTemplateArgs,
+  type UpdateTemplateArgs,
+  type DeleteTemplateArgs,
+  type CopyTemplateArgs,
+  type UpdateIssueArgs,
+  type CloseIssueArgs,
+  type ChangeIssueTypeArgs,
+  type SearchIssuesArgs,
+  type ImportGitHubIssueArgs,
 } from "./schemas.js";
+import { createMcpHandler, createNoArgsHandler, validateToolArgs } from "../di/bootstrap.js";
+import type { McpCradle } from "../di/container.js";
 
 /**
  * Computed issue status based on task progress.
@@ -63,8 +71,8 @@ type ComputedIssueStatus = "PLANNED" | "OPEN" | "IN_PROGRESS" | "TASKS_DONE" | "
 function computeIssueStatus(
   issueId: string,
   rawStatus: IssueStatus,
-  planService: PlanService,
-  taskService: TaskService
+  planService: McpCradle["planService"],
+  taskService: McpCradle["taskService"]
 ): ComputedIssueStatus {
   if (rawStatus === "PLANNED") {
     return "PLANNED";
@@ -95,37 +103,9 @@ function computeIssueStatus(
   return "IN_PROGRESS";
 }
 
-// Tool definitions are now in tool-definitions.ts (generated from Zod schemas)
-
-/**
- * Service context for issue handlers
- */
-export interface IssueToolContext {
-  /** Current project (for URL construction) */
-  project: Project;
-  /** Issue service for issue operations */
-  issueService: IssueService;
-  /** Plan service for plan lookups */
-  planService: PlanService;
-  /** Task service for task operations */
-  taskService: TaskService;
-  /** Milestone service for milestone lookups */
-  milestoneService: MilestoneService;
-  /** Worker queue for dispatch operations */
-  workerQueueDb: WorkerQueueDb;
-  templateService: TemplateService;
-  planningService: PlanningService;
-  /** Project management provider for external sync */
-  projectManagementProvider: ProjectManagementProvider;
-  /** GitHub CLI for direct operations like closing issues */
-  githubCLI: GitHubCLI;
-  /** Git worktree service for cleanup operations */
-  gitWorktreeService?: GitWorktreeService;
-  /** Type service for validating issue types */
-  typeService?: TypeService;
-}
-
-// CreateIssueArgs is now imported from ./schemas.js
+// =============================================================================
+// Handler Implementations
+// =============================================================================
 
 /**
  * Handle create_issue tool call
@@ -133,10 +113,17 @@ export interface IssueToolContext {
  * Creates issues in PLANNED status. GitHub sync happens at the task level
  * when the issue is activated via move_issue_to_backlog.
  */
-export async function handleCreateIssue(
-  ctx: IssueToolContext,
-  args: CreateIssueArgs
+async function createIssueHandler(
+  args: unknown,
+  {
+    project,
+    issueService,
+    templateService,
+  }: Pick<McpCradle, "project" | "issueService" | "templateService">
 ): Promise<ToolResponse> {
+  const validation = validateToolArgs<CreateIssueArgs>(CreateIssueSchema, args);
+  if (!validation.success) return validation.response;
+
   const {
     title,
     description,
@@ -145,7 +132,7 @@ export async function handleCreateIssue(
     priority = "MEDIUM",
     useTemplate = true,
     labels,
-  } = args;
+  } = validation.data;
 
   // Select template if requested and use metadata
   let templateUsed: string | undefined;
@@ -154,7 +141,7 @@ export async function handleCreateIssue(
 
   if (useTemplate) {
     try {
-      const template = await ctx.templateService.selectTemplate(description);
+      const template = await templateService.selectTemplate(description);
       templateUsed = template.filename;
 
       // Use template metadata as defaults (if not explicitly provided)
@@ -175,7 +162,7 @@ export async function handleCreateIssue(
 
   // Create issue in PLANNED status
   // GitHub sync happens at task level via move_issue_to_backlog
-  const issue = ctx.issueService.create({
+  const issue = issueService.create({
     title,
     description,
     acceptanceCriteria,
@@ -206,7 +193,7 @@ export async function handleCreateIssue(
       status: issue.status,
       computedStatus: "PLANNED" as ComputedIssueStatus,
       templateUsed: issue.templateUsed,
-      url: `http://127.0.0.1:3456/projects/${ctx.project.slug}/issues/${issue.number}`,
+      url: `http://127.0.0.1:3456/projects/${project.slug}/issues/${issue.number}`,
     },
   });
 }
@@ -217,28 +204,34 @@ export async function handleCreateIssue(
  * When includePlan is true, returns enriched task data with worker and PR info
  * for each task in the plan.
  */
-export function handleGetIssue(ctx: IssueToolContext, args: GetIssueArgs): ToolResponse {
-  const { id, issueNumber, includePlan = false } = args;
+function getIssueHandler(
+  args: unknown,
+  {
+    issueService,
+    planService,
+    taskService,
+    workerQueueDb,
+  }: Pick<McpCradle, "issueService" | "planService" | "taskService" | "workerQueueDb">
+): ToolResponse {
+  const validation = validateToolArgs<GetIssueArgs>(GetIssueSchema, args);
+  if (!validation.success) return validation.response;
 
-  const issue = id ? ctx.issueService.findById(id) : ctx.issueService.findByNumber(issueNumber!);
+  const { id, issueNumber, includePlan = false } = validation.data;
+
+  const issue = id ? issueService.findById(id) : issueService.findByNumber(issueNumber!);
 
   if (!issue) {
     return errorResponse("Issue not found");
   }
 
   // Compute the status based on task progress
-  const computedStatus = computeIssueStatus(
-    issue.id,
-    issue.status,
-    ctx.planService,
-    ctx.taskService
-  );
+  const computedStatus = computeIssueStatus(issue.id, issue.status, planService, taskService);
 
   // If includePlan is true, fetch and include the plan with enriched task list
   if (includePlan) {
-    const plan = ctx.planService.findByIssueId(issue.id);
+    const plan = planService.findByIssueId(issue.id);
     if (plan) {
-      const tasks = ctx.taskService.findByPlanId(plan.id);
+      const tasks = taskService.findByPlanId(plan.id);
       return successResponse({
         ...issue,
         computedStatus,
@@ -247,7 +240,7 @@ export function handleGetIssue(ctx: IssueToolContext, args: GetIssueArgs): ToolR
           summary: plan.summary,
           approach: plan.approach,
           estimatedComplexity: plan.estimatedComplexity,
-          tasks: tasks.map((t) => createSlimEnrichedTaskData(t, ctx.workerQueueDb)),
+          tasks: tasks.map((t) => createSlimEnrichedTaskData(t, workerQueueDb)),
         },
       });
     }
@@ -270,17 +263,35 @@ export function handleGetIssue(ctx: IssueToolContext, args: GetIssueArgs): ToolR
  *
  * For issues past PLANNED status, use close_issue instead.
  */
-export async function handleDeleteIssue(
-  ctx: IssueToolContext,
-  args: DeleteIssueArgs
+async function deleteIssueHandler(
+  args: unknown,
+  {
+    issueService,
+    planService,
+    taskService,
+    workerQueueDb,
+    projectManagementProvider,
+    gitWorktreeService,
+  }: Pick<
+    McpCradle,
+    | "issueService"
+    | "planService"
+    | "taskService"
+    | "workerQueueDb"
+    | "projectManagementProvider"
+    | "gitWorktreeService"
+  >
 ): Promise<ToolResponse> {
-  const { issueId, issueNumber } = args;
+  const validation = validateToolArgs<DeleteIssueArgs>(DeleteIssueSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { issueId, issueNumber } = validation.data;
 
   // Resolve issue from ID or number
   const issue = issueId
-    ? ctx.issueService.findById(issueId)
+    ? issueService.findById(issueId)
     : issueNumber !== undefined
-      ? ctx.issueService.findByNumber(issueNumber)
+      ? issueService.findByNumber(issueNumber)
       : null;
 
   if (!issue) {
@@ -308,17 +319,17 @@ export async function handleDeleteIssue(
     const cleanedUpBranches: string[] = [];
 
     // Get plan and tasks first (needed for both cleanup and GitHub sync)
-    const plan = ctx.planService.findByIssueId(issue.id);
-    const tasks = plan ? ctx.taskService.findByPlanId(plan.id) : [];
+    const plan = planService.findByIssueId(issue.id);
+    const tasks = plan ? taskService.findByPlanId(plan.id) : [];
 
     // Clean up worktrees and branches for all tasks
-    if (ctx.gitWorktreeService && plan) {
+    if (gitWorktreeService && plan) {
       for (const task of tasks) {
         // Clean up worktree if present
         if (task.worktreePath) {
           try {
             // Remove worktree and delete local + remote branches (abandoned work)
-            await ctx.gitWorktreeService.removeWorktree(task.worktreePath, true);
+            await gitWorktreeService.removeWorktree(task.worktreePath, true);
             if (task.branchName) {
               cleanedUpBranches.push(task.branchName);
             }
@@ -326,26 +337,26 @@ export async function handleDeleteIssue(
             console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
           }
           // Clear worktree info from task
-          ctx.taskService.clearWorktreeInfo(task.id);
+          taskService.clearWorktreeInfo(task.id);
         } else if (task.branchName) {
           // No worktree but has branch - delete it (handles branch mode or pushed branches)
           try {
             // Delete local branch
-            await ctx.gitWorktreeService.run(["branch", "-D", task.branchName]);
+            await gitWorktreeService.run(["branch", "-D", task.branchName]);
           } catch {
             // Local branch may not exist, ignore
           }
 
           // Delete remote branch if it exists
           try {
-            const checkResult = await ctx.gitWorktreeService.run([
+            const checkResult = await gitWorktreeService.run([
               "ls-remote",
               "--heads",
               "origin",
               task.branchName,
             ]);
             if (checkResult.success && checkResult.stdout.trim()) {
-              await ctx.gitWorktreeService.run([
+              await gitWorktreeService.run([
                 "push",
                 "origin",
                 "--delete",
@@ -359,28 +370,28 @@ export async function handleDeleteIssue(
           }
 
           // Clear branch info from task
-          ctx.taskService.update(task.id, { branchName: undefined });
+          taskService.update(task.id, { branchName: undefined });
         }
       }
     }
 
     // Close external issues - provider handles sync check internally
     for (const task of tasks) {
-      await ctx.projectManagementProvider.closeIssueByTask(task);
+      await projectManagementProvider.closeIssueByTask(task);
     }
-    await ctx.projectManagementProvider.closeIssue(issue);
+    await projectManagementProvider.closeIssue(issue);
 
-    const deleted = ctx.issueService.delete(issue.id, "claude-code");
+    const deleted = issueService.delete(issue.id, "claude-code");
 
     // Cascade soft-delete to all tasks and clean up dispatch queue
     let deletedTaskCount = 0;
     for (const task of tasks) {
       // Remove from dispatch queue (if present)
-      ctx.workerQueueDb.remove(task.id);
+      workerQueueDb.remove(task.id);
 
       // Soft-delete the task
       try {
-        ctx.taskService.softDelete(task.id, "claude-code");
+        taskService.softDelete(task.id, "claude-code");
         deletedTaskCount++;
       } catch {
         // Task may already be deleted or in a non-deletable state
@@ -428,12 +439,18 @@ export async function handleDeleteIssue(
  *
  * Restores a soft-deleted issue. The issue will be included in list_issues again.
  */
-export function handleRestoreIssue(ctx: IssueToolContext, args: RestoreIssueArgs): ToolResponse {
-  const { issueId, issueNumber } = args;
+function restoreIssueHandler(
+  args: unknown,
+  { issueService }: Pick<McpCradle, "issueService">
+): ToolResponse {
+  const validation = validateToolArgs<RestoreIssueArgs>(RestoreIssueSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { issueId, issueNumber } = validation.data;
 
   // For restore, we need to find including deleted issues
   // First try to find the issue by looking up with includeDeleted
-  const allIssues = ctx.issueService.findMany({ includeDeleted: true });
+  const allIssues = issueService.findMany({ includeDeleted: true });
   const issue = issueId
     ? allIssues.find((i) => i.id === issueId)
     : issueNumber !== undefined
@@ -455,7 +472,7 @@ export function handleRestoreIssue(ctx: IssueToolContext, args: RestoreIssueArgs
   }
 
   try {
-    const restored = ctx.issueService.restore(issue.id);
+    const restored = issueService.restore(issue.id);
 
     return successResponse({
       success: true,
@@ -476,20 +493,23 @@ export function handleRestoreIssue(ctx: IssueToolContext, args: RestoreIssueArgs
 /**
  * Handle list_templates tool call
  */
-export async function handleListTemplates(
-  ctx: IssueToolContext,
-  args: ListTemplatesArgs
+async function listTemplatesHandler(
+  args: unknown,
+  { templateService }: Pick<McpCradle, "templateService">
 ): Promise<ToolResponse> {
-  const category = args.category ?? "issue";
-  const scope = args.scope ?? "all";
-  const typeFilter = args.type?.toUpperCase();
+  const validation = validateToolArgs<ListTemplatesArgs>(ListTemplatesSchema, args);
+  if (!validation.success) return validation.response;
+
+  const category = validation.data.category ?? "issue";
+  const scope = validation.data.scope ?? "all";
+  const typeFilter = validation.data.type?.toUpperCase();
 
   try {
     // Get templates based on category
     const discovery =
       category === "task"
-        ? await ctx.templateService.discoverTaskTemplates()
-        : await ctx.templateService.discoverTemplates();
+        ? await templateService.discoverTaskTemplates()
+        : await templateService.discoverTemplates();
 
     // Select templates based on scope
     let templates;
@@ -532,14 +552,17 @@ export async function handleListTemplates(
 /**
  * Handle get_template tool call
  */
-export async function handleGetTemplate(
-  ctx: IssueToolContext,
-  args: GetTemplateArgs
+async function getTemplateHandler(
+  args: unknown,
+  { templateService }: Pick<McpCradle, "templateService">
 ): Promise<ToolResponse> {
-  const { filename, category = "issue", scope } = args;
+  const validation = validateToolArgs<GetTemplateArgs>(GetTemplateSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { filename, category = "issue", scope } = validation.data;
 
   try {
-    const result = await ctx.templateService.getTemplate(filename, category, scope);
+    const result = await templateService.getTemplate(filename, category, scope);
 
     if (!result) {
       const scopeLabel = scope ? `${scope} ` : "";
@@ -569,14 +592,17 @@ export async function handleGetTemplate(
 /**
  * Handle create_template tool call
  */
-export async function handleCreateTemplate(
-  ctx: IssueToolContext,
-  args: CreateTemplateArgs
+async function createTemplateHandler(
+  args: unknown,
+  { templateService }: Pick<McpCradle, "templateService">
 ): Promise<ToolResponse> {
-  const { filename, content, category = "issue", scope = "local" } = args;
+  const validation = validateToolArgs<CreateTemplateArgs>(CreateTemplateSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { filename, content, category = "issue", scope = "local" } = validation.data;
 
   try {
-    const template = await ctx.templateService.createTemplate(filename, content, category, scope);
+    const template = await templateService.createTemplate(filename, content, category, scope);
 
     return successResponse({
       success: true,
@@ -598,14 +624,17 @@ export async function handleCreateTemplate(
 /**
  * Handle update_template tool call
  */
-export async function handleUpdateTemplate(
-  ctx: IssueToolContext,
-  args: UpdateTemplateArgs
+async function updateTemplateHandler(
+  args: unknown,
+  { templateService }: Pick<McpCradle, "templateService">
 ): Promise<ToolResponse> {
-  const { filename, content, category = "issue", scope = "local" } = args;
+  const validation = validateToolArgs<UpdateTemplateArgs>(UpdateTemplateSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { filename, content, category = "issue", scope = "local" } = validation.data;
 
   try {
-    const template = await ctx.templateService.updateTemplate(filename, content, category, scope);
+    const template = await templateService.updateTemplate(filename, content, category, scope);
 
     return successResponse({
       success: true,
@@ -627,14 +656,17 @@ export async function handleUpdateTemplate(
 /**
  * Handle delete_template tool call
  */
-export async function handleDeleteTemplate(
-  ctx: IssueToolContext,
-  args: DeleteTemplateArgs
+async function deleteTemplateHandler(
+  args: unknown,
+  { templateService }: Pick<McpCradle, "templateService">
 ): Promise<ToolResponse> {
-  const { filename, category = "issue", scope = "local" } = args;
+  const validation = validateToolArgs<DeleteTemplateArgs>(DeleteTemplateSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { filename, category = "issue", scope = "local" } = validation.data;
 
   try {
-    await ctx.templateService.deleteTemplate(filename, category, scope);
+    await templateService.deleteTemplate(filename, category, scope);
 
     return successResponse({
       success: true,
@@ -648,14 +680,17 @@ export async function handleDeleteTemplate(
 /**
  * Handle copy_template tool call
  */
-export async function handleCopyTemplate(
-  ctx: IssueToolContext,
-  args: CopyTemplateArgs
+async function copyTemplateHandler(
+  args: unknown,
+  { templateService }: Pick<McpCradle, "templateService">
 ): Promise<ToolResponse> {
-  const { filename, category, fromScope, toScope } = args;
+  const validation = validateToolArgs<CopyTemplateArgs>(CopyTemplateSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { filename, category, fromScope, toScope } = validation.data;
 
   try {
-    const template = await ctx.templateService.copyTemplate(filename, category, fromScope, toScope);
+    const template = await templateService.copyTemplate(filename, category, fromScope, toScope);
 
     return successResponse({
       success: true,
@@ -683,17 +718,20 @@ export async function handleCopyTemplate(
  * Note: The `updates` object is validated by Zod with .strict(), which rejects
  * unknown properties like `status`. Manual field filtering is no longer needed.
  */
-export async function handleUpdateIssue(
-  ctx: IssueToolContext,
-  args: UpdateIssueArgs
+async function updateIssueHandler(
+  args: unknown,
+  { issueService, planningService }: Pick<McpCradle, "issueService" | "planningService">
 ): Promise<ToolResponse> {
-  const { issueId, issueNumber, updates, regeneratePlan = false } = args;
+  const validation = validateToolArgs<UpdateIssueArgs>(UpdateIssueSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { issueId, issueNumber, updates, regeneratePlan = false } = validation.data;
 
   // Resolve issue from ID or number
   const issue = issueId
-    ? ctx.issueService.findById(issueId)
+    ? issueService.findById(issueId)
     : issueNumber
-      ? ctx.issueService.findByNumber(issueNumber)
+      ? issueService.findByNumber(issueNumber)
       : null;
 
   if (!issue) {
@@ -711,7 +749,7 @@ export async function handleUpdateIssue(
 
   // TODO: External sync for update operations should be added to ProjectManagementProvider
   // For now, we only update locally
-  const result = ctx.planningService.updateIssue(issue.id, updates, regeneratePlan);
+  const result = planningService.updateIssue(issue.id, updates, regeneratePlan);
 
   return successResponse(result);
 }
@@ -729,14 +767,17 @@ export async function handleUpdateIssue(
  * - Bypasses task state validation
  * - Use when issue state has drifted (e.g., all work is done but tasks weren't marked complete)
  */
-export async function handleCloseIssue(
-  ctx: IssueToolContext,
-  args: CloseIssueArgs
+async function closeIssueHandler(
+  args: unknown,
+  { issueService, githubCLI }: Pick<McpCradle, "issueService" | "githubCLI">
 ): Promise<ToolResponse> {
-  const { issueNumber, force = false } = args;
+  const validation = validateToolArgs<CloseIssueArgs>(CloseIssueSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { issueNumber, force = false } = validation.data;
 
   // Find the issue
-  const issue = ctx.issueService.findByNumber(issueNumber);
+  const issue = issueService.findByNumber(issueNumber);
   if (!issue) {
     return errorResponse(`Issue not found: #${issueNumber}`);
   }
@@ -748,13 +789,13 @@ export async function handleCloseIssue(
 
   // Use IssueService.closeIssue for orchestrated close
   // This abandons incomplete tasks via TaskService (avoids duplicating logic)
-  const result = await ctx.issueService.closeIssue(issue.id, force, "claude-code");
+  const result = await issueService.closeIssue(issue.id, force, "claude-code");
 
   // For imported issues, also close the parent GitHub issue
   // This is GitHub-specific (imported issues only exist for GitHub), so use githubCLI directly
   let parentIssueClosed = false;
   if (issue.sourceGitHubIssueNumber) {
-    await ctx.githubCLI.closeIssue(issue.sourceGitHubIssueNumber);
+    await githubCLI.closeIssue(issue.sourceGitHubIssueNumber);
     parentIssueClosed = true;
   }
 
@@ -792,14 +833,21 @@ export async function handleCloseIssue(
  * Uses TypeService to validate against user-defined types (from ./.track/types.md)
  * or falls back to default types.
  */
-export async function handleChangeIssueType(
-  ctx: IssueToolContext,
-  args: ChangeIssueTypeArgs
+async function changeIssueTypeHandler(
+  args: unknown,
+  {
+    issueService,
+    planningService,
+    typeService,
+  }: Pick<McpCradle, "issueService" | "planningService" | "typeService">
 ): Promise<ToolResponse> {
-  const { issueNumber, type } = args;
+  const validation = validateToolArgs<ChangeIssueTypeArgs>(ChangeIssueTypeSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { issueNumber, type } = validation.data;
 
   // Find the issue
-  const issue = ctx.issueService.findByNumber(issueNumber);
+  const issue = issueService.findByNumber(issueNumber);
   if (!issue) {
     return errorResponse(`Issue not found: #${issueNumber}`);
   }
@@ -807,9 +855,9 @@ export async function handleChangeIssueType(
   // Validate the type against available types
   const validTypes = ["FEATURE", "BUG", "ENHANCEMENT", "TASK"];
 
-  if (ctx.typeService) {
+  if (typeService) {
     // Use TypeService to get available types (user-defined or defaults)
-    const typeDefinitions = await ctx.typeService.loadTypes();
+    const typeDefinitions = await typeService.loadTypes();
     const availableTypes = typeDefinitions.types.map((t) => t.name);
 
     if (!availableTypes.includes(type as IssueType)) {
@@ -829,7 +877,7 @@ export async function handleChangeIssueType(
 
   // TODO: External sync for type changes should be added to ProjectManagementProvider
   // For now, we only update locally
-  const result = ctx.planningService.updateIssue(issue.id, updates, false);
+  const result = planningService.updateIssue(issue.id, updates, false);
 
   return successResponse({
     ...result,
@@ -842,9 +890,12 @@ export async function handleChangeIssueType(
  *
  * Returns counts of issues and tasks by status.
  */
-export function handleGetProjectStats(ctx: IssueToolContext): ToolResponse {
-  const issueCounts = ctx.issueService.getStatusCounts();
-  const taskCounts = ctx.taskService.getStatusCounts();
+function getProjectStatsHandler({
+  issueService,
+  taskService,
+}: Pick<McpCradle, "issueService" | "taskService">): ToolResponse {
+  const issueCounts = issueService.getStatusCounts();
+  const taskCounts = taskService.getStatusCounts();
 
   // Calculate totals
   const issueTotal = Object.values(issueCounts).reduce((a, b) => a + b, 0);
@@ -876,19 +927,29 @@ export function handleGetProjectStats(ctx: IssueToolContext): ToolResponse {
  *
  * Searches issues by keyword in title or description.
  */
-export function handleSearchIssues(ctx: IssueToolContext, args: SearchIssuesArgs): ToolResponse {
-  const { query } = args;
+function searchIssuesHandler(
+  args: unknown,
+  {
+    issueService,
+    planService,
+    taskService,
+  }: Pick<McpCradle, "issueService" | "planService" | "taskService">
+): ToolResponse {
+  const validation = validateToolArgs<SearchIssuesArgs>(SearchIssuesSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { query } = validation.data;
 
   if (!query || query.trim().length === 0) {
     return errorResponse("Search query is required");
   }
 
-  const results = ctx.issueService.search(query);
+  const results = issueService.search(query);
 
   // Add computedStatus to each result
   const resultsWithComputedStatus = results.map((result) => ({
     ...result,
-    computedStatus: computeIssueStatus(result.id, result.status, ctx.planService, ctx.taskService),
+    computedStatus: computeIssueStatus(result.id, result.status, planService, taskService),
   }));
 
   return successResponse({
@@ -958,14 +1019,22 @@ function calculateIssueScore(
  * Returns prioritized list of issues and tasks to work on.
  * Includes a separate section for issues that need planning.
  */
-export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
+function getWorkQueueHandler({
+  issueService,
+  planService,
+  taskService,
+  milestoneService,
+}: Pick<
+  McpCradle,
+  "issueService" | "planService" | "taskService" | "milestoneService"
+>): ToolResponse {
   // Get all milestones for date lookups
-  const milestones = ctx.milestoneService.findMany();
+  const milestones = milestoneService.findMany();
   const milestoneEndDates = new Map(milestones.map((m) => [m.id, m.endDate]));
   const milestoneNames = new Map(milestones.map((m) => [m.id, m.title]));
 
   // Get actionable issues (not closed) - PLANNED needs confirmation, OPEN/IN_PROGRESS need work
-  const activeIssues = ctx.issueService.findMany({}).filter((i) => !isIssueClosed(i));
+  const activeIssues = issueService.findMany({}).filter((i) => !isIssueClosed(i));
 
   // Identify issues that need planning (PLANNED status without a plan)
   const issuesNeedingPlanning: Array<{
@@ -977,7 +1046,7 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
 
   for (const issue of activeIssues) {
     if (isIssueInPlanning(issue)) {
-      const plan = ctx.planService.findByIssueId(issue.id);
+      const plan = planService.findByIssueId(issue.id);
       if (!plan) {
         issuesNeedingPlanning.push({
           number: issue.number,
@@ -1009,10 +1078,10 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
 
   // For each active issue, get plan and tasks
   for (const issue of activeIssues) {
-    const plan = ctx.planService.findByIssueId(issue.id);
+    const plan = planService.findByIssueId(issue.id);
     if (!plan) continue;
 
-    const tasks = ctx.taskService.findByPlanId(plan.id);
+    const tasks = taskService.findByPlanId(plan.id);
 
     // Only include available tasks (workable but not yet active)
     const availableTasks = tasks.filter((t) => isWorkable(t) && !isActive(t));
@@ -1066,10 +1135,10 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
   // Score and sort issues
   const scoredIssues = activeIssues.map((issue) => {
     // Count available tasks for this issue
-    const plan = ctx.planService.findByIssueId(issue.id);
+    const plan = planService.findByIssueId(issue.id);
     let availableTaskCount = 0;
     if (plan) {
-      const tasks = ctx.taskService.findByPlanId(plan.id);
+      const tasks = taskService.findByPlanId(plan.id);
       availableTaskCount = tasks.filter(
         (t) => t.status === "READY" || t.status === "BACKLOG"
       ).length;
@@ -1079,7 +1148,7 @@ export function handleGetWorkQueue(ctx: IssueToolContext): ToolResponse {
       number: issue.number,
       title: issue.title,
       status: issue.status,
-      computedStatus: computeIssueStatus(issue.id, issue.status, ctx.planService, ctx.taskService),
+      computedStatus: computeIssueStatus(issue.id, issue.status, planService, taskService),
       priority: issue.priority,
       milestone: issue.milestoneId ? milestoneNames.get(issue.milestoneId) : undefined,
       availableTaskCount,
@@ -1203,8 +1272,6 @@ function inferPriorityFromLabels(labels: string[]): IssuePriority {
   return "MEDIUM";
 }
 
-// ImportGitHubIssueArgs is now imported from ./schemas.js
-
 /**
  * Handle import_github_issue tool call
  *
@@ -1217,11 +1284,14 @@ function inferPriorityFromLabels(labels: string[]): IssuePriority {
  * Does NOT create tasks - use generate_plan after import.
  * Does NOT modify the original GitHub issue.
  */
-export async function handleImportGitHubIssue(
-  ctx: IssueToolContext,
-  args: ImportGitHubIssueArgs
+async function importGitHubIssueHandler(
+  args: unknown,
+  { project, issueService, githubCLI }: Pick<McpCradle, "project" | "issueService" | "githubCLI">
 ): Promise<ToolResponse> {
-  const { githubIssueNumber, githubIssueUrl } = args;
+  const validation = validateToolArgs<ImportGitHubIssueArgs>(ImportGitHubIssueSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { githubIssueNumber, githubIssueUrl } = validation.data;
 
   // Resolve issue number from URL or direct parameter
   let resolvedIssueNumber: number;
@@ -1241,7 +1311,7 @@ export async function handleImportGitHubIssue(
   }
 
   // Check if this issue was already imported
-  const existingIssues = ctx.issueService.findMany({ includeDeleted: false });
+  const existingIssues = issueService.findMany({ includeDeleted: false });
   const alreadyImported = existingIssues.find(
     (i) => i.sourceGitHubIssueNumber === resolvedIssueNumber
   );
@@ -1254,7 +1324,7 @@ export async function handleImportGitHubIssue(
   // Fetch GitHub issue
   let githubIssue;
   try {
-    githubIssue = await ctx.githubCLI.getIssue(resolvedIssueNumber);
+    githubIssue = await githubCLI.getIssue(resolvedIssueNumber);
   } catch (error) {
     return errorResponse(
       `Failed to fetch GitHub issue #${resolvedIssueNumber}: ${error instanceof Error ? error.message : String(error)}`
@@ -1270,7 +1340,7 @@ export async function handleImportGitHubIssue(
   const inferredPriority = inferPriorityFromLabels(githubIssue.labels);
 
   // Create dev-workflow issue
-  const issue = ctx.issueService.create({
+  const issue = issueService.create({
     title: githubIssue.title,
     description: githubIssue.body || `Imported from GitHub issue #${resolvedIssueNumber}`,
     acceptanceCriteria: [],
@@ -1299,7 +1369,7 @@ export async function handleImportGitHubIssue(
       priority: issue.priority,
       status: issue.status,
       sourceGitHubIssueNumber: resolvedIssueNumber,
-      url: `http://127.0.0.1:3456/projects/${ctx.project.slug}/issues/${issue.number}`,
+      url: `http://127.0.0.1:3456/projects/${project.slug}/issues/${issue.number}`,
     },
     githubIssue: {
       number: githubIssue.number,
@@ -1313,3 +1383,25 @@ export async function handleImportGitHubIssue(
     },
   });
 }
+
+// =============================================================================
+// Wrapped Handlers (for tool registry)
+// =============================================================================
+
+export const handleCreateIssue = createMcpHandler(createIssueHandler);
+export const handleGetIssue = createMcpHandler(getIssueHandler);
+export const handleDeleteIssue = createMcpHandler(deleteIssueHandler);
+export const handleRestoreIssue = createMcpHandler(restoreIssueHandler);
+export const handleListTemplates = createMcpHandler(listTemplatesHandler);
+export const handleGetTemplate = createMcpHandler(getTemplateHandler);
+export const handleCreateTemplate = createMcpHandler(createTemplateHandler);
+export const handleUpdateTemplate = createMcpHandler(updateTemplateHandler);
+export const handleDeleteTemplate = createMcpHandler(deleteTemplateHandler);
+export const handleCopyTemplate = createMcpHandler(copyTemplateHandler);
+export const handleUpdateIssue = createMcpHandler(updateIssueHandler);
+export const handleCloseIssue = createMcpHandler(closeIssueHandler);
+export const handleChangeIssueType = createMcpHandler(changeIssueTypeHandler);
+export const handleGetProjectStats = createNoArgsHandler(getProjectStatsHandler);
+export const handleSearchIssues = createMcpHandler(searchIssuesHandler);
+export const handleGetWorkQueue = createNoArgsHandler(getWorkQueueHandler);
+export const handleImportGitHubIssue = createMcpHandler(importGitHubIssueHandler);

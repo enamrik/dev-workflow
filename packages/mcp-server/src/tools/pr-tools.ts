@@ -2,6 +2,8 @@
  * PR-related MCP tools
  *
  * Provides GitHub PR integration for task completion workflow.
+ * Handlers follow the pattern: (args, cradle) => ToolResponse
+ * Each handler destructures what it needs from the cradle.
  */
 
 import {
@@ -9,17 +11,24 @@ import {
   isIssueInPlanning,
   isWorkable,
   isActive,
-  type GitHubCLI,
-  type GitWorktreeService,
   type PRStatus,
-  type TaskSyncService,
-  type DbClient,
-  type Project,
   type IssueService,
   type TaskService,
   type PlanService,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
+import { createMcpHandler, validateToolArgs } from "../di/bootstrap.js";
+import type { McpCradle } from "../di/container.js";
+import {
+  GetTaskPRStatusSchema,
+  CreatePRSchema,
+  SubmitForReviewSchema,
+  CompleteTaskSchema,
+  type GetTaskPRStatusArgs,
+  type CreatePRArgs,
+  type SubmitForReviewArgs,
+  type CompleteTaskArgs,
+} from "./schemas.js";
 
 /**
  * Tool definitions for PR operations
@@ -152,20 +161,9 @@ export const prToolDefinitions: ToolDefinition[] = [
   },
 ];
 
-/**
- * Context required for PR tool handlers
- */
-export interface PRToolContext {
-  project: Project;
-  githubCLI: GitHubCLI;
-  issueService: IssueService;
-  planService: PlanService;
-  taskService: TaskService;
-  gitWorktreeService?: GitWorktreeService;
-  taskSyncService?: TaskSyncService;
-  /** Required for writing final log entry on task completion */
-  db: DbClient;
-}
+// =============================================================================
+// Helper Functions
+// =============================================================================
 
 /**
  * Map GitHub PR state to our PRStatus type
@@ -178,19 +176,149 @@ function mapGitHubStateToPRStatus(state: "OPEN" | "CLOSED" | "MERGED", isDraft: 
 }
 
 /**
+ * Check if all tasks in a plan are in terminal state (COMPLETED or ABANDONED)
+ * and optionally close the parent issue using IssueService.
+ *
+ * Returns an object with:
+ * - allTasksComplete: true if all tasks are in terminal state
+ * - issueClosed: true if the issue was closed
+ * - issueNumber: the issue number (for display)
+ */
+async function checkAndMaybeCloseIssue(
+  issueService: IssueService,
+  planService: PlanService,
+  taskService: TaskService,
+  planId: string,
+  autoCloseIssue: boolean
+): Promise<{ allTasksComplete: boolean; issueClosed: boolean; issueNumber: number | null }> {
+  // Get all tasks in the plan (excluding deleted ones)
+  const allTasks = taskService.findByPlanId(planId);
+  const activeTasks = allTasks.filter((t) => !t.isDeleted);
+
+  // Check if all tasks are in terminal state
+  const terminalStatuses = ["COMPLETED", "ABANDONED"];
+  const allTasksComplete = activeTasks.every((t) => terminalStatuses.includes(t.status));
+
+  // Get the issue
+  const plan = planService.findById(planId);
+  if (!plan) {
+    return { allTasksComplete, issueClosed: false, issueNumber: null };
+  }
+
+  const issue = issueService.findById(plan.issueId);
+  if (!issue) {
+    return { allTasksComplete, issueClosed: false, issueNumber: null };
+  }
+
+  // If autoCloseIssue is true and all tasks are complete, close the issue
+  let issueClosed = false;
+  if (autoCloseIssue && allTasksComplete && issue.status !== "CLOSED") {
+    // Use IssueService.closeIssue for orchestrated close (syncs to external provider)
+    await issueService.closeIssue(issue.id, true, "claude-code");
+    issueClosed = true;
+  }
+
+  return { allTasksComplete, issueClosed, issueNumber: issue.number };
+}
+
+/**
+ * Find the next available task to work on
+ *
+ * Priority: READY tasks in same plan, then BACKLOG in same plan,
+ * then READY tasks from other plans.
+ */
+function findNextAvailableTask(
+  issueService: IssueService,
+  planService: PlanService,
+  taskService: TaskService,
+  currentPlanId: string
+): {
+  id: string;
+  number: number;
+  title: string;
+  issueNumber: number;
+  issueTitle: string;
+  status: string;
+} | null {
+  // First, check same plan for READY tasks
+  const samePlanTasks = taskService.findByPlanId(currentPlanId);
+  const readyTask = samePlanTasks.find((t) => t.status === "READY");
+  if (readyTask) {
+    const plan = planService.findById(currentPlanId);
+    const issue = plan ? issueService.findById(plan.issueId) : null;
+    return {
+      id: readyTask.id,
+      number: readyTask.number,
+      title: readyTask.title,
+      issueNumber: issue?.number ?? 0,
+      issueTitle: issue?.title ?? "Unknown",
+      status: readyTask.status,
+    };
+  }
+
+  // Check same plan for BACKLOG tasks
+  const backlogTask = samePlanTasks.find((t) => t.status === "BACKLOG");
+  if (backlogTask) {
+    const plan = planService.findById(currentPlanId);
+    const issue = plan ? issueService.findById(plan.issueId) : null;
+    return {
+      id: backlogTask.id,
+      number: backlogTask.number,
+      title: backlogTask.title,
+      issueNumber: issue?.number ?? 0,
+      issueTitle: issue?.title ?? "Unknown",
+      status: backlogTask.status,
+    };
+  }
+
+  // Look for READY tasks in other active issues (not closed, not planning)
+  const activeIssues = issueService
+    .findMany({})
+    .filter((i) => !isIssueClosed(i) && !isIssueInPlanning(i));
+
+  for (const issue of activeIssues) {
+    const plan = planService.findByIssueId(issue.id);
+    if (!plan || plan.id === currentPlanId) continue;
+
+    const tasks = taskService.findByPlanId(plan.id);
+    // Find available task (workable but not yet active)
+    const availableTask = tasks.find((t) => isWorkable(t) && !isActive(t));
+    if (availableTask) {
+      return {
+        id: availableTask.id,
+        number: availableTask.number,
+        title: availableTask.title,
+        issueNumber: issue.number,
+        issueTitle: issue.title,
+        status: availableTask.status,
+      };
+    }
+  }
+
+  return null;
+}
+
+// =============================================================================
+// Handler Implementations
+// =============================================================================
+
+/**
  * Handle get_task_pr_status tool call
  *
  * Gets the current PR status for a task.
  * Uses gh CLI which auto-detects the repository from git remotes.
  */
-export async function handleGetTaskPRStatus(
-  ctx: PRToolContext,
-  args: { taskId: string }
+async function getTaskPRStatusHandler(
+  args: unknown,
+  { githubCLI, taskService }: Pick<McpCradle, "githubCLI" | "taskService">
 ): Promise<ToolResponse> {
-  const { taskId } = args;
+  const validation = validateToolArgs<GetTaskPRStatusArgs>(GetTaskPRStatusSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { taskId } = validation.data;
 
   // 1. Get task
-  const task = ctx.taskService.findById(taskId);
+  const task = taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
@@ -204,7 +332,7 @@ export async function handleGetTaskPRStatus(
 
   // 2. Fetch fresh PR status from GitHub (gh CLI auto-detects repo)
   try {
-    const pr = await ctx.githubCLI.getPR(task.prNumber);
+    const pr = await githubCLI.getPR(task.prNumber);
 
     if (!pr) {
       return successResponse({
@@ -222,7 +350,7 @@ export async function handleGetTaskPRStatus(
     // Update cached status if changed
     const prStatus = mapGitHubStateToPRStatus(pr.state, pr.isDraft);
     if (prStatus !== task.prStatus) {
-      ctx.taskService.updatePRStatus(taskId, prStatus);
+      taskService.updatePRStatus(taskId, prStatus);
     }
 
     return successResponse({
@@ -271,21 +399,26 @@ export async function handleGetTaskPRStatus(
  * - Bypasses status validation
  * - Use when task state has drifted (e.g., branch already pushed but task not in IN_PROGRESS)
  */
-export async function handleCreatePR(
-  ctx: PRToolContext,
-  args: {
-    taskId: string;
-    title?: string;
-    body?: string;
-    draft?: boolean;
-    baseBranch?: string;
-    force?: boolean;
-  }
+async function createPRHandler(
+  args: unknown,
+  {
+    githubCLI,
+    issueService,
+    planService,
+    taskService,
+    gitWorktreeService,
+  }: Pick<
+    McpCradle,
+    "githubCLI" | "issueService" | "planService" | "taskService" | "gitWorktreeService"
+  >
 ): Promise<ToolResponse> {
-  const { taskId, title, body, draft = false, baseBranch, force = false } = args;
+  const validation = validateToolArgs<CreatePRArgs>(CreatePRSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { taskId, title, body, draft = false, baseBranch, force = false } = validation.data;
 
   // 1. Get task and validate state
-  const task = ctx.taskService.findById(taskId);
+  const task = taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
@@ -312,11 +445,11 @@ export async function handleCreatePR(
 
   // 2. Check if a PR already exists for this branch (created outside this tool)
   try {
-    const existingPR = await ctx.githubCLI.findPRByBranch(task.branchName);
+    const existingPR = await githubCLI.findPRByBranch(task.branchName);
     if (existingPR) {
       // Adopt the existing PR (but don't change status)
       const prStatus = mapGitHubStateToPRStatus(existingPR.state, existingPR.isDraft);
-      ctx.taskService.updatePRInfo(taskId, existingPR.url, existingPR.number, prStatus);
+      taskService.updatePRInfo(taskId, existingPR.url, existingPR.number, prStatus);
 
       return successResponse({
         success: true,
@@ -346,20 +479,20 @@ export async function handleCreatePR(
   }
 
   // 3. Get issue info for PR title and linking
-  const plan = ctx.planService.findById(task.planId);
+  const plan = planService.findById(task.planId);
   if (!plan) {
     return errorResponse(`Plan not found for task: ${taskId}`);
   }
 
-  const issue = ctx.issueService.findById(plan.issueId);
+  const issue = issueService.findById(plan.issueId);
   if (!issue) {
     return errorResponse(`Issue not found for plan: ${plan.id}`);
   }
 
   // 4. Push the branch to remote (required before creating PR)
-  if (ctx.gitWorktreeService) {
+  if (gitWorktreeService) {
     try {
-      const pushResult = await ctx.gitWorktreeService.run(
+      const pushResult = await gitWorktreeService.run(
         ["push", "-u", "origin", task.branchName],
         task.worktreePath
       );
@@ -417,11 +550,11 @@ export async function handleCreatePR(
 
   // 8. Create the PR (gh CLI auto-detects repo from git remotes)
   try {
-    const pr = await ctx.githubCLI.createPR(task.branchName, targetBranch, prTitle, prBody, draft);
+    const pr = await githubCLI.createPR(task.branchName, targetBranch, prTitle, prBody, draft);
 
     // 9. Store PR info on task (but DON'T change status)
     const prStatus = mapGitHubStateToPRStatus(pr.state, pr.isDraft);
-    ctx.taskService.updatePRInfo(taskId, pr.url, pr.number, prStatus);
+    taskService.updatePRInfo(taskId, pr.url, pr.number, prStatus);
 
     // NOTE: We intentionally do NOT change task status or sync to GitHub here.
     // This allows GitHub's "Pull request linked to issue" workflow to naturally
@@ -475,17 +608,17 @@ export async function handleCreatePR(
  * - Bypasses status/PR validation
  * - Use when task state has drifted
  */
-export async function handleSubmitForReview(
-  ctx: PRToolContext,
-  args: {
-    taskId: string;
-    force?: boolean;
-  }
+async function submitForReviewHandler(
+  args: unknown,
+  { taskService, taskSyncService }: Pick<McpCradle, "taskService" | "taskSyncService">
 ): Promise<ToolResponse> {
-  const { taskId, force = false } = args;
+  const validation = validateToolArgs<SubmitForReviewArgs>(SubmitForReviewSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { taskId, force = false } = validation.data;
 
   // 1. Get task and validate state
-  const task = ctx.taskService.findById(taskId);
+  const task = taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
@@ -505,12 +638,12 @@ export async function handleSubmitForReview(
   }
 
   // 2. Update task status to PR_REVIEW
-  ctx.taskService.updateTaskStatus(taskId, "PR_REVIEW", undefined, "Submitted for review");
+  taskService.updateTaskStatus(taskId, "PR_REVIEW", undefined, "Submitted for review");
 
   // 3. Sync to external project management provider (service handles "should I sync?" internally)
-  if (ctx.taskSyncService) {
+  if (taskSyncService) {
     try {
-      await ctx.taskSyncService.syncTaskStatus(taskId, "PR_REVIEW");
+      await taskSyncService.syncTaskStatus(taskId, "PR_REVIEW");
     } catch (error) {
       // Log but don't fail - sync is best effort after local update
       console.warn(`Failed to sync task status: ${error}`);
@@ -554,17 +687,37 @@ export async function handleSubmitForReview(
  *
  * Requires finalLogEntry to document what was accomplished before completing.
  */
-export async function handleCompleteTask(
-  ctx: PRToolContext,
-  args: {
-    taskId: string;
-    sessionId: string;
-    finalLogEntry: string;
-    force?: boolean;
-    autoCloseIssue?: boolean;
-  }
+async function completeTaskHandler(
+  args: unknown,
+  {
+    githubCLI,
+    issueService,
+    planService,
+    taskService,
+    gitWorktreeService,
+    taskSyncService,
+    dbClient,
+  }: Pick<
+    McpCradle,
+    | "githubCLI"
+    | "issueService"
+    | "planService"
+    | "taskService"
+    | "gitWorktreeService"
+    | "taskSyncService"
+    | "dbClient"
+  >
 ): Promise<ToolResponse> {
-  const { taskId, sessionId, finalLogEntry, force = false, autoCloseIssue = false } = args;
+  const validation = validateToolArgs<CompleteTaskArgs>(CompleteTaskSchema, args);
+  if (!validation.success) return validation.response;
+
+  const {
+    taskId,
+    sessionId,
+    finalLogEntry,
+    force = false,
+    autoCloseIssue = false,
+  } = validation.data;
 
   // Validate finalLogEntry is provided and not empty
   if (!finalLogEntry || finalLogEntry.trim().length === 0) {
@@ -574,13 +727,13 @@ export async function handleCompleteTask(
   }
 
   // 1. Get task and validate
-  const task = ctx.taskService.findById(taskId);
+  const task = taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
 
   // 2. Write the final log entry before completing
-  ctx.db.executionLogs.create({
+  dbClient.executionLogs.create({
     taskId,
     sessionId,
     message: finalLogEntry.trim(),
@@ -601,20 +754,15 @@ export async function handleCompleteTask(
     }
 
     // Update task status to COMPLETED
-    ctx.taskService.updateTaskStatus(
-      taskId,
-      "COMPLETED",
-      sessionId,
-      "Completed (main mode, no PR)"
-    );
+    taskService.updateTaskStatus(taskId, "COMPLETED", sessionId, "Completed (main mode, no PR)");
 
     // Clear session association
-    ctx.taskService.clearSession(taskId);
+    taskService.clearSession(taskId);
 
     // Sync to external project management provider (service handles "should I sync?" internally)
-    if (ctx.taskSyncService) {
+    if (taskSyncService) {
       try {
-        await ctx.taskSyncService.syncTaskStatus(taskId, "COMPLETED");
+        await taskSyncService.syncTaskStatus(taskId, "COMPLETED");
       } catch (error) {
         // Log but don't fail - sync is best effort after local update
         console.warn(`Failed to sync task status: ${error}`);
@@ -622,10 +770,16 @@ export async function handleCompleteTask(
     }
 
     // Check if all tasks are complete and maybe close issue
-    const issueStatus = await checkAndMaybeCloseIssue(ctx, task.planId, autoCloseIssue);
+    const issueStatus = await checkAndMaybeCloseIssue(
+      issueService,
+      planService,
+      taskService,
+      task.planId,
+      autoCloseIssue
+    );
 
     // Find next available task
-    const nextTask = findNextAvailableTask(ctx, task.planId);
+    const nextTask = findNextAvailableTask(issueService, planService, taskService, task.planId);
 
     let message = "Task completed (main mode, no PR review).";
     if (issueStatus.issueClosed) {
@@ -667,7 +821,7 @@ export async function handleCompleteTask(
   // Skip PR verification entirely if force=true and no PR exists
   let prMerged = false;
   if (task.prNumber) {
-    const pr = await ctx.githubCLI.getPR(task.prNumber);
+    const pr = await githubCLI.getPR(task.prNumber);
     if (!pr) {
       if (!force) {
         return errorResponse(`PR #${task.prNumber} not found on GitHub.`);
@@ -689,10 +843,10 @@ export async function handleCompleteTask(
   }
 
   // 3. Pull main to get merged changes
-  if (ctx.gitWorktreeService) {
+  if (gitWorktreeService) {
     try {
       // Pull on the main repo (not the worktree)
-      const pullResult = await ctx.gitWorktreeService.run(["pull", "origin", "main"]);
+      const pullResult = await gitWorktreeService.run(["pull", "origin", "main"]);
       if (!pullResult.success) {
         // Non-fatal: log but continue
         console.warn(`Failed to pull main: ${pullResult.stderr || pullResult.stdout}`);
@@ -706,44 +860,44 @@ export async function handleCompleteTask(
     if (hasWorktree) {
       try {
         // Remove worktree and delete the branch (merged, no longer needed)
-        await ctx.gitWorktreeService.removeWorktree(task.worktreePath!, true);
+        await gitWorktreeService.removeWorktree(task.worktreePath!, true);
       } catch {
         console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
       }
 
       // Clear worktree info from task
-      ctx.taskService.clearWorktreeInfo(taskId);
+      taskService.clearWorktreeInfo(taskId);
     } else if (hasBranch) {
       // Branch mode: delete branch and checkout main
       try {
-        await ctx.gitWorktreeService.run(["checkout", "main"]);
-        await ctx.gitWorktreeService.run(["branch", "-d", task.branchName!]);
+        await gitWorktreeService.run(["checkout", "main"]);
+        await gitWorktreeService.run(["branch", "-d", task.branchName!]);
       } catch {
         console.warn(`Failed to cleanup branch: ${task.branchName}`);
       }
       // Clear branch info from task
-      ctx.taskService.update(taskId, { branchName: undefined });
+      taskService.update(taskId, { branchName: undefined });
     }
   }
 
   // 5. Update PR status to MERGED (only if PR was actually merged)
   if (prMerged && task.prNumber) {
-    ctx.taskService.updatePRStatus(taskId, "MERGED");
+    taskService.updatePRStatus(taskId, "MERGED");
   }
 
   // 6. Update task status to COMPLETED
   const completionNote = force
     ? `Force completed${task.prNumber ? ` (PR #${task.prNumber})` : ""}`
     : `PR #${task.prNumber} merged`;
-  ctx.taskService.updateTaskStatus(taskId, "COMPLETED", sessionId, completionNote);
+  taskService.updateTaskStatus(taskId, "COMPLETED", sessionId, completionNote);
 
   // 7. Clear session association
-  ctx.taskService.clearSession(taskId);
+  taskService.clearSession(taskId);
 
   // 8. Sync to external project management provider (service handles "should I sync?" internally)
-  if (ctx.taskSyncService) {
+  if (taskSyncService) {
     try {
-      await ctx.taskSyncService.syncTaskStatus(taskId, "COMPLETED");
+      await taskSyncService.syncTaskStatus(taskId, "COMPLETED");
     } catch (error) {
       // Log but don't fail - sync is best effort after local update
       console.warn(`Failed to sync task status: ${error}`);
@@ -751,10 +905,16 @@ export async function handleCompleteTask(
   }
 
   // 9. Check if all tasks are complete and maybe close issue
-  const issueStatus = await checkAndMaybeCloseIssue(ctx, task.planId, autoCloseIssue);
+  const issueStatus = await checkAndMaybeCloseIssue(
+    issueService,
+    planService,
+    taskService,
+    task.planId,
+    autoCloseIssue
+  );
 
   // 10. Find next available task
-  const nextTask = findNextAvailableTask(ctx, task.planId);
+  const nextTask = findNextAvailableTask(issueService, planService, taskService, task.planId);
 
   let message = force
     ? `Task force-completed.${task.prNumber ? ` PR #${task.prNumber} status: ${prMerged ? "merged" : "not verified"}.` : ""} ${hasWorktree ? "Worktree" : "Branch"} cleaned up.`
@@ -787,121 +947,11 @@ export async function handleCompleteTask(
   });
 }
 
-/**
- * Check if all tasks in a plan are in terminal state (COMPLETED or ABANDONED)
- * and optionally close the parent issue using IssueService.
- *
- * Returns an object with:
- * - allTasksComplete: true if all tasks are in terminal state
- * - issueClosed: true if the issue was closed
- * - issueNumber: the issue number (for display)
- */
-async function checkAndMaybeCloseIssue(
-  ctx: PRToolContext,
-  planId: string,
-  autoCloseIssue: boolean
-): Promise<{ allTasksComplete: boolean; issueClosed: boolean; issueNumber: number | null }> {
-  // Get all tasks in the plan (excluding deleted ones)
-  const allTasks = ctx.taskService.findByPlanId(planId);
-  const activeTasks = allTasks.filter((t) => !t.isDeleted);
+// =============================================================================
+// Wrapped Handlers (for tool registry)
+// =============================================================================
 
-  // Check if all tasks are in terminal state
-  const terminalStatuses = ["COMPLETED", "ABANDONED"];
-  const allTasksComplete = activeTasks.every((t) => terminalStatuses.includes(t.status));
-
-  // Get the issue
-  const plan = ctx.planService.findById(planId);
-  if (!plan) {
-    return { allTasksComplete, issueClosed: false, issueNumber: null };
-  }
-
-  const issue = ctx.issueService.findById(plan.issueId);
-  if (!issue) {
-    return { allTasksComplete, issueClosed: false, issueNumber: null };
-  }
-
-  // If autoCloseIssue is true and all tasks are complete, close the issue
-  let issueClosed = false;
-  if (autoCloseIssue && allTasksComplete && issue.status !== "CLOSED") {
-    // Use IssueService.closeIssue for orchestrated close (syncs to external provider)
-    await ctx.issueService.closeIssue(issue.id, true, "claude-code");
-    issueClosed = true;
-  }
-
-  return { allTasksComplete, issueClosed, issueNumber: issue.number };
-}
-
-/**
- * Find the next available task to work on
- *
- * Priority: READY tasks in same plan, then BACKLOG in same plan,
- * then READY tasks from other plans.
- */
-function findNextAvailableTask(
-  ctx: PRToolContext,
-  currentPlanId: string
-): {
-  id: string;
-  number: number;
-  title: string;
-  issueNumber: number;
-  issueTitle: string;
-  status: string;
-} | null {
-  // First, check same plan for READY tasks
-  const samePlanTasks = ctx.taskService.findByPlanId(currentPlanId);
-  const readyTask = samePlanTasks.find((t) => t.status === "READY");
-  if (readyTask) {
-    const plan = ctx.planService.findById(currentPlanId);
-    const issue = plan ? ctx.issueService.findById(plan.issueId) : null;
-    return {
-      id: readyTask.id,
-      number: readyTask.number,
-      title: readyTask.title,
-      issueNumber: issue?.number ?? 0,
-      issueTitle: issue?.title ?? "Unknown",
-      status: readyTask.status,
-    };
-  }
-
-  // Check same plan for BACKLOG tasks
-  const backlogTask = samePlanTasks.find((t) => t.status === "BACKLOG");
-  if (backlogTask) {
-    const plan = ctx.planService.findById(currentPlanId);
-    const issue = plan ? ctx.issueService.findById(plan.issueId) : null;
-    return {
-      id: backlogTask.id,
-      number: backlogTask.number,
-      title: backlogTask.title,
-      issueNumber: issue?.number ?? 0,
-      issueTitle: issue?.title ?? "Unknown",
-      status: backlogTask.status,
-    };
-  }
-
-  // Look for READY tasks in other active issues (not closed, not planning)
-  const activeIssues = ctx.issueService
-    .findMany({})
-    .filter((i) => !isIssueClosed(i) && !isIssueInPlanning(i));
-
-  for (const issue of activeIssues) {
-    const plan = ctx.planService.findByIssueId(issue.id);
-    if (!plan || plan.id === currentPlanId) continue;
-
-    const tasks = ctx.taskService.findByPlanId(plan.id);
-    // Find available task (workable but not yet active)
-    const availableTask = tasks.find((t) => isWorkable(t) && !isActive(t));
-    if (availableTask) {
-      return {
-        id: availableTask.id,
-        number: availableTask.number,
-        title: availableTask.title,
-        issueNumber: issue.number,
-        issueTitle: issue.title,
-        status: availableTask.status,
-      };
-    }
-  }
-
-  return null;
-}
+export const handleGetTaskPRStatus = createMcpHandler(getTaskPRStatusHandler);
+export const handleCreatePR = createMcpHandler(createPRHandler);
+export const handleSubmitForReview = createMcpHandler(submitForReviewHandler);
+export const handleCompleteTask = createMcpHandler(completeTaskHandler);

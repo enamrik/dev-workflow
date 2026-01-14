@@ -20,7 +20,7 @@ import {
 } from "./di/index.js";
 import { ProviderRegistry } from "@dev-workflow/core";
 
-// Import tools
+// Import tools - handlers perform their own validation via validateToolArgs
 import {
   // Tool definitions
   issueToolDefinitions,
@@ -34,9 +34,6 @@ import {
   mergeToolDefinitions,
   typeToolDefinitions,
   dispatchToolDefinitions,
-  // Validation utilities
-  toolSchemas,
-  safeValidateArgs,
   // Issue handlers
   handleCreateIssue,
   handleGetIssue,
@@ -107,71 +104,6 @@ import {
   handleGetDispatchStatus,
   handleEndWorkerSession,
   errorResponse,
-  // Tool context types (transitional - to be removed)
-  type IssueToolContext,
-  type PlanToolContext,
-  type TaskToolContext,
-  type SnapshotToolContext,
-  type SettingsToolContext,
-  type MilestoneToolContext,
-  type WorktreeToolContext,
-  type PRToolContext,
-  type MergeToolContext,
-  type TypeToolContext,
-  type DispatchToolContext,
-  // Type aliases for validated args
-  type CreateIssueArgs,
-  type GetIssueArgs,
-  type DeleteIssueArgs,
-  type RestoreIssueArgs,
-  type ListTemplatesArgs,
-  type GetTemplateArgs,
-  type CreateTemplateArgs,
-  type UpdateTemplateArgs,
-  type DeleteTemplateArgs,
-  type CopyTemplateArgs,
-  type UpdateIssueArgs,
-  type CloseIssueArgs,
-  type ChangeIssueTypeArgs,
-  type SearchIssuesArgs,
-  type ImportGitHubIssueArgs,
-  type GeneratePlanArgs,
-  type GetPlanArgs,
-  type PauseIssueArgs,
-  type MoveIssueToReadyArgs,
-  type MoveIssueToBacklogArgs,
-  type SyncIssueArgs,
-  type LoadTaskSessionArgs,
-  type AbandonTaskArgs,
-  type GetTaskArgs,
-  type ListAvailableTasksArgs,
-  type DeleteTaskArgs,
-  type UpdateTaskArgs,
-  type GetTaskExecutionPromptArgs,
-  type LogTaskProgressArgs,
-  type GetTaskExecutionLogArgs,
-  type CheckTaskConflictsArgs,
-  type GetSnapshotHistoryArgs,
-  type RevertToSnapshotArgs,
-  type ViewSnapshotArgs,
-  type UpdateSettingsArgs,
-  type CreateMilestoneArgs,
-  type GetMilestoneArgs,
-  type ListMilestonesArgs,
-  type UpdateMilestoneArgs,
-  type DeleteMilestoneArgs,
-  type AssignIssueToMilestoneArgs,
-  type RemoveIssueFromMilestoneArgs,
-  type GetTaskPRStatusArgs,
-  type CreatePRArgs,
-  type SubmitForReviewArgs,
-  type CompleteTaskArgs,
-  type MergeIssuesArgs,
-  type CreateTypeArgs,
-  type UpdateTypeArgs,
-  type DeleteTypeArgs,
-  type DispatchTaskArgs,
-  type EndWorkerSessionArgs,
 } from "./tools/index.js";
 
 // =============================================================================
@@ -221,498 +153,207 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   ],
 }));
 
-/**
- * Validate tool arguments against Zod schema.
- * Returns validated arguments or an error response.
- */
-function validateToolArgs<T>(
-  toolName: string,
-  args: unknown
-): { success: true; data: T } | { success: false; response: ReturnType<typeof errorResponse> } {
-  const schema = toolSchemas[toolName as keyof typeof toolSchemas];
-  if (!schema) {
-    return { success: false, response: errorResponse(`Unknown tool: ${toolName}`) };
-  }
-
-  const result = safeValidateArgs(schema, args ?? {});
-  if (!result.success) {
-    return { success: false, response: errorResponse(`Invalid arguments: ${result.error}`) };
-  }
-
-  return { success: true, data: result.data as T };
-}
-
-// =============================================================================
-// Tool Context Factories
-// =============================================================================
-//
-// These functions construct tool contexts from the Awilix cradle.
-// This is a transitional pattern - eventually tool handlers will accept
-// dependencies directly from the cradle without needing these context objects.
-// =============================================================================
-
-/**
- * Create IssueToolContext from Awilix cradle
- */
-function createIssueToolContext(cradle: McpCradle): IssueToolContext {
-  return {
-    project: cradle.project,
-    issueService: cradle.issueService,
-    planService: cradle.planService,
-    taskService: cradle.taskService,
-    milestoneService: cradle.milestoneService,
-    workerQueueDb: cradle.workerQueueDb,
-    templateService: cradle.templateService,
-    planningService: cradle.planningService,
-    projectManagementProvider: cradle.projectManagementProvider,
-    githubCLI: cradle.githubCLI,
-    gitWorktreeService: cradle.gitWorktreeService,
-    typeService: cradle.typeService,
-  };
-}
-
-/**
- * Create PlanToolContext from Awilix cradle
- */
-function createPlanToolContext(cradle: McpCradle): PlanToolContext {
-  return {
-    project: cradle.project,
-    issueService: cradle.issueService,
-    planService: cradle.planService,
-    taskService: cradle.taskService,
-    planningService: cradle.planningService,
-    taskSyncService: cradle.taskSyncService,
-    typeService: cradle.typeService,
-  };
-}
-
-/**
- * Create TaskToolContext from Awilix cradle
- */
-function createTaskToolContext(cradle: McpCradle): TaskToolContext {
-  return {
-    db: cradle.dbClient,
-    issueService: cradle.issueService,
-    planService: cradle.planService,
-    taskService: cradle.taskService,
-    workerQueueDb: cradle.workerQueueDb,
-    taskSessionService: cradle.taskSessionService,
-    taskManagementService: cradle.taskManagementService,
-    conflictDetectionService: cradle.conflictDetectionService,
-    taskSyncService: cradle.taskSyncService,
-    providerRegistry: cradle.providerRegistry,
-    project: cradle.project,
-    source: cradle.dbSource,
-    githubCLI: cradle.githubCLI,
-  };
-}
-
-/**
- * Create SnapshotToolContext from Awilix cradle
- */
-function createSnapshotToolContext(cradle: McpCradle): SnapshotToolContext {
-  return {
-    issueService: cradle.issueService,
-    versioningService: cradle.versioningService,
-  };
-}
-
-/**
- * Create SettingsToolContext from Awilix cradle
- */
-function createSettingsToolContext(cradle: McpCradle): SettingsToolContext {
-  return {
-    project: cradle.project,
-    source: cradle.dbSource,
-    githubCLI: cradle.githubCLI,
-    gitRoot: cradle.config.gitRoot,
-    providerRegistry: cradle.providerRegistry,
-    typeService: cradle.typeService,
-  };
-}
-
-/**
- * Create MilestoneToolContext from Awilix cradle
- */
-function createMilestoneToolContext(cradle: McpCradle): MilestoneToolContext {
-  return {
-    milestoneService: cradle.milestoneService,
-    issueService: cradle.issueService,
-    projectName: cradle.project.name,
-  };
-}
-
-/**
- * Create WorktreeToolContext from Awilix cradle
- */
-function createWorktreeToolContext(cradle: McpCradle): WorktreeToolContext {
-  return {
-    projectRoot: cradle.projectRoot,
-  };
-}
-
-/**
- * Create PRToolContext from Awilix cradle
- */
-function createPRToolContext(cradle: McpCradle): PRToolContext {
-  return {
-    project: cradle.project,
-    githubCLI: cradle.githubCLI,
-    issueService: cradle.issueService,
-    planService: cradle.planService,
-    taskService: cradle.taskService,
-    gitWorktreeService: cradle.gitWorktreeService,
-    taskSyncService: cradle.taskSyncService,
-    db: cradle.dbClient,
-  };
-}
-
-/**
- * Create MergeToolContext from Awilix cradle
- */
-function createMergeToolContext(cradle: McpCradle): MergeToolContext {
-  return {
-    mergeService: cradle.mergeService,
-  };
-}
-
-/**
- * Create TypeToolContext from Awilix cradle
- */
-function createTypeToolContext(cradle: McpCradle): TypeToolContext {
-  return {
-    typeService: cradle.typeService,
-  };
-}
-
-/**
- * Create DispatchToolContext from Awilix cradle
- */
-function createDispatchToolContext(cradle: McpCradle): DispatchToolContext {
-  return {
-    workerQueueDb: cradle.workerQueueDb,
-    taskService: cradle.taskService,
-    projectSlug: cradle.projectSlug,
-  };
-}
-
-// Handle tool calls - route to appropriate handler with Zod validation
+// Handle tool calls - route to appropriate handler
+// Handlers perform their own Zod validation internally via validateToolArgs
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> => {
   const { name, arguments: args } = request.params;
-  const cradle = container.cradle;
 
   try {
     // Issue tools
     if (name === "create_issue") {
-      const validation = validateToolArgs<CreateIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleCreateIssue(createIssueToolContext(cradle), validation.data);
+      return await handleCreateIssue(args ?? {}, container);
     }
     if (name === "get_issue") {
-      const validation = validateToolArgs<GetIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetIssue(createIssueToolContext(cradle), validation.data);
+      return handleGetIssue(args ?? {}, container);
     }
     if (name === "list_templates") {
-      const validation = validateToolArgs<ListTemplatesArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleListTemplates(createIssueToolContext(cradle), validation.data);
+      return await handleListTemplates(args ?? {}, container);
     }
     if (name === "get_template") {
-      const validation = validateToolArgs<GetTemplateArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleGetTemplate(createIssueToolContext(cradle), validation.data);
+      return await handleGetTemplate(args ?? {}, container);
     }
     if (name === "create_template") {
-      const validation = validateToolArgs<CreateTemplateArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleCreateTemplate(createIssueToolContext(cradle), validation.data);
+      return await handleCreateTemplate(args ?? {}, container);
     }
     if (name === "update_template") {
-      const validation = validateToolArgs<UpdateTemplateArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleUpdateTemplate(createIssueToolContext(cradle), validation.data);
+      return await handleUpdateTemplate(args ?? {}, container);
     }
     if (name === "delete_template") {
-      const validation = validateToolArgs<DeleteTemplateArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleDeleteTemplate(createIssueToolContext(cradle), validation.data);
+      return await handleDeleteTemplate(args ?? {}, container);
     }
     if (name === "copy_template") {
-      const validation = validateToolArgs<CopyTemplateArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleCopyTemplate(createIssueToolContext(cradle), validation.data);
+      return await handleCopyTemplate(args ?? {}, container);
     }
     if (name === "update_issue") {
-      const validation = validateToolArgs<UpdateIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleUpdateIssue(createIssueToolContext(cradle), validation.data);
+      return await handleUpdateIssue(args ?? {}, container);
     }
     if (name === "close_issue") {
-      const validation = validateToolArgs<CloseIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleCloseIssue(createIssueToolContext(cradle), validation.data);
+      return await handleCloseIssue(args ?? {}, container);
     }
     if (name === "change_issue_type") {
-      const validation = validateToolArgs<ChangeIssueTypeArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleChangeIssueType(createIssueToolContext(cradle), validation.data);
+      return await handleChangeIssueType(args ?? {}, container);
     }
     if (name === "delete_issue") {
-      const validation = validateToolArgs<DeleteIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleDeleteIssue(createIssueToolContext(cradle), validation.data);
+      return await handleDeleteIssue(args ?? {}, container);
     }
     if (name === "restore_issue") {
-      const validation = validateToolArgs<RestoreIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleRestoreIssue(createIssueToolContext(cradle), validation.data);
+      return handleRestoreIssue(args ?? {}, container);
     }
     if (name === "get_project_stats") {
-      const validation = validateToolArgs<Record<string, never>>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetProjectStats(createIssueToolContext(cradle));
+      return handleGetProjectStats(container);
     }
     if (name === "search_issues") {
-      const validation = validateToolArgs<SearchIssuesArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleSearchIssues(createIssueToolContext(cradle), validation.data);
+      return handleSearchIssues(args ?? {}, container);
     }
     if (name === "get_work_queue") {
-      const validation = validateToolArgs<Record<string, never>>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetWorkQueue(createIssueToolContext(cradle));
+      return handleGetWorkQueue(container);
     }
     if (name === "import_github_issue") {
-      const validation = validateToolArgs<ImportGitHubIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleImportGitHubIssue(createIssueToolContext(cradle), validation.data);
+      return await handleImportGitHubIssue(args ?? {}, container);
     }
 
     // Plan tools
     if (name === "generate_plan") {
-      const validation = validateToolArgs<GeneratePlanArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleGeneratePlan(createPlanToolContext(cradle), validation.data);
+      return await handleGeneratePlan(args ?? {}, container);
     }
     if (name === "get_plan") {
-      const validation = validateToolArgs<GetPlanArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetPlan(createPlanToolContext(cradle), validation.data);
+      return handleGetPlan(args ?? {}, container);
     }
     if (name === "pause_issue") {
-      const validation = validateToolArgs<PauseIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handlePauseIssue(createPlanToolContext(cradle), validation.data);
+      return handlePauseIssue(args ?? {}, container);
     }
     if (name === "move_issue_to_ready") {
-      const validation = validateToolArgs<MoveIssueToReadyArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleMoveIssueToReady(createPlanToolContext(cradle), validation.data);
+      return await handleMoveIssueToReady(args ?? {}, container);
     }
     if (name === "move_issue_to_backlog") {
-      const validation = validateToolArgs<MoveIssueToBacklogArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleMoveIssueToBacklog(createPlanToolContext(cradle), validation.data);
+      return await handleMoveIssueToBacklog(args ?? {}, container);
     }
     if (name === "sync_issue") {
-      const validation = validateToolArgs<SyncIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleSyncIssue(createPlanToolContext(cradle), validation.data);
+      return await handleSyncIssue(args ?? {}, container);
     }
 
     // Task tools
     if (name === "load_task_session") {
-      const validation = validateToolArgs<LoadTaskSessionArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleLoadTaskSession(createTaskToolContext(cradle), validation.data);
+      return await handleLoadTaskSession(args ?? {}, container);
     }
     if (name === "abandon_task") {
-      const validation = validateToolArgs<AbandonTaskArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleAbandonTask(createTaskToolContext(cradle), validation.data);
+      return await handleAbandonTask(args ?? {}, container);
     }
     if (name === "get_task") {
-      const validation = validateToolArgs<GetTaskArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetTask(createTaskToolContext(cradle), validation.data);
+      return handleGetTask(args ?? {}, container);
     }
     if (name === "list_available_tasks") {
-      const validation = validateToolArgs<ListAvailableTasksArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleListAvailableTasks(createTaskToolContext(cradle), validation.data);
+      return await handleListAvailableTasks(args ?? {}, container);
     }
     if (name === "delete_task") {
-      const validation = validateToolArgs<DeleteTaskArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleDeleteTask(createTaskToolContext(cradle), validation.data);
+      return handleDeleteTask(args ?? {}, container);
     }
     if (name === "update_task") {
-      const validation = validateToolArgs<UpdateTaskArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleUpdateTask(createTaskToolContext(cradle), validation.data);
+      return await handleUpdateTask(args ?? {}, container);
     }
     if (name === "get_task_execution_prompt") {
-      const validation = validateToolArgs<GetTaskExecutionPromptArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetTaskExecutionPrompt(createTaskToolContext(cradle), validation.data);
+      return handleGetTaskExecutionPrompt(args ?? {}, container);
     }
     if (name === "log_task_progress") {
-      const validation = validateToolArgs<LogTaskProgressArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleLogTaskProgress(createTaskToolContext(cradle), validation.data);
+      return handleLogTaskProgress(args ?? {}, container);
     }
     if (name === "get_task_execution_log") {
-      const validation = validateToolArgs<GetTaskExecutionLogArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetTaskExecutionLog(createTaskToolContext(cradle), validation.data);
+      return handleGetTaskExecutionLog(args ?? {}, container);
     }
     if (name === "check_task_conflicts") {
-      const validation = validateToolArgs<CheckTaskConflictsArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleCheckTaskConflicts(createTaskToolContext(cradle), validation.data);
+      return handleCheckTaskConflicts(args ?? {}, container);
     }
 
     // Snapshot tools
     if (name === "get_snapshot_history") {
-      const validation = validateToolArgs<GetSnapshotHistoryArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetSnapshotHistory(createSnapshotToolContext(cradle), validation.data);
+      return handleGetSnapshotHistory(args ?? {}, container);
     }
     if (name === "revert_to_snapshot") {
-      const validation = validateToolArgs<RevertToSnapshotArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleRevertToSnapshot(createSnapshotToolContext(cradle), validation.data);
+      return handleRevertToSnapshot(args ?? {}, container);
     }
     if (name === "view_snapshot") {
-      const validation = validateToolArgs<ViewSnapshotArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleViewSnapshot(createSnapshotToolContext(cradle), validation.data);
+      return handleViewSnapshot(args ?? {}, container);
     }
 
     // Settings tools
     if (name === "update_settings") {
-      const validation = validateToolArgs<UpdateSettingsArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleUpdateSettings(createSettingsToolContext(cradle), validation.data);
+      return await handleUpdateSettings(args ?? {}, container);
     }
 
     // Milestone tools
     if (name === "create_milestone") {
-      const validation = validateToolArgs<CreateMilestoneArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleCreateMilestone(createMilestoneToolContext(cradle), validation.data);
+      return handleCreateMilestone(args ?? {}, container);
     }
     if (name === "get_milestone") {
-      const validation = validateToolArgs<GetMilestoneArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetMilestone(createMilestoneToolContext(cradle), validation.data);
+      return handleGetMilestone(args ?? {}, container);
     }
     if (name === "list_milestones") {
-      const validation = validateToolArgs<ListMilestonesArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleListMilestones(createMilestoneToolContext(cradle), validation.data);
+      return handleListMilestones(args ?? {}, container);
     }
     if (name === "update_milestone") {
-      const validation = validateToolArgs<UpdateMilestoneArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleUpdateMilestone(createMilestoneToolContext(cradle), validation.data);
+      return handleUpdateMilestone(args ?? {}, container);
     }
     if (name === "delete_milestone") {
-      const validation = validateToolArgs<DeleteMilestoneArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleDeleteMilestone(createMilestoneToolContext(cradle), validation.data);
+      return handleDeleteMilestone(args ?? {}, container);
     }
     if (name === "assign_issue_to_milestone") {
-      const validation = validateToolArgs<AssignIssueToMilestoneArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleAssignIssueToMilestone(createMilestoneToolContext(cradle), validation.data);
+      return handleAssignIssueToMilestone(args ?? {}, container);
     }
     if (name === "remove_issue_from_milestone") {
-      const validation = validateToolArgs<RemoveIssueFromMilestoneArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleRemoveIssueFromMilestone(createMilestoneToolContext(cradle), validation.data);
+      return handleRemoveIssueFromMilestone(args ?? {}, container);
     }
 
     // Worktree tools
     if (name === "list_worktrees") {
-      const validation = validateToolArgs<Record<string, never>>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleListWorktrees(validation.data, createWorktreeToolContext(cradle));
+      return await handleListWorktrees(container);
     }
     if (name === "prune_stale_worktrees") {
-      const validation = validateToolArgs<Record<string, never>>(name, args);
-      if (!validation.success) return validation.response;
-      return await handlePruneStaleWorktrees(validation.data, createWorktreeToolContext(cradle));
+      return await handlePruneStaleWorktrees(container);
     }
 
     // PR tools
     if (name === "get_task_pr_status") {
-      const validation = validateToolArgs<GetTaskPRStatusArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleGetTaskPRStatus(createPRToolContext(cradle), validation.data);
+      return await handleGetTaskPRStatus(args ?? {}, container);
     }
     if (name === "create_pr") {
-      const validation = validateToolArgs<CreatePRArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleCreatePR(createPRToolContext(cradle), validation.data);
+      return await handleCreatePR(args ?? {}, container);
     }
     if (name === "submit_for_review") {
-      const validation = validateToolArgs<SubmitForReviewArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleSubmitForReview(createPRToolContext(cradle), validation.data);
+      return await handleSubmitForReview(args ?? {}, container);
     }
     if (name === "complete_task") {
-      const validation = validateToolArgs<CompleteTaskArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleCompleteTask(createPRToolContext(cradle), validation.data);
+      return await handleCompleteTask(args ?? {}, container);
     }
 
     // Merge tools
     if (name === "merge_issues") {
-      const validation = validateToolArgs<MergeIssuesArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleMergeIssues(createMergeToolContext(cradle), validation.data);
+      return await handleMergeIssues(args ?? {}, container);
     }
 
     // Type tools
     if (name === "list_types") {
-      const validation = validateToolArgs<Record<string, never>>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleListTypes(createTypeToolContext(cradle));
+      return await handleListTypes(container);
     }
     if (name === "create_type") {
-      const validation = validateToolArgs<CreateTypeArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleCreateType(createTypeToolContext(cradle), validation.data);
+      return handleCreateType(args ?? {}, container);
     }
     if (name === "update_type") {
-      const validation = validateToolArgs<UpdateTypeArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleUpdateType(createTypeToolContext(cradle), validation.data);
+      return handleUpdateType(args ?? {}, container);
     }
     if (name === "delete_type") {
-      const validation = validateToolArgs<DeleteTypeArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleDeleteType(createTypeToolContext(cradle), validation.data);
+      return handleDeleteType(args ?? {}, container);
     }
 
     // Dispatch tools (worker task assignment)
     if (name === "dispatch_task") {
-      const validation = validateToolArgs<DispatchTaskArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleDispatchTask(createDispatchToolContext(cradle), validation.data);
+      return handleDispatchTask(args ?? {}, container);
     }
     if (name === "get_dispatch_status") {
-      const validation = validateToolArgs<Record<string, never>>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetDispatchStatus(createDispatchToolContext(cradle));
+      return handleGetDispatchStatus(container);
     }
     if (name === "end_worker_session") {
-      const validation = validateToolArgs<EndWorkerSessionArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleEndWorkerSession(createDispatchToolContext(cradle), validation.data);
+      return handleEndWorkerSession(args ?? {}, container);
     }
 
     return errorResponse(`Unknown tool: ${name}`);

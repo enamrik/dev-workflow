@@ -11,7 +11,6 @@ import { MilestoneService, IssueService, TaskService, type DbClient } from "@dev
 import {
   handleAssignIssueToMilestone,
   handleRemoveIssueFromMilestone,
-  type MilestoneToolContext,
 } from "../../tools/milestone-tools.js";
 import {
   CreateMilestoneSchema,
@@ -28,7 +27,8 @@ const TEST_PROJECT_ID = "test-project-milestone";
 
 describe("Milestone Tools", () => {
   let testDb: TestDatabase;
-  let ctx: MilestoneToolContext;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let ctx: any;
   let client: DbClient;
 
   beforeEach(async () => {
@@ -57,7 +57,7 @@ describe("Milestone Tools", () => {
   });
 
   describe("handleAssignIssueToMilestone", () => {
-    it("should assign an issue to a milestone", () => {
+    it("should assign an issue to a milestone", async () => {
       // Create an issue
       const issue = createTestIssue(client.issues, {
         title: "Test Issue",
@@ -73,10 +73,13 @@ describe("Milestone Tools", () => {
       });
 
       // Assign issue to milestone
-      const result = handleAssignIssueToMilestone(ctx, {
-        issueNumber: issue.number,
-        milestoneNumber: milestone.number,
-      });
+      const result = await handleAssignIssueToMilestone(
+        {
+          issueNumber: issue.number,
+          milestoneNumber: milestone.number,
+        },
+        { cradle: ctx }
+      );
 
       expect(result.content[0].type).toBe("text");
       const response = JSON.parse((result.content[0] as { text: string }).text);
@@ -87,7 +90,7 @@ describe("Milestone Tools", () => {
       expect(updatedIssue?.milestoneId).toBe(milestone.id);
     });
 
-    it("should return error if issue not found", () => {
+    it("should return error if issue not found", async () => {
       // Create a milestone
       const milestone = client.milestones.create({
         title: "MVP",
@@ -97,23 +100,29 @@ describe("Milestone Tools", () => {
         status: "PLANNED",
       });
 
-      const result = handleAssignIssueToMilestone(ctx, {
-        issueNumber: 999,
-        milestoneNumber: milestone.number,
-      });
+      const result = await handleAssignIssueToMilestone(
+        {
+          issueNumber: 999,
+          milestoneNumber: milestone.number,
+        },
+        { cradle: ctx }
+      );
 
       const response = JSON.parse((result.content[0] as { text: string }).text);
       expect(response.success).toBe(false);
       expect(response.error).toContain("Issue #999 not found");
     });
 
-    it("should return error if milestone not found", () => {
+    it("should return error if milestone not found", async () => {
       const issue = createTestIssue(client.issues);
 
-      const result = handleAssignIssueToMilestone(ctx, {
-        issueNumber: issue.number,
-        milestoneNumber: 999,
-      });
+      const result = await handleAssignIssueToMilestone(
+        {
+          issueNumber: issue.number,
+          milestoneNumber: 999,
+        },
+        { cradle: ctx }
+      );
 
       const response = JSON.parse((result.content[0] as { text: string }).text);
       expect(response.success).toBe(false);
@@ -122,7 +131,7 @@ describe("Milestone Tools", () => {
   });
 
   describe("handleRemoveIssueFromMilestone", () => {
-    it("should remove an issue from its milestone", () => {
+    it("should remove an issue from its milestone", async () => {
       // Create a milestone
       const milestone = client.milestones.create({
         title: "MVP",
@@ -143,9 +152,12 @@ describe("Milestone Tools", () => {
       expect(assignedIssue?.milestoneId).toBe(milestone.id);
 
       // Remove from milestone
-      const result = handleRemoveIssueFromMilestone(ctx, {
-        issueNumber: issue.number,
-      });
+      const result = await handleRemoveIssueFromMilestone(
+        {
+          issueNumber: issue.number,
+        },
+        { cradle: ctx }
+      );
 
       expect(result.isError).toBeFalsy();
       const response = JSON.parse((result.content[0] as { text: string }).text);
@@ -156,25 +168,31 @@ describe("Milestone Tools", () => {
       expect(updatedIssue?.milestoneId).toBeUndefined();
     });
 
-    it("should return error if issue not found", () => {
-      const result = handleRemoveIssueFromMilestone(ctx, {
-        issueNumber: 999,
-      });
+    it("should return error if issue not found", async () => {
+      const result = await handleRemoveIssueFromMilestone(
+        {
+          issueNumber: 999,
+        },
+        { cradle: ctx }
+      );
 
       const response = JSON.parse((result.content[0] as { text: string }).text);
       expect(response.success).toBe(false);
       expect(response.error).toContain("Issue #999 not found");
     });
 
-    it("should return error if issue is not assigned to any milestone", () => {
+    it("should return error if issue is not assigned to any milestone", async () => {
       // Create an issue without a milestone
       const issue = createTestIssue(client.issues, {
         title: "Test Issue",
       });
 
-      const result = handleRemoveIssueFromMilestone(ctx, {
-        issueNumber: issue.number,
-      });
+      const result = await handleRemoveIssueFromMilestone(
+        {
+          issueNumber: issue.number,
+        },
+        { cradle: ctx }
+      );
 
       const response = JSON.parse((result.content[0] as { text: string }).text);
       expect(response.success).toBe(false);

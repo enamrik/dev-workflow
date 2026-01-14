@@ -1,20 +1,28 @@
 /**
  * Plan-related MCP tools
+ *
+ * Handlers follow the pattern: (args, cradle) => ToolResponse
+ * Each handler destructures what it needs from the cradle.
  */
 
-import {
-  isIssueInPlanning,
-  type PlanningService,
-  type PlanComplexity,
-  type TaskSyncService,
-  type Project,
-  type TypeService,
-  type IssueType,
-  type IssueService,
-  type TaskService,
-  type PlanService,
-} from "@dev-workflow/core";
+import { isIssueInPlanning, type IssueType } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
+import {
+  GeneratePlanSchema,
+  GetPlanSchema,
+  PauseIssueSchema,
+  MoveIssueToReadySchema,
+  MoveIssueToBacklogSchema,
+  SyncIssueSchema,
+  type GeneratePlanArgs,
+  type GetPlanArgs,
+  type PauseIssueArgs,
+  type MoveIssueToReadyArgs,
+  type MoveIssueToBacklogArgs,
+  type SyncIssueArgs,
+} from "./schemas.js";
+import { createMcpHandler, validateToolArgs } from "../di/bootstrap.js";
+import type { McpCradle } from "../di/container.js";
 
 /**
  * Tool definitions for plan operations
@@ -185,65 +193,32 @@ export const planToolDefinitions: ToolDefinition[] = [
   },
 ];
 
-/**
- * Service context for plan handlers
- */
-export interface PlanToolContext {
-  /** Current project (for URL construction) */
-  project: Project;
-  issueService: IssueService;
-  planService: PlanService;
-  taskService: TaskService;
-  planningService: PlanningService;
-  taskSyncService?: TaskSyncService; // Optional - only present if GitHub sync is enabled
-  typeService: TypeService; // Required for type validation in generate_plan
-}
-
-/**
- * Task definition for plan generation
- *
- * The 'id' field is a short placeholder (e.g., "db", "api") used to reference
- * this task in dependsOn arrays. Real UUIDs are generated internally by the
- * PlanningService.
- *
- * The 'type' field is REQUIRED and must be a valid type from list_types.
- *
- * The 'description' and 'acceptanceCriteria' should use story format (human-readable
- * content for GitHub issues), while 'implementationPlan' contains technical details
- * for Claude's execution context.
- */
-interface TaskDefinition {
-  id: string; // Short placeholder ID (e.g., "db", "api", "auth")
-  title: string;
-  description: string; // Human-readable story format (syncs to GitHub)
-  type: string; // Required task type (FEATURE, BUG, ENHANCEMENT, TASK, or custom)
-  acceptanceCriteria?: string[]; // Human-readable criteria (syncs to GitHub)
-  estimatedMinutes?: number;
-  dependsOn?: string[]; // Placeholder IDs of tasks this depends on
-  implementationPlan?: string; // Technical implementation details for Claude execution (NOT synced to GitHub)
-}
+// =============================================================================
+// Handler Implementations
+// =============================================================================
 
 /**
  * Handle generate_plan tool call
  */
-export async function handleGeneratePlan(
-  ctx: PlanToolContext,
-  args: {
-    issueId?: string;
-    issueNumber?: number;
-    summary: string;
-    approach: string;
-    tasks: TaskDefinition[];
-    estimatedComplexity: PlanComplexity;
-  }
+async function generatePlanHandler(
+  args: unknown,
+  {
+    project,
+    issueService,
+    planningService,
+    typeService,
+  }: Pick<McpCradle, "project" | "issueService" | "planningService" | "typeService">
 ): Promise<ToolResponse> {
-  const { issueId, issueNumber, summary, approach, tasks, estimatedComplexity } = args;
+  const validation = validateToolArgs<GeneratePlanArgs>(GeneratePlanSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { issueId, issueNumber, summary, approach, tasks, estimatedComplexity } = validation.data;
 
   // Resolve issue from ID or number
   const issue = issueId
-    ? ctx.issueService.findById(issueId)
+    ? issueService.findById(issueId)
     : issueNumber
-      ? ctx.issueService.findByNumber(issueNumber)
+      ? issueService.findByNumber(issueNumber)
       : null;
 
   if (!issue) {
@@ -259,7 +234,7 @@ export async function handleGeneratePlan(
   const resolvedIssueId = issue.id;
 
   // Validate task types - each task must have a valid type
-  const validTypes = await ctx.typeService.getTypes();
+  const validTypes = await typeService.getTypes();
   const validTypeNames = validTypes.map((t) => t.name);
 
   for (const task of tasks) {
@@ -273,7 +248,7 @@ export async function handleGeneratePlan(
     }
 
     // Check type is valid
-    const isValid = await ctx.typeService.isValidType(task.type);
+    const isValid = await typeService.isValidType(task.type);
     if (!isValid) {
       return errorResponse(
         `Task '${task.id}' has invalid type '${task.type}'. ` +
@@ -310,7 +285,7 @@ export async function handleGeneratePlan(
     implementationPlan: t.implementationPlan,
   }));
 
-  const result = await ctx.planningService.generatePlan({
+  const result = await planningService.generatePlan({
     issueId: resolvedIssueId,
     summary,
     approach,
@@ -321,23 +296,30 @@ export async function handleGeneratePlan(
 
   return successResponse({
     ...result,
-    url: `http://127.0.0.1:3456/projects/${ctx.project.slug}/issues/${issue.number}`,
+    url: `http://127.0.0.1:3456/projects/${project.slug}/issues/${issue.number}`,
   });
 }
 
 /**
  * Handle get_plan tool call
  */
-export function handleGetPlan(
-  ctx: PlanToolContext,
-  args: { issueId?: string; issueNumber?: number }
+function getPlanHandler(
+  args: unknown,
+  {
+    issueService,
+    planService,
+    taskService,
+  }: Pick<McpCradle, "issueService" | "planService" | "taskService">
 ): ToolResponse {
-  const { issueId, issueNumber } = args;
+  const validation = validateToolArgs<GetPlanArgs>(GetPlanSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { issueId, issueNumber } = validation.data;
 
   // Resolve issue ID from number if needed
   let resolvedIssueId = issueId;
   if (!resolvedIssueId && issueNumber) {
-    const issue = ctx.issueService.findByNumber(issueNumber);
+    const issue = issueService.findByNumber(issueNumber);
     if (!issue) {
       return errorResponse(`Issue not found: #${issueNumber}`);
     }
@@ -348,12 +330,12 @@ export function handleGetPlan(
     return errorResponse("Either issueId or issueNumber is required");
   }
 
-  const plan = ctx.planService.findByIssueId(resolvedIssueId);
+  const plan = planService.findByIssueId(resolvedIssueId);
   if (!plan) {
     return errorResponse("No plan found for this issue");
   }
 
-  const tasks = ctx.taskService.findByPlanId(plan.id);
+  const tasks = taskService.findByPlanId(plan.id);
 
   return successResponse({ plan, tasks });
 }
@@ -365,17 +347,16 @@ export function handleGetPlan(
  * temporarily deactivated. When work resumes (any task is started),
  * BACKLOG tasks will transition back to READY.
  */
-export function handlePauseIssue(
-  ctx: PlanToolContext,
-  args: { issueNumber: number }
+function pauseIssueHandler(
+  args: unknown,
+  { planningService }: Pick<McpCradle, "planningService">
 ): ToolResponse {
-  const { issueNumber } = args;
+  const validation = validateToolArgs<PauseIssueArgs>(PauseIssueSchema, args);
+  if (!validation.success) return validation.response;
 
-  if (!issueNumber) {
-    return errorResponse("issueNumber is required");
-  }
+  const { issueNumber } = validation.data;
 
-  const result = ctx.planningService.pauseIssue(issueNumber);
+  const result = planningService.pauseIssue(issueNumber);
 
   return successResponse({
     message:
@@ -401,23 +382,22 @@ export function handlePauseIssue(
  * If GitHub sync is enabled, syncs each task's status to the GitHub Project
  * board (moves to "Ready" column).
  */
-export async function handleMoveIssueToReady(
-  ctx: PlanToolContext,
-  args: { issueNumber: number }
+async function moveIssueToReadyHandler(
+  args: unknown,
+  { planningService, taskSyncService }: Pick<McpCradle, "planningService" | "taskSyncService">
 ): Promise<ToolResponse> {
-  const { issueNumber } = args;
+  const validation = validateToolArgs<MoveIssueToReadyArgs>(MoveIssueToReadySchema, args);
+  if (!validation.success) return validation.response;
 
-  if (!issueNumber) {
-    return errorResponse("issueNumber is required");
-  }
+  const { issueNumber } = validation.data;
 
   try {
-    const result = ctx.planningService.readyIssue(issueNumber);
+    const result = planningService.readyIssue(issueNumber);
 
     // Sync each task's READY status to GitHub (if sync enabled)
-    if (ctx.taskSyncService && result.tasks.length > 0) {
+    if (taskSyncService && result.tasks.length > 0) {
       for (const task of result.tasks) {
-        await ctx.taskSyncService.syncTaskStatus(task.id, "READY");
+        await taskSyncService.syncTaskStatus(task.id, "READY");
       }
     }
 
@@ -450,18 +430,22 @@ export async function handleMoveIssueToReady(
  * This is idempotent: if called on an issue already in OPEN status,
  * it only activates any remaining PLANNED tasks (from a plan regeneration).
  */
-export async function handleMoveIssueToBacklog(
-  ctx: PlanToolContext,
-  args: { issueNumber: number; skipGitHubSync?: boolean }
+async function moveIssueToBacklogHandler(
+  args: unknown,
+  {
+    issueService,
+    planService,
+    taskService,
+    taskSyncService,
+  }: Pick<McpCradle, "issueService" | "planService" | "taskService" | "taskSyncService">
 ): Promise<ToolResponse> {
-  const { issueNumber, skipGitHubSync = false } = args;
+  const validation = validateToolArgs<MoveIssueToBacklogArgs>(MoveIssueToBacklogSchema, args);
+  if (!validation.success) return validation.response;
 
-  if (!issueNumber) {
-    return errorResponse("issueNumber is required");
-  }
+  const { issueNumber, skipGitHubSync = false } = validation.data;
 
   // Get the issue
-  const issue = ctx.issueService.findByNumber(issueNumber);
+  const issue = issueService.findByNumber(issueNumber);
   if (!issue) {
     return errorResponse(`Issue not found: #${issueNumber}`);
   }
@@ -474,13 +458,13 @@ export async function handleMoveIssueToBacklog(
   }
 
   // Get the plan
-  const plan = ctx.planService.findByIssueId(issue.id);
+  const plan = planService.findByIssueId(issue.id);
   if (!plan) {
     return errorResponse(`No plan found for issue #${issueNumber}`);
   }
 
   // Get PLANNED tasks
-  const allTasks = ctx.taskService.findByPlanId(plan.id);
+  const allTasks = taskService.findByPlanId(plan.id);
   const plannedTasks = allTasks.filter((t) => t.status === "PLANNED");
 
   // If no PLANNED tasks and issue is already active (not in planning), nothing to do
@@ -495,9 +479,9 @@ export async function handleMoveIssueToBacklog(
   }
 
   // Use TaskSyncService if available and not skipped
-  if (ctx.taskSyncService && !skipGitHubSync) {
+  if (taskSyncService && !skipGitHubSync) {
     try {
-      const result = await ctx.taskSyncService.activatePlannedTasks(issue.id);
+      const result = await taskSyncService.activatePlannedTasks(issue.id);
 
       if (!result.success) {
         return errorResponse(result.error ?? "Failed to activate tasks");
@@ -526,7 +510,7 @@ export async function handleMoveIssueToBacklog(
   // No GitHub sync - just move tasks to BACKLOG
   const activatedTasks = [];
   for (const task of plannedTasks) {
-    ctx.taskService.updateTaskStatus(
+    taskService.updateTaskStatus(
       task.id,
       "BACKLOG",
       "system",
@@ -543,7 +527,7 @@ export async function handleMoveIssueToBacklog(
   // Transition issue from PLANNED → OPEN
   const issueTransitioned = isIssueInPlanning(issue);
   if (issueTransitioned) {
-    ctx.issueService.update(issue.id, { status: "OPEN" });
+    issueService.update(issue.id, { status: "OPEN" });
   }
 
   return successResponse({
@@ -569,22 +553,21 @@ export async function handleMoveIssueToBacklog(
  *
  * Idempotent: safe to run multiple times, produces same result.
  */
-export async function handleSyncIssue(
-  ctx: PlanToolContext,
-  args: { issueNumber: number }
+async function syncIssueHandler(
+  args: unknown,
+  { taskSyncService }: Pick<McpCradle, "taskSyncService">
 ): Promise<ToolResponse> {
-  const { issueNumber } = args;
+  const validation = validateToolArgs<SyncIssueArgs>(SyncIssueSchema, args);
+  if (!validation.success) return validation.response;
 
-  if (!issueNumber) {
-    return errorResponse("issueNumber is required");
-  }
+  const { issueNumber } = validation.data;
 
-  if (!ctx.taskSyncService) {
+  if (!taskSyncService) {
     return errorResponse("GitHub sync is not enabled for this project");
   }
 
   try {
-    const result = await ctx.taskSyncService.syncIssue(issueNumber);
+    const result = await taskSyncService.syncIssue(issueNumber);
 
     if (!result.success && result.errors.length > 0) {
       // Partial failure - some tasks had errors
@@ -638,3 +621,14 @@ export async function handleSyncIssue(
     return errorResponse(`Failed to sync issue: ${errorMessage}`);
   }
 }
+
+// =============================================================================
+// Wrapped Handlers (for tool registry)
+// =============================================================================
+
+export const handleGeneratePlan = createMcpHandler(generatePlanHandler);
+export const handleGetPlan = createMcpHandler(getPlanHandler);
+export const handlePauseIssue = createMcpHandler(pauseIssueHandler);
+export const handleMoveIssueToReady = createMcpHandler(moveIssueToReadyHandler);
+export const handleMoveIssueToBacklog = createMcpHandler(moveIssueToBacklogHandler);
+export const handleSyncIssue = createMcpHandler(syncIssueHandler);

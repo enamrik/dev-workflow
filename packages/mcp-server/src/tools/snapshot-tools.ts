@@ -1,9 +1,21 @@
 /**
  * Snapshot/versioning MCP tools
+ *
+ * Handlers follow the pattern: (args, cradle) => ToolResponse
+ * Each handler destructures what it needs from the cradle.
  */
 
-import type { IssueService, VersioningService } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
+import {
+  GetSnapshotHistorySchema,
+  RevertToSnapshotSchema,
+  ViewSnapshotSchema,
+  type GetSnapshotHistoryArgs,
+  type RevertToSnapshotArgs,
+  type ViewSnapshotArgs,
+} from "./schemas.js";
+import { createMcpHandler, validateToolArgs } from "../di/bootstrap.js";
+import type { McpCradle } from "../di/container.js";
 
 /**
  * Tool definitions for snapshot operations
@@ -70,27 +82,26 @@ export const snapshotToolDefinitions: ToolDefinition[] = [
   },
 ];
 
-/**
- * Service context for snapshot handlers
- */
-export interface SnapshotToolContext {
-  issueService: IssueService;
-  versioningService: VersioningService;
-}
+// =============================================================================
+// Handler Implementations
+// =============================================================================
 
 /**
  * Handle get_snapshot_history tool call
  */
-export function handleGetSnapshotHistory(
-  ctx: SnapshotToolContext,
-  args: { issueId?: string; issueNumber?: number }
+function getSnapshotHistoryHandler(
+  args: unknown,
+  { issueService, versioningService }: Pick<McpCradle, "issueService" | "versioningService">
 ): ToolResponse {
-  const { issueId, issueNumber } = args;
+  const validation = validateToolArgs<GetSnapshotHistoryArgs>(GetSnapshotHistorySchema, args);
+  if (!validation.success) return validation.response;
+
+  const { issueId, issueNumber } = validation.data;
 
   // Resolve issue number from ID if needed
   let resolvedIssueNumber = issueNumber;
   if (!resolvedIssueNumber && issueId) {
-    const issue = ctx.issueService.findById(issueId);
+    const issue = issueService.findById(issueId);
     if (!issue) {
       return errorResponse(`Issue not found: ${issueId}`);
     }
@@ -101,7 +112,7 @@ export function handleGetSnapshotHistory(
     return errorResponse("Either issueId or issueNumber is required");
   }
 
-  const history = ctx.versioningService.getSnapshotHistory(resolvedIssueNumber);
+  const history = versioningService.getSnapshotHistory(resolvedIssueNumber);
 
   return successResponse(history);
 }
@@ -109,18 +120,16 @@ export function handleGetSnapshotHistory(
 /**
  * Handle revert_to_snapshot tool call
  */
-export function handleRevertToSnapshot(
-  ctx: SnapshotToolContext,
-  args: { issueNumber: number; version: number; notes?: string }
+function revertToSnapshotHandler(
+  args: unknown,
+  { versioningService }: Pick<McpCradle, "versioningService">
 ): ToolResponse {
-  const { issueNumber, version, notes } = args;
+  const validation = validateToolArgs<RevertToSnapshotArgs>(RevertToSnapshotSchema, args);
+  if (!validation.success) return validation.response;
 
-  const result = ctx.versioningService.revertToSnapshot(
-    issueNumber,
-    version,
-    "claude-agent",
-    notes
-  );
+  const { issueNumber, version, notes } = validation.data;
+
+  const result = versioningService.revertToSnapshot(issueNumber, version, "claude-agent", notes);
 
   return successResponse(result);
 }
@@ -128,13 +137,24 @@ export function handleRevertToSnapshot(
 /**
  * Handle view_snapshot tool call
  */
-export function handleViewSnapshot(
-  ctx: SnapshotToolContext,
-  args: { issueNumber: number; version: number }
+function viewSnapshotHandler(
+  args: unknown,
+  { versioningService }: Pick<McpCradle, "versioningService">
 ): ToolResponse {
-  const { issueNumber, version } = args;
+  const validation = validateToolArgs<ViewSnapshotArgs>(ViewSnapshotSchema, args);
+  if (!validation.success) return validation.response;
 
-  const snapshotData = ctx.versioningService.viewSnapshot(issueNumber, version);
+  const { issueNumber, version } = validation.data;
+
+  const snapshotData = versioningService.viewSnapshot(issueNumber, version);
 
   return successResponse(snapshotData);
 }
+
+// =============================================================================
+// Wrapped Handlers (for tool registry)
+// =============================================================================
+
+export const handleGetSnapshotHistory = createMcpHandler(getSnapshotHistoryHandler);
+export const handleRevertToSnapshot = createMcpHandler(revertToSnapshotHandler);
+export const handleViewSnapshot = createMcpHandler(viewSnapshotHandler);

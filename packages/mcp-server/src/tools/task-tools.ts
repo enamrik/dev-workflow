@@ -1,90 +1,42 @@
 /**
  * Task-related MCP tools
+ *
+ * Handlers follow the pattern: (args, cradle) => ToolResponse
+ * Each handler destructures what it needs from the cradle.
  */
 
 import {
   isTerminal,
-  type DbClient,
-  type DbSource,
-  type TaskSessionService,
-  type TaskManagementService,
-  type ConflictDetectionService,
   type ConflictWarning,
-  type TaskSyncService,
-  type ProviderRegistry,
-  type Project,
-  type GitHubCLI,
   type AvailableLabel,
   type Task,
-  type IssueService,
-  type TaskService,
-  type PlanService,
   type WorkerQueueDb,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
-
-/**
- * Validate labels against available labels from the project management provider.
- *
- * Returns an error message if validation fails, or null if valid.
- * Gracefully degrades if provider is not available (returns null = valid).
- */
-async function validateLabels(
-  labels: Record<string, string | null>,
-  ctx: TaskToolContext
-): Promise<string | null> {
-  // Skip validation if provider context is not available
-  if (!ctx.providerRegistry || !ctx.project || !ctx.source || !ctx.githubCLI) {
-    return null; // Graceful degradation - no validation
-  }
-
-  // Re-fetch project to get latest config
-  const project = await ctx.source.projects.findById(ctx.project.id);
-  if (!project) {
-    return null; // Project not found - graceful degradation
-  }
-
-  // Get available labels from provider
-  const provider = ctx.providerRegistry.createProvider(project, ctx);
-
-  const result = await provider.getAvailableLabels();
-
-  if (!result.supported || result.error) {
-    return null; // Provider doesn't support labels or errored - no validation
-  }
-
-  // Build lookup map for efficient validation
-  const availableLabelsMap = new Map<string, AvailableLabel>();
-  for (const label of result.labels) {
-    availableLabelsMap.set(label.name.toLowerCase(), label);
-  }
-
-  // Validate each label being set (ignore null values - those are removals)
-  const errors: string[] = [];
-  for (const [name, value] of Object.entries(labels)) {
-    if (value === null) continue; // Removal - no validation needed
-
-    const availableLabel = availableLabelsMap.get(name.toLowerCase());
-
-    if (!availableLabel) {
-      const availableNames = result.labels.map((l) => l.name).join(", ");
-      errors.push(`Unknown label "${name}". Available labels: ${availableNames}`);
-      continue;
-    }
-
-    // Check if value is valid (if label has constrained values)
-    if (availableLabel.validValues !== null && value !== "") {
-      const validValuesLower = availableLabel.validValues.map((v) => v.toLowerCase());
-      if (!validValuesLower.includes(value.toLowerCase())) {
-        errors.push(
-          `Invalid value "${value}" for label "${name}". Valid values: ${availableLabel.validValues.join(", ")}`
-        );
-      }
-    }
-  }
-
-  return errors.length > 0 ? errors.join("; ") : null;
-}
+import {
+  LoadTaskSessionSchema,
+  AbandonTaskSchema,
+  GetTaskSchema,
+  ListAvailableTasksSchema,
+  DeleteTaskSchema,
+  UpdateTaskSchema,
+  GetTaskExecutionPromptSchema,
+  LogTaskProgressSchema,
+  GetTaskExecutionLogSchema,
+  CheckTaskConflictsSchema,
+  type LoadTaskSessionArgs,
+  type AbandonTaskArgs,
+  type GetTaskArgs,
+  type ListAvailableTasksArgs,
+  type DeleteTaskArgs,
+  type UpdateTaskArgs,
+  type GetTaskExecutionPromptArgs,
+  type LogTaskProgressArgs,
+  type GetTaskExecutionLogArgs,
+  type CheckTaskConflictsArgs,
+} from "./schemas.js";
+import { createMcpHandler, validateToolArgs } from "../di/bootstrap.js";
+import type { McpCradle } from "../di/container.js";
 
 /**
  * Tool definitions for task operations
@@ -335,365 +287,9 @@ export const taskToolDefinitions: ToolDefinition[] = [
   },
 ];
 
-/**
- * Service context for task handlers
- */
-export interface TaskToolContext {
-  db: DbClient;
-  issueService: IssueService;
-  planService: PlanService;
-  taskService: TaskService;
-  taskSessionService: TaskSessionService;
-  taskManagementService: TaskManagementService;
-  conflictDetectionService?: ConflictDetectionService;
-  /** Optional - for syncing task status changes to GitHub */
-  taskSyncService?: TaskSyncService;
-  /** Optional - for label validation against project management provider */
-  providerRegistry?: ProviderRegistry;
-  project?: Project;
-  /** Optional - for accessing global repositories (projects, types) */
-  source?: DbSource;
-  githubCLI?: GitHubCLI;
-  /** Optional - for enriching task data with worker info */
-  workerQueueDb?: WorkerQueueDb;
-}
-
-/**
- * Handle load_task_session tool call
- *
- * Idempotent task session loader - safe to call multiple times.
- * Uses startedAt as the signal for "has work started":
- * - startedAt is null → fresh start (create worktree, transition to IN_PROGRESS)
- * - startedAt is set → resume (return existing context)
- *
- * Access control:
- * - Queued tasks require worker with matching workerId
- * - Workers must use isolated mode
- *
- * Terminal states (COMPLETED/ABANDONED) return gracefully with issue status
- * and next task info, rather than erroring.
- *
- * Supports 3 modes:
- * - 'isolated' (default): creates worktree + branch for parallel work
- * - 'branch': creates branch only, checks out in main repo
- * - 'main': works directly on main, skips PR review
- */
-export async function handleLoadTaskSession(
-  ctx: TaskToolContext,
-  args: {
-    taskId: string;
-    sessionId: string;
-    mode?: "isolated" | "branch" | "main";
-    workerId?: string;
-  }
-): Promise<ToolResponse> {
-  const { taskId, sessionId, mode = "isolated", workerId } = args;
-
-  // Check if task exists
-  const task = ctx.taskService.findById(taskId);
-  if (!task) {
-    return errorResponse(`Task not found: ${taskId}`);
-  }
-
-  // Access control: queued tasks require worker with matching workerId
-  const queueEntry = ctx.workerQueueDb?.findByTaskId(taskId);
-  if (queueEntry) {
-    if (!workerId) {
-      return errorResponse(
-        `Task is in dispatch queue and can only be claimed by a worker. ` +
-          `Start a worker to continue this task, or remove it from the queue first.`
-      );
-    }
-    if (queueEntry.workerId !== workerId) {
-      return errorResponse(
-        `Task queue mismatch: expected worker ${queueEntry.workerId ?? "(unclaimed)"}, got ${workerId}. ` +
-          `The task must be claimed by this worker before loading.`
-      );
-    }
-  }
-
-  // Access control: workers must use isolated mode
-  if (workerId && mode !== "isolated") {
-    return errorResponse(
-      `Workers MUST use isolated mode. Got mode="${mode}" with workerId="${workerId}". ` +
-        `Workers are not allowed to use branch or main modes.`
-    );
-  }
-
-  // Terminal states - return gracefully with context (not an error)
-  if (isTerminal(task)) {
-    return buildTerminalStateResponse(ctx, task);
-  }
-
-  // Delegate to idempotent startTaskSession (handles both fresh start and resume)
-  const result = await ctx.taskSessionService.startTaskSession({
-    taskId,
-    sessionId,
-    mode,
-  });
-
-  // Build response
-  const response: Record<string, unknown> = {
-    success: true,
-    sessionId,
-    task: result.task,
-    resumed: result.resumed,
-    startedAt: result.startedAt,
-  };
-
-  // Include worktree info if available
-  if (result.worktreePath) {
-    response.worktreePath = result.worktreePath;
-    response.branchName = result.branchName;
-  }
-
-  // Include conflict warnings if any were detected (only on fresh start)
-  if (result.conflictWarnings && result.conflictWarnings.length > 0) {
-    response.conflictWarnings = result.conflictWarnings;
-    const taskPlan = ctx.planService.findById(result.task.planId);
-    const taskIssue = taskPlan ? ctx.issueService.findById(taskPlan.issueId) : null;
-    response.conflictWarningMessage = formatConflictWarnings(
-      result.conflictWarnings,
-      taskIssue?.number
-    );
-  }
-
-  // Sync to external project management provider
-  if (ctx.taskSyncService) {
-    try {
-      await ctx.taskSyncService.syncTaskStatus(taskId, result.task.status);
-    } catch (error) {
-      console.warn(`Failed to sync task status: ${error}`);
-    }
-
-    // On fresh start only: auto-assign and sync siblings
-    if (!result.resumed) {
-      try {
-        await ctx.taskSyncService.assignIssue(taskId);
-      } catch (error) {
-        console.warn(`Failed to auto-assign issue: ${error}`);
-      }
-
-      // Sync sibling tasks that transitioned from BACKLOG to READY
-      const siblingTasks = ctx.taskService.findByPlanId(result.task.planId);
-      for (const sibling of siblingTasks) {
-        if (sibling.id !== taskId && sibling.status === "READY") {
-          try {
-            await ctx.taskSyncService.syncTaskStatus(sibling.id, "READY");
-          } catch (error) {
-            console.warn(`Failed to sync sibling task READY status: ${error}`);
-          }
-        }
-      }
-    }
-  }
-
-  // Load full context
-  return addTaskContext(ctx, response, result.task);
-}
-
-/**
- * Build response for terminal state tasks (COMPLETED/ABANDONED)
- *
- * Returns similar shape to complete_task so callers know what to do next:
- * - Workers: call end_worker_session and exit
- * - Inline: inform user task is done, show next steps
- */
-function buildTerminalStateResponse(ctx: TaskToolContext, task: Task): ToolResponse {
-  // Get issue status
-  const plan = ctx.planService.findById(task.planId);
-  const issue = plan ? ctx.issueService.findById(plan.issueId) : null;
-
-  // Check if all tasks are complete
-  const allTasks = ctx.taskService.findByPlanId(task.planId);
-  const activeTasks = allTasks.filter((t) => !t.isDeleted);
-  const terminalStatuses = ["COMPLETED", "ABANDONED"];
-  const allTasksComplete = activeTasks.every((t) => terminalStatuses.includes(t.status));
-
-  // Find next available task in the plan
-  const nextTask = findNextAvailableTaskInPlan(ctx, task.planId);
-
-  return successResponse({
-    success: true,
-    task,
-    issue,
-    plan,
-    // Key fields that signal "no work needed"
-    nextTask,
-    allTasksComplete,
-    issueNumber: issue?.number ?? null,
-    issueStatus: issue?.status ?? null,
-    message: `Task is already ${task.status}. No work needed.`,
-  });
-}
-
-/**
- * Find the next available task in a plan (READY or BACKLOG)
- */
-function findNextAvailableTaskInPlan(
-  ctx: TaskToolContext,
-  planId: string
-): { id: string; number: number; title: string; status: string } | null {
-  const tasks = ctx.taskService.findByPlanId(planId);
-
-  // Prefer READY tasks, then BACKLOG
-  const readyTask = tasks.find((t) => t.status === "READY" && !t.isDeleted);
-  if (readyTask) {
-    return {
-      id: readyTask.id,
-      number: readyTask.number,
-      title: readyTask.title,
-      status: readyTask.status,
-    };
-  }
-
-  const backlogTask = tasks.find((t) => t.status === "BACKLOG" && !t.isDeleted);
-  if (backlogTask) {
-    return {
-      id: backlogTask.id,
-      number: backlogTask.number,
-      title: backlogTask.title,
-      status: backlogTask.status,
-    };
-  }
-
-  return null;
-}
-
-/**
- * Add full task context to response (issue, plan, dependencies)
- */
-function addTaskContext(
-  ctx: TaskToolContext,
-  response: Record<string, unknown>,
-  task: Task
-): ToolResponse {
-  // Get plan and issue
-  const plan = ctx.planService.findById(task.planId);
-  if (plan) {
-    response.plan = plan;
-    const issue = ctx.issueService.findById(plan.issueId);
-    if (issue) {
-      response.issue = issue;
-    }
-  }
-
-  // Load dependency information with issue numbers
-  if (task.dependsOn?.length) {
-    const dependencies = ctx.taskService.findByIds(task.dependsOn);
-    response.dependencies = dependencies.map((d) => {
-      const depPlan = ctx.planService.findById(d.planId);
-      const depIssue = depPlan ? ctx.issueService.findById(depPlan.issueId) : null;
-      return {
-        id: d.id,
-        number: d.number,
-        title: d.title,
-        status: d.status,
-        issueNumber: depIssue?.number ?? null,
-      };
-    });
-  }
-
-  // Find tasks that depend on this one
-  const allPlanTasks = ctx.taskService.findByPlanId(task.planId);
-  const dependents = allPlanTasks.filter((t) => t.dependsOn?.includes(task.id));
-  if (dependents.length > 0) {
-    response.dependents = dependents.map((d) => {
-      const depPlan = ctx.planService.findById(d.planId);
-      const depIssue = depPlan ? ctx.issueService.findById(depPlan.issueId) : null;
-      return {
-        id: d.id,
-        number: d.number,
-        title: d.title,
-        status: d.status,
-        issueNumber: depIssue?.number ?? null,
-      };
-    });
-  }
-
-  // Format task requirements prominently
-  if (task.implementationPlan) {
-    response.taskRequirements = formatTaskRequirements(task.implementationPlan);
-  }
-
-  return successResponse(response);
-}
-
-/**
- * Format conflict warnings into a human-readable message
- * @param warnings - The conflict warnings to format
- * @param issueNumber - Optional issue number for #issue.task format
- */
-function formatConflictWarnings(warnings: ConflictWarning[], issueNumber?: number | null): string {
-  const lines = ["⚠️ Potential file conflicts detected:"];
-  for (const warning of warnings) {
-    const modifiers = warning.modifiedBy
-      .map((m) => {
-        const storyRef =
-          issueNumber != null ? `#${issueNumber}.${m.taskNumber}` : `#${m.taskNumber}`;
-        return `${storyRef} ${m.taskTitle}`;
-      })
-      .join(", ");
-    lines.push(`  - ${warning.filePath} was modified by: ${modifiers}`);
-  }
-  lines.push("");
-  lines.push("These files were touched by prior tasks. Review carefully when making changes.");
-  return lines.join("\n");
-}
-
-/**
- * Handle abandon_task tool call
- *
- * When force=true:
- * - Bypasses session ownership validation
- * - Use when task state has drifted (e.g., session expired but task is still IN_PROGRESS)
- *
- * Returns same context as complete_task for consistent close_issue prompting:
- * - allTasksComplete: whether all tasks are in terminal state
- * - issueNumber: for easy close_issue call
- * - nextTask: next available task in the plan
- */
-export async function handleAbandonTask(
-  ctx: TaskToolContext,
-  args: { taskId: string; sessionId: string; reason?: string; force?: boolean }
-): Promise<ToolResponse> {
-  const { taskId, sessionId, reason, force = false } = args;
-
-  const task = await ctx.taskSessionService.abandonTask(taskId, sessionId, reason, force);
-
-  // Sync to external project management provider (service handles "should I sync?" internally)
-  if (ctx.taskSyncService) {
-    try {
-      await ctx.taskSyncService.syncTaskStatus(taskId, "ABANDONED");
-    } catch (error) {
-      // Log but don't fail - sync is best effort after local update
-      console.warn(`Failed to sync task status: ${error}`);
-    }
-  }
-
-  // Get issue context for close_issue prompting (same pattern as complete_task)
-  const plan = ctx.planService.findById(task.planId);
-  const issue = plan ? ctx.issueService.findById(plan.issueId) : null;
-
-  // Check if all tasks are in terminal state
-  const allTasks = ctx.taskService.findByPlanId(task.planId);
-  const activeTasks = allTasks.filter((t) => !t.isDeleted);
-  const terminalStatuses = ["COMPLETED", "ABANDONED"];
-  const allTasksComplete = activeTasks.every((t) => terminalStatuses.includes(t.status));
-
-  // Find next available task
-  const nextTask = findNextAvailableTaskInPlan(ctx, task.planId);
-
-  return successResponse({
-    success: true,
-    task,
-    forced: force,
-    allTasksComplete,
-    issueNumber: issue?.number ?? null,
-    nextTask,
-    message: force ? "Task force-abandoned" : "Task abandoned",
-  });
-}
+// =============================================================================
+// Types
+// =============================================================================
 
 /**
  * Enriched worker info for tasks with an active worker session.
@@ -763,6 +359,238 @@ export interface SlimEnrichedTaskData {
   workerInfo?: TaskWorkerInfo;
   /** PR details (present when task has an associated PR) */
   prInfo?: TaskPRInfo;
+}
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/**
+ * Validate labels against available labels from the project management provider.
+ *
+ * Returns an error message if validation fails, or null if valid.
+ * Gracefully degrades if provider is not available (returns null = valid).
+ */
+async function validateLabels(
+  labels: Record<string, string | null>,
+  cradle: Pick<McpCradle, "providerRegistry" | "project" | "dbSource" | "githubCLI">
+): Promise<string | null> {
+  const { providerRegistry, project, dbSource, githubCLI } = cradle;
+
+  // Skip validation if provider context is not available
+  if (!providerRegistry || !project || !dbSource || !githubCLI) {
+    return null; // Graceful degradation - no validation
+  }
+
+  // Re-fetch project to get latest config
+  const latestProject = await dbSource.projects.findById(project.id);
+  if (!latestProject) {
+    return null; // Project not found - graceful degradation
+  }
+
+  // Get available labels from provider
+  const provider = providerRegistry.createProvider(latestProject, { githubCLI });
+
+  const result = await provider.getAvailableLabels();
+
+  if (!result.supported || result.error) {
+    return null; // Provider doesn't support labels or errored - no validation
+  }
+
+  // Build lookup map for efficient validation
+  const availableLabelsMap = new Map<string, AvailableLabel>();
+  for (const label of result.labels) {
+    availableLabelsMap.set(label.name.toLowerCase(), label);
+  }
+
+  // Validate each label being set (ignore null values - those are removals)
+  const errors: string[] = [];
+  for (const [name, value] of Object.entries(labels)) {
+    if (value === null) continue; // Removal - no validation needed
+
+    const availableLabel = availableLabelsMap.get(name.toLowerCase());
+
+    if (!availableLabel) {
+      const availableNames = result.labels.map((l) => l.name).join(", ");
+      errors.push(`Unknown label "${name}". Available labels: ${availableNames}`);
+      continue;
+    }
+
+    // Check if value is valid (if label has constrained values)
+    if (availableLabel.validValues !== null && value !== "") {
+      const validValuesLower = availableLabel.validValues.map((v) => v.toLowerCase());
+      if (!validValuesLower.includes(value.toLowerCase())) {
+        errors.push(
+          `Invalid value "${value}" for label "${name}". Valid values: ${availableLabel.validValues.join(", ")}`
+        );
+      }
+    }
+  }
+
+  return errors.length > 0 ? errors.join("; ") : null;
+}
+
+/**
+ * Format conflict warnings into a human-readable message
+ * @param warnings - The conflict warnings to format
+ * @param issueNumber - Optional issue number for #issue.task format
+ */
+function formatConflictWarnings(warnings: ConflictWarning[], issueNumber?: number | null): string {
+  const lines = ["⚠️ Potential file conflicts detected:"];
+  for (const warning of warnings) {
+    const modifiers = warning.modifiedBy
+      .map((m) => {
+        const storyRef =
+          issueNumber != null ? `#${issueNumber}.${m.taskNumber}` : `#${m.taskNumber}`;
+        return `${storyRef} ${m.taskTitle}`;
+      })
+      .join(", ");
+    lines.push(`  - ${warning.filePath} was modified by: ${modifiers}`);
+  }
+  lines.push("");
+  lines.push("These files were touched by prior tasks. Review carefully when making changes.");
+  return lines.join("\n");
+}
+
+/**
+ * Format task requirements for Claude consumption
+ */
+function formatTaskRequirements(implementationPlan: string): string {
+  return "## Task-Specific Instructions\n" + implementationPlan;
+}
+
+/**
+ * Find the next available task in a plan (READY or BACKLOG)
+ */
+function findNextAvailableTaskInPlan(
+  taskService: McpCradle["taskService"],
+  planId: string
+): { id: string; number: number; title: string; status: string } | null {
+  const tasks = taskService.findByPlanId(planId);
+
+  // Prefer READY tasks, then BACKLOG
+  const readyTask = tasks.find((t) => t.status === "READY" && !t.isDeleted);
+  if (readyTask) {
+    return {
+      id: readyTask.id,
+      number: readyTask.number,
+      title: readyTask.title,
+      status: readyTask.status,
+    };
+  }
+
+  const backlogTask = tasks.find((t) => t.status === "BACKLOG" && !t.isDeleted);
+  if (backlogTask) {
+    return {
+      id: backlogTask.id,
+      number: backlogTask.number,
+      title: backlogTask.title,
+      status: backlogTask.status,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Build response for terminal state tasks (COMPLETED/ABANDONED)
+ *
+ * Returns similar shape to complete_task so callers know what to do next:
+ * - Workers: call end_worker_session and exit
+ * - Inline: inform user task is done, show next steps
+ */
+function buildTerminalStateResponse(
+  task: Task,
+  cradle: Pick<McpCradle, "planService" | "issueService" | "taskService">
+): ToolResponse {
+  const { planService, issueService, taskService } = cradle;
+
+  // Get issue status
+  const plan = planService.findById(task.planId);
+  const issue = plan ? issueService.findById(plan.issueId) : null;
+
+  // Check if all tasks are complete
+  const allTasks = taskService.findByPlanId(task.planId);
+  const activeTasks = allTasks.filter((t) => !t.isDeleted);
+  const terminalStatuses = ["COMPLETED", "ABANDONED"];
+  const allTasksComplete = activeTasks.every((t) => terminalStatuses.includes(t.status));
+
+  // Find next available task in the plan
+  const nextTask = findNextAvailableTaskInPlan(taskService, task.planId);
+
+  return successResponse({
+    success: true,
+    task,
+    issue,
+    plan,
+    // Key fields that signal "no work needed"
+    nextTask,
+    allTasksComplete,
+    issueNumber: issue?.number ?? null,
+    issueStatus: issue?.status ?? null,
+    message: `Task is already ${task.status}. No work needed.`,
+  });
+}
+
+/**
+ * Add full task context to response (issue, plan, dependencies)
+ */
+function addTaskContext(
+  response: Record<string, unknown>,
+  task: Task,
+  cradle: Pick<McpCradle, "planService" | "issueService" | "taskService">
+): ToolResponse {
+  const { planService, issueService, taskService } = cradle;
+
+  // Get plan and issue
+  const plan = planService.findById(task.planId);
+  if (plan) {
+    response.plan = plan;
+    const issue = issueService.findById(plan.issueId);
+    if (issue) {
+      response.issue = issue;
+    }
+  }
+
+  // Load dependency information with issue numbers
+  if (task.dependsOn?.length) {
+    const dependencies = taskService.findByIds(task.dependsOn);
+    response.dependencies = dependencies.map((d) => {
+      const depPlan = planService.findById(d.planId);
+      const depIssue = depPlan ? issueService.findById(depPlan.issueId) : null;
+      return {
+        id: d.id,
+        number: d.number,
+        title: d.title,
+        status: d.status,
+        issueNumber: depIssue?.number ?? null,
+      };
+    });
+  }
+
+  // Find tasks that depend on this one
+  const allPlanTasks = taskService.findByPlanId(task.planId);
+  const dependents = allPlanTasks.filter((t) => t.dependsOn?.includes(task.id));
+  if (dependents.length > 0) {
+    response.dependents = dependents.map((d) => {
+      const depPlan = planService.findById(d.planId);
+      const depIssue = depPlan ? issueService.findById(depPlan.issueId) : null;
+      return {
+        id: d.id,
+        number: d.number,
+        title: d.title,
+        status: d.status,
+        issueNumber: depIssue?.number ?? null,
+      };
+    });
+  }
+
+  // Format task requirements prominently
+  if (task.implementationPlan) {
+    response.taskRequirements = formatTaskRequirements(task.implementationPlan);
+  }
+
+  return successResponse(response);
 }
 
 /**
@@ -915,34 +743,259 @@ export function createSlimEnrichedTaskData(
   return slim;
 }
 
+// =============================================================================
+// Handler Implementations
+// =============================================================================
+
+/**
+ * Handle load_task_session tool call
+ *
+ * Idempotent task session loader - safe to call multiple times.
+ * Uses startedAt as the signal for "has work started":
+ * - startedAt is null → fresh start (create worktree, transition to IN_PROGRESS)
+ * - startedAt is set → resume (return existing context)
+ *
+ * Access control:
+ * - Queued tasks require worker with matching workerId
+ * - Workers must use isolated mode
+ *
+ * Terminal states (COMPLETED/ABANDONED) return gracefully with issue status
+ * and next task info, rather than erroring.
+ *
+ * Supports 3 modes:
+ * - 'isolated' (default): creates worktree + branch for parallel work
+ * - 'branch': creates branch only, checks out in main repo
+ * - 'main': works directly on main, skips PR review
+ */
+async function loadTaskSessionHandler(
+  args: unknown,
+  {
+    taskService,
+    taskSessionService,
+    taskSyncService,
+    planService,
+    issueService,
+    workerQueueDb,
+  }: Pick<
+    McpCradle,
+    | "taskService"
+    | "taskSessionService"
+    | "taskSyncService"
+    | "planService"
+    | "issueService"
+    | "workerQueueDb"
+  >
+): Promise<ToolResponse> {
+  const validation = validateToolArgs<LoadTaskSessionArgs>(LoadTaskSessionSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { taskId, sessionId, mode = "isolated", workerId } = validation.data;
+
+  // Check if task exists
+  const task = taskService.findById(taskId);
+  if (!task) {
+    return errorResponse(`Task not found: ${taskId}`);
+  }
+
+  // Access control: queued tasks require worker with matching workerId
+  const queueEntry = workerQueueDb?.findByTaskId(taskId);
+  if (queueEntry) {
+    if (!workerId) {
+      return errorResponse(
+        `Task is in dispatch queue and can only be claimed by a worker. ` +
+          `Start a worker to continue this task, or remove it from the queue first.`
+      );
+    }
+    if (queueEntry.workerId !== workerId) {
+      return errorResponse(
+        `Task queue mismatch: expected worker ${queueEntry.workerId ?? "(unclaimed)"}, got ${workerId}. ` +
+          `The task must be claimed by this worker before loading.`
+      );
+    }
+  }
+
+  // Access control: workers must use isolated mode
+  if (workerId && mode !== "isolated") {
+    return errorResponse(
+      `Workers MUST use isolated mode. Got mode="${mode}" with workerId="${workerId}". ` +
+        `Workers are not allowed to use branch or main modes.`
+    );
+  }
+
+  // Terminal states - return gracefully with context (not an error)
+  if (isTerminal(task)) {
+    return buildTerminalStateResponse(task, { planService, issueService, taskService });
+  }
+
+  // Delegate to idempotent startTaskSession (handles both fresh start and resume)
+  const result = await taskSessionService.startTaskSession({
+    taskId,
+    sessionId,
+    mode,
+  });
+
+  // Build response
+  const response: Record<string, unknown> = {
+    success: true,
+    sessionId,
+    task: result.task,
+    resumed: result.resumed,
+    startedAt: result.startedAt,
+  };
+
+  // Include worktree info if available
+  if (result.worktreePath) {
+    response.worktreePath = result.worktreePath;
+    response.branchName = result.branchName;
+  }
+
+  // Include conflict warnings if any were detected (only on fresh start)
+  if (result.conflictWarnings && result.conflictWarnings.length > 0) {
+    response.conflictWarnings = result.conflictWarnings;
+    const taskPlan = planService.findById(result.task.planId);
+    const taskIssue = taskPlan ? issueService.findById(taskPlan.issueId) : null;
+    response.conflictWarningMessage = formatConflictWarnings(
+      result.conflictWarnings,
+      taskIssue?.number
+    );
+  }
+
+  // Sync to external project management provider
+  if (taskSyncService) {
+    try {
+      await taskSyncService.syncTaskStatus(taskId, result.task.status);
+    } catch (error) {
+      console.warn(`Failed to sync task status: ${error}`);
+    }
+
+    // On fresh start only: auto-assign and sync siblings
+    if (!result.resumed) {
+      try {
+        await taskSyncService.assignIssue(taskId);
+      } catch (error) {
+        console.warn(`Failed to auto-assign issue: ${error}`);
+      }
+
+      // Sync sibling tasks that transitioned from BACKLOG to READY
+      const siblingTasks = taskService.findByPlanId(result.task.planId);
+      for (const sibling of siblingTasks) {
+        if (sibling.id !== taskId && sibling.status === "READY") {
+          try {
+            await taskSyncService.syncTaskStatus(sibling.id, "READY");
+          } catch (error) {
+            console.warn(`Failed to sync sibling task READY status: ${error}`);
+          }
+        }
+      }
+    }
+  }
+
+  // Load full context
+  return addTaskContext(response, result.task, { planService, issueService, taskService });
+}
+
+/**
+ * Handle abandon_task tool call
+ *
+ * When force=true:
+ * - Bypasses session ownership validation
+ * - Use when task state has drifted (e.g., session expired but task is still IN_PROGRESS)
+ *
+ * Returns same context as complete_task for consistent close_issue prompting:
+ * - allTasksComplete: whether all tasks are in terminal state
+ * - issueNumber: for easy close_issue call
+ * - nextTask: next available task in the plan
+ */
+async function abandonTaskHandler(
+  args: unknown,
+  {
+    taskSessionService,
+    taskSyncService,
+    planService,
+    issueService,
+    taskService,
+  }: Pick<
+    McpCradle,
+    "taskSessionService" | "taskSyncService" | "planService" | "issueService" | "taskService"
+  >
+): Promise<ToolResponse> {
+  const validation = validateToolArgs<AbandonTaskArgs>(AbandonTaskSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { taskId, sessionId, reason, force = false } = validation.data;
+
+  const task = await taskSessionService.abandonTask(taskId, sessionId, reason, force);
+
+  // Sync to external project management provider (service handles "should I sync?" internally)
+  if (taskSyncService) {
+    try {
+      await taskSyncService.syncTaskStatus(taskId, "ABANDONED");
+    } catch (error) {
+      // Log but don't fail - sync is best effort after local update
+      console.warn(`Failed to sync task status: ${error}`);
+    }
+  }
+
+  // Get issue context for close_issue prompting (same pattern as complete_task)
+  const plan = planService.findById(task.planId);
+  const issue = plan ? issueService.findById(plan.issueId) : null;
+
+  // Check if all tasks are in terminal state
+  const allTasks = taskService.findByPlanId(task.planId);
+  const activeTasks = allTasks.filter((t) => !t.isDeleted);
+  const terminalStatuses = ["COMPLETED", "ABANDONED"];
+  const allTasksComplete = activeTasks.every((t) => terminalStatuses.includes(t.status));
+
+  // Find next available task
+  const nextTask = findNextAvailableTaskInPlan(taskService, task.planId);
+
+  return successResponse({
+    success: true,
+    task,
+    forced: force,
+    allTasksComplete,
+    issueNumber: issue?.number ?? null,
+    nextTask,
+    message: force ? "Task force-abandoned" : "Task abandoned",
+  });
+}
+
 /**
  * Handle get_task tool call
  *
  * Lightweight task lookup - returns task data with worker and PR info
  * without loading full execution context (issue, plan details).
  */
-export function handleGetTask(
-  ctx: TaskToolContext,
-  args: { taskId?: string; taskNumber?: number; issueNumber?: number }
+function getTaskHandler(
+  args: unknown,
+  {
+    taskService,
+    issueService,
+    planService,
+    workerQueueDb,
+  }: Pick<McpCradle, "taskService" | "issueService" | "planService" | "workerQueueDb">
 ): ToolResponse {
-  const { taskId, taskNumber, issueNumber } = args;
+  const validation = validateToolArgs<GetTaskArgs>(GetTaskSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { taskId, taskNumber, issueNumber } = validation.data;
 
   let task;
 
   if (taskId) {
-    task = ctx.taskService.findById(taskId);
+    task = taskService.findById(taskId);
   } else if (taskNumber !== undefined && issueNumber !== undefined) {
-    const issue = ctx.issueService.findByNumber(issueNumber);
+    const issue = issueService.findByNumber(issueNumber);
     if (!issue) {
       return errorResponse(`Issue not found: #${issueNumber}`);
     }
 
-    const plan = ctx.planService.findByIssueId(issue.id);
+    const plan = planService.findByIssueId(issue.id);
     if (!plan) {
       return errorResponse(`No plan found for issue #${issueNumber}`);
     }
 
-    const tasks = ctx.taskService.findByPlanId(plan.id);
+    const tasks = taskService.findByPlanId(plan.id);
     task = tasks.find((t) => t.number === taskNumber);
   } else {
     return errorResponse("Either taskId or both taskNumber and issueNumber are required");
@@ -957,15 +1010,8 @@ export function handleGetTask(
   }
 
   // Return enriched task data with worker and PR info
-  const enriched = enrichTaskData(task, ctx.workerQueueDb);
+  const enriched = enrichTaskData(task, workerQueueDb);
   return successResponse(enriched);
-}
-
-/**
- * Format task requirements for Claude consumption
- */
-function formatTaskRequirements(implementationPlan: string): string {
-  return "## Task-Specific Instructions\n" + implementationPlan;
 }
 
 /**
@@ -977,32 +1023,40 @@ function formatTaskRequirements(implementationPlan: string): string {
  * - All dependencies are satisfied (COMPLETED or ABANDONED)
  * - Not locked by another session
  */
-export async function handleListAvailableTasks(
-  ctx: TaskToolContext,
-  args: { planId?: string; issueNumber?: number }
+async function listAvailableTasksHandler(
+  args: unknown,
+  {
+    taskService,
+    taskSessionService,
+    issueService,
+    planService,
+  }: Pick<McpCradle, "taskService" | "taskSessionService" | "issueService" | "planService">
 ): Promise<ToolResponse> {
-  const { planId, issueNumber } = args;
+  const validation = validateToolArgs<ListAvailableTasksArgs>(ListAvailableTasksSchema, args);
+  if (!validation.success) return validation.response;
 
-  let tasks: ReturnType<typeof ctx.taskService.findMany> = [];
+  const { planId, issueNumber } = validation.data;
+
+  let tasks: ReturnType<typeof taskService.findMany> = [];
 
   if (planId) {
-    tasks = ctx.taskService.findByPlanId(planId);
+    tasks = taskService.findByPlanId(planId);
   } else if (issueNumber) {
-    const issue = ctx.issueService.findByNumber(issueNumber);
+    const issue = issueService.findByNumber(issueNumber);
     if (issue) {
-      const plan = ctx.planService.findByIssueId(issue.id);
+      const plan = planService.findByIssueId(issue.id);
       if (plan) {
-        tasks = ctx.taskService.findByPlanId(plan.id);
+        tasks = taskService.findByPlanId(plan.id);
       }
     }
   } else {
-    tasks = ctx.taskService.findMany({});
+    tasks = taskService.findMany({});
   }
 
   // Filter to only available tasks and include availability info
   const availableTasks = [];
   for (const task of tasks) {
-    const isAvailable = await ctx.taskSessionService.isTaskAvailable(task.id);
+    const isAvailable = await taskSessionService.isTaskAvailable(task.id);
     if (isAvailable) {
       availableTasks.push({
         ...task,
@@ -1021,10 +1075,16 @@ export async function handleListAvailableTasks(
 /**
  * Handle delete_task tool call
  */
-export function handleDeleteTask(ctx: TaskToolContext, args: { taskId: string }): ToolResponse {
-  const { taskId } = args;
+function deleteTaskHandler(
+  args: unknown,
+  { taskManagementService }: Pick<McpCradle, "taskManagementService">
+): ToolResponse {
+  const validation = validateToolArgs<DeleteTaskArgs>(DeleteTaskSchema, args);
+  if (!validation.success) return validation.response;
 
-  const task = ctx.taskManagementService.deleteTask(taskId, "claude-agent");
+  const { taskId } = validation.data;
+
+  const task = taskManagementService.deleteTask(taskId, "claude-agent");
 
   return successResponse({
     success: true,
@@ -1039,18 +1099,19 @@ export function handleDeleteTask(ctx: TaskToolContext, args: { taskId: string })
  * Labels are merged with existing labels - to remove a label, set its value to null.
  * Labels are validated against the available labels from the project management provider.
  */
-export async function handleUpdateTask(
-  ctx: TaskToolContext,
-  args: {
-    taskId: string;
-    title?: string;
-    description?: string;
-    acceptanceCriteria?: string[];
-    implementationPlan?: string;
-    estimatedMinutes?: number;
-    labels?: Record<string, string | null>;
-  }
+async function updateTaskHandler(
+  args: unknown,
+  {
+    taskService,
+    providerRegistry,
+    project,
+    dbSource,
+    githubCLI,
+  }: Pick<McpCradle, "taskService" | "providerRegistry" | "project" | "dbSource" | "githubCLI">
 ): Promise<ToolResponse> {
+  const validation = validateToolArgs<UpdateTaskArgs>(UpdateTaskSchema, args);
+  if (!validation.success) return validation.response;
+
   const {
     taskId,
     title,
@@ -1059,9 +1120,9 @@ export async function handleUpdateTask(
     implementationPlan,
     estimatedMinutes,
     labels,
-  } = args;
+  } = validation.data;
 
-  const task = ctx.taskService.findById(taskId);
+  const task = taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
@@ -1077,7 +1138,12 @@ export async function handleUpdateTask(
   // Handle labels - validate and merge with existing, null values remove labels
   if (labels !== undefined) {
     // Validate labels against available labels from provider
-    const validationError = await validateLabels(labels, ctx);
+    const validationError = await validateLabels(labels, {
+      providerRegistry,
+      project,
+      dbSource,
+      githubCLI,
+    });
     if (validationError) {
       return errorResponse(`Label validation failed: ${validationError}`);
     }
@@ -1099,7 +1165,7 @@ export async function handleUpdateTask(
     updates.labels = Object.keys(mergedLabels).length > 0 ? mergedLabels : null;
   }
 
-  const updatedTask = ctx.taskService.update(taskId, updates);
+  const updatedTask = taskService.update(taskId, updates);
 
   return successResponse({
     success: true,
@@ -1110,24 +1176,34 @@ export async function handleUpdateTask(
 /**
  * Handle get_task_execution_prompt tool call
  */
-export function handleGetTaskExecutionPrompt(
-  ctx: TaskToolContext,
-  args: { taskId: string }
+function getTaskExecutionPromptHandler(
+  args: unknown,
+  {
+    taskService,
+    planService,
+    issueService,
+  }: Pick<McpCradle, "taskService" | "planService" | "issueService">
 ): ToolResponse {
-  const { taskId } = args;
+  const validation = validateToolArgs<GetTaskExecutionPromptArgs>(
+    GetTaskExecutionPromptSchema,
+    args
+  );
+  if (!validation.success) return validation.response;
 
-  const task = ctx.taskService.findById(taskId);
+  const { taskId } = validation.data;
+
+  const task = taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
 
   // Get parent context
-  const plan = ctx.planService.findById(task.planId);
+  const plan = planService.findById(task.planId);
   if (!plan) {
     return errorResponse(`Plan not found for task: ${taskId}`);
   }
 
-  const issue = ctx.issueService.findById(plan.issueId);
+  const issue = issueService.findById(plan.issueId);
   if (!issue) {
     return errorResponse(`Issue not found for plan: ${plan.id}`);
   }
@@ -1185,24 +1261,22 @@ ${task.implementationPlan ? `## Additional Instructions\n${task.implementationPl
 /**
  * Handle log_task_progress tool call
  */
-export function handleLogTaskProgress(
-  ctx: TaskToolContext,
-  args: {
-    taskId: string;
-    sessionId: string;
-    message: string;
-    filesModified?: string[];
-  }
+function logTaskProgressHandler(
+  args: unknown,
+  { taskService, dbClient }: Pick<McpCradle, "taskService" | "dbClient">
 ): ToolResponse {
-  const { taskId, sessionId, message, filesModified } = args;
+  const validation = validateToolArgs<LogTaskProgressArgs>(LogTaskProgressSchema, args);
+  if (!validation.success) return validation.response;
 
-  const task = ctx.taskService.findById(taskId);
+  const { taskId, sessionId, message, filesModified } = validation.data;
+
+  const task = taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
 
   // Insert execution log entry
-  const log = ctx.db.executionLogs.create({
+  const log = dbClient.executionLogs.create({
     taskId,
     sessionId,
     message,
@@ -1220,19 +1294,22 @@ export function handleLogTaskProgress(
 /**
  * Handle get_task_execution_log tool call
  */
-export function handleGetTaskExecutionLog(
-  ctx: TaskToolContext,
-  args: { taskId: string }
+function getTaskExecutionLogHandler(
+  args: unknown,
+  { taskService, dbClient }: Pick<McpCradle, "taskService" | "dbClient">
 ): ToolResponse {
-  const { taskId } = args;
+  const validation = validateToolArgs<GetTaskExecutionLogArgs>(GetTaskExecutionLogSchema, args);
+  if (!validation.success) return validation.response;
 
-  const task = ctx.taskService.findById(taskId);
+  const { taskId } = validation.data;
+
+  const task = taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
 
   // Get all execution log entries for this task
-  const logs = ctx.db.executionLogs.findByTaskId(taskId);
+  const logs = dbClient.executionLogs.findByTaskId(taskId);
 
   const entries = logs.map((log) => ({
     id: log.id,
@@ -1255,20 +1332,28 @@ export function handleGetTaskExecutionLog(
  * Dry-run conflict detection without starting the task.
  * Useful for previewing potential issues before committing to start.
  */
-export function handleCheckTaskConflicts(
-  ctx: TaskToolContext,
-  args: { taskId: string }
+function checkTaskConflictsHandler(
+  args: unknown,
+  {
+    taskService,
+    planService,
+    issueService,
+    conflictDetectionService,
+  }: Pick<McpCradle, "taskService" | "planService" | "issueService" | "conflictDetectionService">
 ): ToolResponse {
-  const { taskId } = args;
+  const validation = validateToolArgs<CheckTaskConflictsArgs>(CheckTaskConflictsSchema, args);
+  if (!validation.success) return validation.response;
+
+  const { taskId } = validation.data;
 
   // Verify task exists
-  const task = ctx.taskService.findById(taskId);
+  const task = taskService.findById(taskId);
   if (!task) {
     return errorResponse(`Task not found: ${taskId}`);
   }
 
   // Check if conflict detection service is available
-  if (!ctx.conflictDetectionService) {
+  if (!conflictDetectionService) {
     return successResponse({
       success: true,
       taskId,
@@ -1279,7 +1364,7 @@ export function handleCheckTaskConflicts(
   }
 
   // Run conflict detection
-  const result = ctx.conflictDetectionService.detectConflicts(taskId);
+  const result = conflictDetectionService.detectConflicts(taskId);
 
   // Build response
   const response: Record<string, unknown> = {
@@ -1292,8 +1377,8 @@ export function handleCheckTaskConflicts(
 
   if (result.hasConflicts) {
     // Get issue number for #issue.task format in warning message
-    const taskPlan = ctx.planService.findById(task.planId);
-    const taskIssue = taskPlan ? ctx.issueService.findById(taskPlan.issueId) : null;
+    const taskPlan = planService.findById(task.planId);
+    const taskIssue = taskPlan ? issueService.findById(taskPlan.issueId) : null;
     response.warningMessage = formatConflictWarnings(result.warnings, taskIssue?.number);
   } else {
     response.message = "No potential conflicts detected with prior tasks";
@@ -1310,3 +1395,18 @@ export function handleCheckTaskConflicts(
 
   return successResponse(response);
 }
+
+// =============================================================================
+// Wrapped Handlers (for tool registry)
+// =============================================================================
+
+export const handleLoadTaskSession = createMcpHandler(loadTaskSessionHandler);
+export const handleAbandonTask = createMcpHandler(abandonTaskHandler);
+export const handleGetTask = createMcpHandler(getTaskHandler);
+export const handleListAvailableTasks = createMcpHandler(listAvailableTasksHandler);
+export const handleDeleteTask = createMcpHandler(deleteTaskHandler);
+export const handleUpdateTask = createMcpHandler(updateTaskHandler);
+export const handleGetTaskExecutionPrompt = createMcpHandler(getTaskExecutionPromptHandler);
+export const handleLogTaskProgress = createMcpHandler(logTaskProgressHandler);
+export const handleGetTaskExecutionLog = createMcpHandler(getTaskExecutionLogHandler);
+export const handleCheckTaskConflicts = createMcpHandler(checkTaskConflictsHandler);
