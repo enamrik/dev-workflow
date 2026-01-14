@@ -8,7 +8,15 @@
 import { asValue } from "awilix";
 import { TrackDirectoryResolver, resolveConfigFromGit } from "@dev-workflow/core";
 import { UninstallService } from "../application/uninstall.service.js";
-import { createCommand, createCommandHandler, type CommandHandler } from "../di/index.js";
+import {
+  createCommand,
+  createCommandHandler,
+  defaultMiddleware,
+  compose,
+  type CliHandler,
+  type CliMiddleware,
+} from "../di/index.js";
+import type { CliCradle } from "../di/container.js";
 
 /**
  * Options for the uninit command (currently no options)
@@ -16,22 +24,40 @@ import { createCommand, createCommandHandler, type CommandHandler } from "../di/
 export type UninitOptions = Record<string, never>;
 
 /**
- * Dependencies required by the uninit handler
+ * Middleware to resolve config from git and register trackDirectoryResolver.
+ *
+ * This resolves config from .git/config → ~/.track/<slug>/config.json.
+ * Throws ProjectConfigError if not initialized, which is caught by createCommand.
  */
-interface UninitDeps {
-  uninstallService: UninstallService;
-}
+const resolveConfigMiddleware: CliMiddleware<UninitOptions> = async (_opts, container) => {
+  const workingDirectory = container.cradle.workingDirectory;
+
+  // Resolve config from git
+  const config = await resolveConfigFromGit(workingDirectory);
+
+  // Create a resolver from the config (gitRoot + slug)
+  const resolver = new TrackDirectoryResolver(config.gitRoot, config.slug);
+
+  // Register the resolver
+  container.register({
+    trackDirectoryResolver: asValue(resolver),
+  });
+};
 
 /**
  * Core uninit handler logic.
  *
  * This function contains the business logic for removing dev-workflow integration.
- * It receives all dependencies via injection, making it testable without static mocks.
+ * It receives all dependencies via the cradle, making it testable.
  */
-const uninitHandler: CommandHandler<UninitOptions, UninitDeps> = async (
-  _options,
-  { uninstallService }
-) => {
+const uninitHandler: CliHandler<UninitOptions> = async (_options, cradle: CliCradle) => {
+  // Create the uninstall service with resolved dependencies
+  const uninstallService = new UninstallService(
+    cradle.fileSystem,
+    cradle.workingDirectory,
+    cradle.trackDirectoryResolver
+  );
+
   console.log("🗑️  Removing dev-workflow Claude integration...");
 
   await uninstallService.removeSkills();
@@ -49,51 +75,15 @@ const uninitHandler: CommandHandler<UninitOptions, UninitDeps> = async (
 };
 
 /**
- * Wrapped command with error handling
+ * Wrapped command with middleware and error handling.
+ *
+ * Middleware chain:
+ * 1. defaultMiddleware - registers workingDirectory and packageRoot
+ * 2. resolveConfigMiddleware - resolves config and registers trackDirectoryResolver
  */
-const command = createCommand(uninitHandler);
+const command = createCommand(uninitHandler, compose(defaultMiddleware, resolveConfigMiddleware));
 
 /**
- * Create the uninit handler with custom container initialization.
- *
- * Since uninit needs to resolve config from git to get the TrackDirectoryResolver,
- * we use a custom initializer that:
- * 1. Resolves config from git
- * 2. Creates a resolver from the config
- * 3. Registers the resolver so depsSelector can create the UninstallService
+ * Executable handler for the uninit command.
  */
-export const runUninit = createCommandHandler<UninitOptions, UninitDeps>(
-  command,
-  (cradle) => {
-    // Create the uninstall service with resolved dependencies
-    return {
-      uninstallService: new UninstallService(
-        cradle.fileSystem,
-        cradle.workingDirectory,
-        cradle.trackDirectoryResolver
-      ),
-    };
-  },
-  {
-    // Custom initializer to resolve config from git first
-    initializer: async (container, context) => {
-      // Register basic values first
-      container.register({
-        workingDirectory: asValue(context.workingDirectory),
-        packageRoot: asValue(context.packageRoot),
-      });
-
-      // Resolve config from .git/config → ~/.track/<slug>/config.json
-      // This will throw ProjectConfigError if not initialized, which is caught by createCommandHandler
-      const config = await resolveConfigFromGit(context.workingDirectory);
-
-      // Create a resolver from the config (gitRoot + slug)
-      const resolver = new TrackDirectoryResolver(config.gitRoot, config.slug);
-
-      // Override the trackDirectoryResolver with the resolved one
-      container.register({
-        trackDirectoryResolver: asValue(resolver),
-      });
-    },
-  }
-);
+export const runUninit = createCommandHandler(command);
