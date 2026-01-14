@@ -8,7 +8,8 @@
  * - Easy testing via container override
  *
  * Design:
- * - Handlers are pure functions: (args, deps) => ToolResponse
+ * - Handlers are pure functions: (args, cradle) => ToolResponse
+ * - Handler destructures what it needs from cradle
  * - Middleware can validate, short-circuit, or pass through
  * - Container is optional, defaults to production
  */
@@ -24,19 +25,14 @@ import { type ToolResponse, errorResponse } from "../tools/types.js";
 // =============================================================================
 
 /**
- * A pure handler function that receives args and selected dependencies.
+ * A pure handler function that receives args and the full cradle.
+ * Handler destructures what it needs from cradle.
  * Handlers should validate args internally using validateToolArgs.
  */
-export type McpHandler<TDeps> = (
+export type McpHandler<TCradle extends object = McpCradle> = (
   args: unknown,
-  deps: TDeps
+  cradle: TCradle
 ) => ToolResponse | Promise<ToolResponse>;
-
-/**
- * Selects specific dependencies from the cradle for a handler.
- * Keep selections minimal - only what the handler actually needs.
- */
-export type DepsSelector<TDeps, TCradle = McpCradle> = (cradle: TCradle) => TDeps;
 
 /**
  * MCP-specific middleware type.
@@ -131,16 +127,16 @@ export function getContainer(): AwilixContainer<McpCradle> {
  *
  * Features:
  * - Runs middleware chain before handler (can short-circuit)
- * - Injects selected dependencies from cradle
+ * - Passes full cradle to handler (handler destructures what it needs)
  * - Catches errors and returns errorResponse
  * - Container is optional (uses default) for easy testing
  *
  * @example
  * ```typescript
- * // Define handler as a pure function
+ * // Define handler as a pure function - destructure what you need
  * async function createIssueHandler(
  *   args: unknown,
- *   { issueService, templateService }: CreateIssueDeps
+ *   { issueService, templateService }: Pick<McpCradle, 'issueService' | 'templateService'>
  * ): Promise<ToolResponse> {
  *   const validation = validateToolArgs(createIssueSchema, args);
  *   if (!validation.success) return validation.response;
@@ -149,31 +145,22 @@ export function getContainer(): AwilixContainer<McpCradle> {
  *   return successResponse({ issue });
  * }
  *
- * // Create the MCP handler
- * const handleCreateIssue = createMcpHandler(
- *   createIssueHandler,
- *   (cradle) => ({
- *     issueService: cradle.issueService,
- *     templateService: cradle.templateService,
- *   }),
- *   standardMiddleware
- * );
+ * // Create the MCP handler - just handler and optional middleware
+ * const handleCreateIssue = createMcpHandler(createIssueHandler, standardMiddleware);
  *
- * // Production usage
+ * // Production usage (uses default container)
  * await handleCreateIssue(args);
  *
  * // Testing with mock container
  * await handleCreateIssue(args, testContainer);
  * ```
  *
- * @param handler - Pure function: (args, deps) => ToolResponse
- * @param selectDeps - Function to select deps from cradle
+ * @param handler - Pure function: (args, cradle) => ToolResponse
  * @param middleware - Optional middleware chain (use compose() to build)
  * @returns Handler function that accepts args and optional container override
  */
-export function createMcpHandler<TDeps, TCradle extends object = McpCradle>(
-  handler: McpHandler<TDeps>,
-  selectDeps: DepsSelector<TDeps, TCradle>,
+export function createMcpHandler<TCradle extends object = McpCradle>(
+  handler: McpHandler<TCradle>,
   middleware?: McpMiddleware<TCradle>
 ): McpToolHandler<TCradle> {
   return async (args: unknown, container?: AwilixContainer<TCradle>): Promise<ToolResponse> => {
@@ -189,9 +176,8 @@ export function createMcpHandler<TDeps, TCradle extends object = McpCradle>(
         }
       }
 
-      // Select deps and execute handler
-      const deps = selectDeps(resolvedContainer.cradle);
-      return await handler(args, deps);
+      // Execute handler with full cradle
+      return await handler(args, resolvedContainer.cradle);
     } catch (error) {
       return errorResponse(error instanceof Error ? error.message : String(error));
     }
@@ -204,6 +190,7 @@ export function createMcpHandler<TDeps, TCradle extends object = McpCradle>(
 
 /**
  * Creates a handler for tools that need no arguments.
+ * Handler receives cradle and destructures what it needs.
  *
  * @example
  * ```typescript
@@ -211,43 +198,15 @@ export function createMcpHandler<TDeps, TCradle extends object = McpCradle>(
  *   async ({ issueService }) => {
  *     const stats = await issueService.getStats();
  *     return successResponse({ stats });
- *   },
- *   (cradle) => ({ issueService: cradle.issueService })
+ *   }
  * );
  * ```
  */
-export function createNoArgsHandler<TDeps, TCradle extends object = McpCradle>(
-  handler: (deps: TDeps) => ToolResponse | Promise<ToolResponse>,
-  selectDeps: DepsSelector<TDeps, TCradle>,
+export function createNoArgsHandler<TCradle extends object = McpCradle>(
+  handler: (cradle: TCradle) => ToolResponse | Promise<ToolResponse>,
   middleware?: McpMiddleware<TCradle>
 ): McpToolHandler<TCradle> {
-  return createMcpHandler((_args, deps) => handler(deps), selectDeps, middleware);
-}
-
-/**
- * Creates a handler that uses the full cradle (all dependencies).
- *
- * Prefer explicit dependency selection for better testability.
- * Use this only when a handler genuinely needs many dependencies.
- *
- * @example
- * ```typescript
- * const handleComplexOperation = createFullCradleHandler(
- *   async (args, cradle) => {
- *     // Access all services via cradle
- *     const issue = await cradle.issueService.create(...);
- *     await cradle.taskSyncService.sync(...);
- *     return successResponse({ issue });
- *   },
- *   standardMiddleware
- * );
- * ```
- */
-export function createFullCradleHandler<TCradle extends object = McpCradle>(
-  handler: McpHandler<TCradle>,
-  middleware?: McpMiddleware<TCradle>
-): McpToolHandler<TCradle> {
-  return createMcpHandler(handler, (cradle) => cradle, middleware);
+  return createMcpHandler((_args, cradle) => handler(cradle), middleware);
 }
 
 // =============================================================================

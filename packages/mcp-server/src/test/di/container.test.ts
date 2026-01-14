@@ -2,9 +2,10 @@
  * Tests for MCP Handler Bootstrap
  *
  * Demonstrates the handler pattern:
- * 1. Handlers are pure functions: (args, deps) => ToolResponse
- * 2. Middleware runs before handler, can short-circuit
- * 3. Container override for testing
+ * 1. Handlers are pure functions: (args, cradle) => ToolResponse
+ * 2. Handler destructures what it needs from cradle
+ * 3. Middleware runs before handler, can short-circuit
+ * 4. Container override for testing
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -13,7 +14,6 @@ import type { AwilixContainer } from "awilix";
 import {
   createMcpHandler,
   createNoArgsHandler,
-  createFullCradleHandler,
   validateToolArgs,
   initializeContainer,
   compose,
@@ -119,12 +119,11 @@ describe("createMcpHandler", () => {
     initializeContainer(createTestContainer() as unknown as AwilixContainer<never>);
   });
 
-  it("should create handler that injects deps from cradle", async () => {
-    type Deps = { issueService: MockIssueService };
-
+  it("should create handler that receives full cradle", async () => {
+    // Handler destructures what it needs from cradle
     async function createIssueHandler(
       args: unknown,
-      { issueService }: Deps
+      { issueService }: Pick<TestCradle, "issueService">
     ): Promise<ToolResponse> {
       const validation = validateToolArgs(createIssueSchema, args);
       if (!validation.success) return validation.response;
@@ -133,9 +132,8 @@ describe("createMcpHandler", () => {
       return successResponse({ issue });
     }
 
-    const handler = createMcpHandler(createIssueHandler, (cradle: TestCradle) => ({
-      issueService: cradle.issueService,
-    }));
+    // No selectDeps - just handler
+    const handler = createMcpHandler<TestCradle>(createIssueHandler);
 
     const result = await handler(
       { title: "Test", description: "Test desc" },
@@ -149,11 +147,9 @@ describe("createMcpHandler", () => {
   });
 
   it("should support container override for testing", async () => {
-    type Deps = { issueService: MockIssueService };
-
     async function createIssueHandler(
       args: unknown,
-      { issueService }: Deps
+      { issueService }: Pick<TestCradle, "issueService">
     ): Promise<ToolResponse> {
       const validation = validateToolArgs(createIssueSchema, args);
       if (!validation.success) return validation.response;
@@ -162,9 +158,7 @@ describe("createMcpHandler", () => {
       return successResponse({ issue });
     }
 
-    const handler = createMcpHandler(createIssueHandler, (cradle: TestCradle) => ({
-      issueService: cradle.issueService,
-    }));
+    const handler = createMcpHandler<TestCradle>(createIssueHandler);
 
     // Create test container with mock
     const testContainer = createTestContainer();
@@ -186,7 +180,7 @@ describe("createMcpHandler", () => {
       throw new Error("Something went wrong");
     }
 
-    const handler = createMcpHandler(failingHandler, (_cradle: TestCradle) => ({}));
+    const handler = createMcpHandler<TestCradle>(failingHandler);
 
     const result = await handler({}, createTestContainer());
 
@@ -209,18 +203,16 @@ describe("middleware", () => {
 
     const trackingMiddleware = async () => {
       middlewareOrder.push("middleware");
+      return undefined;
     };
 
-    async function trackingHandler(_args: unknown, _deps: object): Promise<ToolResponse> {
+    async function trackingHandler(_args: unknown, _cradle: TestCradle): Promise<ToolResponse> {
       middlewareOrder.push("handler");
       return successResponse({ order: middlewareOrder });
     }
 
-    const handler = createMcpHandler<object, TestCradle>(
-      trackingHandler,
-      () => ({}),
-      trackingMiddleware
-    );
+    // Middleware is second argument
+    const handler = createMcpHandler<TestCradle>(trackingHandler, trackingMiddleware);
 
     await handler({}, createTestContainer());
 
@@ -238,11 +230,7 @@ describe("middleware", () => {
       return successResponse({});
     }
 
-    const wrappedHandler = createMcpHandler<object, TestCradle>(
-      handler,
-      () => ({}),
-      shortCircuitMiddleware
-    );
+    const wrappedHandler = createMcpHandler<TestCradle>(handler, shortCircuitMiddleware);
 
     const result = await wrappedHandler({}, createTestContainer());
 
@@ -256,9 +244,11 @@ describe("middleware", () => {
 
     const first = async () => {
       order.push("first");
+      return undefined;
     };
     const second = async () => {
       order.push("second");
+      return undefined;
     };
 
     const composedMiddleware = compose(first, second);
@@ -268,11 +258,7 @@ describe("middleware", () => {
       return successResponse({ order });
     }
 
-    const wrappedHandler = createMcpHandler<object, TestCradle>(
-      handler,
-      () => ({}),
-      composedMiddleware
-    );
+    const wrappedHandler = createMcpHandler<TestCradle>(handler, composedMiddleware);
 
     await wrappedHandler({}, createTestContainer());
 
@@ -288,6 +274,7 @@ describe("middleware", () => {
     };
     const second = async () => {
       order.push("second");
+      return undefined;
     };
 
     const composedMiddleware = compose(first, second);
@@ -297,11 +284,7 @@ describe("middleware", () => {
       return successResponse({});
     }
 
-    const wrappedHandler = createMcpHandler<object, TestCradle>(
-      handler,
-      () => ({}),
-      composedMiddleware
-    );
+    const wrappedHandler = createMcpHandler<TestCradle>(handler, composedMiddleware);
 
     const result = await wrappedHandler({}, createTestContainer());
 
@@ -320,50 +303,17 @@ describe("createNoArgsHandler", () => {
   });
 
   it("should create handler for tools with no arguments", async () => {
-    type Deps = { issueService: MockIssueService };
-
-    const handler = createNoArgsHandler(
-      ({ issueService }: Deps) => {
-        const issues = issueService.list();
-        return successResponse({ issues, count: issues.length });
-      },
-      (cradle: TestCradle) => ({ issueService: cradle.issueService })
-    );
+    // Handler destructures what it needs
+    const handler = createNoArgsHandler<TestCradle>(({ issueService }) => {
+      const issues = issueService.list();
+      return successResponse({ issues, count: issues.length });
+    });
 
     const result = await handler({}, createTestContainer());
 
     expect(result.isError).toBeUndefined();
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.count).toBe(2);
-  });
-});
-
-// =============================================================================
-// createFullCradleHandler Tests
-// =============================================================================
-
-describe("createFullCradleHandler", () => {
-  beforeEach(() => {
-    initializeContainer(createTestContainer() as unknown as AwilixContainer<never>);
-  });
-
-  it("should pass full cradle to handler", async () => {
-    const handler = createFullCradleHandler(async (_args: unknown, cradle: TestCradle) => {
-      return successResponse({
-        projectId: cradle.projectId,
-        hasIssueService: !!cradle.issueService,
-        hasTaskService: !!cradle.taskService,
-      });
-    });
-
-    const result = await handler({}, createTestContainer());
-
-    expect(result.isError).toBeUndefined();
-    expect(JSON.parse(result.content[0].text)).toMatchObject({
-      projectId: "test-project",
-      hasIssueService: true,
-      hasTaskService: true,
-    });
   });
 });
 
@@ -383,16 +333,10 @@ describe("Integration Pattern", () => {
       description: z.string(),
     });
 
-    // 2. Define handler deps type
-    type CreateIssueDeps = {
-      issueService: MockIssueService;
-      projectId: string;
-    };
-
-    // 3. Define pure handler function
+    // 2. Define pure handler function - destructure deps from cradle
     async function createIssueHandler(
       args: unknown,
-      { issueService, projectId }: CreateIssueDeps
+      { issueService, projectId }: Pick<TestCradle, "issueService" | "projectId">
     ): Promise<ToolResponse> {
       // Explicit validation inside handler
       const validation = validateToolArgs(createIssueSchema, args);
@@ -403,7 +347,7 @@ describe("Integration Pattern", () => {
       return successResponse({ issue, projectId });
     }
 
-    // 4. Define middleware (optional)
+    // 3. Define middleware (optional)
     const requireProject = async (_args: unknown, cradle: TestCradle) => {
       if (!cradle.projectId) {
         return errorResponse("Project not configured");
@@ -411,17 +355,10 @@ describe("Integration Pattern", () => {
       return undefined; // Continue chain
     };
 
-    // 5. Create the MCP handler
-    const handleCreateIssue = createMcpHandler<CreateIssueDeps, TestCradle>(
-      createIssueHandler,
-      (cradle: TestCradle) => ({
-        issueService: cradle.issueService,
-        projectId: cradle.projectId,
-      }),
-      requireProject
-    );
+    // 4. Create the MCP handler - just handler and middleware
+    const handleCreateIssue = createMcpHandler<TestCradle>(createIssueHandler, requireProject);
 
-    // 6. Use in production (would use default container)
+    // 5. Use in production (would use default container)
     const prodResult = await handleCreateIssue(
       { title: "Test Issue", description: "Test description" },
       createTestContainer()
@@ -433,7 +370,7 @@ describe("Integration Pattern", () => {
       projectId: "test-project",
     });
 
-    // 7. Use in tests with mock container
+    // 6. Use in tests with mock container
     const mockIssueService = {
       create: vi.fn(() => ({ id: "mock-123", title: "Mock Issue" })),
       list: vi.fn(() => []),
