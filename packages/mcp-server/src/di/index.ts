@@ -27,7 +27,7 @@
  */
 
 // Container setup
-export { createMcpContainer, createTestScope } from "./container.js";
+export { createMcpContainer } from "./container.js";
 export type { McpConfig, McpCradle, McpContainer } from "./container.js";
 
 // Handler bootstrap

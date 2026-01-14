@@ -9,7 +9,6 @@
 import * as path from "node:path";
 import { createContainer, asFunction, asValue, asClass, InjectionMode } from "awilix";
 import type { AwilixContainer } from "awilix";
-import { createTestContainer } from "@dev-workflow/core/infrastructure/di";
 import { DispatchTool } from "../tools/dispatch-tool.js";
 import { MilestoneTool } from "../tools/milestone-tool.js";
 import { TypeTool } from "../tools/type-tool.js";
@@ -305,26 +304,3 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
  * Type alias for convenience
  */
 export type McpContainer = AwilixContainer<McpCradle>;
-
-/**
- * Create a scoped container for testing with mock overrides.
- *
- * Uses the shared createTestContainer utility from core.
- * Creates a child scope that inherits all registrations but allows
- * overriding specific services with mocks.
- *
- * @example
- * ```typescript
- * const testScope = createTestScope(container, {
- *   issueService: () => mockIssueService,
- *   taskService: () => mockTaskService,
- * });
- * const result = await handler(args, testScope.cradle);
- * ```
- */
-export function createTestScope(
-  container: McpContainer,
-  overrides: Partial<{ [K in keyof McpCradle]: () => McpCradle[K] }> = {}
-): McpContainer {
-  return createTestContainer(container, overrides);
-}
