@@ -102,7 +102,7 @@ export function IssueCloseButton({ issue, tasks, projectSlug, onSuccess }: Issue
       aria-label="Close issue"
     >
       <CheckCircleIcon className="w-4 h-4" />
-      <span>Close Issue</span>
+      <span>Complete Issue</span>
     </button>
   );
 
@@ -131,7 +131,7 @@ export function IssueCloseButton({ issue, tasks, projectSlug, onSuccess }: Issue
                 <li key={task.id} className="flex items-center gap-2">
                   <span className="text-amber-600">•</span>
                   <span className="text-gray-700">
-                    #{task.number}: {task.title}
+                    #{issue.number}.{task.number}: {task.title}
                   </span>
                   <span className="text-gray-400 text-xs">({task.status})</span>
                 </li>
