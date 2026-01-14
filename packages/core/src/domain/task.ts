@@ -38,6 +38,69 @@ const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   ABANDONED: [], // Terminal state - no transitions allowed
 };
 
+// =============================================================================
+// Status Traits (Single Source of Truth)
+// =============================================================================
+
+/**
+ * Table-driven status traits - single source of truth for status semantics.
+ *
+ * Traits:
+ * - terminal: Task is in a final state (COMPLETED, ABANDONED)
+ * - workable: Task can be actively worked on (BACKLOG, READY, IN_PROGRESS)
+ * - active: Work is currently in progress (IN_PROGRESS, PR_REVIEW)
+ *
+ * Use the exported trait functions (isTerminal, isWorkable, isActive) to query.
+ * Adding a new status requires adding an entry here - TypeScript enforces exhaustiveness.
+ */
+const STATUS_TRAITS = {
+  PLANNED: { terminal: false, workable: false, active: false },
+  BACKLOG: { terminal: false, workable: true, active: false },
+  READY: { terminal: false, workable: true, active: false },
+  IN_PROGRESS: { terminal: false, workable: true, active: true },
+  PR_REVIEW: { terminal: false, workable: false, active: true },
+  COMPLETED: { terminal: true, workable: false, active: false },
+  ABANDONED: { terminal: true, workable: false, active: false },
+} as const satisfies Record<TaskStatus, { terminal: boolean; workable: boolean; active: boolean }>;
+
+/**
+ * Check if a task is in a terminal state (COMPLETED or ABANDONED).
+ *
+ * Terminal tasks cannot transition to other states.
+ * Use for progress calculations: `tasks.filter(isTerminal).length`
+ *
+ * @param task - Task to check
+ * @returns true if task is in a terminal state
+ */
+export function isTerminal(task: Task): boolean {
+  return STATUS_TRAITS[task.status].terminal;
+}
+
+/**
+ * Check if a task can be worked on (BACKLOG, READY, IN_PROGRESS).
+ *
+ * Workable tasks are available for execution (not PLANNED, not terminal).
+ *
+ * @param task - Task to check
+ * @returns true if task can be worked on
+ */
+export function isWorkable(task: Task): boolean {
+  return STATUS_TRAITS[task.status].workable;
+}
+
+/**
+ * Check if a task has active work in progress (IN_PROGRESS or PR_REVIEW).
+ *
+ * Active tasks are currently being worked on or awaiting review.
+ * Use for "in progress" counts and status computation.
+ *
+ * @param task - Task to check
+ * @returns true if work is actively in progress
+ */
+export function isActive(task: Task): boolean {
+  return STATUS_TRAITS[task.status].active;
+}
+
 /**
  * Check if a status transition is valid
  *

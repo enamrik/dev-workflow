@@ -3,10 +3,158 @@
  */
 
 import type { GitHubSyncState } from "./github.js";
+import type { Task } from "./task.js";
+import { isTerminal as isTaskTerminal, isActive as isTaskActive } from "./task.js";
 
 export type IssueType = "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK" | "SPIKE";
 export type IssuePriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type IssueStatus = "PLANNED" | "OPEN" | "IN_PROGRESS" | "CLOSED";
+
+/**
+ * Computed issue status based on task states.
+ *
+ * This enriches the stored IssueStatus with derived states:
+ * - TASKS_DONE: All tasks are terminal but issue not yet closed
+ */
+export type ComputedIssueStatus = "PLANNED" | "OPEN" | "IN_PROGRESS" | "TASKS_DONE" | "CLOSED";
+
+// =============================================================================
+// Issue Status Traits (Single Source of Truth)
+// =============================================================================
+
+/**
+ * Traits for stored IssueStatus - what each stored status means.
+ */
+const ISSUE_STATUS_TRAITS = {
+  PLANNED: { isPlanning: true, isClosed: false },
+  OPEN: { isPlanning: false, isClosed: false },
+  IN_PROGRESS: { isPlanning: false, isClosed: false },
+  CLOSED: { isPlanning: false, isClosed: true },
+} as const satisfies Record<IssueStatus, { isPlanning: boolean; isClosed: boolean }>;
+
+/**
+ * Traits for ComputedIssueStatus - semantic meaning of computed states.
+ *
+ * This is the stable contract for what computed statuses mean.
+ * Implementation (computed vs stored) is hidden from consumers.
+ */
+const COMPUTED_ISSUE_STATUS_TRAITS = {
+  PLANNED: { done: false, hasActiveWork: false },
+  OPEN: { done: false, hasActiveWork: false },
+  IN_PROGRESS: { done: false, hasActiveWork: true },
+  TASKS_DONE: { done: true, hasActiveWork: false },
+  CLOSED: { done: true, hasActiveWork: false },
+} as const satisfies Record<ComputedIssueStatus, { done: boolean; hasActiveWork: boolean }>;
+
+// =============================================================================
+// Task Aggregate Helpers
+// =============================================================================
+
+/**
+ * Check if all tasks are in terminal state (COMPLETED or ABANDONED).
+ * Use for determining if an issue's work is complete.
+ */
+export function allTasksTerminal(tasks: Task[]): boolean {
+  return tasks.length > 0 && tasks.every(isTaskTerminal);
+}
+
+/**
+ * Check if any task has active work (IN_PROGRESS or PR_REVIEW).
+ * Use for determining if an issue has work in progress.
+ */
+export function anyTaskActive(tasks: Task[]): boolean {
+  return tasks.some(isTaskActive);
+}
+
+// =============================================================================
+// Computed Status (Implementation Detail - Hidden from Consumers)
+// =============================================================================
+
+/**
+ * Compute the effective issue status from stored status and tasks.
+ *
+ * PRIVATE: This is the ONE PLACE that changes when we switch from
+ * computed to stored IN_PROGRESS/TASKS_DONE.
+ *
+ * @internal
+ */
+function getEffectiveIssueStatus(issue: Issue, tasks: Task[]): ComputedIssueStatus {
+  // Check stored status traits first
+  if (ISSUE_STATUS_TRAITS[issue.status].isPlanning) return "PLANNED";
+  if (ISSUE_STATUS_TRAITS[issue.status].isClosed) return "CLOSED";
+
+  // Derive from tasks
+  if (tasks.length === 0) return "OPEN";
+  if (allTasksTerminal(tasks)) return "TASKS_DONE";
+  if (anyTaskActive(tasks)) return "IN_PROGRESS";
+  return "OPEN";
+}
+
+// =============================================================================
+// Public Trait Functions (Stable API)
+// =============================================================================
+
+/**
+ * Check if an issue is in the planning phase (not yet moved to backlog).
+ *
+ * @param issue - Issue to check
+ * @returns true if issue is still being planned
+ */
+export function isIssueInPlanning(issue: Issue): boolean {
+  return ISSUE_STATUS_TRAITS[issue.status].isPlanning;
+}
+
+/**
+ * Check if an issue is closed.
+ *
+ * @param issue - Issue to check
+ * @returns true if issue is closed
+ */
+export function isIssueClosed(issue: Issue): boolean {
+  return ISSUE_STATUS_TRAITS[issue.status].isClosed;
+}
+
+/**
+ * Check if an issue is done (all tasks terminal or issue closed).
+ *
+ * This hides whether "done" is stored or computed from tasks.
+ * When we later add stored TASKS_DONE status, only getEffectiveIssueStatus changes.
+ *
+ * @param issue - Issue to check
+ * @param tasks - Tasks for this issue
+ * @returns true if issue is done
+ */
+export function isIssueDone(issue: Issue, tasks: Task[]): boolean {
+  return COMPUTED_ISSUE_STATUS_TRAITS[getEffectiveIssueStatus(issue, tasks)].done;
+}
+
+/**
+ * Check if an issue has active work in progress.
+ *
+ * This hides whether "active work" is stored or computed from tasks.
+ * When we later add stored IN_PROGRESS status, only getEffectiveIssueStatus changes.
+ *
+ * @param issue - Issue to check
+ * @param tasks - Tasks for this issue
+ * @returns true if issue has active work
+ */
+export function issueHasActiveWork(issue: Issue, tasks: Task[]): boolean {
+  return COMPUTED_ISSUE_STATUS_TRAITS[getEffectiveIssueStatus(issue, tasks)].hasActiveWork;
+}
+
+/**
+ * Compute the issue status for display purposes.
+ *
+ * Returns the effective status (stored or computed) as a ComputedIssueStatus value.
+ * Use trait functions (isIssueDone, issueHasActiveWork) for semantic checks.
+ *
+ * @param issue - Issue to compute status for
+ * @param tasks - Tasks for this issue
+ * @returns The computed status value
+ */
+export function computeIssueStatus(issue: Issue, tasks: Task[]): ComputedIssueStatus {
+  return getEffectiveIssueStatus(issue, tasks);
+}
 
 /**
  * Issue entity

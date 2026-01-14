@@ -13,6 +13,7 @@
  */
 
 import type { Issue, IssueRepository, IssueStatus } from "../domain/issue.js";
+import { isIssueClosed } from "../domain/issue.js";
 import type { ProjectManagementProvider } from "../domain/project-management-provider.js";
 import type { TaskService, AbandonTaskResult } from "./task-service.js";
 import type { DbClient } from "../domain/db-client.js";
@@ -145,8 +146,8 @@ export class IssueService {
   async closeIssue(issueId: string, force = false, closedBy?: string): Promise<CloseIssueResult> {
     const issue = this.getIssue(issueId);
 
-    // Already closed
-    if (issue.status === "CLOSED") {
+    // Already closed - use trait function
+    if (isIssueClosed(issue)) {
       return {
         issue,
         abandonedTasks: [],

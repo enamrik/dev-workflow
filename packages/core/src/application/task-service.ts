@@ -16,7 +16,11 @@ import type { ProjectManagementProvider } from "../domain/project-management-pro
 import type { GitWorktreeService } from "../infrastructure/git/git-worktree-service.js";
 import type { DbClient } from "../domain/db-client.js";
 import type { WorkerQueueDb } from "../domain/worker-queue-db.js";
-import { isValidStatusTransition, getAllowedTransitions } from "../domain/task.js";
+import {
+  isValidStatusTransition,
+  getAllowedTransitions,
+  isTerminal as isTaskTerminal,
+} from "../domain/task.js";
 
 /**
  * Error thrown when task operation fails
@@ -63,7 +67,7 @@ export class TaskService {
    * Check if a task is in a terminal state
    */
   isTerminal(task: Task): boolean {
-    return task.status === "COMPLETED" || task.status === "ABANDONED";
+    return isTaskTerminal(task);
   }
 
   /**

@@ -20,6 +20,7 @@ import type {
   MilestoneRepository,
 } from "../domain/milestone.js";
 import { computeMilestoneStatus } from "../domain/milestone.js";
+import { isIssueClosed, isIssueInPlanning } from "../domain/issue.js";
 import type { DbClient } from "../domain/db-client.js";
 
 /**
@@ -115,10 +116,10 @@ export class MilestoneService {
 
     return {
       totalIssues: issues.length,
-      closedIssues: issues.filter((i) => i.status === "CLOSED").length,
-      openOrInProgressIssues: issues.filter(
-        (i) => i.status === "OPEN" || i.status === "IN_PROGRESS"
-      ).length,
+      closedIssues: issues.filter(isIssueClosed).length,
+      // Active issues: not closed and not still in planning
+      openOrInProgressIssues: issues.filter((i) => !isIssueClosed(i) && !isIssueInPlanning(i))
+        .length,
     };
   }
 

@@ -10,6 +10,7 @@
  */
 
 import type { Issue } from "../domain/issue.js";
+import { isIssueClosed } from "../domain/issue.js";
 import type { Plan } from "../domain/plan.js";
 import type { Task, TaskStatus } from "../domain/task.js";
 import type { VersioningService } from "./versioning-service.js";
@@ -150,13 +151,13 @@ export class MergeService {
       throw new MergeValidationError("Cannot merge an issue with itself");
     }
 
-    // Validate issues are not CLOSED
-    if (sourceIssue.status === "CLOSED") {
+    // Validate issues are not CLOSED - use trait function
+    if (isIssueClosed(sourceIssue)) {
       throw new MergeValidationError(
         `Source issue #${sourceIssue.number} is CLOSED and cannot be merged`
       );
     }
-    if (targetIssue.status === "CLOSED") {
+    if (isIssueClosed(targetIssue)) {
       throw new MergeValidationError(
         `Target issue #${targetIssue.number} is CLOSED and cannot be merged`
       );

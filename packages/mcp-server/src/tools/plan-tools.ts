@@ -2,16 +2,17 @@
  * Plan-related MCP tools
  */
 
-import type {
-  PlanningService,
-  PlanComplexity,
-  TaskSyncService,
-  Project,
-  TypeService,
-  IssueType,
-  IssueService,
-  TaskService,
-  PlanService,
+import {
+  isIssueInPlanning,
+  type PlanningService,
+  type PlanComplexity,
+  type TaskSyncService,
+  type Project,
+  type TypeService,
+  type IssueType,
+  type IssueService,
+  type TaskService,
+  type PlanService,
 } from "@dev-workflow/core";
 import { type ToolDefinition, type ToolResponse, successResponse, errorResponse } from "./types.js";
 
@@ -482,8 +483,8 @@ export async function handleMoveIssueToBacklog(
   const allTasks = ctx.taskService.findByPlanId(plan.id);
   const plannedTasks = allTasks.filter((t) => t.status === "PLANNED");
 
-  // If no PLANNED tasks and issue is already OPEN, nothing to do
-  if (plannedTasks.length === 0 && issue.status === "OPEN") {
+  // If no PLANNED tasks and issue is already active (not in planning), nothing to do
+  if (plannedTasks.length === 0 && !isIssueInPlanning(issue)) {
     return successResponse({
       message: `Issue #${issueNumber} is already active with no PLANNED tasks`,
       issueNumber: issue.number,
@@ -540,7 +541,7 @@ export async function handleMoveIssueToBacklog(
   }
 
   // Transition issue from PLANNED → OPEN
-  const issueTransitioned = issue.status === "PLANNED";
+  const issueTransitioned = isIssueInPlanning(issue);
   if (issueTransitioned) {
     ctx.issueService.update(issue.id, { status: "OPEN" });
   }

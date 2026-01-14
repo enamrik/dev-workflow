@@ -5,6 +5,10 @@
  */
 
 import {
+  isIssueClosed,
+  isIssueInPlanning,
+  isWorkable,
+  isActive,
   type GitHubCLI,
   type GitWorktreeService,
   type PRStatus,
@@ -875,17 +879,18 @@ function findNextAvailableTask(
     };
   }
 
-  // Look for READY tasks in other active issues
+  // Look for READY tasks in other active issues (not closed, not planning)
   const activeIssues = ctx.issueService
     .findMany({})
-    .filter((i) => i.status === "IN_PROGRESS" || i.status === "OPEN");
+    .filter((i) => !isIssueClosed(i) && !isIssueInPlanning(i));
 
   for (const issue of activeIssues) {
     const plan = ctx.planService.findByIssueId(issue.id);
     if (!plan || plan.id === currentPlanId) continue;
 
     const tasks = ctx.taskService.findByPlanId(plan.id);
-    const availableTask = tasks.find((t) => t.status === "READY" || t.status === "BACKLOG");
+    // Find available task (workable but not yet active)
+    const availableTask = tasks.find((t) => isWorkable(t) && !isActive(t));
     if (availableTask) {
       return {
         id: availableTask.id,
