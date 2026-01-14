@@ -16,7 +16,7 @@ import {
   Markdown,
   GitHubLink,
 } from "@/components/ui";
-import { IssueTransitionButton } from "@/components/issues";
+import { IssueTransitionButton, IssueCloseButton, IssueDeleteButton } from "@/components/issues";
 import { isTerminal, isActive, computeIssueStatus } from "@/lib/types";
 import type { Issue, Plan, Task } from "@/lib/types";
 
@@ -109,6 +109,7 @@ export function IssuePreviewPanel({ projectSlug, issueNumber, onClose }: IssuePr
               onTabChange={handleTabChange}
               projectSlug={projectSlug}
               onRefetch={refetch}
+              onClose={onClose}
             />
           )}
         </div>
@@ -123,6 +124,7 @@ interface IssuePreviewContentProps {
   onTabChange: (tabId: string) => void;
   projectSlug: string;
   onRefetch: () => void;
+  onClose: () => void;
 }
 
 function IssuePreviewContent({
@@ -131,6 +133,7 @@ function IssuePreviewContent({
   onTabChange,
   projectSlug,
   onRefetch,
+  onClose,
 }: IssuePreviewContentProps) {
   const { issue, plan, tasks } = data;
   const taskCounts = {
@@ -171,6 +174,13 @@ function IssuePreviewContent({
             tasks={tasks}
             projectSlug={projectSlug}
             onSuccess={onRefetch}
+          />
+          <IssueCloseButton issue={issue} projectSlug={projectSlug} onSuccess={onRefetch} />
+          <IssueDeleteButton
+            issue={issue}
+            projectSlug={projectSlug}
+            onSuccess={onRefetch}
+            onClose={onClose}
           />
         </div>
       </div>

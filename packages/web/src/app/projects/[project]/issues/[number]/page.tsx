@@ -17,7 +17,7 @@ import {
   Markdown,
   GitHubLink,
 } from "@/components/ui";
-import { IssueTransitionButton } from "@/components/issues";
+import { IssueTransitionButton, IssueCloseButton, IssueDeleteButton } from "@/components/issues";
 import { isTerminal, isActive, computeIssueStatus } from "@/lib/types";
 import type { Issue, Plan, Task } from "@/lib/types";
 
@@ -117,6 +117,8 @@ export default function IssueDetailPage({ params }: PageProps) {
             projectSlug={projectSlug}
             onSuccess={() => refetch()}
           />
+          <IssueCloseButton issue={issue} projectSlug={projectSlug} onSuccess={() => refetch()} />
+          <IssueDeleteButton issue={issue} projectSlug={projectSlug} onSuccess={() => refetch()} />
         </div>
       </div>
 
