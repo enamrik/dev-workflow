@@ -27,8 +27,8 @@ import {
   handleGetPlan,
   handleMoveIssueToReady,
   handleMoveIssueToBacklog,
-  type PlanToolContext,
-} from "../../tools/plan-tools.js";
+} from "../../tools/plan-tool-def.js";
+import { PlanTool } from "../../tools/plan-tool.js";
 import {
   GeneratePlanSchema,
   GetPlanSchema,
@@ -41,10 +41,11 @@ import {
 const TEST_PROJECT_ID = "test-project-plan";
 
 /**
- * Create a PlanToolContext for testing
+ * Create a test context for plan tools
  */
+
 async function createPlanToolContext(testDb: TestDatabase): Promise<{
-  ctx: PlanToolContext;
+  ctx: any;
   client: DbClient;
 }> {
   // Create project first to get the generated ID
@@ -73,8 +74,20 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<{
   const taskService = new TaskService(client, noOpProvider, null);
   const issueService = new IssueService(client, taskService, noOpProvider);
 
+  // Create PlanTool with all dependencies
+  const planTool = new PlanTool(
+    project,
+    issueService,
+    planService,
+    taskService,
+    planningService,
+    typeService,
+    taskSyncService
+  );
+
   return {
     ctx: {
+      planTool,
       project,
       issueService,
       planService,
@@ -89,7 +102,8 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<{
 
 describe("Plan Tools Integration", () => {
   let testDb: TestDatabase;
-  let ctx: PlanToolContext;
+
+  let ctx: any;
   let client: DbClient;
 
   beforeEach(async () => {
@@ -107,22 +121,25 @@ describe("Plan Tools Integration", () => {
         status: "PLANNED",
       });
 
-      const result = await handleGeneratePlan(ctx, {
-        issueNumber: issue.number,
-        summary: "Implementation plan",
-        approach: "Build step by step",
-        tasks: [
-          { id: "t1", title: "Task 1", description: "First task", type: "TASK" },
-          {
-            id: "t2",
-            title: "Task 2",
-            description: "Second task",
-            type: "TASK",
-            dependsOn: ["t1"],
-          },
-        ],
-        estimatedComplexity: "MEDIUM",
-      });
+      const result = await handleGeneratePlan(
+        {
+          issueNumber: issue.number,
+          summary: "Implementation plan",
+          approach: "Build step by step",
+          tasks: [
+            { id: "t1", title: "Task 1", description: "First task", type: "TASK" },
+            {
+              id: "t2",
+              title: "Task 2",
+              description: "Second task",
+              type: "TASK",
+              dependsOn: ["t1"],
+            },
+          ],
+          estimatedComplexity: "MEDIUM",
+        },
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -140,13 +157,16 @@ describe("Plan Tools Integration", () => {
     });
 
     it("should return error for non-existent issue", async () => {
-      const result = await handleGeneratePlan(ctx, {
-        issueNumber: 99999,
-        summary: "Test",
-        approach: "Test",
-        tasks: [],
-        estimatedComplexity: "LOW",
-      });
+      const result = await handleGeneratePlan(
+        {
+          issueNumber: 99999,
+          summary: "Test",
+          approach: "Test",
+          tasks: [],
+          estimatedComplexity: "LOW",
+        },
+        ctx
+      );
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
@@ -159,19 +179,21 @@ describe("Plan Tools Integration", () => {
       });
 
       // Cast to bypass TypeScript check - testing runtime validation
-      const result = await handleGeneratePlan(ctx, {
-        issueNumber: issue.number,
-        summary: "Implementation plan",
-        approach: "Build step by step",
-        tasks: [{ id: "t1", title: "Task 1", description: "First task" } as any],
-        estimatedComplexity: "MEDIUM",
-      });
+      const result = await handleGeneratePlan(
+        {
+          issueNumber: issue.number,
+          summary: "Implementation plan",
+          approach: "Build step by step",
+          tasks: [{ id: "t1", title: "Task 1", description: "First task" } as any],
+          estimatedComplexity: "MEDIUM",
+        },
+        ctx
+      );
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
-      expect(content.error).toContain("missing required 'type' field");
-      expect(content.error).toContain("Valid types:");
-      expect(content.error).toContain("list_types");
+      // Zod validation returns "Required" for missing required fields
+      expect(content.error).toContain("tasks.0.type: Required");
     });
 
     it("should return error when task has invalid type", async () => {
@@ -180,15 +202,18 @@ describe("Plan Tools Integration", () => {
         status: "PLANNED",
       });
 
-      const result = await handleGeneratePlan(ctx, {
-        issueNumber: issue.number,
-        summary: "Implementation plan",
-        approach: "Build step by step",
-        tasks: [
-          { id: "t1", title: "Task 1", description: "First task", type: "INVALID_TYPE" as any },
-        ],
-        estimatedComplexity: "MEDIUM",
-      });
+      const result = await handleGeneratePlan(
+        {
+          issueNumber: issue.number,
+          summary: "Implementation plan",
+          approach: "Build step by step",
+          tasks: [
+            { id: "t1", title: "Task 1", description: "First task", type: "INVALID_TYPE" as any },
+          ],
+          estimatedComplexity: "MEDIUM",
+        },
+        ctx
+      );
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
@@ -203,18 +228,26 @@ describe("Plan Tools Integration", () => {
         status: "PLANNED",
       });
 
-      const result = await handleGeneratePlan(ctx, {
-        issueNumber: issue.number,
-        summary: "Implementation plan",
-        approach: "Build step by step",
-        tasks: [
-          { id: "t1", title: "Feature task", description: "Add a feature", type: "FEATURE" },
-          { id: "t2", title: "Bug fix", description: "Fix a bug", type: "BUG" },
-          { id: "t3", title: "Enhancement", description: "Improve something", type: "ENHANCEMENT" },
-          { id: "t4", title: "Maintenance", description: "Clean up", type: "TASK" },
-        ],
-        estimatedComplexity: "MEDIUM",
-      });
+      const result = await handleGeneratePlan(
+        {
+          issueNumber: issue.number,
+          summary: "Implementation plan",
+          approach: "Build step by step",
+          tasks: [
+            { id: "t1", title: "Feature task", description: "Add a feature", type: "FEATURE" },
+            { id: "t2", title: "Bug fix", description: "Fix a bug", type: "BUG" },
+            {
+              id: "t3",
+              title: "Enhancement",
+              description: "Improve something",
+              type: "ENHANCEMENT",
+            },
+            { id: "t4", title: "Maintenance", description: "Clean up", type: "TASK" },
+          ],
+          estimatedComplexity: "MEDIUM",
+        },
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -234,15 +267,18 @@ describe("Plan Tools Integration", () => {
     it("should return plan with tasks", async () => {
       // Create issue and plan
       const issue = createTestIssue(client.issues, { status: "PLANNED" });
-      await handleGeneratePlan(ctx, {
-        issueNumber: issue.number,
-        summary: "Test plan",
-        approach: "Test approach",
-        tasks: [{ id: "t1", title: "Task 1", description: "Desc", type: "TASK" }],
-        estimatedComplexity: "LOW",
-      });
+      await handleGeneratePlan(
+        {
+          issueNumber: issue.number,
+          summary: "Test plan",
+          approach: "Test approach",
+          tasks: [{ id: "t1", title: "Task 1", description: "Desc", type: "TASK" }],
+          estimatedComplexity: "LOW",
+        },
+        ctx
+      );
 
-      const result = handleGetPlan(ctx, { issueNumber: issue.number });
+      const result = await handleGetPlan({ issueNumber: issue.number }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -250,10 +286,10 @@ describe("Plan Tools Integration", () => {
       expect(content.tasks).toHaveLength(1);
     });
 
-    it("should return error when no plan exists", () => {
+    it("should return error when no plan exists", async () => {
       const issue = createTestIssue(client.issues);
 
-      const result = handleGetPlan(ctx, { issueNumber: issue.number });
+      const result = await handleGetPlan({ issueNumber: issue.number }, ctx);
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
@@ -264,20 +300,26 @@ describe("Plan Tools Integration", () => {
     it("should activate tasks and transition issue", async () => {
       // Create issue and plan
       const issue = createTestIssue(client.issues, { status: "PLANNED" });
-      await handleGeneratePlan(ctx, {
-        issueNumber: issue.number,
-        summary: "Test plan",
-        approach: "Test approach",
-        tasks: [
-          { id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" },
-          { id: "t2", title: "Task 2", description: "Desc 2", type: "TASK" },
-        ],
-        estimatedComplexity: "LOW",
-      });
+      await handleGeneratePlan(
+        {
+          issueNumber: issue.number,
+          summary: "Test plan",
+          approach: "Test approach",
+          tasks: [
+            { id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" },
+            { id: "t2", title: "Task 2", description: "Desc 2", type: "TASK" },
+          ],
+          estimatedComplexity: "LOW",
+        },
+        ctx
+      );
 
-      const result = await handleMoveIssueToBacklog(ctx, {
-        issueNumber: issue.number,
-      });
+      const result = await handleMoveIssueToBacklog(
+        {
+          issueNumber: issue.number,
+        },
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -296,21 +338,27 @@ describe("Plan Tools Integration", () => {
     it("should skip GitHub sync when skipGitHubSync is true", async () => {
       // Create issue and plan
       const issue = createTestIssue(client.issues, { status: "PLANNED" });
-      await handleGeneratePlan(ctx, {
-        issueNumber: issue.number,
-        summary: "Test plan",
-        approach: "Test approach",
-        tasks: [
-          { id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" },
-          { id: "t2", title: "Task 2", description: "Desc 2", type: "TASK" },
-        ],
-        estimatedComplexity: "LOW",
-      });
+      await handleGeneratePlan(
+        {
+          issueNumber: issue.number,
+          summary: "Test plan",
+          approach: "Test approach",
+          tasks: [
+            { id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" },
+            { id: "t2", title: "Task 2", description: "Desc 2", type: "TASK" },
+          ],
+          estimatedComplexity: "LOW",
+        },
+        ctx
+      );
 
-      const result = await handleMoveIssueToBacklog(ctx, {
-        issueNumber: issue.number,
-        skipGitHubSync: true,
-      });
+      const result = await handleMoveIssueToBacklog(
+        {
+          issueNumber: issue.number,
+          skipGitHubSync: true,
+        },
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -335,18 +383,24 @@ describe("Plan Tools Integration", () => {
     it("should not skip GitHub sync when skipGitHubSync is false (default)", async () => {
       // Create issue and plan
       const issue = createTestIssue(client.issues, { status: "PLANNED" });
-      await handleGeneratePlan(ctx, {
-        issueNumber: issue.number,
-        summary: "Test plan",
-        approach: "Test approach",
-        tasks: [{ id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" }],
-        estimatedComplexity: "LOW",
-      });
+      await handleGeneratePlan(
+        {
+          issueNumber: issue.number,
+          summary: "Test plan",
+          approach: "Test approach",
+          tasks: [{ id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" }],
+          estimatedComplexity: "LOW",
+        },
+        ctx
+      );
 
       // Call without skipGitHubSync (defaults to false)
-      const result = await handleMoveIssueToBacklog(ctx, {
-        issueNumber: issue.number,
-      });
+      const result = await handleMoveIssueToBacklog(
+        {
+          issueNumber: issue.number,
+        },
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -360,22 +414,25 @@ describe("Plan Tools Integration", () => {
     it("should move BACKLOG tasks to READY", async () => {
       // Create issue and plan, then activate to BACKLOG
       const issue = createTestIssue(client.issues, { status: "PLANNED" });
-      await handleGeneratePlan(ctx, {
-        issueNumber: issue.number,
-        summary: "Test plan",
-        approach: "Test approach",
-        tasks: [
-          { id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" },
-          { id: "t2", title: "Task 2", description: "Desc 2", type: "TASK" },
-        ],
-        estimatedComplexity: "LOW",
-      });
+      await handleGeneratePlan(
+        {
+          issueNumber: issue.number,
+          summary: "Test plan",
+          approach: "Test approach",
+          tasks: [
+            { id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" },
+            { id: "t2", title: "Task 2", description: "Desc 2", type: "TASK" },
+          ],
+          estimatedComplexity: "LOW",
+        },
+        ctx
+      );
 
       // Move to backlog first (PLANNED -> BACKLOG)
-      await handleMoveIssueToBacklog(ctx, { issueNumber: issue.number });
+      await handleMoveIssueToBacklog({ issueNumber: issue.number }, ctx);
 
       // Now move to ready (BACKLOG -> READY)
-      const result = await handleMoveIssueToReady(ctx, { issueNumber: issue.number });
+      const result = await handleMoveIssueToReady({ issueNumber: issue.number }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -391,19 +448,22 @@ describe("Plan Tools Integration", () => {
     it("should do nothing when no BACKLOG tasks exist", async () => {
       // Create issue and plan, activate to BACKLOG, then move to READY
       const issue = createTestIssue(client.issues, { status: "PLANNED" });
-      await handleGeneratePlan(ctx, {
-        issueNumber: issue.number,
-        summary: "Test plan",
-        approach: "Test approach",
-        tasks: [{ id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" }],
-        estimatedComplexity: "LOW",
-      });
+      await handleGeneratePlan(
+        {
+          issueNumber: issue.number,
+          summary: "Test plan",
+          approach: "Test approach",
+          tasks: [{ id: "t1", title: "Task 1", description: "Desc 1", type: "TASK" }],
+          estimatedComplexity: "LOW",
+        },
+        ctx
+      );
 
-      await handleMoveIssueToBacklog(ctx, { issueNumber: issue.number });
-      await handleMoveIssueToReady(ctx, { issueNumber: issue.number });
+      await handleMoveIssueToBacklog({ issueNumber: issue.number }, ctx);
+      await handleMoveIssueToReady({ issueNumber: issue.number }, ctx);
 
       // Call again - should be idempotent (no BACKLOG tasks to move)
-      const result = await handleMoveIssueToReady(ctx, { issueNumber: issue.number });
+      const result = await handleMoveIssueToReady({ issueNumber: issue.number }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -412,7 +472,7 @@ describe("Plan Tools Integration", () => {
     });
 
     it("should return error for non-existent issue", async () => {
-      const result = await handleMoveIssueToReady(ctx, { issueNumber: 99999 });
+      const result = await handleMoveIssueToReady({ issueNumber: 99999 }, ctx);
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
@@ -423,7 +483,7 @@ describe("Plan Tools Integration", () => {
       // Create issue without a plan
       const issue = createTestIssue(client.issues);
 
-      const result = await handleMoveIssueToReady(ctx, { issueNumber: issue.number });
+      const result = await handleMoveIssueToReady({ issueNumber: issue.number }, ctx);
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);

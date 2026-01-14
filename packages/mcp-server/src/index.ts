@@ -4,17 +4,18 @@
  * dev-workflow MCP Server
  *
  * Model Context Protocol server for issue tracking and task management.
- * This file handles server bootstrap and tool routing only.
+ * Uses Awilix for dependency injection with server-lifetime singleton scope.
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
-// Import DI context
-import { McpDIContext } from "./di-context.js";
+// Import DI container and types
+import { createMcpContainer, type McpContainer, type McpCradle } from "./di/index.js";
+import { ProviderRegistry } from "@dev-workflow/core";
 
-// Import tools
+// Import tools - handlers perform their own validation via validateToolArgs
 import {
   // Tool definitions
   issueToolDefinitions,
@@ -28,9 +29,6 @@ import {
   mergeToolDefinitions,
   typeToolDefinitions,
   dispatchToolDefinitions,
-  // Validation utilities
-  toolSchemas,
-  safeValidateArgs,
   // Issue handlers
   handleCreateIssue,
   handleGetIssue,
@@ -101,59 +99,6 @@ import {
   handleGetDispatchStatus,
   handleEndWorkerSession,
   errorResponse,
-  // Type aliases for validated args
-  type CreateIssueArgs,
-  type GetIssueArgs,
-  type DeleteIssueArgs,
-  type RestoreIssueArgs,
-  type ListTemplatesArgs,
-  type GetTemplateArgs,
-  type CreateTemplateArgs,
-  type UpdateTemplateArgs,
-  type DeleteTemplateArgs,
-  type CopyTemplateArgs,
-  type UpdateIssueArgs,
-  type CloseIssueArgs,
-  type ChangeIssueTypeArgs,
-  type SearchIssuesArgs,
-  type ImportGitHubIssueArgs,
-  type GeneratePlanArgs,
-  type GetPlanArgs,
-  type PauseIssueArgs,
-  type MoveIssueToReadyArgs,
-  type MoveIssueToBacklogArgs,
-  type SyncIssueArgs,
-  type LoadTaskSessionArgs,
-  type AbandonTaskArgs,
-  type GetTaskArgs,
-  type ListAvailableTasksArgs,
-  type DeleteTaskArgs,
-  type UpdateTaskArgs,
-  type GetTaskExecutionPromptArgs,
-  type LogTaskProgressArgs,
-  type GetTaskExecutionLogArgs,
-  type CheckTaskConflictsArgs,
-  type GetSnapshotHistoryArgs,
-  type RevertToSnapshotArgs,
-  type ViewSnapshotArgs,
-  type UpdateSettingsArgs,
-  type CreateMilestoneArgs,
-  type GetMilestoneArgs,
-  type ListMilestonesArgs,
-  type UpdateMilestoneArgs,
-  type DeleteMilestoneArgs,
-  type AssignIssueToMilestoneArgs,
-  type RemoveIssueFromMilestoneArgs,
-  type GetTaskPRStatusArgs,
-  type CreatePRArgs,
-  type SubmitForReviewArgs,
-  type CompleteTaskArgs,
-  type MergeIssuesArgs,
-  type CreateTypeArgs,
-  type UpdateTypeArgs,
-  type DeleteTypeArgs,
-  type DispatchTaskArgs,
-  type EndWorkerSessionArgs,
 } from "./tools/index.js";
 
 // =============================================================================
@@ -170,8 +115,8 @@ import {
 
 const PROJECT_SLUG = process.env["PROJECT_SLUG"];
 
-// DI context (initialized in main)
-let context: McpDIContext;
+// Awilix container (initialized in main)
+let container: McpContainer;
 
 // Create MCP server
 const server = new Server(
@@ -203,28 +148,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   ],
 }));
 
-/**
- * Validate tool arguments against Zod schema.
- * Returns validated arguments or an error response.
- */
-function validateToolArgs<T>(
-  toolName: string,
-  args: unknown
-): { success: true; data: T } | { success: false; response: ReturnType<typeof errorResponse> } {
-  const schema = toolSchemas[toolName as keyof typeof toolSchemas];
-  if (!schema) {
-    return { success: false, response: errorResponse(`Unknown tool: ${toolName}`) };
-  }
-
-  const result = safeValidateArgs(schema, args ?? {});
-  if (!result.success) {
-    return { success: false, response: errorResponse(`Invalid arguments: ${result.error}`) };
-  }
-
-  return { success: true, data: result.data as T };
-}
-
-// Handle tool calls - route to appropriate handler with Zod validation
+// Handle tool calls - route to appropriate handler
+// Handlers perform their own Zod validation internally via validateToolArgs
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> => {
   const { name, arguments: args } = request.params;
@@ -232,314 +157,198 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
   try {
     // Issue tools
     if (name === "create_issue") {
-      const validation = validateToolArgs<CreateIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleCreateIssue(context.issueToolContext, validation.data);
+      return await handleCreateIssue(args ?? {}, container.cradle);
     }
     if (name === "get_issue") {
-      const validation = validateToolArgs<GetIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetIssue(context.issueToolContext, validation.data);
+      return handleGetIssue(args ?? {}, container.cradle);
     }
     if (name === "list_templates") {
-      const validation = validateToolArgs<ListTemplatesArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleListTemplates(context.issueToolContext, validation.data);
+      return await handleListTemplates(args ?? {}, container.cradle);
     }
     if (name === "get_template") {
-      const validation = validateToolArgs<GetTemplateArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleGetTemplate(context.issueToolContext, validation.data);
+      return await handleGetTemplate(args ?? {}, container.cradle);
     }
     if (name === "create_template") {
-      const validation = validateToolArgs<CreateTemplateArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleCreateTemplate(context.issueToolContext, validation.data);
+      return await handleCreateTemplate(args ?? {}, container.cradle);
     }
     if (name === "update_template") {
-      const validation = validateToolArgs<UpdateTemplateArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleUpdateTemplate(context.issueToolContext, validation.data);
+      return await handleUpdateTemplate(args ?? {}, container.cradle);
     }
     if (name === "delete_template") {
-      const validation = validateToolArgs<DeleteTemplateArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleDeleteTemplate(context.issueToolContext, validation.data);
+      return await handleDeleteTemplate(args ?? {}, container.cradle);
     }
     if (name === "copy_template") {
-      const validation = validateToolArgs<CopyTemplateArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleCopyTemplate(context.issueToolContext, validation.data);
+      return await handleCopyTemplate(args ?? {}, container.cradle);
     }
     if (name === "update_issue") {
-      const validation = validateToolArgs<UpdateIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleUpdateIssue(context.issueToolContext, validation.data);
+      return await handleUpdateIssue(args ?? {}, container.cradle);
     }
     if (name === "close_issue") {
-      const validation = validateToolArgs<CloseIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleCloseIssue(context.issueToolContext, validation.data);
+      return await handleCloseIssue(args ?? {}, container.cradle);
     }
     if (name === "change_issue_type") {
-      const validation = validateToolArgs<ChangeIssueTypeArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleChangeIssueType(context.issueToolContext, validation.data);
+      return await handleChangeIssueType(args ?? {}, container.cradle);
     }
     if (name === "delete_issue") {
-      const validation = validateToolArgs<DeleteIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleDeleteIssue(context.issueToolContext, validation.data);
+      return await handleDeleteIssue(args ?? {}, container.cradle);
     }
     if (name === "restore_issue") {
-      const validation = validateToolArgs<RestoreIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleRestoreIssue(context.issueToolContext, validation.data);
+      return handleRestoreIssue(args ?? {}, container.cradle);
     }
     if (name === "get_project_stats") {
-      const validation = validateToolArgs<Record<string, never>>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetProjectStats(context.issueToolContext);
+      return handleGetProjectStats(args ?? {}, container.cradle);
     }
     if (name === "search_issues") {
-      const validation = validateToolArgs<SearchIssuesArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleSearchIssues(context.issueToolContext, validation.data);
+      return handleSearchIssues(args ?? {}, container.cradle);
     }
     if (name === "get_work_queue") {
-      const validation = validateToolArgs<Record<string, never>>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetWorkQueue(context.issueToolContext);
+      return handleGetWorkQueue(args ?? {}, container.cradle);
     }
     if (name === "import_github_issue") {
-      const validation = validateToolArgs<ImportGitHubIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleImportGitHubIssue(context.issueToolContext, validation.data);
+      return await handleImportGitHubIssue(args ?? {}, container.cradle);
     }
 
     // Plan tools
     if (name === "generate_plan") {
-      const validation = validateToolArgs<GeneratePlanArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleGeneratePlan(context.planToolContext, validation.data);
+      return await handleGeneratePlan(args ?? {}, container.cradle);
     }
     if (name === "get_plan") {
-      const validation = validateToolArgs<GetPlanArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetPlan(context.planToolContext, validation.data);
+      return handleGetPlan(args ?? {}, container.cradle);
     }
     if (name === "pause_issue") {
-      const validation = validateToolArgs<PauseIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handlePauseIssue(context.planToolContext, validation.data);
+      return handlePauseIssue(args ?? {}, container.cradle);
     }
     if (name === "move_issue_to_ready") {
-      const validation = validateToolArgs<MoveIssueToReadyArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleMoveIssueToReady(context.planToolContext, validation.data);
+      return await handleMoveIssueToReady(args ?? {}, container.cradle);
     }
     if (name === "move_issue_to_backlog") {
-      const validation = validateToolArgs<MoveIssueToBacklogArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleMoveIssueToBacklog(context.planToolContext, validation.data);
+      return await handleMoveIssueToBacklog(args ?? {}, container.cradle);
     }
     if (name === "sync_issue") {
-      const validation = validateToolArgs<SyncIssueArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleSyncIssue(context.planToolContext, validation.data);
+      return await handleSyncIssue(args ?? {}, container.cradle);
     }
 
     // Task tools
     if (name === "load_task_session") {
-      const validation = validateToolArgs<LoadTaskSessionArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleLoadTaskSession(context.taskToolContext, validation.data);
+      return await handleLoadTaskSession(args ?? {}, container.cradle);
     }
     if (name === "abandon_task") {
-      const validation = validateToolArgs<AbandonTaskArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleAbandonTask(context.taskToolContext, validation.data);
+      return await handleAbandonTask(args ?? {}, container.cradle);
     }
     if (name === "get_task") {
-      const validation = validateToolArgs<GetTaskArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetTask(context.taskToolContext, validation.data);
+      return handleGetTask(args ?? {}, container.cradle);
     }
     if (name === "list_available_tasks") {
-      const validation = validateToolArgs<ListAvailableTasksArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleListAvailableTasks(context.taskToolContext, validation.data);
+      return await handleListAvailableTasks(args ?? {}, container.cradle);
     }
     if (name === "delete_task") {
-      const validation = validateToolArgs<DeleteTaskArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleDeleteTask(context.taskToolContext, validation.data);
+      return handleDeleteTask(args ?? {}, container.cradle);
     }
     if (name === "update_task") {
-      const validation = validateToolArgs<UpdateTaskArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleUpdateTask(context.taskToolContext, validation.data);
+      return await handleUpdateTask(args ?? {}, container.cradle);
     }
     if (name === "get_task_execution_prompt") {
-      const validation = validateToolArgs<GetTaskExecutionPromptArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetTaskExecutionPrompt(context.taskToolContext, validation.data);
+      return handleGetTaskExecutionPrompt(args ?? {}, container.cradle);
     }
     if (name === "log_task_progress") {
-      const validation = validateToolArgs<LogTaskProgressArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleLogTaskProgress(context.taskToolContext, validation.data);
+      return handleLogTaskProgress(args ?? {}, container.cradle);
     }
     if (name === "get_task_execution_log") {
-      const validation = validateToolArgs<GetTaskExecutionLogArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetTaskExecutionLog(context.taskToolContext, validation.data);
+      return handleGetTaskExecutionLog(args ?? {}, container.cradle);
     }
     if (name === "check_task_conflicts") {
-      const validation = validateToolArgs<CheckTaskConflictsArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleCheckTaskConflicts(context.taskToolContext, validation.data);
+      return handleCheckTaskConflicts(args ?? {}, container.cradle);
     }
 
     // Snapshot tools
     if (name === "get_snapshot_history") {
-      const validation = validateToolArgs<GetSnapshotHistoryArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetSnapshotHistory(context.snapshotToolContext, validation.data);
+      return handleGetSnapshotHistory(args ?? {}, container.cradle);
     }
     if (name === "revert_to_snapshot") {
-      const validation = validateToolArgs<RevertToSnapshotArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleRevertToSnapshot(context.snapshotToolContext, validation.data);
+      return handleRevertToSnapshot(args ?? {}, container.cradle);
     }
     if (name === "view_snapshot") {
-      const validation = validateToolArgs<ViewSnapshotArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleViewSnapshot(context.snapshotToolContext, validation.data);
+      return handleViewSnapshot(args ?? {}, container.cradle);
     }
 
     // Settings tools
     if (name === "update_settings") {
-      const validation = validateToolArgs<UpdateSettingsArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleUpdateSettings(context.settingsToolContext, validation.data);
+      return await handleUpdateSettings(args ?? {}, container.cradle);
     }
 
     // Milestone tools
     if (name === "create_milestone") {
-      const validation = validateToolArgs<CreateMilestoneArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleCreateMilestone(context.milestoneToolContext, validation.data);
+      return handleCreateMilestone(args ?? {}, container.cradle);
     }
     if (name === "get_milestone") {
-      const validation = validateToolArgs<GetMilestoneArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetMilestone(context.milestoneToolContext, validation.data);
+      return handleGetMilestone(args ?? {}, container.cradle);
     }
     if (name === "list_milestones") {
-      const validation = validateToolArgs<ListMilestonesArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleListMilestones(context.milestoneToolContext, validation.data);
+      return handleListMilestones(args ?? {}, container.cradle);
     }
     if (name === "update_milestone") {
-      const validation = validateToolArgs<UpdateMilestoneArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleUpdateMilestone(context.milestoneToolContext, validation.data);
+      return handleUpdateMilestone(args ?? {}, container.cradle);
     }
     if (name === "delete_milestone") {
-      const validation = validateToolArgs<DeleteMilestoneArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleDeleteMilestone(context.milestoneToolContext, validation.data);
+      return handleDeleteMilestone(args ?? {}, container.cradle);
     }
     if (name === "assign_issue_to_milestone") {
-      const validation = validateToolArgs<AssignIssueToMilestoneArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleAssignIssueToMilestone(context.milestoneToolContext, validation.data);
+      return handleAssignIssueToMilestone(args ?? {}, container.cradle);
     }
     if (name === "remove_issue_from_milestone") {
-      const validation = validateToolArgs<RemoveIssueFromMilestoneArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleRemoveIssueFromMilestone(context.milestoneToolContext, validation.data);
+      return handleRemoveIssueFromMilestone(args ?? {}, container.cradle);
     }
 
     // Worktree tools
     if (name === "list_worktrees") {
-      const validation = validateToolArgs<Record<string, never>>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleListWorktrees(validation.data, context.worktreeToolContext);
+      return await handleListWorktrees(args ?? {}, container.cradle);
     }
     if (name === "prune_stale_worktrees") {
-      const validation = validateToolArgs<Record<string, never>>(name, args);
-      if (!validation.success) return validation.response;
-      return await handlePruneStaleWorktrees(validation.data, context.worktreeToolContext);
+      return await handlePruneStaleWorktrees(args ?? {}, container.cradle);
     }
 
     // PR tools
     if (name === "get_task_pr_status") {
-      const validation = validateToolArgs<GetTaskPRStatusArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleGetTaskPRStatus(context.prToolContext, validation.data);
+      return await handleGetTaskPRStatus(args ?? {}, container.cradle);
     }
     if (name === "create_pr") {
-      const validation = validateToolArgs<CreatePRArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleCreatePR(context.prToolContext, validation.data);
+      return await handleCreatePR(args ?? {}, container.cradle);
     }
     if (name === "submit_for_review") {
-      const validation = validateToolArgs<SubmitForReviewArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleSubmitForReview(context.prToolContext, validation.data);
+      return await handleSubmitForReview(args ?? {}, container.cradle);
     }
     if (name === "complete_task") {
-      const validation = validateToolArgs<CompleteTaskArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleCompleteTask(context.prToolContext, validation.data);
+      return await handleCompleteTask(args ?? {}, container.cradle);
     }
 
     // Merge tools
     if (name === "merge_issues") {
-      const validation = validateToolArgs<MergeIssuesArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleMergeIssues(context.mergeToolContext, validation.data);
+      return await handleMergeIssues(args ?? {}, container.cradle);
     }
 
     // Type tools
     if (name === "list_types") {
-      const validation = validateToolArgs<Record<string, never>>(name, args);
-      if (!validation.success) return validation.response;
-      return await handleListTypes(context.typeToolContext);
+      return await handleListTypes(args ?? {}, container.cradle);
     }
     if (name === "create_type") {
-      const validation = validateToolArgs<CreateTypeArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleCreateType(context.typeToolContext, validation.data);
+      return handleCreateType(args ?? {}, container.cradle);
     }
     if (name === "update_type") {
-      const validation = validateToolArgs<UpdateTypeArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleUpdateType(context.typeToolContext, validation.data);
+      return handleUpdateType(args ?? {}, container.cradle);
     }
     if (name === "delete_type") {
-      const validation = validateToolArgs<DeleteTypeArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleDeleteType(context.typeToolContext, validation.data);
+      return handleDeleteType(args ?? {}, container.cradle);
     }
 
     // Dispatch tools (worker task assignment)
     if (name === "dispatch_task") {
-      const validation = validateToolArgs<DispatchTaskArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleDispatchTask(context.dispatchToolContext, validation.data);
+      return handleDispatchTask(args ?? {}, container.cradle);
     }
     if (name === "get_dispatch_status") {
-      const validation = validateToolArgs<Record<string, never>>(name, args);
-      if (!validation.success) return validation.response;
-      return handleGetDispatchStatus(context.dispatchToolContext);
+      return handleGetDispatchStatus(args ?? {}, container.cradle);
     }
     if (name === "end_worker_session") {
-      const validation = validateToolArgs<EndWorkerSessionArgs>(name, args);
-      if (!validation.success) return validation.response;
-      return handleEndWorkerSession(context.dispatchToolContext, validation.data);
+      return handleEndWorkerSession(args ?? {}, container.cradle);
     }
 
     return errorResponse(`Unknown tool: ${name}`);
@@ -547,6 +356,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
     return errorResponse(error instanceof Error ? error.message : String(error));
   }
 });
+
+/**
+ * Log provider status for startup diagnostics.
+ */
+function logProviderStatus(cradle: McpCradle): void {
+  const providerRegistry = ProviderRegistry.getInstance();
+  const providerDeps = { githubCLI: cradle.githubCLI };
+
+  if (cradle.project.githubSync?.enabled) {
+    const providerId = cradle.projectManagementProvider.providerId;
+    const providerInfo = providerRegistry.tryGet(providerId);
+    const displayName = providerInfo?.displayName ?? providerId;
+    console.error(`External sync enabled: ${displayName} provider (repository auto-detected)`);
+  } else {
+    const availableProviders = providerRegistry.list(providerDeps);
+    const providerNames = availableProviders
+      .filter((p) => p.available)
+      .map((p) => p.displayName)
+      .join(", ");
+    console.error(`External sync not configured (available providers: ${providerNames})`);
+  }
+}
 
 /**
  * Initialize all services and start the server
@@ -562,8 +393,8 @@ async function main() {
   console.error(`Loading config from slug: ${PROJECT_SLUG}`);
 
   try {
-    // Create DI context - this wires up all dependencies
-    context = await McpDIContext.create(PROJECT_SLUG);
+    // Create Awilix container - this wires up all dependencies
+    container = await createMcpContainer(PROJECT_SLUG);
   } catch (error) {
     console.error(`Error: Failed to initialize for slug "${PROJECT_SLUG}"`);
     console.error(error instanceof Error ? error.message : String(error));
@@ -571,15 +402,17 @@ async function main() {
     process.exit(1);
   }
 
+  const cradle = container.cradle;
+
   // Log startup info
-  console.error(`Project: ${context.project.name} (${context.project.id.slice(0, 8)}...)`);
-  context.logProviderStatus();
+  console.error(`Project: ${cradle.project.name} (${cradle.project.id.slice(0, 8)}...)`);
+  logProviderStatus(cradle);
 
   // Start server with stdio transport
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("dev-workflow MCP server running on stdio");
-  console.error(`Database: ${context.config.databasePath}`);
+  console.error(`Database: ${cradle.config.databasePath}`);
 }
 
 main().catch((error) => {
@@ -589,11 +422,11 @@ main().catch((error) => {
 
 // Cleanup on exit
 process.on("SIGINT", () => {
-  context?.close();
+  container?.cradle.dbSource.close();
   process.exit(0);
 });
 
 process.on("SIGTERM", () => {
-  context?.close();
+  container?.cradle.dbSource.close();
   process.exit(0);
 });
