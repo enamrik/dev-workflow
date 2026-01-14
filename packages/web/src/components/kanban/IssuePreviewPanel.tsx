@@ -16,7 +16,7 @@ import {
   Markdown,
   GitHubLink,
 } from "@/components/ui";
-import { IssueTransitionButton } from "@/components/issues";
+import { IssueTransitionButton, IssueCloseButton, IssueDeleteButton } from "@/components/issues";
 import { isTerminal, isActive, computeIssueStatus } from "@/lib/types";
 import type { Issue, Plan, Task } from "@/lib/types";
 
@@ -108,10 +108,28 @@ export function IssuePreviewPanel({ projectSlug, issueNumber, onClose }: IssuePr
               activeTab={activeTab}
               onTabChange={handleTabChange}
               projectSlug={projectSlug}
-              onRefetch={refetch}
             />
           )}
         </div>
+
+        {/* Fixed footer with action buttons */}
+        {data && (
+          <div className="flex-shrink-0 flex flex-wrap items-center gap-2 p-4 border-t border-gray-200 bg-gray-50">
+            <IssueTransitionButton
+              issue={data.issue}
+              tasks={data.tasks}
+              projectSlug={projectSlug}
+              onSuccess={refetch}
+            />
+            <IssueCloseButton issue={data.issue} projectSlug={projectSlug} onSuccess={refetch} />
+            <IssueDeleteButton
+              issue={data.issue}
+              projectSlug={projectSlug}
+              onSuccess={refetch}
+              onClose={onClose}
+            />
+          </div>
+        )}
       </div>
     </>
   );
@@ -122,7 +140,6 @@ interface IssuePreviewContentProps {
   activeTab: TabId;
   onTabChange: (tabId: string) => void;
   projectSlug: string;
-  onRefetch: () => void;
 }
 
 function IssuePreviewContent({
@@ -130,7 +147,6 @@ function IssuePreviewContent({
   activeTab,
   onTabChange,
   projectSlug,
-  onRefetch,
 }: IssuePreviewContentProps) {
   const { issue, plan, tasks } = data;
   const taskCounts = {
@@ -166,12 +182,6 @@ function IssuePreviewContent({
               tooltip={`View on GitHub: ${issue.githubSync.githubUrl}`}
             />
           )}
-          <IssueTransitionButton
-            issue={issue}
-            tasks={tasks}
-            projectSlug={projectSlug}
-            onSuccess={onRefetch}
-          />
         </div>
       </div>
 
