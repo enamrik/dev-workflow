@@ -114,7 +114,7 @@ export interface CliCradle {
  */
 export function createCliContainer(): AwilixContainer<CliCradle> {
   const container = createContainer<CliCradle>({
-    injectionMode: InjectionMode.CLASSIC,
+    injectionMode: InjectionMode.PROXY,
     strict: true,
   });
 
