@@ -1,57 +1,52 @@
 /**
- * Tests for Awilix DI Container
+ * Tests for MCP Handler Bootstrap
  *
- * Demonstrates the container scoping pattern for testing tool handlers
- * without static mocks. Tests verify:
- * 1. Container provides all expected services
- * 2. Test scopes can override specific dependencies
- * 3. Bootstrap functions work with scoped containers
+ * Demonstrates the handler pattern:
+ * 1. Handlers are pure functions: (args, deps) => ToolResponse
+ * 2. Middleware runs before handler, can short-circuit
+ * 3. Container override for testing
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { asValue, createContainer, InjectionMode } from "awilix";
 import type { AwilixContainer } from "awilix";
-import { createTool, createToolHandler, createNoArgsToolHandler } from "../../di/bootstrap.js";
-import { successResponse, errorResponse } from "../../tools/types.js";
+import {
+  createMcpHandler,
+  createNoArgsHandler,
+  createFullCradleHandler,
+  validateToolArgs,
+  initializeContainer,
+  compose,
+} from "../../di/bootstrap.js";
+import { successResponse, errorResponse, type ToolResponse } from "../../tools/types.js";
 import { z } from "zod";
 
 // =============================================================================
 // Test Fixtures
 // =============================================================================
 
-/**
- * Minimal mock issue service type for testing.
- */
 interface MockIssueService {
   create: (params: { title: string; description: string }) => { id: string; title: string };
   list: () => Array<{ id: string; title: string }>;
 }
 
-/**
- * Minimal mock task service type for testing.
- */
 interface MockTaskService {
   get: (id: string) => { id: string; title: string } | null;
 }
 
-/**
- * Minimal cradle type for testing bootstrap functions.
- * Uses dedicated mock types to avoid conflicts with real service types.
- */
 interface TestCradle {
   issueService: MockIssueService;
   taskService: MockTaskService;
+  projectId: string;
 }
 
-/**
- * Create a test container with mock services.
- */
 function createTestContainer(): AwilixContainer<TestCradle> {
   const container = createContainer<TestCradle>({
     injectionMode: InjectionMode.CLASSIC,
   });
 
   container.register({
+    projectId: asValue("test-project"),
     issueService: asValue({
       create: vi.fn((params: { title: string; description: string }) => ({
         id: "test-issue-1",
@@ -71,88 +66,81 @@ function createTestContainer(): AwilixContainer<TestCradle> {
 }
 
 // =============================================================================
-// Container Scoping Tests
+// validateToolArgs Tests
 // =============================================================================
 
-describe("DI Container Scoping", () => {
-  it("should create a container with registered services", () => {
-    const container = createTestContainer();
-
-    expect(container.cradle.issueService).toBeDefined();
-    expect(container.cradle.taskService).toBeDefined();
+describe("validateToolArgs", () => {
+  const schema = z.object({
+    title: z.string(),
+    description: z.string(),
   });
 
-  it("should allow creating scoped containers that inherit registrations", () => {
-    const parent = createTestContainer();
-    const scope = parent.createScope();
+  it("should return success with validated data", () => {
+    const result = validateToolArgs(schema, { title: "Test", description: "Test desc" });
 
-    // Scope should have access to parent's services
-    expect(scope.cradle.issueService).toBe(parent.cradle.issueService);
-    expect(scope.cradle.taskService).toBe(parent.cradle.taskService);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toEqual({ title: "Test", description: "Test desc" });
+    }
   });
 
-  it("should allow overriding services in scoped container", () => {
-    const parent = createTestContainer();
-    const scope = parent.createScope();
+  it("should return error response for invalid args", () => {
+    const result = validateToolArgs(schema, { title: "Test" }); // missing description
 
-    // Override issueService in scope
-    const mockIssueService = {
-      create: vi.fn(() => ({ id: "scoped-issue", title: "Scoped Title" })),
-      list: vi.fn(() => []),
-    };
-    scope.register({
-      issueService: asValue(mockIssueService),
-    });
-
-    // Scope should have the overridden service
-    expect(scope.cradle.issueService).toBe(mockIssueService);
-    // Parent should still have original
-    expect(parent.cradle.issueService).not.toBe(mockIssueService);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.response.isError).toBe(true);
+      expect(result.response.content[0].text).toContain("description");
+    }
   });
 
-  it("should not affect parent when scope service is overridden", () => {
-    const parent = createTestContainer();
-    const originalIssueService = parent.cradle.issueService;
+  it("should handle null/undefined args", () => {
+    const result = validateToolArgs(schema, null);
 
-    const scope = parent.createScope();
-    scope.register({
-      issueService: asValue({
-        create: vi.fn(),
-        list: vi.fn(),
-      }),
-    });
-
-    // Parent unchanged
-    expect(parent.cradle.issueService).toBe(originalIssueService);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.response.isError).toBe(true);
+    }
   });
 });
 
 // =============================================================================
-// createTool Tests
+// createMcpHandler Tests
 // =============================================================================
 
-describe("createTool", () => {
+describe("createMcpHandler", () => {
   const createIssueSchema = z.object({
     title: z.string(),
     description: z.string(),
   });
 
-  it("should wrap handler with validation and error handling", async () => {
-    type CreateIssueDeps = { issueService: TestCradle["issueService"] };
+  // Initialize container before tests
+  beforeEach(() => {
+    initializeContainer(createTestContainer() as unknown as AwilixContainer<never>);
+  });
 
-    const toolFactory = createTool(
-      { schema: createIssueSchema },
-      (args: z.infer<typeof createIssueSchema>, deps: CreateIssueDeps) => {
-        const issue = deps.issueService.create(args);
-        return successResponse({ issue });
-      }
+  it("should create handler that injects deps from cradle", async () => {
+    type Deps = { issueService: MockIssueService };
+
+    async function createIssueHandler(
+      args: unknown,
+      { issueService }: Deps
+    ): Promise<ToolResponse> {
+      const validation = validateToolArgs(createIssueSchema, args);
+      if (!validation.success) return validation.response;
+
+      const issue = issueService.create(validation.data);
+      return successResponse({ issue });
+    }
+
+    const handler = createMcpHandler(createIssueHandler, (cradle: TestCradle) => ({
+      issueService: cradle.issueService,
+    }));
+
+    const result = await handler(
+      { title: "Test", description: "Test desc" },
+      createTestContainer()
     );
-
-    const container = createTestContainer();
-    const deps = { issueService: container.cradle.issueService };
-    const tool = toolFactory(deps);
-
-    const result = await tool({ title: "Test", description: "Test desc" });
 
     expect(result.isError).toBeUndefined();
     expect(JSON.parse(result.content[0].text)).toMatchObject({
@@ -160,40 +148,47 @@ describe("createTool", () => {
     });
   });
 
-  it("should return validation error for invalid args", async () => {
-    type Deps = { issueService: TestCradle["issueService"] };
+  it("should support container override for testing", async () => {
+    type Deps = { issueService: MockIssueService };
 
-    const toolFactory = createTool(
-      { schema: createIssueSchema },
-      (_args: z.infer<typeof createIssueSchema>, _deps: Deps) => {
-        return successResponse({ success: true });
-      }
-    );
+    async function createIssueHandler(
+      args: unknown,
+      { issueService }: Deps
+    ): Promise<ToolResponse> {
+      const validation = validateToolArgs(createIssueSchema, args);
+      if (!validation.success) return validation.response;
 
-    const container = createTestContainer();
-    const tool = toolFactory({ issueService: container.cradle.issueService });
+      const issue = issueService.create(validation.data);
+      return successResponse({ issue });
+    }
 
-    const result = await tool({ title: "Test" }); // Missing description
+    const handler = createMcpHandler(createIssueHandler, (cradle: TestCradle) => ({
+      issueService: cradle.issueService,
+    }));
 
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("Invalid arguments");
-    expect(result.content[0].text).toContain("description");
+    // Create test container with mock
+    const testContainer = createTestContainer();
+    const mockCreate = vi.fn(() => ({ id: "mock-id", title: "Mock Title" }));
+    testContainer.register({
+      issueService: asValue({ create: mockCreate, list: vi.fn() }),
+    });
+
+    const result = await handler({ title: "Test", description: "Test desc" }, testContainer);
+
+    expect(mockCreate).toHaveBeenCalled();
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      issue: { id: "mock-id", title: "Mock Title" },
+    });
   });
 
-  it("should catch handler errors and return errorResponse", async () => {
-    type Deps = { issueService: TestCradle["issueService"] };
+  it("should catch errors and return errorResponse", async () => {
+    async function failingHandler(): Promise<ToolResponse> {
+      throw new Error("Something went wrong");
+    }
 
-    const toolFactory = createTool(
-      { schema: createIssueSchema },
-      (_args: z.infer<typeof createIssueSchema>, _deps: Deps) => {
-        throw new Error("Something went wrong");
-      }
-    );
+    const handler = createMcpHandler(failingHandler, (_cradle: TestCradle) => ({}));
 
-    const container = createTestContainer();
-    const tool = toolFactory({ issueService: container.cradle.issueService });
-
-    const result = await tool({ title: "Test", description: "Test desc" });
+    const result = await handler({}, createTestContainer());
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("Something went wrong");
@@ -201,186 +196,265 @@ describe("createTool", () => {
 });
 
 // =============================================================================
-// createToolHandler Tests
+// Middleware Tests
 // =============================================================================
 
-describe("createToolHandler", () => {
-  const getTaskSchema = z.object({
-    taskId: z.string(),
+describe("middleware", () => {
+  beforeEach(() => {
+    initializeContainer(createTestContainer() as unknown as AwilixContainer<never>);
   });
 
-  it("should create handler that pulls deps from container cradle", async () => {
-    type GetTaskDeps = { taskService: TestCradle["taskService"] };
+  it("should run middleware before handler", async () => {
+    const middlewareOrder: string[] = [];
 
-    const toolFactory = createTool(
-      { schema: getTaskSchema },
-      (args: z.infer<typeof getTaskSchema>, deps: GetTaskDeps) => {
-        const task = deps.taskService.get(args.taskId);
-        if (!task) {
-          return errorResponse(`Task not found: ${args.taskId}`);
-        }
-        return successResponse({ task });
-      }
+    const trackingMiddleware = async () => {
+      middlewareOrder.push("middleware");
+    };
+
+    async function trackingHandler(_args: unknown, _deps: object): Promise<ToolResponse> {
+      middlewareOrder.push("handler");
+      return successResponse({ order: middlewareOrder });
+    }
+
+    const handler = createMcpHandler<object, TestCradle>(
+      trackingHandler,
+      () => ({}),
+      trackingMiddleware
     );
 
-    const container = createTestContainer();
-    const handler = createToolHandler(
-      toolFactory,
-      (cradle) => ({ taskService: cradle.taskService }),
-      container
-    );
+    await handler({}, createTestContainer());
 
-    const result = await handler({ taskId: "task-1" });
-
-    expect(result.isError).toBeUndefined();
-    expect(JSON.parse(result.content[0].text)).toMatchObject({
-      task: { id: "task-1", title: "Test Task" },
-    });
+    expect(middlewareOrder).toEqual(["middleware", "handler"]);
   });
 
-  it("should use scoped container with overridden service", async () => {
-    type GetTaskDeps = { taskService: TestCradle["taskService"] };
+  it("should short-circuit when middleware returns response", async () => {
+    const shortCircuitMiddleware = async () => {
+      return errorResponse("Blocked by middleware");
+    };
 
-    const toolFactory = createTool(
-      { schema: getTaskSchema },
-      (args: z.infer<typeof getTaskSchema>, deps: GetTaskDeps) => {
-        const task = deps.taskService.get(args.taskId);
-        if (!task) {
-          return errorResponse(`Task not found: ${args.taskId}`);
-        }
-        return successResponse({ task });
-      }
+    const handlerCalled = vi.fn();
+    async function handler(): Promise<ToolResponse> {
+      handlerCalled();
+      return successResponse({});
+    }
+
+    const wrappedHandler = createMcpHandler<object, TestCradle>(
+      handler,
+      () => ({}),
+      shortCircuitMiddleware
     );
 
-    const parent = createTestContainer();
-    const scope = parent.createScope();
+    const result = await wrappedHandler({}, createTestContainer());
 
-    // Override taskService to return different data
-    scope.register({
-      taskService: asValue({
-        get: vi.fn((_id: string) => ({ id: "scoped-task", title: "Scoped Task" })),
-      }),
-    });
+    expect(handlerCalled).not.toHaveBeenCalled();
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Blocked by middleware");
+  });
 
-    const handler = createToolHandler(
-      toolFactory,
-      (cradle) => ({ taskService: cradle.taskService }),
-      scope // Use scoped container
+  it("should compose multiple middleware", async () => {
+    const order: string[] = [];
+
+    const first = async () => {
+      order.push("first");
+    };
+    const second = async () => {
+      order.push("second");
+    };
+
+    const composedMiddleware = compose(first, second);
+
+    async function handler(): Promise<ToolResponse> {
+      order.push("handler");
+      return successResponse({ order });
+    }
+
+    const wrappedHandler = createMcpHandler<object, TestCradle>(
+      handler,
+      () => ({}),
+      composedMiddleware
     );
 
-    const result = await handler({ taskId: "any-id" });
+    await wrappedHandler({}, createTestContainer());
 
-    expect(result.isError).toBeUndefined();
-    expect(JSON.parse(result.content[0].text)).toMatchObject({
-      task: { id: "scoped-task", title: "Scoped Task" },
-    });
+    expect(order).toEqual(["first", "second", "handler"]);
+  });
+
+  it("should stop chain when composed middleware returns", async () => {
+    const order: string[] = [];
+
+    const first = async () => {
+      order.push("first");
+      return errorResponse("Stopped at first");
+    };
+    const second = async () => {
+      order.push("second");
+    };
+
+    const composedMiddleware = compose(first, second);
+
+    async function handler(): Promise<ToolResponse> {
+      order.push("handler");
+      return successResponse({});
+    }
+
+    const wrappedHandler = createMcpHandler<object, TestCradle>(
+      handler,
+      () => ({}),
+      composedMiddleware
+    );
+
+    const result = await wrappedHandler({}, createTestContainer());
+
+    expect(order).toEqual(["first"]);
+    expect(result.isError).toBe(true);
   });
 });
 
 // =============================================================================
-// createNoArgsToolHandler Tests
+// createNoArgsHandler Tests
 // =============================================================================
 
-describe("createNoArgsToolHandler", () => {
-  it("should create handler for tools with no arguments", async () => {
-    type ListDeps = { issueService: TestCradle["issueService"] };
+describe("createNoArgsHandler", () => {
+  beforeEach(() => {
+    initializeContainer(createTestContainer() as unknown as AwilixContainer<never>);
+  });
 
-    const handler = createNoArgsToolHandler(
-      (deps: ListDeps) => {
-        const issues = deps.issueService.list();
+  it("should create handler for tools with no arguments", async () => {
+    type Deps = { issueService: MockIssueService };
+
+    const handler = createNoArgsHandler(
+      ({ issueService }: Deps) => {
+        const issues = issueService.list();
         return successResponse({ issues, count: issues.length });
       },
-      (cradle) => ({ issueService: cradle.issueService }),
-      createTestContainer()
+      (cradle: TestCradle) => ({ issueService: cradle.issueService })
     );
 
-    const result = await handler({});
+    const result = await handler({}, createTestContainer());
 
     expect(result.isError).toBeUndefined();
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.count).toBe(2);
-    expect(parsed.issues).toHaveLength(2);
-  });
-
-  it("should catch errors in no-args handlers", async () => {
-    type ListDeps = { issueService: TestCradle["issueService"] };
-
-    const handler = createNoArgsToolHandler(
-      (_deps: ListDeps) => {
-        throw new Error("Database connection failed");
-      },
-      (cradle) => ({ issueService: cradle.issueService }),
-      createTestContainer()
-    );
-
-    const result = await handler({});
-
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("Database connection failed");
   });
 });
 
 // =============================================================================
-// Integration Pattern Tests
+// createFullCradleHandler Tests
 // =============================================================================
 
-describe("Integration testing pattern", () => {
-  it("demonstrates the recommended test pattern for tool handlers", async () => {
-    // 1. Create test container (or use production container)
-    const container = createTestContainer();
+describe("createFullCradleHandler", () => {
+  beforeEach(() => {
+    initializeContainer(createTestContainer() as unknown as AwilixContainer<never>);
+  });
 
-    // 2. Create scope for this test
-    const testScope = container.createScope();
+  it("should pass full cradle to handler", async () => {
+    const handler = createFullCradleHandler(async (_args: unknown, cradle: TestCradle) => {
+      return successResponse({
+        projectId: cradle.projectId,
+        hasIssueService: !!cradle.issueService,
+        hasTaskService: !!cradle.taskService,
+      });
+    });
 
-    // 3. Override specific services with test doubles
+    const result = await handler({}, createTestContainer());
+
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      projectId: "test-project",
+      hasIssueService: true,
+      hasTaskService: true,
+    });
+  });
+});
+
+// =============================================================================
+// Integration Pattern Example
+// =============================================================================
+
+describe("Integration Pattern", () => {
+  beforeEach(() => {
+    initializeContainer(createTestContainer() as unknown as AwilixContainer<never>);
+  });
+
+  it("demonstrates the recommended pattern for MCP handlers", async () => {
+    // 1. Define validation schema
+    const createIssueSchema = z.object({
+      title: z.string().min(1),
+      description: z.string(),
+    });
+
+    // 2. Define handler deps type
+    type CreateIssueDeps = {
+      issueService: MockIssueService;
+      projectId: string;
+    };
+
+    // 3. Define pure handler function
+    async function createIssueHandler(
+      args: unknown,
+      { issueService, projectId }: CreateIssueDeps
+    ): Promise<ToolResponse> {
+      // Explicit validation inside handler
+      const validation = validateToolArgs(createIssueSchema, args);
+      if (!validation.success) return validation.response;
+
+      // Business logic
+      const issue = issueService.create(validation.data);
+      return successResponse({ issue, projectId });
+    }
+
+    // 4. Define middleware (optional)
+    const requireProject = async (_args: unknown, cradle: TestCradle) => {
+      if (!cradle.projectId) {
+        return errorResponse("Project not configured");
+      }
+      return undefined; // Continue chain
+    };
+
+    // 5. Create the MCP handler
+    const handleCreateIssue = createMcpHandler<CreateIssueDeps, TestCradle>(
+      createIssueHandler,
+      (cradle: TestCradle) => ({
+        issueService: cradle.issueService,
+        projectId: cradle.projectId,
+      }),
+      requireProject
+    );
+
+    // 6. Use in production (would use default container)
+    const prodResult = await handleCreateIssue(
+      { title: "Test Issue", description: "Test description" },
+      createTestContainer()
+    );
+
+    expect(prodResult.isError).toBeUndefined();
+    expect(JSON.parse(prodResult.content[0].text)).toMatchObject({
+      issue: { id: "test-issue-1", title: "Test Issue" },
+      projectId: "test-project",
+    });
+
+    // 7. Use in tests with mock container
     const mockIssueService = {
       create: vi.fn(() => ({ id: "mock-123", title: "Mock Issue" })),
       list: vi.fn(() => []),
     };
-    testScope.register({
+
+    const testContainer = createTestContainer();
+    testContainer.register({
       issueService: asValue(mockIssueService),
     });
 
-    // 4. Create handler with scoped container
-    const createIssueSchema = z.object({
-      title: z.string(),
-      description: z.string(),
-    });
-
-    type Deps = { issueService: TestCradle["issueService"] };
-
-    const toolFactory = createTool(
-      { schema: createIssueSchema },
-      (args: z.infer<typeof createIssueSchema>, deps: Deps) => {
-        const issue = deps.issueService.create(args);
-        return successResponse({ issue });
-      }
+    const testResult = await handleCreateIssue(
+      { title: "Test Issue", description: "Test description" },
+      testContainer
     );
 
-    const handler = createToolHandler(
-      toolFactory,
-      (cradle) => ({ issueService: cradle.issueService }),
-      testScope
-    );
-
-    // 5. Execute handler
-    const result = await handler({
-      title: "Test Issue",
-      description: "Test Description",
-    });
-
-    // 6. Assert on results
     expect(mockIssueService.create).toHaveBeenCalledWith({
       title: "Test Issue",
-      description: "Test Description",
+      description: "Test description",
     });
-
-    expect(result.isError).toBeUndefined();
-    expect(JSON.parse(result.content[0].text)).toMatchObject({
+    expect(JSON.parse(testResult.content[0].text)).toMatchObject({
       issue: { id: "mock-123", title: "Mock Issue" },
     });
-
-    // 7. Parent container unchanged
-    expect(container.cradle.issueService).not.toBe(mockIssueService);
   });
 });

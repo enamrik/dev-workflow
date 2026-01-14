@@ -1,23 +1,49 @@
 /**
  * MCP Server Dependency Injection
  *
- * Barrel export for DI container and bootstrap utilities.
+ * Barrel export for DI container and handler bootstrap utilities.
+ *
+ * @example
+ * ```typescript
+ * import {
+ *   createMcpContainer,
+ *   initializeContainer,
+ *   createMcpHandler,
+ *   validateToolArgs,
+ *   compose,
+ * } from './di';
+ *
+ * // Initialize container at startup
+ * const container = await createMcpContainer(projectSlug);
+ * initializeContainer(container);
+ *
+ * // Define a handler
+ * const handleCreateIssue = createMcpHandler(
+ *   createIssueHandler,
+ *   (cradle) => ({ issueService: cradle.issueService }),
+ *   compose(requireProject)
+ * );
+ * ```
  */
 
+// Container setup
 export { createMcpContainer, createTestScope } from "./container.js";
 export type { McpConfig, McpCradle, McpContainer } from "./container.js";
 
+// Handler bootstrap
 export {
-  createTool,
-  createToolHandler,
+  createMcpHandler,
+  createNoArgsHandler,
   createFullCradleHandler,
-  createNoArgsToolHandler,
+  validateToolArgs,
+  initializeContainer,
+  getContainer,
+  compose,
 } from "./bootstrap.js";
 export type {
-  ToolHandler,
+  McpHandler,
+  McpMiddleware,
+  McpToolHandler,
   DepsSelector,
-  WrappedTool,
-  DIToolHandler,
-  CreateToolOptions,
-  NoArgsToolHandler,
+  ValidationResult,
 } from "./bootstrap.js";

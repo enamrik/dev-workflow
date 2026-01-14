@@ -1,208 +1,257 @@
 /**
- * MCP Server Bootstrap Functions
+ * MCP Handler Bootstrap
  *
- * Provides createTool and createToolHandler for wrapping MCP tool handlers
- * with Awilix dependency injection and error handling.
+ * Provides utilities for creating MCP tool handlers with:
+ * - Middleware composition (using core's compose pattern)
+ * - Dependency injection from Awilix cradle
+ * - Consistent error handling
+ * - Easy testing via container override
  *
- * Key pattern:
- * - Tool handlers contain the complete business logic, only dependencies are missing
- * - createTool() wraps handlers with validation and error handling
- * - createToolHandler() provides DI injection from the Awilix cradle
+ * Design:
+ * - Handlers are pure functions: (args, deps) => ToolResponse
+ * - Middleware can validate, short-circuit, or pass through
+ * - Container is optional, defaults to production
  */
 
-import type { AwilixContainer } from "awilix";
 import type { ZodSchema } from "zod";
+import type { AwilixContainer } from "awilix";
+import { compose, type Middleware } from "@dev-workflow/core/infrastructure/di";
 import type { McpCradle } from "./container.js";
 import { type ToolResponse, errorResponse } from "../tools/types.js";
 
+// =============================================================================
+// Type Definitions
+// =============================================================================
+
 /**
- * Type for a raw tool handler function.
- * Takes validated args and dependencies, returns a tool response.
- *
- * The handler contains complete business logic - only the deps are injected.
+ * A pure handler function that receives args and selected dependencies.
+ * Handlers should validate args internally using validateToolArgs.
  */
-export type ToolHandler<TArgs, TDeps> = (
-  args: TArgs,
+export type McpHandler<TDeps> = (
+  args: unknown,
   deps: TDeps
 ) => ToolResponse | Promise<ToolResponse>;
 
 /**
- * Type for a dependency selector function.
- * Extracts required dependencies from the cradle.
- * TCradle defaults to McpCradle for production use.
+ * Selects specific dependencies from the cradle for a handler.
+ * Keep selections minimal - only what the handler actually needs.
  */
 export type DepsSelector<TDeps, TCradle = McpCradle> = (cradle: TCradle) => TDeps;
 
 /**
- * Type for a wrapped tool that handles validation and error catching.
+ * MCP-specific middleware type.
+ * Middleware receives (args, cradle) and can:
+ * - Return void to continue the chain
+ * - Return ToolResponse to short-circuit
+ * - Throw an error (caught by error handler)
  */
-export type WrappedTool<TArgs> = (args: TArgs) => Promise<ToolResponse>;
+export type McpMiddleware<TCradle extends object = McpCradle> = Middleware<
+  unknown,
+  TCradle,
+  ToolResponse
+>;
 
 /**
- * Type for the final handler that includes DI injection.
+ * The final handler function signature.
  */
-export type DIToolHandler = (args: unknown) => Promise<ToolResponse>;
+export type McpToolHandler<TCradle extends object = McpCradle> = (
+  args: unknown,
+  container?: AwilixContainer<TCradle>
+) => Promise<ToolResponse>;
+
+// =============================================================================
+// Validation Helper
+// =============================================================================
 
 /**
- * Options for createTool
+ * Validation result type for type-safe handling.
  */
-export interface CreateToolOptions<TArgs> {
-  /** Zod schema for argument validation */
-  schema: ZodSchema<TArgs>;
-}
+export type ValidationResult<T> =
+  | { success: true; data: T }
+  | { success: false; response: ToolResponse };
 
 /**
- * Create a tool wrapper that handles validation and error catching.
+ * Validates tool arguments against a Zod schema.
  *
- * This wraps a handler with:
- * 1. Zod schema validation for arguments
- * 2. Try-catch error handling with errorResponse conversion
+ * Use this inside handlers for explicit, type-safe validation:
  *
  * @example
  * ```typescript
- * const tool = createTool(
- *   { schema: createIssueSchema },
- *   async (args, deps) => {
- *     const issue = deps.issueService.create({ title: args.title });
- *     return successResponse({ issue });
- *   }
- * );
+ * function createIssueHandler(args: unknown, deps: Deps): Promise<ToolResponse> {
+ *   const validation = validateToolArgs(createIssueSchema, args);
+ *   if (!validation.success) return validation.response;
+ *
+ *   // validation.data is typed as CreateIssueArgs
+ *   const issue = await deps.issueService.create(validation.data);
+ *   return successResponse({ issue });
+ * }
  * ```
  */
-export function createTool<TArgs, TDeps>(
-  options: CreateToolOptions<TArgs>,
-  handler: ToolHandler<TArgs, TDeps>
-): (deps: TDeps) => WrappedTool<unknown> {
-  const { schema } = options;
+export function validateToolArgs<T>(schema: ZodSchema<T>, args: unknown): ValidationResult<T> {
+  const result = schema.safeParse(args ?? {});
+  if (!result.success) {
+    const errorMessage = result.error.errors
+      .map((e) => `${e.path.join(".")}: ${e.message}`)
+      .join(", ");
+    return { success: false, response: errorResponse(`Invalid arguments: ${errorMessage}`) };
+  }
+  return { success: true, data: result.data };
+}
 
-  return (deps: TDeps) => {
-    return async (rawArgs: unknown): Promise<ToolResponse> => {
-      // Validate arguments
-      const parseResult = schema.safeParse(rawArgs ?? {});
-      if (!parseResult.success) {
-        const errorMessage = parseResult.error.errors
-          .map((e) => `${e.path.join(".")}: ${e.message}`)
-          .join(", ");
-        return errorResponse(`Invalid arguments: ${errorMessage}`);
-      }
+// =============================================================================
+// Handler Factory
+// =============================================================================
 
-      // Execute handler with error catching
-      try {
-        return await handler(parseResult.data, deps);
-      } catch (error) {
-        return errorResponse(error instanceof Error ? error.message : String(error));
-      }
-    };
-  };
+/**
+ * Module-level container reference.
+ * Set by initializeContainer() during server startup.
+ */
+let defaultContainer: AwilixContainer<McpCradle> | null = null;
+
+/**
+ * Initialize the default container for production use.
+ * Called once during server startup.
+ */
+export function initializeContainer(container: AwilixContainer<McpCradle>): void {
+  defaultContainer = container;
 }
 
 /**
- * Create a DI-injected tool handler that can be registered with the MCP server.
+ * Get the default container. Throws if not initialized.
+ */
+export function getContainer(): AwilixContainer<McpCradle> {
+  if (!defaultContainer) {
+    throw new Error("Container not initialized. Call initializeContainer() first.");
+  }
+  return defaultContainer;
+}
+
+/**
+ * Creates an MCP tool handler with middleware and DI injection.
  *
- * This combines a tool with a dependency selector to produce a handler
- * that pulls deps from the Awilix container and executes the tool.
- *
- * The TCradle type parameter allows testing with custom cradle types.
+ * Features:
+ * - Runs middleware chain before handler (can short-circuit)
+ * - Injects selected dependencies from cradle
+ * - Catches errors and returns errorResponse
+ * - Container is optional (uses default) for easy testing
  *
  * @example
  * ```typescript
- * // Create the tool
- * const createIssueTool = createTool(
- *   { schema: createIssueSchema },
- *   async (args, deps) => {
- *     const issue = deps.issueService.create({ title: args.title });
- *     return successResponse({ issue });
- *   }
- * );
+ * // Define handler as a pure function
+ * async function createIssueHandler(
+ *   args: unknown,
+ *   { issueService, templateService }: CreateIssueDeps
+ * ): Promise<ToolResponse> {
+ *   const validation = validateToolArgs(createIssueSchema, args);
+ *   if (!validation.success) return validation.response;
  *
- * // Create the handler with DI
- * export const handleCreateIssue = createToolHandler(
- *   createIssueTool,
+ *   const issue = await issueService.create(validation.data);
+ *   return successResponse({ issue });
+ * }
+ *
+ * // Create the MCP handler
+ * const handleCreateIssue = createMcpHandler(
+ *   createIssueHandler,
  *   (cradle) => ({
  *     issueService: cradle.issueService,
  *     templateService: cradle.templateService,
  *   }),
- *   container
+ *   standardMiddleware
  * );
+ *
+ * // Production usage
+ * await handleCreateIssue(args);
+ *
+ * // Testing with mock container
+ * await handleCreateIssue(args, testContainer);
  * ```
  *
- * @param toolFactory - Function returned by createTool that takes deps and returns a wrapped tool
- * @param depsSelector - Function that extracts required deps from the cradle
- * @param container - The Awilix container (usually the global mcpContainer)
+ * @param handler - Pure function: (args, deps) => ToolResponse
+ * @param selectDeps - Function to select deps from cradle
+ * @param middleware - Optional middleware chain (use compose() to build)
+ * @returns Handler function that accepts args and optional container override
  */
-export function createToolHandler<TDeps, TCradle extends object = McpCradle>(
-  toolFactory: (deps: TDeps) => WrappedTool<unknown>,
-  depsSelector: DepsSelector<TDeps, TCradle>,
-  container: AwilixContainer<TCradle>
-): DIToolHandler {
-  return async (args: unknown): Promise<ToolResponse> => {
-    const deps = depsSelector(container.cradle);
-    const tool = toolFactory(deps);
-    return tool(args);
-  };
-}
+export function createMcpHandler<TDeps, TCradle extends object = McpCradle>(
+  handler: McpHandler<TDeps>,
+  selectDeps: DepsSelector<TDeps, TCradle>,
+  middleware?: McpMiddleware<TCradle>
+): McpToolHandler<TCradle> {
+  return async (args: unknown, container?: AwilixContainer<TCradle>): Promise<ToolResponse> => {
+    // Use provided container or fall back to default
+    const resolvedContainer = container ?? (getContainer() as AwilixContainer<TCradle>);
 
-/**
- * Simplified helper for tools that need the full cradle.
- *
- * For tools that need many dependencies, this avoids listing them all
- * in the selector. Use sparingly - explicit dep selection is preferred.
- *
- * @example
- * ```typescript
- * export const handleComplexTool = createFullCradleHandler(
- *   createTool(
- *     { schema: complexSchema },
- *     async (args, cradle) => {
- *       // Access all services via cradle
- *       const issue = cradle.issueService.create(...);
- *       return successResponse({ issue });
- *     }
- *   ),
- *   container
- * );
- * ```
- */
-export function createFullCradleHandler(
-  toolFactory: (deps: McpCradle) => WrappedTool<unknown>,
-  container: AwilixContainer<McpCradle>
-): DIToolHandler {
-  return createToolHandler(toolFactory, (cradle) => cradle, container);
-}
-
-/**
- * Type for tools that take no arguments (empty object).
- */
-export type NoArgsToolHandler<TDeps> = (deps: TDeps) => ToolResponse | Promise<ToolResponse>;
-
-/**
- * Create a tool handler for tools with no arguments.
- *
- * The TCradle type parameter allows testing with custom cradle types.
- *
- * @example
- * ```typescript
- * export const handleGetProjectStats = createNoArgsToolHandler(
- *   async (deps) => {
- *     const stats = deps.issueService.getStatusCounts();
- *     return successResponse({ stats });
- *   },
- *   (cradle) => ({ issueService: cradle.issueService }),
- *   container
- * );
- * ```
- */
-export function createNoArgsToolHandler<TDeps, TCradle extends object = McpCradle>(
-  handler: NoArgsToolHandler<TDeps>,
-  depsSelector: DepsSelector<TDeps, TCradle>,
-  container: AwilixContainer<TCradle>
-): DIToolHandler {
-  return async (_args: unknown): Promise<ToolResponse> => {
-    const deps = depsSelector(container.cradle);
     try {
-      return await handler(deps);
+      // Run middleware chain first
+      if (middleware) {
+        const earlyReturn = await middleware(args, resolvedContainer.cradle);
+        if (earlyReturn !== undefined) {
+          return earlyReturn;
+        }
+      }
+
+      // Select deps and execute handler
+      const deps = selectDeps(resolvedContainer.cradle);
+      return await handler(args, deps);
     } catch (error) {
       return errorResponse(error instanceof Error ? error.message : String(error));
     }
   };
 }
+
+// =============================================================================
+// Convenience Helpers
+// =============================================================================
+
+/**
+ * Creates a handler for tools that need no arguments.
+ *
+ * @example
+ * ```typescript
+ * const handleGetStats = createNoArgsHandler(
+ *   async ({ issueService }) => {
+ *     const stats = await issueService.getStats();
+ *     return successResponse({ stats });
+ *   },
+ *   (cradle) => ({ issueService: cradle.issueService })
+ * );
+ * ```
+ */
+export function createNoArgsHandler<TDeps, TCradle extends object = McpCradle>(
+  handler: (deps: TDeps) => ToolResponse | Promise<ToolResponse>,
+  selectDeps: DepsSelector<TDeps, TCradle>,
+  middleware?: McpMiddleware<TCradle>
+): McpToolHandler<TCradle> {
+  return createMcpHandler((_args, deps) => handler(deps), selectDeps, middleware);
+}
+
+/**
+ * Creates a handler that uses the full cradle (all dependencies).
+ *
+ * Prefer explicit dependency selection for better testability.
+ * Use this only when a handler genuinely needs many dependencies.
+ *
+ * @example
+ * ```typescript
+ * const handleComplexOperation = createFullCradleHandler(
+ *   async (args, cradle) => {
+ *     // Access all services via cradle
+ *     const issue = await cradle.issueService.create(...);
+ *     await cradle.taskSyncService.sync(...);
+ *     return successResponse({ issue });
+ *   },
+ *   standardMiddleware
+ * );
+ * ```
+ */
+export function createFullCradleHandler<TCradle extends object = McpCradle>(
+  handler: McpHandler<TCradle>,
+  middleware?: McpMiddleware<TCradle>
+): McpToolHandler<TCradle> {
+  return createMcpHandler(handler, (cradle) => cradle, middleware);
+}
+
+// =============================================================================
+// Re-export compose for middleware building
+// =============================================================================
+
+export { compose };

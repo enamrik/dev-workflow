@@ -12,7 +12,12 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 // Import DI container and types
-import { createMcpContainer, type McpContainer, type McpCradle } from "./di/index.js";
+import {
+  createMcpContainer,
+  initializeContainer,
+  type McpContainer,
+  type McpCradle,
+} from "./di/index.js";
 import { ProviderRegistry } from "@dev-workflow/core";
 
 // Import tools
@@ -754,6 +759,9 @@ async function main() {
   try {
     // Create Awilix container - this wires up all dependencies
     container = await createMcpContainer(PROJECT_SLUG);
+
+    // Initialize default container for createMcpHandler pattern
+    initializeContainer(container);
   } catch (error) {
     console.error(`Error: Failed to initialize for slug "${PROJECT_SLUG}"`);
     console.error(error instanceof Error ? error.message : String(error));
