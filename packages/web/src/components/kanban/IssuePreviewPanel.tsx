@@ -121,7 +121,12 @@ export function IssuePreviewPanel({ projectSlug, issueNumber, onClose }: IssuePr
               projectSlug={projectSlug}
               onSuccess={refetch}
             />
-            <IssueCloseButton issue={data.issue} projectSlug={projectSlug} onSuccess={refetch} />
+            <IssueCloseButton
+              issue={data.issue}
+              tasks={data.tasks}
+              projectSlug={projectSlug}
+              onSuccess={refetch}
+            />
             <IssueDeleteButton
               issue={data.issue}
               projectSlug={projectSlug}

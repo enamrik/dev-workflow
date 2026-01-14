@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { clsx } from "clsx";
 import { ConfirmDialog, Tooltip } from "../ui";
-import { isIssueClosed, isIssueInPlanning } from "@/lib/types";
-import type { Issue } from "@/lib/types";
+import { isIssueClosed, isIssueInPlanning, isTerminal, allTasksTerminal } from "@/lib/types";
+import type { Issue, Task } from "@/lib/types";
 
 interface IssueCloseButtonProps {
   issue: Issue;
+  tasks: Task[];
   projectSlug: string;
   onSuccess?: () => void;
 }
@@ -15,10 +16,11 @@ interface IssueCloseButtonProps {
 /**
  * Button to close an issue with confirmation dialog.
  *
- * Shows for non-closed issues. Clicking opens a confirmation dialog
- * warning that the action is irreversible and will abandon incomplete tasks.
+ * Shows for non-closed issues. Behavior depends on task status:
+ * - All tasks terminal: closes immediately without modal
+ * - Incomplete tasks exist: shows warning modal listing incomplete tasks
  */
-export function IssueCloseButton({ issue, projectSlug, onSuccess }: IssueCloseButtonProps) {
+export function IssueCloseButton({ issue, tasks, projectSlug, onSuccess }: IssueCloseButtonProps) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,13 +31,24 @@ export function IssueCloseButton({ issue, projectSlug, onSuccess }: IssueCloseBu
     return null;
   }
 
-  const handleClick = (e: React.MouseEvent) => {
+  // Get incomplete tasks for the warning modal
+  const incompleteTasks = tasks.filter((task) => !isTerminal(task));
+  const canCloseImmediately = tasks.length === 0 || allTasksTerminal(tasks);
+
+  const handleClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    setShowConfirm(true);
+
+    // If all tasks are complete (or no tasks), close immediately
+    if (canCloseImmediately) {
+      await closeIssue();
+    } else {
+      // Show confirmation modal for incomplete tasks
+      setShowConfirm(true);
+    }
   };
 
-  const handleConfirm = async () => {
+  const closeIssue = async () => {
     setIsLoading(true);
     setError(null);
 
@@ -80,16 +93,16 @@ export function IssueCloseButton({ issue, projectSlug, onSuccess }: IssueCloseBu
       disabled={isLoading}
       className={clsx(
         "inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium transition-colors",
-        "focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1",
+        "focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-1",
         isLoading && "opacity-50 cursor-wait",
         error
           ? "bg-red-100 text-red-700 hover:bg-red-200"
-          : "bg-red-50 text-red-600 hover:bg-red-100"
+          : "bg-green-50 text-green-600 hover:bg-green-100"
       )}
       aria-label="Close issue"
     >
-      <XCircleIcon className="w-4 h-4" />
-      <span>Close</span>
+      <CheckCircleIcon className="w-4 h-4" />
+      <span>Close Issue</span>
     </button>
   );
 
@@ -104,33 +117,47 @@ export function IssueCloseButton({ issue, projectSlug, onSuccess }: IssueCloseBu
       )}
       <ConfirmDialog
         isOpen={showConfirm}
-        onConfirm={handleConfirm}
+        onConfirm={closeIssue}
         onCancel={handleCancel}
-        title="Close Issue"
+        title="Close Issue with Incomplete Tasks"
         message={
-          <div className="space-y-2">
-            <p>Are you sure you want to close issue #{issue.number}?</p>
+          <div className="space-y-3">
+            <p>
+              Issue #{issue.number} has {incompleteTasks.length} incomplete{" "}
+              {incompleteTasks.length === 1 ? "task" : "tasks"} that will be abandoned:
+            </p>
+            <ul className="text-sm space-y-1 max-h-32 overflow-y-auto">
+              {incompleteTasks.map((task) => (
+                <li key={task.id} className="flex items-center gap-2">
+                  <span className="text-amber-600">•</span>
+                  <span className="text-gray-700">
+                    #{issue.number}.{task.number}: {task.title}
+                  </span>
+                  <span className="text-gray-400 text-xs">({task.status})</span>
+                </li>
+              ))}
+            </ul>
             <p className="text-amber-600 font-medium">
-              This action is irreversible. Any incomplete tasks will be abandoned.
+              Are you sure you want to close this issue and abandon these tasks?
             </p>
           </div>
         }
         confirmLabel="Close Issue"
-        variant="danger"
+        variant="warning"
         isLoading={isLoading}
       />
     </>
   );
 }
 
-function XCircleIcon({ className }: { className?: string }) {
+function CheckCircleIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth={2}
-        d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
       />
     </svg>
   );
