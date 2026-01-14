@@ -8,12 +8,8 @@
 import { execSync } from "node:child_process";
 import { UIService } from "../application/ui.service.js";
 
-export interface UICommandDeps {
-  cliPath: string;
-}
-
 export class UICommand {
-  constructor(private readonly deps: UICommandDeps) {}
+  constructor(private readonly cliPath: string) {}
 
   /**
    * Start web UI for dev-workflow (shows all projects).
@@ -52,8 +48,6 @@ export class UICommand {
    * Install UI as auto-start service using PM2.
    */
   async install(): Promise<void> {
-    const { cliPath } = this.deps;
-
     console.log("🚀 Setting up dev-workflow UI auto-start with PM2...\n");
 
     try {
@@ -74,7 +68,7 @@ export class UICommand {
       }
 
       // Start with PM2
-      const startCmd = `npx pm2 start "node ${cliPath} ui" --name dev-workflow-ui`;
+      const startCmd = `npx pm2 start "node ${this.cliPath} ui" --name dev-workflow-ui`;
       execSync(startCmd, { stdio: "inherit" });
 
       // Setup startup script

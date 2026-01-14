@@ -8,35 +8,31 @@
 import { GlobalDbWorkerQueueDb, DbSourceProvider, ProjectsResolver } from "@dev-workflow/core";
 import { ClaudeWorkerService } from "../application/claude-worker.service.js";
 
-export interface WorkerCommandDeps {
-  workerQueueDb: GlobalDbWorkerQueueDb;
-  sourceProvider: DbSourceProvider;
-  projectsResolver: ProjectsResolver;
-}
-
 export interface StartWorkerOptions {
   name?: string;
   autoClaim?: boolean;
 }
 
 export class WorkerCommand {
-  constructor(private readonly deps: WorkerCommandDeps) {}
+  constructor(
+    private readonly workerQueueDb: GlobalDbWorkerQueueDb,
+    private readonly sourceProvider: DbSourceProvider,
+    private readonly projectsResolver: ProjectsResolver
+  ) {}
 
   /**
    * List registered workers and dispatch queue (for debugging).
    */
   async list(): Promise<void> {
-    const { workerQueueDb } = this.deps;
-
     try {
       // Get workers with health info
-      const workers = workerQueueDb.findAllWorkersWithHealth();
+      const workers = this.workerQueueDb.findAllWorkersWithHealth();
 
       // Get queue stats
-      const queueStats = workerQueueDb.getQueueStats();
+      const queueStats = this.workerQueueDb.getQueueStats();
 
       // Get queue entries for details
-      const queueEntries = workerQueueDb.findAllEntriesWithHealth();
+      const queueEntries = this.workerQueueDb.findAllEntriesWithHealth();
 
       console.log("Workers:");
       console.log("========\n");
@@ -83,13 +79,16 @@ export class WorkerCommand {
    * Run as a Claude worker that polls for and executes dispatched tasks.
    */
   async start(options: StartWorkerOptions = {}): Promise<void> {
-    const { workerQueueDb, sourceProvider, projectsResolver } = this.deps;
-
     try {
-      const worker = new ClaudeWorkerService(workerQueueDb, sourceProvider, projectsResolver, {
-        name: options.name,
-        autoClaim: options.autoClaim,
-      });
+      const worker = new ClaudeWorkerService(
+        this.workerQueueDb,
+        this.sourceProvider,
+        this.projectsResolver,
+        {
+          name: options.name,
+          autoClaim: options.autoClaim,
+        }
+      );
 
       await worker.start();
     } catch (error) {

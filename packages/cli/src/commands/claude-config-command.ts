@@ -8,27 +8,21 @@
 import { promises as fsp } from "node:fs";
 import { ClaudeConfigService } from "../application/claude-config.service.js";
 
-export interface ClaudeConfigCommandDeps {
-  claudeConfigService: ClaudeConfigService;
-}
-
 export interface CleanOptions {
   dryRun?: boolean;
 }
 
 export class ClaudeConfigCommand {
-  constructor(private readonly deps: ClaudeConfigCommandDeps) {}
+  constructor(private readonly claudeConfigService: ClaudeConfigService) {}
 
   /**
    * Remove stale worktree folder registrations from ~/.claude.json.
    */
   async clean(options: CleanOptions = {}): Promise<void> {
-    const { claudeConfigService } = this.deps;
-
     try {
       if (options.dryRun) {
         console.log("🔍 Scanning for stale worktree registrations...\n");
-        const registrations = await claudeConfigService.listWorktreeRegistrations();
+        const registrations = await this.claudeConfigService.listWorktreeRegistrations();
 
         if (registrations.length === 0) {
           console.log("No worktree registrations found in ~/.claude.json");
@@ -59,7 +53,7 @@ export class ClaudeConfigCommand {
       }
 
       console.log("🧹 Cleaning stale worktree registrations from ~/.claude.json...\n");
-      const result = await claudeConfigService.cleanStaleWorktrees();
+      const result = await this.claudeConfigService.cleanStaleWorktrees();
 
       if (!result.success) {
         console.error(`❌ ${result.message}`);

@@ -8,19 +8,14 @@
 import { spawn } from "node:child_process";
 import * as path from "node:path";
 
-export interface MCPCommandDeps {
-  cliRoot: string;
-}
-
 export class MCPCommand {
-  constructor(private readonly deps: MCPCommandDeps) {}
+  constructor(private readonly cliRoot: string) {}
 
   /**
    * Start MCP server for Claude Code integration.
    */
   execute(): void {
-    const { cliRoot } = this.deps;
-    const mcpServerPath = path.resolve(cliRoot, "../mcp-server/dist/index.js");
+    const mcpServerPath = path.resolve(this.cliRoot, "../mcp-server/dist/index.js");
 
     // MCP server expects PROJECT_SLUG to be passed via environment
     // (set by Claude's MCP integration from the registered config)

@@ -5,84 +5,58 @@
  * Receives all dependencies via constructor injection.
  */
 
-import { TrackDirectoryResolver } from "@dev-workflow/core";
-import type { FileSystem } from "../infrastructure/file-system.js";
 import { UpdateService } from "../application/update.service.js";
 
-export interface UpdateCommandDeps {
-  fileSystem: FileSystem;
-  workingDirectory: string;
-  packageRoot: string;
-  trackDirectoryResolver: TrackDirectoryResolver;
-  databaseConnectionString: string;
-}
-
 export class UpdateCommand {
-  constructor(private readonly deps: UpdateCommandDeps) {}
+  constructor(private readonly updateService: UpdateService) {}
 
   /**
    * Update dev-workflow installation.
    */
   async execute(): Promise<void> {
-    const {
-      fileSystem,
-      workingDirectory,
-      packageRoot,
-      trackDirectoryResolver,
-      databaseConnectionString,
-    } = this.deps;
-
-    const updater = new UpdateService(
-      fileSystem,
-      workingDirectory,
-      packageRoot,
-      trackDirectoryResolver,
-      databaseConnectionString
-    );
-
     try {
       console.log("🔄 Updating dev-workflow...");
 
       // Migrate track directory from old naming to new naming (must be first)
-      const dirMigration = await updater.migrateTrackDirectory();
+      const dirMigration = await this.updateService.migrateTrackDirectory();
       if (dirMigration.migrated) {
         console.log(`✓ Migrated track directory:`);
         console.log(`  ${dirMigration.oldPath} → ${dirMigration.newPath}`);
       }
 
-      await updater.updateSkills();
+      await this.updateService.updateSkills();
       console.log("✓ Updated skills");
 
-      await updater.updateTemplates();
+      await this.updateService.updateTemplates();
       console.log("✓ Updated local templates");
 
-      await updater.updateGlobalTemplates();
+      await this.updateService.updateGlobalTemplates();
       console.log("✓ Updated global default templates");
 
-      await updater.runMigrations();
+      await this.updateService.runMigrations();
       console.log("✓ Ran database migrations");
 
       // Register/update project in database
-      const project = await updater.registerProject();
+      const project = await this.updateService.registerProject();
       console.log(`✓ Registered project: ${project.name} (${project.id.slice(0, 8)}...)`);
 
       // Migrate existing issues from old path-based projectId to new UUID
-      const migrationResult = await updater.migrateIssues();
+      const migrationResult = await this.updateService.migrateIssues();
       if (migrationResult.migrated > 0) {
         console.log(
           `✓ Migrated ${migrationResult.migrated} issues from ${migrationResult.oldProjectId} to ${project.id.slice(0, 8)}...`
         );
       }
 
-      await updater.updateMCPServer();
+      await this.updateService.updateMCPServer();
       console.log("✓ Updated MCP server registration");
 
-      const permResult = await updater.configureClaudePermissions();
+      const permResult = await this.updateService.configureClaudePermissions();
       if (permResult.configured) {
         console.log("✓ Updated Claude permissions");
       }
 
-      await updater.restartUIDaemonIfRunning();
+      await this.updateService.restartUIDaemonIfRunning();
 
       console.log("\n✨ dev-workflow updated successfully!");
       console.log("\nChanges:");

@@ -6,45 +6,23 @@
  * Receives all dependencies via constructor injection.
  */
 
-import { TrackDirectoryResolver, GitOperations, ProjectConfig } from "@dev-workflow/core";
-import type { FileSystem } from "../infrastructure/file-system.js";
+import { TrackDirectoryResolver, GitOperations } from "@dev-workflow/core";
 import { ArchiveService, ArchiveError } from "../application/archive.service.js";
 import { DatabaseConfigService } from "../application/database.service.js";
-
-export interface ArchiveCommandDeps {
-  fileSystem: FileSystem;
-  gitOps: GitOperations;
-  workingDirectory: string;
-  packageRoot: string;
-  trackDirectoryResolver: TrackDirectoryResolver;
-  config: ProjectConfig;
-}
-
-export interface UnarchiveCommandDeps {
-  fileSystem: FileSystem;
-  gitOps: GitOperations;
-  workingDirectory: string;
-  packageRoot: string;
-  trackDirectoryResolver: TrackDirectoryResolver;
-}
 
 export interface NukeOptions {
   force?: boolean;
 }
 
 export class ArchiveCommand {
-  constructor(private readonly deps: ArchiveCommandDeps) {}
+  constructor(private readonly archiveService: ArchiveService) {}
 
   /**
    * Archive project (uninit + hide from UI) - preserves all data.
    */
   async execute(): Promise<void> {
-    const { fileSystem, workingDirectory, config } = this.deps;
-    const resolver = new TrackDirectoryResolver(config.gitRoot, config.slug);
-    const archiveService = new ArchiveService(fileSystem, workingDirectory, resolver);
-
     try {
-      const project = await archiveService.getProject();
+      const project = await this.archiveService.getProject();
       if (!project) {
         console.error("❌ dev-workflow is not initialized for this repository.");
         console.error("\nRun: dev-workflow init");
@@ -61,7 +39,7 @@ export class ArchiveCommand {
       console.log("📦 Archiving project...");
       console.log(`   Project: ${project.name} (${project.id.slice(0, 8)}...)`);
 
-      await archiveService.archive();
+      await this.archiveService.archive();
 
       console.log("\n✓ Removed skills");
       console.log("✓ Unregistered MCP server");
@@ -84,33 +62,28 @@ export class ArchiveCommand {
 }
 
 export class UnarchiveCommand {
-  constructor(private readonly deps: UnarchiveCommandDeps) {}
+  constructor(
+    private readonly archiveService: ArchiveService,
+    private readonly gitOps: GitOperations,
+    private readonly workingDirectory: string
+  ) {}
 
   /**
    * Restore archived project (reinstalls Claude integration).
    */
   async execute(): Promise<void> {
-    const { fileSystem, gitOps, workingDirectory, packageRoot, trackDirectoryResolver } = this.deps;
-
     // Check for worktree
-    if (gitOps.isWorktree(workingDirectory)) {
+    if (this.gitOps.isWorktree(this.workingDirectory)) {
       console.error("❌ Cannot run unarchive from a git worktree.");
       console.error("   Run this command from the main repository.");
       process.exit(1);
     }
 
-    const archiveService = new ArchiveService(
-      fileSystem,
-      workingDirectory,
-      trackDirectoryResolver,
-      packageRoot
-    );
-
     try {
-      const archivedProject = await archiveService.findArchivedProjectByGitHash();
+      const archivedProject = await this.archiveService.findArchivedProjectByGitHash();
 
       if (!archivedProject) {
-        const project = await archiveService.getProject();
+        const project = await this.archiveService.getProject();
         if (project) {
           console.error("❌ Project is not archived.");
           console.error(`   Project: ${project.name}`);
@@ -125,7 +98,7 @@ export class UnarchiveCommand {
       console.log("📦 Unarchiving project...");
       console.log(`   Project: ${archivedProject.name} (${archivedProject.id.slice(0, 8)}...)`);
 
-      await archiveService.unarchive(archivedProject);
+      await this.archiveService.unarchive(archivedProject);
 
       console.log("\n✓ Marked project as unarchived");
       console.log("✓ Restored local config");
@@ -146,67 +119,50 @@ export class UnarchiveCommand {
   }
 }
 
-export interface NukeCommandDeps {
-  fileSystem: FileSystem;
-  workingDirectory: string;
-  trackDirectoryResolver: TrackDirectoryResolver;
-  config: ProjectConfig;
-  databaseConnectionString: string;
-}
-
 export class NukeCommand {
-  constructor(private readonly deps: NukeCommandDeps) {}
+  constructor(
+    private readonly archiveService: ArchiveService,
+    private readonly databaseService: DatabaseConfigService,
+    private readonly trackDirectoryResolver: TrackDirectoryResolver
+  ) {}
 
   /**
    * PERMANENTLY DELETE all project data.
    */
   async execute(options: NukeOptions = {}): Promise<void> {
-    const { fileSystem, workingDirectory, config } = this.deps;
-
-    const resolver = new TrackDirectoryResolver(config.gitRoot, config.slug);
-
     // Check if using remote database - block unless --force is used
-    const dbService = new DatabaseConfigService();
-    try {
-      const isRemote = await dbService.isRemote();
-      if (isRemote) {
-        const status = await dbService.getStatus();
-        console.error("❌ Cannot nuke when using a remote database.\n");
-        console.error(`   Current database: ${status.provider}`);
-        console.error(
-          `   Connection: ${DatabaseConfigService.maskPassword(status.connectionString)}`
-        );
-        console.error("\n   Remote databases contain shared team data that cannot be recovered.");
-        console.error(
-          "   This protection prevents accidental destruction of collaborative work.\n"
-        );
+    const isRemote = await this.databaseService.isRemote();
+    if (isRemote) {
+      const status = await this.databaseService.getStatus();
+      console.error("❌ Cannot nuke when using a remote database.\n");
+      console.error(`   Current database: ${status.provider}`);
+      console.error(
+        `   Connection: ${DatabaseConfigService.maskPassword(status.connectionString)}`
+      );
+      console.error("\n   Remote databases contain shared team data that cannot be recovered.");
+      console.error("   This protection prevents accidental destruction of collaborative work.\n");
 
-        if (!options.force) {
-          console.error("   If you really want to remove this project's LOCAL data only,");
-          console.error("   use: dev-workflow nuke --force\n");
-          console.error("   Note: --force will only remove local files and MCP registration.");
-          console.error("   Remote database data will NOT be affected.");
-          process.exit(1);
-        }
-
-        console.log("⚠️  --force flag detected. Proceeding with LOCAL cleanup only.");
-        console.log("   Remote database data will NOT be deleted.\n");
+      if (!options.force) {
+        console.error("   If you really want to remove this project's LOCAL data only,");
+        console.error("   use: dev-workflow nuke --force\n");
+        console.error("   Note: --force will only remove local files and MCP registration.");
+        console.error("   Remote database data will NOT be affected.");
+        process.exit(1);
       }
-    } finally {
-      dbService.close();
+
+      console.log("⚠️  --force flag detected. Proceeding with LOCAL cleanup only.");
+      console.log("   Remote database data will NOT be deleted.\n");
     }
 
-    const archiveService = new ArchiveService(fileSystem, workingDirectory, resolver);
-
     try {
-      const project = await archiveService.getProject();
+      const project = await this.archiveService.getProject();
       if (!project) {
         console.error("❌ dev-workflow is not initialized for this repository.");
         console.error("\nNothing to delete.");
         process.exit(1);
       }
 
-      const trackDir = resolver.getTrackDirectory();
+      const trackDir = this.trackDirectoryResolver.getTrackDirectory();
 
       console.log("⚠️  WARNING: This will PERMANENTLY DELETE all project data!\n");
       console.log("   Project: " + project.name);
@@ -234,7 +190,7 @@ export class NukeCommand {
 
       console.log("\n💣 Nuking project...");
 
-      await archiveService.nuke(project);
+      await this.archiveService.nuke(project);
 
       console.log("\n✓ Removed skills");
       console.log("✓ Unregistered MCP server");

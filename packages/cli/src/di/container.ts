@@ -262,107 +262,44 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
       }
     ).scoped(),
 
-    updateCommand: asFunction(
-      ({
-        fileSystem,
-        workingDirectory,
-        packageRoot,
-        trackDirectoryResolver,
-        databaseConnectionString,
-      }: {
-        fileSystem: FileSystem;
-        workingDirectory: string;
-        packageRoot: string;
-        trackDirectoryResolver: TrackDirectoryResolver;
-        databaseConnectionString: string;
-      }) => {
-        return new UpdateCommand({
-          fileSystem,
-          workingDirectory,
-          packageRoot,
-          trackDirectoryResolver,
-          databaseConnectionString,
-        });
-      }
-    ).scoped(),
+    updateCommand: asFunction(({ updateService }: { updateService: UpdateService }) => {
+      return new UpdateCommand(updateService);
+    }).scoped(),
 
-    archiveCommand: asFunction(
-      ({
-        fileSystem,
-        gitOps,
-        workingDirectory,
-        packageRoot,
-        trackDirectoryResolver,
-        config,
-      }: {
-        fileSystem: FileSystem;
-        gitOps: GitOperations;
-        workingDirectory: string;
-        packageRoot: string;
-        trackDirectoryResolver: TrackDirectoryResolver;
-        config: ProjectConfig;
-      }) => {
-        return new ArchiveCommand({
-          fileSystem,
-          gitOps,
-          workingDirectory,
-          packageRoot,
-          trackDirectoryResolver,
-          config,
-        });
-      }
-    ).scoped(),
+    archiveCommand: asFunction(({ archiveService }: { archiveService: ArchiveService }) => {
+      return new ArchiveCommand(archiveService);
+    }).scoped(),
 
     unarchiveCommand: asFunction(
       ({
-        fileSystem,
+        archiveService,
         gitOps,
         workingDirectory,
-        packageRoot,
-        trackDirectoryResolver,
       }: {
-        fileSystem: FileSystem;
+        archiveService: ArchiveService;
         gitOps: GitOperations;
         workingDirectory: string;
-        packageRoot: string;
-        trackDirectoryResolver: TrackDirectoryResolver;
       }) => {
-        return new UnarchiveCommand({
-          fileSystem,
-          gitOps,
-          workingDirectory,
-          packageRoot,
-          trackDirectoryResolver,
-        });
+        return new UnarchiveCommand(archiveService, gitOps, workingDirectory);
       }
     ).scoped(),
 
     nukeCommand: asFunction(
       ({
-        fileSystem,
-        workingDirectory,
+        archiveService,
+        databaseService,
         trackDirectoryResolver,
-        config,
-        databaseConnectionString,
       }: {
-        fileSystem: FileSystem;
-        workingDirectory: string;
+        archiveService: ArchiveService;
+        databaseService: DatabaseConfigService;
         trackDirectoryResolver: TrackDirectoryResolver;
-        config: ProjectConfig;
-        databaseConnectionString: string;
       }) => {
-        return new NukeCommand({
-          fileSystem,
-          workingDirectory,
-          trackDirectoryResolver,
-          config,
-          databaseConnectionString,
-        });
+        return new NukeCommand(archiveService, databaseService, trackDirectoryResolver);
       }
     ).scoped(),
 
     uiCommand: asFunction(({ cliPath }: { cliPath: string }) => {
-      return new UICommand({ cliPath });
+      return new UICommand(cliPath);
     }).scoped(),
 
     workerCommand: asFunction(
@@ -375,28 +312,28 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
         sourceProvider: DbSourceProvider;
         projectsResolver: ProjectsResolver;
       }) => {
-        return new WorkerCommand({ workerQueueDb, sourceProvider, projectsResolver });
+        return new WorkerCommand(workerQueueDb, sourceProvider, projectsResolver);
       }
     ).scoped(),
 
     backupCommand: asFunction(({ backupService }: { backupService: BackupConfigService }) => {
-      return new BackupCommand({ backupService });
+      return new BackupCommand(backupService);
     }).scoped(),
 
     databaseCommand: asFunction(
       ({ databaseService }: { databaseService: DatabaseConfigService }) => {
-        return new DatabaseCommand({ databaseService });
+        return new DatabaseCommand(databaseService);
       }
     ).scoped(),
 
     claudeConfigCommand: asFunction(
       ({ claudeConfigService }: { claudeConfigService: ClaudeConfigService }) => {
-        return new ClaudeConfigCommand({ claudeConfigService });
+        return new ClaudeConfigCommand(claudeConfigService);
       }
     ).scoped(),
 
     mcpCommand: asFunction(({ cliRoot }: { cliRoot: string }) => {
-      return new MCPCommand({ cliRoot });
+      return new MCPCommand(cliRoot);
     }).scoped(),
   });
 

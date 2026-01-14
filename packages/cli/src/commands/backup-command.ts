@@ -7,10 +7,6 @@
 
 import { BackupConfigService } from "../application/backup.service.js";
 
-export interface BackupCommandDeps {
-  backupService: BackupConfigService;
-}
-
 export interface S3ConfigOptions {
   bucket: string;
   region: string;
@@ -29,16 +25,14 @@ export interface RestoreOptions {
 }
 
 export class BackupCommand {
-  constructor(private readonly deps: BackupCommandDeps) {}
+  constructor(private readonly backupService: BackupConfigService) {}
 
   /**
    * Create a backup of the workflow database.
    */
   async create(): Promise<void> {
-    const { backupService } = this.deps;
-
     try {
-      const isConfigured = await backupService.isConfigured();
+      const isConfigured = await this.backupService.isConfigured();
       if (!isConfigured) {
         console.error("❌ Backup is not configured.");
         console.error("\nRun: dev-workflow backup configure");
@@ -46,7 +40,7 @@ export class BackupCommand {
       }
 
       console.log("📦 Creating backup...");
-      const result = await backupService.backup();
+      const result = await this.backupService.backup();
 
       console.log("\n✓ Backup created successfully!");
       console.log(`  Key: ${result.key}`);
@@ -66,8 +60,6 @@ export class BackupCommand {
    * Configure S3-compatible backup destination.
    */
   async configure(options: S3ConfigOptions): Promise<void> {
-    const { backupService } = this.deps;
-
     try {
       const retentionCount = parseInt(options.retention ?? "20", 10);
       if (isNaN(retentionCount) || retentionCount < 1) {
@@ -97,7 +89,7 @@ export class BackupCommand {
       // Validate credentials and check bucket if --validate or --create-bucket
       if (options.validate || options.createBucket) {
         console.log("Validating credentials...");
-        const validation = await backupService.validateS3Credentials(s3Config);
+        const validation = await this.backupService.validateS3Credentials(s3Config);
 
         if (!validation.success) {
           console.error(`❌ ${validation.error}`);
@@ -108,7 +100,7 @@ export class BackupCommand {
         if (!validation.bucketExists) {
           if (options.createBucket) {
             console.log(`\nBucket '${options.bucket}' does not exist. Creating...`);
-            const createResult = await backupService.createS3Bucket(s3Config);
+            const createResult = await this.backupService.createS3Bucket(s3Config);
 
             if (createResult.success) {
               console.log(`✓ Bucket '${options.bucket}' created successfully!`);
@@ -127,7 +119,7 @@ export class BackupCommand {
         console.log();
       }
 
-      const result = await backupService.configureS3(s3Config, retentionCount);
+      const result = await this.backupService.configureS3(s3Config, retentionCount);
 
       if (result.success) {
         console.log("✓ Backup configured successfully!");
@@ -162,7 +154,6 @@ export class BackupCommand {
    * Interactive setup wizard for backup configuration.
    */
   async setup(): Promise<void> {
-    const { backupService } = this.deps;
     const readline = await import("node:readline");
 
     const rl = readline.createInterface({
@@ -262,7 +253,7 @@ export class BackupCommand {
       // Step 3: Validate credentials
       console.log("\nStep 3: Validating credentials...\n");
 
-      const validation = await backupService.validateS3Credentials(s3Config);
+      const validation = await this.backupService.validateS3Credentials(s3Config);
 
       if (!validation.success) {
         console.error(`❌ Validation failed: ${validation.error}`);
@@ -280,7 +271,7 @@ export class BackupCommand {
         if (createChoice.toLowerCase() === "y" || createChoice.toLowerCase() === "yes") {
           console.log("\nCreating bucket...");
 
-          const createResult = await backupService.createS3Bucket(s3Config);
+          const createResult = await this.backupService.createS3Bucket(s3Config);
 
           if (createResult.success) {
             console.log(`✓ Bucket '${bucket}' created successfully!\n`);
@@ -300,7 +291,7 @@ export class BackupCommand {
       // Step 5: Save configuration
       console.log("Saving configuration...\n");
 
-      const result = await backupService.configureS3(s3Config, retentionCount);
+      const result = await this.backupService.configureS3(s3Config, retentionCount);
 
       if (result.success) {
         console.log("✓ Backup configured successfully!\n");
@@ -336,10 +327,8 @@ export class BackupCommand {
    * Show current backup configuration.
    */
   async status(): Promise<void> {
-    const { backupService } = this.deps;
-
     try {
-      const config = await backupService.getConfig();
+      const config = await this.backupService.getConfig();
 
       if (!config) {
         console.log("Backup is not configured.");
@@ -375,10 +364,8 @@ export class BackupCommand {
    * List available backups.
    */
   async list(): Promise<void> {
-    const { backupService } = this.deps;
-
     try {
-      const isConfigured = await backupService.isConfigured();
+      const isConfigured = await this.backupService.isConfigured();
       if (!isConfigured) {
         console.error("❌ Backup is not configured.");
         console.error("\nRun: dev-workflow backup configure");
@@ -386,7 +373,7 @@ export class BackupCommand {
       }
 
       console.log("Fetching backups...\n");
-      const backups = await backupService.listBackups();
+      const backups = await this.backupService.listBackups();
 
       if (backups.length === 0) {
         console.log("No backups found.");
@@ -416,10 +403,8 @@ export class BackupCommand {
    * Remove backup configuration.
    */
   async unconfigure(): Promise<void> {
-    const { backupService } = this.deps;
-
     try {
-      const result = await backupService.removeConfig();
+      const result = await this.backupService.removeConfig();
 
       if (result.success) {
         console.log("✓ Backup configuration removed.");
@@ -438,10 +423,8 @@ export class BackupCommand {
    * Restore workflow database from a backup.
    */
   async restore(backup: string | undefined, options: RestoreOptions): Promise<void> {
-    const { backupService } = this.deps;
-
     try {
-      const isConfigured = await backupService.isConfigured();
+      const isConfigured = await this.backupService.isConfigured();
       if (!isConfigured) {
         console.error("❌ Backup is not configured.");
         console.error("\nRun: dev-workflow backup configure");
@@ -449,7 +432,7 @@ export class BackupCommand {
       }
 
       // Get list of backups to show context
-      const backups = await backupService.listBackups();
+      const backups = await this.backupService.listBackups();
       if (backups.length === 0) {
         console.error("❌ No backups available to restore.");
         console.error("\nRun 'dev-workflow backup' to create a backup first.");
@@ -480,7 +463,7 @@ export class BackupCommand {
         console.log(`Backup identifier: ${backupIdentifier}`);
       }
 
-      console.log(`\nTarget: ${backupService.getDatabasePath()}`);
+      console.log(`\nTarget: ${this.backupService.getDatabasePath()}`);
 
       // Confirmation prompt
       if (!options.yes) {
@@ -510,7 +493,7 @@ export class BackupCommand {
       if (options.safetyBackup !== false) {
         console.log("\n📋 Creating safety backup of current database...");
         try {
-          const safetyPath = await backupService.createSafetyBackup();
+          const safetyPath = await this.backupService.createSafetyBackup();
           console.log(`✓ Safety backup created: ${safetyPath}`);
         } catch (error) {
           console.error(
@@ -522,7 +505,7 @@ export class BackupCommand {
 
       // Perform restore
       console.log("\n📥 Downloading and restoring backup...");
-      const result = await backupService.restore(backupIdentifier);
+      const result = await this.backupService.restore(backupIdentifier);
 
       console.log("\n✓ Database restored successfully!");
       console.log(`  From: ${result.key}`);

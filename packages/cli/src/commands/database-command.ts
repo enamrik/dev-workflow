@@ -7,24 +7,18 @@
 
 import { DatabaseConfigService, TRACK_DATABASE_URL_ENV } from "../application/database.service.js";
 
-export interface DatabaseCommandDeps {
-  databaseService: DatabaseConfigService;
-}
-
 export interface ConfigureOptions {
   url?: string;
   local?: boolean;
 }
 
 export class DatabaseCommand {
-  constructor(private readonly deps: DatabaseCommandDeps) {}
+  constructor(private readonly databaseService: DatabaseConfigService) {}
 
   /**
    * Configure database connection.
    */
   async configure(options: ConfigureOptions): Promise<void> {
-    const { databaseService } = this.deps;
-
     try {
       // Validate options
       if (options.url && options.local) {
@@ -44,11 +38,11 @@ export class DatabaseCommand {
 
       if (options.local) {
         console.log("🔧 Resetting to local SQLite database...\n");
-        const result = await databaseService.configureLocal();
+        const result = await this.databaseService.configureLocal();
 
         if (result.success) {
           console.log("✓ " + result.message);
-          console.log(`  Path: ${databaseService.getDatabasePath()}`);
+          console.log(`  Path: ${this.databaseService.getDatabasePath()}`);
           console.log("\n⚠️  IMPORTANT: Restart Claude Code to use the new configuration.");
         } else {
           console.error(`❌ ${result.message}`);
@@ -58,7 +52,7 @@ export class DatabaseCommand {
         console.log("🔧 Configuring remote database...\n");
         console.log("Validating connection...");
 
-        const result = await databaseService.configureRemote(options.url);
+        const result = await this.databaseService.configureRemote(options.url);
 
         if (result.success) {
           console.log("\n✓ " + result.message);
@@ -79,10 +73,8 @@ export class DatabaseCommand {
    * Show current database configuration.
    */
   async status(): Promise<void> {
-    const { databaseService } = this.deps;
-
     try {
-      const status = await databaseService.getStatus();
+      const status = await this.databaseService.getStatus();
 
       console.log("Database Configuration:");
       console.log(`  Provider: ${status.provider}`);
