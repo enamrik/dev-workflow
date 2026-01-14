@@ -10,6 +10,7 @@
  * processes that terminate after the command completes.
  */
 
+import * as path from "node:path";
 import { createContainer, asClass, asFunction, InjectionMode, type AwilixContainer } from "awilix";
 import {
   TrackDirectoryResolver,
@@ -18,10 +19,30 @@ import {
   GitOperations,
   ProjectsResolver,
   GlobalDbWorkerQueueDb,
+  type ProjectConfig,
 } from "@dev-workflow/core";
 import { NodeFileSystem, type FileSystem } from "../infrastructure/file-system.js";
+
+// Application services
 import { UninstallService } from "../application/uninstall.service.js";
-import { UninitTool } from "../tools/uninit-tool.js";
+import { InstallService } from "../application/install.service.js";
+import { UpdateService } from "../application/update.service.js";
+import { ArchiveService } from "../application/archive.service.js";
+import { BackupConfigService } from "../application/backup.service.js";
+import { DatabaseConfigService } from "../application/database.service.js";
+import { ClaudeConfigService } from "../application/claude-config.service.js";
+
+// Commands
+import { UninitCommand } from "../commands/uninit-command.js";
+import { InitCommand } from "../commands/init-command.js";
+import { UpdateCommand } from "../commands/update-command.js";
+import { ArchiveCommand, UnarchiveCommand, NukeCommand } from "../commands/archive-command.js";
+import { UICommand } from "../commands/ui-command.js";
+import { WorkerCommand } from "../commands/worker-command.js";
+import { BackupCommand } from "../commands/backup-command.js";
+import { DatabaseCommand } from "../commands/database-command.js";
+import { ClaudeConfigCommand } from "../commands/claude-config-command.js";
+import { MCPCommand } from "../commands/mcp-command.js";
 
 /**
  * Cradle interface defining all available dependencies in the CLI container.
@@ -34,22 +55,43 @@ export interface CliCradle {
   gitOps: GitOperations;
   sourceProvider: DbSourceProvider;
 
-  // Values (provided at runtime by middleware)
+  // Values (provided at runtime by middleware or computed)
   workingDirectory: string;
   packageRoot: string;
+  cliRoot: string;
+  cliPath: string;
+
+  // Optional values (registered by middleware for specific commands)
+  trackDirectoryResolver: TrackDirectoryResolver;
+  databaseConnectionString: string;
+  config: ProjectConfig;
 
   // Scoped services (lazily resolved)
   projectsResolver: ProjectsResolver;
   workerQueueDb: GlobalDbWorkerQueueDb;
 
-  // Resolver (derived from workingDirectory)
-  trackDirectoryResolver: TrackDirectoryResolver;
-
-  // Application services (lazily resolved after middleware registers dependencies)
+  // Application services
   uninstallService: UninstallService;
+  installService: InstallService;
+  updateService: UpdateService;
+  archiveService: ArchiveService;
+  backupService: BackupConfigService;
+  databaseService: DatabaseConfigService;
+  claudeConfigService: ClaudeConfigService;
 
-  // Tools (lazily resolved after middleware registers dependencies)
-  uninitTool: UninitTool;
+  // Commands
+  uninitCommand: UninitCommand;
+  initCommand: InitCommand;
+  updateCommand: UpdateCommand;
+  archiveCommand: ArchiveCommand;
+  unarchiveCommand: UnarchiveCommand;
+  nukeCommand: NukeCommand;
+  uiCommand: UICommand;
+  workerCommand: WorkerCommand;
+  backupCommand: BackupCommand;
+  databaseCommand: DatabaseCommand;
+  claudeConfigCommand: ClaudeConfigCommand;
+  mcpCommand: MCPCommand;
 }
 
 /**
@@ -84,6 +126,14 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
       .singleton()
       .disposer((provider) => provider.closeAll()),
 
+    // Computed values from packageRoot
+    cliRoot: asFunction(({ packageRoot }: { packageRoot: string }) => {
+      return packageRoot;
+    }).singleton(),
+    cliPath: asFunction(({ packageRoot }: { packageRoot: string }) => {
+      return path.join(packageRoot, "dist/index.js");
+    }).singleton(),
+
     // Scoped services (new instance per resolution)
     projectsResolver: asClass(ProjectsResolver).scoped(),
     // Use asFunction to avoid Awilix trying to resolve optional dbPath parameter
@@ -111,9 +161,242 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
       }
     ).scoped(),
 
-    // Tools (lazily resolved - depend on services)
-    uninitTool: asFunction(({ uninstallService }: { uninstallService: UninstallService }) => {
-      return new UninitTool(uninstallService);
+    installService: asFunction(
+      ({
+        fileSystem,
+        workingDirectory,
+        packageRoot,
+        trackDirectoryResolver,
+        databaseConnectionString,
+      }: {
+        fileSystem: FileSystem;
+        workingDirectory: string;
+        packageRoot: string;
+        trackDirectoryResolver: TrackDirectoryResolver;
+        databaseConnectionString: string;
+      }) => {
+        return new InstallService(
+          fileSystem,
+          workingDirectory,
+          packageRoot,
+          trackDirectoryResolver,
+          databaseConnectionString
+        );
+      }
+    ).scoped(),
+
+    updateService: asFunction(
+      ({
+        fileSystem,
+        workingDirectory,
+        packageRoot,
+        trackDirectoryResolver,
+        databaseConnectionString,
+      }: {
+        fileSystem: FileSystem;
+        workingDirectory: string;
+        packageRoot: string;
+        trackDirectoryResolver: TrackDirectoryResolver;
+        databaseConnectionString: string;
+      }) => {
+        return new UpdateService(
+          fileSystem,
+          workingDirectory,
+          packageRoot,
+          trackDirectoryResolver,
+          databaseConnectionString
+        );
+      }
+    ).scoped(),
+
+    archiveService: asFunction(
+      ({
+        fileSystem,
+        workingDirectory,
+        trackDirectoryResolver,
+        packageRoot,
+      }: {
+        fileSystem: FileSystem;
+        workingDirectory: string;
+        trackDirectoryResolver: TrackDirectoryResolver;
+        packageRoot: string;
+      }) => {
+        return new ArchiveService(
+          fileSystem,
+          workingDirectory,
+          trackDirectoryResolver,
+          packageRoot
+        );
+      }
+    ).scoped(),
+
+    // Services with no constructor dependencies
+    backupService: asFunction(() => new BackupConfigService())
+      .scoped()
+      .disposer((service) => service.close()),
+
+    databaseService: asFunction(() => new DatabaseConfigService())
+      .scoped()
+      .disposer((service) => service.close()),
+
+    claudeConfigService: asFunction(() => new ClaudeConfigService()).scoped(),
+
+    // Commands
+    uninitCommand: asFunction(({ uninstallService }: { uninstallService: UninstallService }) => {
+      return new UninitCommand(uninstallService);
+    }).scoped(),
+
+    initCommand: asFunction(
+      ({
+        fileSystem,
+        gitOps,
+        workingDirectory,
+        packageRoot,
+      }: {
+        fileSystem: FileSystem;
+        gitOps: GitOperations;
+        workingDirectory: string;
+        packageRoot: string;
+      }) => {
+        return new InitCommand(fileSystem, gitOps, workingDirectory, packageRoot);
+      }
+    ).scoped(),
+
+    updateCommand: asFunction(
+      ({
+        fileSystem,
+        workingDirectory,
+        packageRoot,
+        trackDirectoryResolver,
+        databaseConnectionString,
+      }: {
+        fileSystem: FileSystem;
+        workingDirectory: string;
+        packageRoot: string;
+        trackDirectoryResolver: TrackDirectoryResolver;
+        databaseConnectionString: string;
+      }) => {
+        return new UpdateCommand({
+          fileSystem,
+          workingDirectory,
+          packageRoot,
+          trackDirectoryResolver,
+          databaseConnectionString,
+        });
+      }
+    ).scoped(),
+
+    archiveCommand: asFunction(
+      ({
+        fileSystem,
+        gitOps,
+        workingDirectory,
+        packageRoot,
+        trackDirectoryResolver,
+        config,
+      }: {
+        fileSystem: FileSystem;
+        gitOps: GitOperations;
+        workingDirectory: string;
+        packageRoot: string;
+        trackDirectoryResolver: TrackDirectoryResolver;
+        config: ProjectConfig;
+      }) => {
+        return new ArchiveCommand({
+          fileSystem,
+          gitOps,
+          workingDirectory,
+          packageRoot,
+          trackDirectoryResolver,
+          config,
+        });
+      }
+    ).scoped(),
+
+    unarchiveCommand: asFunction(
+      ({
+        fileSystem,
+        gitOps,
+        workingDirectory,
+        packageRoot,
+        trackDirectoryResolver,
+      }: {
+        fileSystem: FileSystem;
+        gitOps: GitOperations;
+        workingDirectory: string;
+        packageRoot: string;
+        trackDirectoryResolver: TrackDirectoryResolver;
+      }) => {
+        return new UnarchiveCommand({
+          fileSystem,
+          gitOps,
+          workingDirectory,
+          packageRoot,
+          trackDirectoryResolver,
+        });
+      }
+    ).scoped(),
+
+    nukeCommand: asFunction(
+      ({
+        fileSystem,
+        workingDirectory,
+        trackDirectoryResolver,
+        config,
+        databaseConnectionString,
+      }: {
+        fileSystem: FileSystem;
+        workingDirectory: string;
+        trackDirectoryResolver: TrackDirectoryResolver;
+        config: ProjectConfig;
+        databaseConnectionString: string;
+      }) => {
+        return new NukeCommand({
+          fileSystem,
+          workingDirectory,
+          trackDirectoryResolver,
+          config,
+          databaseConnectionString,
+        });
+      }
+    ).scoped(),
+
+    uiCommand: asFunction(({ cliPath }: { cliPath: string }) => {
+      return new UICommand({ cliPath });
+    }).scoped(),
+
+    workerCommand: asFunction(
+      ({
+        workerQueueDb,
+        sourceProvider,
+        projectsResolver,
+      }: {
+        workerQueueDb: GlobalDbWorkerQueueDb;
+        sourceProvider: DbSourceProvider;
+        projectsResolver: ProjectsResolver;
+      }) => {
+        return new WorkerCommand({ workerQueueDb, sourceProvider, projectsResolver });
+      }
+    ).scoped(),
+
+    backupCommand: asFunction(({ backupService }: { backupService: BackupConfigService }) => {
+      return new BackupCommand({ backupService });
+    }).scoped(),
+
+    databaseCommand: asFunction(
+      ({ databaseService }: { databaseService: DatabaseConfigService }) => {
+        return new DatabaseCommand({ databaseService });
+      }
+    ).scoped(),
+
+    claudeConfigCommand: asFunction(
+      ({ claudeConfigService }: { claudeConfigService: ClaudeConfigService }) => {
+        return new ClaudeConfigCommand({ claudeConfigService });
+      }
+    ).scoped(),
+
+    mcpCommand: asFunction(({ cliRoot }: { cliRoot: string }) => {
+      return new MCPCommand({ cliRoot });
     }).scoped(),
   });
 

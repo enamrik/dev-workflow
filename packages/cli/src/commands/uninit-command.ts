@@ -1,5 +1,5 @@
 /**
- * UninitTool - Removes dev-workflow Claude integration
+ * UninitCommand - Removes dev-workflow Claude integration
  *
  * Business logic for uninstalling dev-workflow integration while preserving data.
  * Receives all dependencies via constructor injection.
@@ -7,13 +7,13 @@
 
 import type { UninstallService } from "../application/uninstall.service.js";
 
-export class UninitTool {
+export class UninitCommand {
   constructor(private readonly uninstallService: UninstallService) {}
 
   /**
    * Remove dev-workflow Claude integration (skills, MCP) while preserving data.
    */
-  async uninit(): Promise<void> {
+  async execute(): Promise<void> {
     console.log("🗑️  Removing dev-workflow Claude integration...");
 
     await this.uninstallService.removeSkills();

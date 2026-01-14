@@ -14,7 +14,7 @@ import {
   composeMiddleware,
   type ContainerMiddleware,
 } from "../di/bootstrap.js";
-import type { UninitTool } from "../tools/uninit-tool.js";
+import type { UninitCommand } from "./uninit-command.js";
 
 /**
  * Options for the uninit command (currently no options)
@@ -43,11 +43,11 @@ const resolveConfigMiddleware: ContainerMiddleware = async (container) => {
 };
 
 /**
- * Handler - thin wrapper that destructures just what it needs (the tool).
+ * Handler - thin wrapper that destructures just what it needs (the command).
  */
 export const handleUninit = createCliHandler(
-  async (_options: UninitOptions, { uninitTool }: { uninitTool: UninitTool }) => {
-    await uninitTool.uninit();
+  async (_options: UninitOptions, { uninitCommand }: { uninitCommand: UninitCommand }) => {
+    await uninitCommand.execute();
   },
   composeMiddleware(defaultMiddleware, resolveConfigMiddleware)
 );
