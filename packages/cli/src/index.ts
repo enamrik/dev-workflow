@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import { promises as fsp } from "node:fs";
 import { InstallService } from "./application/install.service.js";
 import { UpdateService } from "./application/update.service.js";
-import { UninstallService } from "./application/uninstall.service.js";
+import { runUninit } from "./commands/uninit.js";
 import { ArchiveService, ArchiveError } from "./application/archive.service.js";
 import { UIService } from "./application/ui.service.js";
 import { BackupConfigService } from "./application/backup.service.js";
@@ -430,58 +430,6 @@ async function runUpdate(): Promise<void> {
     console.log("- Database schema updated");
   } catch (error) {
     console.error("Error during update:", error);
-    process.exit(1);
-  }
-}
-
-async function runUninit(): Promise<void> {
-  const fileSystem = new NodeFileSystem();
-  const workingDirectory = process.cwd();
-
-  // Resolve config from .git/config → ~/.track/<slug>/config.json
-  let config;
-  try {
-    config = await resolveConfigFromGit(workingDirectory);
-  } catch (error) {
-    if (error instanceof ProjectConfigError) {
-      if (error.code === "NOT_GIT_REPO") {
-        console.error("❌ Not a git repository. dev-workflow requires git.");
-      } else if (error.code === "SLUG_NOT_FOUND" || error.code === "CONFIG_NOT_FOUND") {
-        console.error("❌ dev-workflow is not initialized for this repository.");
-        console.error("\nNothing to remove.");
-      } else if (error.code === "WORKTREE_DETECTED") {
-        console.error("❌ Cannot run uninit from a git worktree.");
-        console.error("   Run this command from the main repository.");
-      } else {
-        console.error(`❌ ${error.message}`);
-      }
-      process.exit(1);
-    }
-    throw error;
-  }
-
-  // Create a resolver from the config (gitRoot + slug)
-  const resolver = new TrackDirectoryResolver(config.gitRoot, config.slug);
-
-  const uninstaller = new UninstallService(fileSystem, workingDirectory, resolver);
-
-  try {
-    console.log("🗑️  Removing dev-workflow Claude integration...");
-
-    await uninstaller.removeSkills();
-    console.log("✓ Removed skills");
-
-    await uninstaller.unregisterMCPServer();
-    console.log("✓ Unregistered MCP server");
-
-    console.log("\n✨ dev-workflow Claude integration removed!");
-    console.log("\nPreserved:");
-    console.log("- Project data in ~/.track/ (issues, plans, tasks)");
-    console.log("- .claude/config/ (your Claude Code configuration)");
-    console.log("\nTo fully remove project data, use: dev-workflow nuke");
-    console.log("To archive (hide but preserve data), use: dev-workflow archive");
-  } catch (error) {
-    console.error("Error during uninit:", error);
     process.exit(1);
   }
 }
@@ -959,14 +907,7 @@ program
 program
   .command("uninit")
   .description("Remove dev-workflow Claude integration (skills, MCP) - preserves project data")
-  .action(async () => {
-    try {
-      await runUninit();
-    } catch (error) {
-      console.error("Error during uninit:", error);
-      process.exit(1);
-    }
-  });
+  .action(runUninit);
 
 program
   .command("archive")
