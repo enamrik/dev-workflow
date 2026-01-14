@@ -1,5 +1,9 @@
 /**
  * MCP Tools - barrel export
+ *
+ * All tool handlers follow the pattern: (args, cradle) => ToolResponse
+ * where handlers destructure what they need from the cradle.
+ * Use createMcpHandler() or createNoArgsHandler() to wrap handlers.
  */
 
 // Types
@@ -26,7 +30,6 @@ export {
 
 // Issue handlers
 export {
-  type IssueToolContext,
   handleCreateIssue,
   handleGetIssue,
   handleListTemplates,
@@ -44,22 +47,20 @@ export {
   handleSearchIssues,
   handleGetWorkQueue,
   handleImportGitHubIssue,
-} from "./issue-tools.js";
+} from "./issue-tool-def.js";
 
 // Plan handlers
 export {
-  type PlanToolContext,
   handleGeneratePlan,
   handleGetPlan,
   handlePauseIssue,
   handleMoveIssueToReady,
   handleMoveIssueToBacklog,
   handleSyncIssue,
-} from "./plan-tools.js";
+} from "./plan-tool-def.js";
 
 // Task handlers
 export {
-  type TaskToolContext,
   handleLoadTaskSession,
   handleAbandonTask,
   handleGetTask,
@@ -70,22 +71,30 @@ export {
   handleLogTaskProgress,
   handleGetTaskExecutionLog,
   handleCheckTaskConflicts,
-} from "./task-tools.js";
+} from "./task-tool-def.js";
+
+// Task types and helpers (used by IssueTool)
+export {
+  enrichTaskData,
+  createSlimEnrichedTaskData,
+  type EnrichedTaskData,
+  type SlimEnrichedTaskData,
+  type TaskWorkerInfo,
+  type TaskPRInfo,
+} from "./task-tool.js";
 
 // Snapshot handlers
 export {
-  type SnapshotToolContext,
   handleGetSnapshotHistory,
   handleRevertToSnapshot,
   handleViewSnapshot,
-} from "./snapshot-tools.js";
+} from "./snapshot-tool-def.js";
 
 // Settings handlers
-export { type SettingsToolContext, handleUpdateSettings } from "./settings-tools.js";
+export { handleUpdateSettings } from "./settings-tool-def.js";
 
 // Milestone handlers
 export {
-  type MilestoneToolContext,
   handleCreateMilestone,
   handleGetMilestone,
   handleListMilestones,
@@ -93,40 +102,33 @@ export {
   handleDeleteMilestone,
   handleAssignIssueToMilestone,
   handleRemoveIssueFromMilestone,
-} from "./milestone-tools.js";
+} from "./milestone-tool-def.js";
 
 // Worktree handlers
-export {
-  type WorktreeToolContext,
-  handleListWorktrees,
-  handlePruneStaleWorktrees,
-} from "./worktree-tools.js";
+export { handleListWorktrees, handlePruneStaleWorktrees } from "./worktree-tool-def.js";
 
 // PR handlers
 export {
-  type PRToolContext,
   handleGetTaskPRStatus,
   handleCreatePR,
   handleSubmitForReview,
   handleCompleteTask,
-} from "./pr-tools.js";
+} from "./pr-tool-def.js";
 
 // Merge handlers
-export { type MergeToolContext, handleMergeIssues } from "./merge-tools.js";
+export { handleMergeIssues } from "./merge-tool-def.js";
 
 // Type handlers
 export {
-  type TypeToolContext,
   handleListTypes,
   handleCreateType,
   handleUpdateType,
   handleDeleteType,
-} from "./type-tools.js";
+} from "./type-tool-def.js";
 
 // Dispatch handlers (worker task assignment)
 export {
-  type DispatchToolContext,
   handleDispatchTask,
   handleGetDispatchStatus,
   handleEndWorkerSession,
-} from "./dispatch-tools.js";
+} from "./dispatch-tool-def.js";

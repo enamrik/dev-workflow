@@ -10,6 +10,7 @@ import {
   TaskManagementService,
   DrizzleDbClient,
   NoOpProjectManagementProvider,
+  createTestContainer,
   type DbClient,
   type DrizzleDb,
   type IssueRepository,
@@ -26,6 +27,7 @@ import {
   type TaskSource,
   type ProjectManagementProvider,
 } from "@dev-workflow/core";
+import type { McpCradle, McpContainer } from "../di/container.js";
 import type { TestDatabase } from "./setup.js";
 
 /**
@@ -267,4 +269,27 @@ export function createMockProvider(
     assignIssue: async () => {},
   };
   return { ...base, ...overrides };
+}
+
+/**
+ * Create a scoped container for testing with mock overrides.
+ *
+ * Uses the shared createTestContainer utility from core.
+ * Creates a child scope that inherits all registrations but allows
+ * overriding specific services with mocks.
+ *
+ * @example
+ * ```typescript
+ * const testScope = createTestScope(container, {
+ *   issueService: () => mockIssueService,
+ *   taskService: () => mockTaskService,
+ * });
+ * const result = await handler(args, testScope.cradle);
+ * ```
+ */
+export function createTestScope(
+  container: McpContainer,
+  overrides: Partial<{ [K in keyof McpCradle]: () => McpCradle[K] }> = {}
+): McpContainer {
+  return createTestContainer(container, overrides);
 }

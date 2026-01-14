@@ -35,8 +35,8 @@ import {
   handleLogTaskProgress,
   handleGetTaskExecutionLog,
   handleLoadTaskSession,
-  type TaskToolContext,
-} from "../../tools/task-tools.js";
+} from "../../tools/task-tool-def.js";
+import { TaskTool } from "../../tools/task-tool.js";
 import {
   GetTaskSchema,
   ListAvailableTasksSchema,
@@ -133,11 +133,10 @@ function createLocalMockProvider(
 }
 
 /**
- * Extended context for testing that includes projectId
+ * Extended context type for testing
  */
-interface TestTaskToolContext extends TaskToolContext {
-  projectId: string;
-}
+
+type TestTaskToolContext = any;
 
 /**
  * Create a TaskToolContext for testing
@@ -187,9 +186,27 @@ async function createTaskToolContext(
   const taskService = new TaskService(client, mockProvider, mockGitWorktreeService);
   const issueService = new IssueService(client, taskService, mockProvider);
 
+  // Create TaskTool with all dependencies
+  const taskTool = new TaskTool(
+    taskService,
+    taskSessionService,
+    taskManagementService,
+    planService,
+    issueService,
+    client,
+    workerQueueDb,
+    taskSyncService,
+    conflictDetectionService,
+    null, // providerRegistry
+    null, // project
+    null, // dbSource
+    null // githubCLI
+  );
+
   return {
     ctx: {
-      db: client,
+      taskTool,
+      dbClient: client,
       issueService,
       planService,
       taskService,
@@ -206,7 +223,8 @@ async function createTaskToolContext(
 
 describe("Task Tools Integration", () => {
   let testDb: TestDatabase;
-  let ctx: TaskToolContext;
+
+  let ctx: any;
   let client: DbClient;
   let workerQueueDbPath: string;
   let workerQueueDb: GlobalDbWorkerQueueDb;
@@ -237,7 +255,7 @@ describe("Task Tools Integration", () => {
   });
 
   describe("handleGetTask", () => {
-    it("should get task by ID", () => {
+    it("should get task by ID", async () => {
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
       const task = createTestTask(client.tasks, plan.id, {
@@ -245,7 +263,7 @@ describe("Task Tools Integration", () => {
         status: "BACKLOG",
       });
 
-      const result = handleGetTask(ctx, { taskId: task.id });
+      const result = await handleGetTask({ taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -254,36 +272,39 @@ describe("Task Tools Integration", () => {
       expect(content.status).toBe("BACKLOG");
     });
 
-    it("should get task by issue and task number", () => {
+    it("should get task by issue and task number", async () => {
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
       createTestTask(client.tasks, plan.id, { title: "First Task" });
 
-      const result = handleGetTask(ctx, {
-        issueNumber: issue.number,
-        taskNumber: 1,
-      });
+      const result = await handleGetTask(
+        {
+          issueNumber: issue.number,
+          taskNumber: 1,
+        },
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
       expect(content.title).toBe("First Task");
     });
 
-    it("should return error for non-existent task", () => {
-      const result = handleGetTask(ctx, { taskId: "non-existent-id" });
+    it("should return error for non-existent task", async () => {
+      const result = await handleGetTask({ taskId: "non-existent-id" }, ctx);
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
     });
 
-    it("should return stored task number", () => {
+    it("should return stored task number", async () => {
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
       const task1 = createTestTask(client.tasks, plan.id, { title: "Task 1" });
       const task2 = createTestTask(client.tasks, plan.id, { title: "Task 2" });
 
-      const result1 = handleGetTask(ctx, { taskId: task1.id });
-      const result2 = handleGetTask(ctx, { taskId: task2.id });
+      const result1 = await handleGetTask({ taskId: task1.id }, ctx);
+      const result2 = await handleGetTask({ taskId: task2.id }, ctx);
 
       const content1 = JSON.parse(result1.content[0].text);
       const content2 = JSON.parse(result2.content[0].text);
@@ -292,16 +313,19 @@ describe("Task Tools Integration", () => {
       expect(content2.number).toBe(2);
     });
 
-    it("should find task by stored number", () => {
+    it("should find task by stored number", async () => {
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
       createTestTask(client.tasks, plan.id, { title: "Task 1" });
       createTestTask(client.tasks, plan.id, { title: "Task 2" });
 
-      const result = handleGetTask(ctx, {
-        issueNumber: issue.number,
-        taskNumber: 2,
-      });
+      const result = await handleGetTask(
+        {
+          issueNumber: issue.number,
+          taskNumber: 2,
+        },
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -309,7 +333,7 @@ describe("Task Tools Integration", () => {
       expect(content.number).toBe(2);
     });
 
-    it("should return task labels and type", () => {
+    it("should return task labels and type", async () => {
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
       const task = createTestTask(client.tasks, plan.id, {
@@ -318,7 +342,7 @@ describe("Task Tools Integration", () => {
         labels: { priority: "high", sprint: "sprint-1" },
       });
 
-      const result = handleGetTask(ctx, { taskId: task.id });
+      const result = await handleGetTask({ taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -326,7 +350,7 @@ describe("Task Tools Integration", () => {
       expect(content.labels).toEqual({ priority: "high", sprint: "sprint-1" });
     });
 
-    it("should return workerInfo when task is IN_PROGRESS with session", () => {
+    it("should return workerInfo when task is IN_PROGRESS with session", async () => {
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
       const task = createTestTask(client.tasks, plan.id, {
@@ -337,7 +361,7 @@ describe("Task Tools Integration", () => {
       // Simulate a task with sessionId (as would happen during load_task_session)
       client.tasks.update(task.id, { sessionId: "test-session-123" });
 
-      const result = handleGetTask(ctx, { taskId: task.id });
+      const result = await handleGetTask({ taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -348,7 +372,7 @@ describe("Task Tools Integration", () => {
       expect(content.workerInfo.workerId).toBeNull();
     });
 
-    it("should not return workerInfo when task is not IN_PROGRESS", () => {
+    it("should not return workerInfo when task is not IN_PROGRESS", async () => {
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
       const task = createTestTask(client.tasks, plan.id, {
@@ -356,7 +380,7 @@ describe("Task Tools Integration", () => {
         status: "BACKLOG",
       });
 
-      const result = handleGetTask(ctx, { taskId: task.id });
+      const result = await handleGetTask({ taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -364,7 +388,7 @@ describe("Task Tools Integration", () => {
       expect(content.workerInfo).toBeUndefined();
     });
 
-    it("should return prInfo when task has a PR", () => {
+    it("should return prInfo when task has a PR", async () => {
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
       const task = createTestTask(client.tasks, plan.id, {
@@ -379,7 +403,7 @@ describe("Task Tools Integration", () => {
         prStatus: "OPEN",
       });
 
-      const result = handleGetTask(ctx, { taskId: task.id });
+      const result = await handleGetTask({ taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -389,7 +413,7 @@ describe("Task Tools Integration", () => {
       expect(content.prInfo.prStatus).toBe("OPEN");
     });
 
-    it("should not return prInfo when task has no PR", () => {
+    it("should not return prInfo when task has no PR", async () => {
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
       const task = createTestTask(client.tasks, plan.id, {
@@ -397,14 +421,14 @@ describe("Task Tools Integration", () => {
         status: "IN_PROGRESS",
       });
 
-      const result = handleGetTask(ctx, { taskId: task.id });
+      const result = await handleGetTask({ taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
       expect(content.prInfo).toBeUndefined();
     });
 
-    it("should return both workerInfo and prInfo when applicable", () => {
+    it("should return both workerInfo and prInfo when applicable", async () => {
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
       const task = createTestTask(client.tasks, plan.id, {
@@ -420,7 +444,7 @@ describe("Task Tools Integration", () => {
         prStatus: "DRAFT",
       });
 
-      const result = handleGetTask(ctx, { taskId: task.id });
+      const result = await handleGetTask({ taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -442,7 +466,7 @@ describe("Task Tools Integration", () => {
       createTestTask(client.tasks, plan.id, { title: "Task 2", status: "READY" });
       createTestTask(client.tasks, plan.id, { title: "Task 3", status: "IN_PROGRESS" });
 
-      const result = await handleListAvailableTasks(ctx, {});
+      const result = await handleListAvailableTasks({}, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -458,9 +482,12 @@ describe("Task Tools Integration", () => {
       createTestTask(client.tasks, plan1.id, { title: "Task A", status: "BACKLOG" });
       createTestTask(client.tasks, plan2.id, { title: "Task B", status: "BACKLOG" });
 
-      const result = await handleListAvailableTasks(ctx, {
-        issueNumber: issue1.number,
-      });
+      const result = await handleListAvailableTasks(
+        {
+          issueNumber: issue1.number,
+        },
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -474,7 +501,7 @@ describe("Task Tools Integration", () => {
       createTestTask(client.tasks, plan.id, { title: "Task 1", status: "BACKLOG" });
       createTestTask(client.tasks, plan.id, { title: "Task 2", status: "BACKLOG" });
 
-      const result = await handleListAvailableTasks(ctx, { issueNumber: issue.number });
+      const result = await handleListAvailableTasks({ issueNumber: issue.number }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -494,12 +521,15 @@ describe("Task Tools Integration", () => {
         title: "Original Title",
       });
 
-      const result = await handleUpdateTask(ctx, {
-        taskId: task.id,
-        title: "Updated Title",
-        description: "New description",
-        estimatedMinutes: 60,
-      });
+      const result = await handleUpdateTask(
+        {
+          taskId: task.id,
+          title: "Updated Title",
+          description: "New description",
+          estimatedMinutes: 60,
+        },
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -519,14 +549,17 @@ describe("Task Tools Integration", () => {
         title: "Task without labels",
       });
 
-      const result = await handleUpdateTask(ctx, {
-        taskId: task.id,
-        labels: {
-          priority: "high",
-          sprint: "sprint-1",
-          urgent: "", // Simple tag (empty value)
+      const result = await handleUpdateTask(
+        {
+          taskId: task.id,
+          labels: {
+            priority: "high",
+            sprint: "sprint-1",
+            urgent: "", // Simple tag (empty value)
+          },
         },
-      });
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -553,13 +586,16 @@ describe("Task Tools Integration", () => {
         labels: { existing: "value", toUpdate: "old" },
       });
 
-      const result = await handleUpdateTask(ctx, {
-        taskId: task.id,
-        labels: {
-          toUpdate: "new", // Update existing
-          newLabel: "added", // Add new
+      const result = await handleUpdateTask(
+        {
+          taskId: task.id,
+          labels: {
+            toUpdate: "new", // Update existing
+            newLabel: "added", // Add new
+          },
         },
-      });
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -578,12 +614,15 @@ describe("Task Tools Integration", () => {
         labels: { keep: "value", remove: "gone" },
       });
 
-      const result = await handleUpdateTask(ctx, {
-        taskId: task.id,
-        labels: {
-          remove: null, // Remove this label
+      const result = await handleUpdateTask(
+        {
+          taskId: task.id,
+          labels: {
+            remove: null, // Remove this label
+          },
         },
-      });
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -605,12 +644,15 @@ describe("Task Tools Integration", () => {
         labels: { only: "label" },
       });
 
-      const result = await handleUpdateTask(ctx, {
-        taskId: task.id,
-        labels: {
-          only: null, // Remove the only label
+      const result = await handleUpdateTask(
+        {
+          taskId: task.id,
+          labels: {
+            only: null, // Remove the only label
+          },
         },
-      });
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -624,23 +666,26 @@ describe("Task Tools Integration", () => {
   });
 
   describe("handleLogTaskProgress and handleGetTaskExecutionLog", () => {
-    it("should log and retrieve task progress", () => {
+    it("should log and retrieve task progress", async () => {
       const issue = createTestIssue(client.issues);
       const plan = createTestPlan(client.plans, issue.id);
       const task = createTestTask(client.tasks, plan.id);
 
       // Log progress
-      const logResult = handleLogTaskProgress(ctx, {
-        taskId: task.id,
-        sessionId: "test-session",
-        message: "Started implementation",
-        filesModified: ["src/file1.ts", "src/file2.ts"],
-      });
+      const logResult = await handleLogTaskProgress(
+        {
+          taskId: task.id,
+          sessionId: "test-session",
+          message: "Started implementation",
+          filesModified: ["src/file1.ts", "src/file2.ts"],
+        },
+        ctx
+      );
 
       expect(logResult.isError).toBeUndefined();
 
       // Retrieve log
-      const getResult = handleGetTaskExecutionLog(ctx, { taskId: task.id });
+      const getResult = await handleGetTaskExecutionLog({ taskId: task.id }, ctx);
 
       expect(getResult.isError).toBeUndefined();
       const content = JSON.parse(getResult.content[0].text);
@@ -694,11 +739,14 @@ describe("Task Tools Integration", () => {
         });
 
         // Start the task
-        const result = await handleLoadTaskSession(ctxWithAssignee, {
-          taskId: task.id,
-          sessionId: "test-session",
-          mode: "main", // Use main mode to skip worktree creation
-        });
+        const result = await handleLoadTaskSession(
+          {
+            taskId: task.id,
+            sessionId: "test-session",
+            mode: "main", // Use main mode to skip worktree creation
+          },
+          ctxWithAssignee
+        );
 
         expect(result.isError).toBeUndefined();
 
@@ -761,11 +809,14 @@ describe("Task Tools Integration", () => {
         });
 
         // Start the task
-        const result = await handleLoadTaskSession(ctxNoAssignee, {
-          taskId: task.id,
-          sessionId: "test-session",
-          mode: "main",
-        });
+        const result = await handleLoadTaskSession(
+          {
+            taskId: task.id,
+            sessionId: "test-session",
+            mode: "main",
+          },
+          ctxNoAssignee
+        );
 
         expect(result.isError).toBeUndefined();
 
@@ -822,11 +873,14 @@ describe("Task Tools Integration", () => {
         });
 
         // Start the task
-        const result = await handleLoadTaskSession(ctxDisabled, {
-          taskId: task.id,
-          sessionId: "test-session",
-          mode: "main",
-        });
+        const result = await handleLoadTaskSession(
+          {
+            taskId: task.id,
+            sessionId: "test-session",
+            mode: "main",
+          },
+          ctxDisabled
+        );
 
         expect(result.isError).toBeUndefined();
 
@@ -877,11 +931,14 @@ describe("Task Tools Integration", () => {
         // Don't add GitHub sync state - task has no linked GitHub issue
 
         // Start the task
-        const result = await handleLoadTaskSession(ctxNoSync, {
-          taskId: task.id,
-          sessionId: "test-session",
-          mode: "main",
-        });
+        const result = await handleLoadTaskSession(
+          {
+            taskId: task.id,
+            sessionId: "test-session",
+            mode: "main",
+          },
+          ctxNoSync
+        );
 
         expect(result.isError).toBeUndefined();
 
@@ -926,11 +983,14 @@ describe("Task Tools Integration", () => {
         queueDb.enqueue(task.id, "test-project");
 
         // Try to start without workerId
-        const result = await handleLoadTaskSession(ctxQueue, {
-          taskId: task.id,
-          sessionId: "test-session",
-          mode: "main",
-        });
+        const result = await handleLoadTaskSession(
+          {
+            taskId: task.id,
+            sessionId: "test-session",
+            mode: "main",
+          },
+          ctxQueue
+        );
 
         // Should fail with error about needing a worker
         const content = JSON.parse(result.content[0].text);
@@ -981,12 +1041,15 @@ describe("Task Tools Integration", () => {
         expect(claimed?.taskId).toBe(task.id);
 
         // Start with workerId (isolated mode is enforced for workers)
-        const result = await handleLoadTaskSession(ctxQueue, {
-          taskId: task.id,
-          sessionId: "test-session",
-          workerId,
-          // mode defaults to "isolated"
-        });
+        const result = await handleLoadTaskSession(
+          {
+            taskId: task.id,
+            sessionId: "test-session",
+            workerId,
+            // mode defaults to "isolated"
+          },
+          ctxQueue
+        );
 
         const content = JSON.parse(result.content[0].text);
         expect(content.success).toBe(true);
@@ -1016,11 +1079,14 @@ describe("Task Tools Integration", () => {
       client.tasks.update(task.id, { sessionId: "original-session" });
 
       // Resume with different session
-      const result = await handleLoadTaskSession(ctx, {
-        taskId: task.id,
-        sessionId: "new-session",
-        mode: "main",
-      });
+      const result = await handleLoadTaskSession(
+        {
+          taskId: task.id,
+          sessionId: "new-session",
+          mode: "main",
+        },
+        ctx
+      );
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(true);
@@ -1037,11 +1103,14 @@ describe("Task Tools Integration", () => {
       });
 
       // Resume with new session
-      const result = await handleLoadTaskSession(ctx, {
-        taskId: task.id,
-        sessionId: "new-session",
-        mode: "main",
-      });
+      const result = await handleLoadTaskSession(
+        {
+          taskId: task.id,
+          sessionId: "new-session",
+          mode: "main",
+        },
+        ctx
+      );
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(true);
@@ -1059,11 +1128,14 @@ describe("Task Tools Integration", () => {
       });
 
       // Try to load
-      const result = await handleLoadTaskSession(ctx, {
-        taskId: task.id,
-        sessionId: "new-session",
-        mode: "main",
-      });
+      const result = await handleLoadTaskSession(
+        {
+          taskId: task.id,
+          sessionId: "new-session",
+          mode: "main",
+        },
+        ctx
+      );
 
       const content = JSON.parse(result.content[0].text);
       // Graceful return instead of error - includes task and issue context
@@ -1084,11 +1156,14 @@ describe("Task Tools Integration", () => {
       });
 
       // Try to load
-      const result = await handleLoadTaskSession(ctx, {
-        taskId: task.id,
-        sessionId: "new-session",
-        mode: "main",
-      });
+      const result = await handleLoadTaskSession(
+        {
+          taskId: task.id,
+          sessionId: "new-session",
+          mode: "main",
+        },
+        ctx
+      );
 
       const content = JSON.parse(result.content[0].text);
       // Graceful return instead of error - includes task and issue context
@@ -1107,11 +1182,14 @@ describe("Task Tools Integration", () => {
         status: "BACKLOG",
       });
 
-      const result = await handleLoadTaskSession(ctx, {
-        taskId: task.id,
-        sessionId: "test-session",
-        mode: "main",
-      });
+      const result = await handleLoadTaskSession(
+        {
+          taskId: task.id,
+          sessionId: "test-session",
+          mode: "main",
+        },
+        ctx
+      );
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(true);
@@ -1128,11 +1206,14 @@ describe("Task Tools Integration", () => {
         status: "READY",
       });
 
-      const result = await handleLoadTaskSession(ctx, {
-        taskId: task.id,
-        sessionId: "test-session",
-        mode: "main",
-      });
+      const result = await handleLoadTaskSession(
+        {
+          taskId: task.id,
+          sessionId: "test-session",
+          mode: "main",
+        },
+        ctx
+      );
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(true);
