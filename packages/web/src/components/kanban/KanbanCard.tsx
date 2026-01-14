@@ -5,6 +5,7 @@ import Link from "next/link";
 import { clsx } from "clsx";
 import { Badge, Modal, Markdown, Tooltip, GitHubLink } from "../ui";
 import {
+  TaskAbandonButton,
   TaskTiming,
   TaskMetadataPanel,
   TaskActions,
@@ -70,6 +71,8 @@ interface TaskModalContentProps {
   issueUrl: string;
   issueGithubUrl?: string;
   projectId?: string;
+  projectSlug?: string;
+  onAbandonComplete?: () => void;
 }
 
 function TaskModalContent({
@@ -80,6 +83,8 @@ function TaskModalContent({
   issueUrl,
   issueGithubUrl,
   projectId,
+  projectSlug,
+  onAbandonComplete,
 }: TaskModalContentProps) {
   const taskDisplay = formatTaskDisplay(issueNumber, task);
   const tooltipContent = getTaskTooltip(issueType, issueNumber, issueTitle);
@@ -173,19 +178,30 @@ function TaskModalContent({
       {/* Sticky Footer */}
       <div className="sticky bottom-0 z-10 p-3 border-t border-gray-200 bg-gray-50 rounded-b-xl">
         <div className="flex items-center justify-between gap-3 text-xs">
+          {/* Left: Action buttons */}
+          <div className="flex items-center gap-2">
+            {projectSlug && (
+              <TaskAbandonButton
+                task={task}
+                projectSlug={projectSlug}
+                onSuccess={onAbandonComplete}
+              />
+            )}
+          </div>
+          {/* Right: Metadata and links */}
           <div className="flex items-center gap-3">
             <TaskTiming task={task} variant="detailed" />
             {task.estimatedMinutes && (
               <span className="text-gray-500">Est: {task.estimatedMinutes}m</span>
             )}
+            {issueGithubUrl && (
+              <GitHubLink
+                url={issueGithubUrl}
+                label="Issue"
+                tooltip={`View issue on GitHub: ${issueGithubUrl}`}
+              />
+            )}
           </div>
-          {issueGithubUrl && (
-            <GitHubLink
-              url={issueGithubUrl}
-              label="Issue"
-              tooltip={`View issue on GitHub: ${issueGithubUrl}`}
-            />
-          )}
         </div>
       </div>
     </div>
@@ -426,6 +442,8 @@ export function KanbanCard({
         issueUrl={issueUrl}
         issueGithubUrl={issueGithubUrl}
         projectId={projectId}
+        projectSlug={projectSlug}
+        onAbandonComplete={onTransitionComplete}
       />
     </Modal>
   );
