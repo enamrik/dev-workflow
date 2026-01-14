@@ -240,6 +240,30 @@ export {
   getPortFilePath,
 } from "./infrastructure/port-manager.js";
 
+// Infrastructure - Dependency Injection
+export {
+  // Container building
+  ContainerBuilder,
+  createTestContainer,
+  createContainer,
+  asClass,
+  asFunction,
+  asValue,
+  InjectionMode,
+  type AwilixContainer,
+  type Resolver,
+  type Lifetime,
+  // Middleware composition
+  compose,
+  createEndpoint,
+  createApiHandler,
+  type Middleware,
+  // Error mapping
+  mapError,
+  isDomainError,
+  type HttpErrorResponse,
+} from "./infrastructure/di/index.js";
+
 // Test utilities - Mock implementations for integration testing
 export {
   MockGitHubCLI,

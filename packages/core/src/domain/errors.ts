@@ -1,6 +1,118 @@
 /**
- * Domain errors for task dependencies
+ * Domain Errors
+ *
+ * Pure business errors that express domain concepts.
+ * These errors have NO HTTP knowledge - they are mapped to HTTP status codes
+ * in the infrastructure layer by mapError().
  */
+
+// ============================================================================
+// General Domain Errors
+// ============================================================================
+
+/**
+ * Base class for domain errors that carry structured data.
+ * Subclasses should define specific properties relevant to their error type.
+ */
+export abstract class DomainError extends Error {
+  abstract readonly code: string;
+
+  constructor(message: string) {
+    super(message);
+    this.name = this.constructor.name;
+  }
+}
+
+/**
+ * Error thrown when an entity cannot be found by ID or other identifier.
+ *
+ * Maps to: 404 Not Found
+ */
+export class EntityNotFoundError extends DomainError {
+  readonly code = "ENTITY_NOT_FOUND";
+
+  constructor(
+    public readonly entityType: string,
+    public readonly id: string
+  ) {
+    super(`${entityType} not found: ${id}`);
+  }
+}
+
+/**
+ * Error thrown when input validation fails.
+ * Use for user-provided data that doesn't meet requirements.
+ *
+ * Maps to: 400 Bad Request
+ */
+export class ValidationError extends DomainError {
+  readonly code = "VALIDATION_ERROR";
+
+  constructor(
+    public readonly field: string,
+    public readonly reason: string
+  ) {
+    super(`Validation failed for ${field}: ${reason}`);
+  }
+}
+
+/**
+ * Error thrown when an operation conflicts with existing state.
+ * Use for duplicate keys, optimistic locking failures, etc.
+ *
+ * Maps to: 409 Conflict
+ */
+export class ConflictError extends DomainError {
+  readonly code = "CONFLICT";
+
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+/**
+ * Error thrown when a business rule prevents an operation.
+ * Use for operations that violate domain invariants.
+ *
+ * Maps to: 422 Unprocessable Entity
+ */
+export class BusinessRuleError extends DomainError {
+  readonly code = "BUSINESS_RULE_VIOLATION";
+
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+/**
+ * Error thrown when authentication is required but not provided or invalid.
+ *
+ * Maps to: 401 Unauthorized
+ */
+export class AuthenticationError extends DomainError {
+  readonly code = "AUTHENTICATION_REQUIRED";
+
+  constructor(message = "Authentication required") {
+    super(message);
+  }
+}
+
+/**
+ * Error thrown when the user is authenticated but lacks permission.
+ *
+ * Maps to: 403 Forbidden
+ */
+export class AuthorizationError extends DomainError {
+  readonly code = "AUTHORIZATION_DENIED";
+
+  constructor(message = "Permission denied") {
+    super(message);
+  }
+}
+
+// ============================================================================
+// Task-Specific Domain Errors
+// ============================================================================
 
 /**
  * Error thrown when task dependencies form a cycle
