@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Box, Text, useInput, useApp } from "ink";
 import { exec } from "child_process";
-import type { KanbanData, KanbanTask, WorkerCounts } from "../hooks/useKanbanData.js";
+import type { KanbanData, KanbanTask, KanbanIssue, WorkerCounts } from "../hooks/useKanbanData.js";
 import type { TaskStatus } from "@dev-workflow/core";
 import { ScrollableContent } from "./ScrollableContent.js";
 
@@ -153,9 +153,10 @@ function Header({
               <Text> project • </Text>
             </>
           )}
-          <Text color="yellow">↑↓←→</Text> select • <Text color="yellow">Tab</Text> view •{" "}
-          <Text color="yellow">o</Text> open GH • <Text color="yellow">p</Text> open PR •{" "}
-          <Text color="yellow">r</Text> refresh • <Text color="yellow">q</Text> quit
+          <Text color="yellow">i</Text> issues • <Text color="yellow">↑↓←→</Text> select •{" "}
+          <Text color="yellow">Tab</Text> view • <Text color="yellow">o</Text> open GH •{" "}
+          <Text color="yellow">p</Text> open PR • <Text color="yellow">r</Text> refresh •{" "}
+          <Text color="yellow">q</Text> quit
         </Text>
       </Box>
     </Box>
@@ -218,6 +219,203 @@ function TaskCard({
       {task.githubIssueNumber && task.status === "PR_REVIEW" && (
         <Text color="gray">🔗 GH #{task.githubIssueNumber}</Text>
       )}
+    </Box>
+  );
+}
+
+/**
+ * Priority colors for visual distinction
+ */
+const PRIORITY_COLORS: Record<string, string> = {
+  LOW: "gray",
+  MEDIUM: "blue",
+  HIGH: "yellow",
+  CRITICAL: "red",
+};
+
+/**
+ * Issues ribbon showing available issues horizontally
+ */
+function IssuesRibbon({
+  issues,
+  selectedIssueId,
+  isIssueModeActive,
+}: {
+  issues: KanbanIssue[];
+  selectedIssueId: string | null;
+  isIssueModeActive: boolean;
+}): React.ReactElement {
+  if (issues.length === 0) {
+    return (
+      <Box
+        borderStyle="single"
+        borderColor={isIssueModeActive ? "cyan" : "gray"}
+        paddingX={1}
+        marginTop={1}
+      >
+        <Text color="gray" dimColor>
+          No issues available
+        </Text>
+      </Box>
+    );
+  }
+
+  return (
+    <Box
+      borderStyle="single"
+      borderColor={isIssueModeActive ? "cyan" : "gray"}
+      paddingX={1}
+      marginTop={1}
+      flexDirection="row"
+      flexWrap="wrap"
+    >
+      {issues.map((issue) => {
+        const isSelected = issue.id === selectedIssueId;
+        const typeColor = TYPE_COLORS[issue.type] ?? "gray";
+        const priorityColor = PRIORITY_COLORS[issue.priority] ?? "gray";
+
+        return (
+          <Box
+            key={issue.id}
+            marginRight={1}
+            borderStyle={isSelected ? "round" : undefined}
+            borderColor={isSelected ? "cyan" : undefined}
+            paddingX={isSelected ? 1 : 0}
+          >
+            <Text bold={isSelected} color={isSelected ? "cyan" : "white"}>
+              #{issue.number}
+            </Text>
+            <Text color="gray"> </Text>
+            <Text color={typeColor}>[{TYPE_LABELS[issue.type] ?? issue.type}]</Text>
+            <Text color="gray"> </Text>
+            <Text color={priorityColor}>{issue.priority.charAt(0)}</Text>
+            <Text color="gray"> </Text>
+            <Text dimColor={!isSelected}>
+              {issue.title.length > 25 ? `${issue.title.slice(0, 22)}...` : issue.title}
+            </Text>
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
+
+/**
+ * Issue details panel showing full issue information
+ */
+function IssueDetailsPanel({
+  issue,
+  scrollOffset,
+  maxLines,
+}: {
+  issue: KanbanIssue;
+  scrollOffset: number;
+  maxLines: number;
+}): React.ReactElement {
+  const typeColor = TYPE_COLORS[issue.type] ?? "gray";
+  const priorityColor = PRIORITY_COLORS[issue.priority] ?? "gray";
+
+  // Build content for scrollable display
+  const contentLines: string[] = [];
+
+  // Description section
+  contentLines.push("## Description");
+  contentLines.push(issue.description || "No description");
+  contentLines.push("");
+
+  // Acceptance Criteria section
+  if (issue.acceptanceCriteria && issue.acceptanceCriteria.length > 0) {
+    contentLines.push("## Acceptance Criteria");
+    issue.acceptanceCriteria.forEach((criterion) => {
+      contentLines.push(`• ${criterion}`);
+    });
+    contentLines.push("");
+  }
+
+  // Plan Summary section
+  if (issue.planSummary) {
+    contentLines.push("## Plan Summary");
+    contentLines.push(issue.planSummary);
+    contentLines.push("");
+  }
+
+  // Plan Approach section (if available)
+  if (issue.planApproach) {
+    contentLines.push("## Approach");
+    contentLines.push(issue.planApproach);
+    contentLines.push("");
+  }
+
+  // Tasks section
+  if (issue.tasks.length > 0) {
+    contentLines.push("## Tasks");
+    issue.tasks.forEach((task) => {
+      const statusIcon =
+        task.status === "COMPLETED"
+          ? "✓"
+          : task.status === "IN_PROGRESS"
+            ? "⏳"
+            : task.status === "PR_REVIEW"
+              ? "🔍"
+              : task.status === "ABANDONED"
+                ? "✗"
+                : "○";
+      contentLines.push(`${statusIcon} ${task.number}. ${task.title} [${task.status}]`);
+    });
+  } else {
+    contentLines.push("## Tasks");
+    contentLines.push("No tasks planned yet");
+  }
+
+  const content = contentLines.join("\n");
+
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="single"
+      borderColor="cyan"
+      paddingX={2}
+      paddingY={1}
+      marginTop={1}
+    >
+      {/* Header row */}
+      <Box justifyContent="space-between">
+        <Box>
+          <Text bold color="cyan">
+            #{issue.number}
+          </Text>
+          <Text color="gray"> • </Text>
+          <Text color={typeColor}>{TYPE_LABELS[issue.type] ?? issue.type}</Text>
+          <Text color="gray"> • </Text>
+          <Text color={priorityColor}>{issue.priority}</Text>
+          <Text color="gray"> • </Text>
+          <Text color={STATUS_COLORS[issue.status as TaskStatus] ?? "white"}>{issue.status}</Text>
+          {issue.milestone && (
+            <>
+              <Text color="gray"> • </Text>
+              <Text color="magenta">
+                M{issue.milestone.number}: {issue.milestone.title}
+              </Text>
+            </>
+          )}
+        </Box>
+        <Box>
+          <Text color="yellow">[PgUp/Dn]</Text>
+          <Text color="gray"> scroll • </Text>
+          <Text color="yellow">[Esc]</Text>
+          <Text color="gray"> exit</Text>
+        </Box>
+      </Box>
+
+      {/* Full title */}
+      <Box marginTop={1}>
+        <Text bold>{issue.title}</Text>
+      </Box>
+
+      {/* Scrollable content */}
+      <Box marginTop={1} flexDirection="column">
+        <ScrollableContent content={content} maxLines={maxLines} scrollOffset={scrollOffset} />
+      </Box>
     </Box>
   );
 }
@@ -556,10 +754,21 @@ export function KanbanBoard({
   const [viewMode, setViewMode] = useState<ViewMode>("task");
   const [detailScrollOffset, setDetailScrollOffset] = useState(0);
 
+  // Issue mode state
+  const [isIssueModeActive, setIsIssueModeActive] = useState(false);
+  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+  const [issueDetailScrollOffset, setIssueDetailScrollOffset] = useState(0);
+
   // Calculate max visible lines for detail panel based on terminal height
-  // Reserve space for: header (~4), columns (~10 minimum), detail panel border/header (~4)
+  // Reserve space for: header (~4), ribbon (~3), columns (~10 minimum), detail panel border/header (~4)
   const terminalRows = process.stdout.rows || 24;
-  const detailMaxLines = Math.max(5, terminalRows - 20);
+  const detailMaxLines = Math.max(5, terminalRows - 23);
+
+  // Get selected issue
+  const selectedIssue = useMemo(() => {
+    if (!selectedIssueId || !data) return null;
+    return data.issues.find((i) => i.id === selectedIssueId) ?? null;
+  }, [selectedIssueId, data]);
 
   // Reset view mode and scroll when selected task changes
   useEffect(() => {
@@ -571,6 +780,11 @@ export function KanbanBoard({
   useEffect(() => {
     setDetailScrollOffset(0);
   }, [viewMode]);
+
+  // Reset issue scroll when selected issue changes
+  useEffect(() => {
+    setIssueDetailScrollOffset(0);
+  }, [selectedIssueId]);
 
   // Cycle through view modes: task -> plan -> details -> task
   const cycleViewMode = (): void => {
@@ -651,6 +865,8 @@ export function KanbanBoard({
         const newIndex = currentProjectIndex === 0 ? projectCount - 1 : currentProjectIndex - 1;
         onProjectChange(newIndex);
         setSelectedTaskId(null); // Clear selection when switching projects
+        setSelectedIssueId(null);
+        setIsIssueModeActive(false);
         return;
       }
       if (input === "]") {
@@ -658,8 +874,70 @@ export function KanbanBoard({
         const newIndex = (currentProjectIndex + 1) % projectCount;
         onProjectChange(newIndex);
         setSelectedTaskId(null); // Clear selection when switching projects
+        setSelectedIssueId(null);
+        setIsIssueModeActive(false);
         return;
       }
+    }
+
+    // 'i' key to toggle issue mode
+    if (input === "i") {
+      if (isIssueModeActive) {
+        // Exit issue mode
+        setIsIssueModeActive(false);
+        setSelectedIssueId(null);
+      } else {
+        // Enter issue mode and select first issue if available
+        setIsIssueModeActive(true);
+        setSelectedTaskId(null); // Clear task selection when entering issue mode
+        if (data?.issues.length && data.issues.length > 0 && !selectedIssueId) {
+          setSelectedIssueId(data.issues[0]?.id ?? null);
+        }
+      }
+      return;
+    }
+
+    // Issue mode navigation
+    if (isIssueModeActive && data?.issues) {
+      // Left/Right to navigate issues in ribbon
+      if (key.leftArrow || key.rightArrow) {
+        const currentIndex = data.issues.findIndex((i) => i.id === selectedIssueId);
+        if (key.leftArrow && currentIndex > 0) {
+          setSelectedIssueId(data.issues[currentIndex - 1]?.id ?? null);
+        } else if (key.rightArrow && currentIndex < data.issues.length - 1) {
+          setSelectedIssueId(data.issues[currentIndex + 1]?.id ?? null);
+        }
+        return;
+      }
+
+      // Up/Down to scroll issue details (alias for PageUp/PageDown)
+      if (key.upArrow) {
+        setIssueDetailScrollOffset((prev) => Math.max(0, prev - 3));
+        return;
+      }
+      if (key.downArrow) {
+        setIssueDetailScrollOffset((prev) => prev + 3);
+        return;
+      }
+
+      // PageUp/PageDown for larger scroll in issue details
+      if (key.pageUp) {
+        setIssueDetailScrollOffset((prev) => Math.max(0, prev - 5));
+        return;
+      }
+      if (key.pageDown) {
+        setIssueDetailScrollOffset((prev) => prev + 5);
+        return;
+      }
+
+      // Escape exits issue mode
+      if (key.escape) {
+        setIsIssueModeActive(false);
+        setSelectedIssueId(null);
+        return;
+      }
+
+      return; // Don't process other keys in issue mode
     }
 
     // Tab key to cycle view modes (only when a task is selected)
@@ -668,7 +946,7 @@ export function KanbanBoard({
       return;
     }
 
-    // Arrow key navigation
+    // Arrow key navigation (task mode)
     if (key.upArrow || key.downArrow || key.leftArrow || key.rightArrow) {
       if (allTasks.length === 0) return;
 
@@ -734,7 +1012,7 @@ export function KanbanBoard({
       openUrl(selectedTask.prUrl);
     }
 
-    // Escape to deselect
+    // Escape to deselect task
     if (key.escape) {
       setSelectedTaskId(null);
     }
@@ -784,6 +1062,13 @@ export function KanbanBoard({
         projectCount={projectCount}
       />
 
+      {/* Issues ribbon */}
+      <IssuesRibbon
+        issues={data.issues}
+        selectedIssueId={selectedIssueId}
+        isIssueModeActive={isIssueModeActive}
+      />
+
       {/* Columns */}
       <Box flexDirection="row" marginTop={1}>
         {data.columns.map((column, columnIndex) => (
@@ -799,8 +1084,17 @@ export function KanbanBoard({
         ))}
       </Box>
 
-      {/* Detail panel when task selected */}
-      {selectedTask && (
+      {/* Issue details panel when issue selected */}
+      {selectedIssue && isIssueModeActive && (
+        <IssueDetailsPanel
+          issue={selectedIssue}
+          scrollOffset={issueDetailScrollOffset}
+          maxLines={detailMaxLines}
+        />
+      )}
+
+      {/* Task detail panel when task selected (and not in issue mode) */}
+      {selectedTask && !isIssueModeActive && (
         <DetailPanel
           task={selectedTask}
           viewMode={viewMode}
