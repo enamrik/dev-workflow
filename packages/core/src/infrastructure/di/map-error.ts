@@ -10,6 +10,7 @@ import {
   DomainError,
   EntityNotFoundError,
   ValidationError,
+  ZodValidationError,
   ConflictError,
   BusinessRuleError,
   AuthenticationError,
@@ -62,6 +63,19 @@ export function mapError(error: unknown): HttpErrorResponse {
         details: {
           field: error.field,
           reason: error.reason,
+        },
+      },
+    };
+  }
+
+  if (error instanceof ZodValidationError) {
+    return {
+      status: 400,
+      body: {
+        error: error.message,
+        code: error.code,
+        details: {
+          issues: error.issues,
         },
       },
     };
