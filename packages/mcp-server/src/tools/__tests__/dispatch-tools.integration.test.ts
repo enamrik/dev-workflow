@@ -12,8 +12,13 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createContainer, asValue, asClass, InjectionMode } from "awilix";
 import type { AwilixContainer } from "awilix";
 import { TaskService, GlobalDbWorkerQueueDb, type DbClient } from "@dev-workflow/core";
-import { createTestDatabase, type TestDatabase } from "../setup.js";
-import { createTestIssue, createTestPlan, createTestTask, createNoOpProvider } from "../helpers.js";
+import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
+import {
+  createTestIssue,
+  createTestPlan,
+  createTestTask,
+  createNoOpProvider,
+} from "../../test/helpers.js";
 import {
   handleDispatchTask,
   handleGetDispatchStatus,

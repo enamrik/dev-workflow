@@ -57,6 +57,21 @@ export class ValidationError extends DomainError {
 }
 
 /**
+ * Error thrown when Zod schema validation fails.
+ * Carries the full array of Zod issues for detailed error reporting.
+ *
+ * Maps to: 400 Bad Request
+ */
+export class ZodValidationError extends DomainError {
+  readonly code = "ZOD_VALIDATION_ERROR";
+
+  constructor(public readonly issues: Array<{ path: (string | number)[]; message: string }>) {
+    const summary = issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ");
+    super(`Validation failed: ${summary}`);
+  }
+}
+
+/**
  * Error thrown when an operation conflicts with existing state.
  * Use for duplicate keys, optimistic locking failures, etc.
  *

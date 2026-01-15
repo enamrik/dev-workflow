@@ -6,8 +6,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createTestDatabase, type TestDatabase } from "../setup.js";
-import { createServices } from "../helpers.js";
+import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
+import { createServices } from "../../test/helpers.js";
 import {
   VersioningService,
   PlanningService,

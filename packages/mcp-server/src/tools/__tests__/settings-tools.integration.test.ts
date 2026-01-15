@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { createTestDatabase, type TestDatabase } from "../setup.js";
+import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import {
   MockGitHubCLI,
   TypeService,

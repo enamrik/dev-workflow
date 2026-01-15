@@ -9,8 +9,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createTestDatabase, type TestDatabase } from "../setup.js";
-import { createClientForProject, createNoOpProvider } from "../helpers.js";
+import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
+import { createClientForProject, createNoOpProvider } from "../../test/helpers.js";
 import {
   TemplateService,
   PlanningService,

@@ -6,13 +6,13 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { createTestDatabase, type TestDatabase } from "../setup.js";
+import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import {
   createClientForProject,
   createTestIssue,
   createTestPlan,
   createTestTask,
-} from "../helpers.js";
+} from "../../test/helpers.js";
 import { VersioningService, MockGitHubCLI, MergeService, type DbClient } from "@dev-workflow/core";
 import { handleMergeIssues } from "../../tools/merge-tool-def.js";
 import { MergeTool } from "../../tools/merge-tool.js";
