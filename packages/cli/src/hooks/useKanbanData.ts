@@ -28,6 +28,32 @@ export interface WorkerCounts {
 }
 
 /**
+ * Issue with plan and tasks for ribbon/details display
+ */
+export interface KanbanIssue {
+  id: string;
+  number: number;
+  title: string;
+  description: string;
+  acceptanceCriteria: string[];
+  type: string;
+  status: string;
+  priority: string;
+  milestone?: {
+    number: number;
+    title: string;
+  };
+  planSummary?: string;
+  planApproach?: string;
+  tasks: Array<{
+    number: number;
+    title: string;
+    status: string;
+    type: string;
+  }>;
+}
+
+/**
  * Kanban board data grouped by status
  */
 export interface KanbanData {
@@ -37,6 +63,8 @@ export interface KanbanData {
     label: string;
     tasks: KanbanTask[];
   }[];
+  /** Active issues for the issues ribbon */
+  issues: KanbanIssue[];
   workers: WorkerCounts;
   lastUpdated: Date;
 }
@@ -91,9 +119,34 @@ async function fetchKanbanData(dbPath: string, projectId: string): Promise<Kanba
       })),
     }));
 
+    // Get active issues for the ribbon
+    const issuesWithTasks = boardService.getActiveIssuesWithTasks();
+    const issues: KanbanIssue[] = issuesWithTasks.map(
+      ({ issue, plan, tasks, milestone }): KanbanIssue => ({
+        id: issue.id,
+        number: issue.number,
+        title: issue.title,
+        description: issue.description,
+        acceptanceCriteria: issue.acceptanceCriteria,
+        type: issue.type,
+        status: issue.status,
+        priority: issue.priority,
+        milestone,
+        planSummary: plan?.summary,
+        planApproach: plan?.approach,
+        tasks: tasks.map((t) => ({
+          number: t.number,
+          title: t.title,
+          status: t.status,
+          type: t.type,
+        })),
+      })
+    );
+
     return {
       project,
       columns,
+      issues,
       workers: boardData.workers,
       lastUpdated: boardData.lastUpdated,
     };
