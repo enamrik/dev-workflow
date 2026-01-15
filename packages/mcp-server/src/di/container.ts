@@ -167,9 +167,11 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
     gitRoot,
   };
 
-  // Create container with classic injection mode (constructor parameter names)
+  // Create container with PROXY injection mode.
+  // PROXY mode supports destructured parameters in asFunction callbacks,
+  // while CLASSIC mode requires named parameters matching registration keys.
   const container = createContainer<McpCradle>({
-    injectionMode: InjectionMode.CLASSIC,
+    injectionMode: InjectionMode.PROXY,
   });
 
   // Register values and factories
