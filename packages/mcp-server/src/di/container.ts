@@ -192,58 +192,89 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
     // Paths
     globalTrackDir: asValue(resolveGlobalTrackDir()),
     projectRoot: asValue(config.gitRoot),
-    trackDirectory: asFunction(({ globalTrackDir }) =>
+    trackDirectory: asFunction(({ globalTrackDir }: { globalTrackDir: string }) =>
       path.join(globalTrackDir, "projects", project.slug)
     ).singleton(),
 
     // Template config
-    templateConfig: asFunction(({ projectRoot, globalTrackDir }) => ({
-      localIssueTemplatesPath: path.join(projectRoot, ".track", "templates", "issues"),
-      localTaskTemplatesPath: path.join(projectRoot, ".track", "templates", "tasks"),
-      globalIssueTemplatesPath: path.join(globalTrackDir, "config", "templates", "issues"),
-      globalTaskTemplatesPath: path.join(globalTrackDir, "config", "templates", "tasks"),
-    })).singleton(),
+    templateConfig: asFunction(
+      ({ projectRoot, globalTrackDir }: { projectRoot: string; globalTrackDir: string }) => ({
+        localIssueTemplatesPath: path.join(projectRoot, ".track", "templates", "issues"),
+        localTaskTemplatesPath: path.join(projectRoot, ".track", "templates", "tasks"),
+        globalIssueTemplatesPath: path.join(globalTrackDir, "config", "templates", "issues"),
+        globalTaskTemplatesPath: path.join(globalTrackDir, "config", "templates", "tasks"),
+      })
+    ).singleton(),
 
     // External integrations
     githubCLI: asFunction(() => new NodeGitHubCLI()).singleton(),
     providerRegistry: asFunction(() => ProviderRegistry.getInstance()).singleton(),
 
-    projectManagementProvider: asFunction(({ project, githubCLI }) => {
-      const providerDeps = { githubCLI };
-      return getProjectManagementProvider(project, providerDeps);
-    }).singleton(),
+    projectManagementProvider: asFunction(
+      ({ project: proj, githubCLI: cli }: { project: Project; githubCLI: GitHubCLI }) => {
+        const providerDeps = { githubCLI: cli };
+        return getProjectManagementProvider(proj, providerDeps);
+      }
+    ).singleton(),
 
     gitWorktreeService: asFunction(
-      ({ projectRoot }) => new NodeGitWorktreeService(projectRoot)
+      ({ projectRoot }: { projectRoot: string }) => new NodeGitWorktreeService(projectRoot)
     ).singleton(),
 
     workerQueueDb: asFunction(() => new GlobalDbWorkerQueueDb()).singleton(),
 
     // Type and template services
-    typeService: asFunction(({ dbSource }) => new TypeService(dbSource.types)).singleton(),
+    typeService: asFunction(
+      ({ dbSource: src }: { dbSource: DbSource }) => new TypeService(src.types)
+    ).singleton(),
 
     templateService: asFunction(
-      ({ fileSystem, templateConfig, typeService }) =>
-        new TemplateService(fileSystem, templateConfig, typeService)
+      ({
+        fileSystem,
+        templateConfig,
+        typeService,
+      }: {
+        fileSystem: FileSystem;
+        templateConfig: TemplateServiceConfig;
+        typeService: TypeService;
+      }) => new TemplateService(fileSystem, templateConfig, typeService)
     ).singleton(),
 
     // Application services
-    versioningService: asFunction(({ dbClient }) => new VersioningService(dbClient)).singleton(),
+    versioningService: asFunction(
+      ({ dbClient }: { dbClient: DbClient }) => new VersioningService(dbClient)
+    ).singleton(),
 
     planningService: asFunction(
-      ({ dbClient, versioningService }) => new PlanningService(dbClient, versioningService)
+      ({
+        dbClient,
+        versioningService,
+      }: {
+        dbClient: DbClient;
+        versioningService: VersioningService;
+      }) => new PlanningService(dbClient, versioningService)
     ).singleton(),
 
     taskManagementService: asFunction(
-      ({ dbClient }) => new TaskManagementService(dbClient)
+      ({ dbClient }: { dbClient: DbClient }) => new TaskManagementService(dbClient)
     ).singleton(),
 
     conflictDetectionService: asFunction(
-      ({ dbClient }) => new ConflictDetectionService(dbClient)
+      ({ dbClient }: { dbClient: DbClient }) => new ConflictDetectionService(dbClient)
     ).singleton(),
 
     taskSessionService: asFunction(
-      ({ dbClient, gitWorktreeService, conflictDetectionService, trackDirectory }) =>
+      ({
+        dbClient,
+        gitWorktreeService,
+        conflictDetectionService,
+        trackDirectory,
+      }: {
+        dbClient: DbClient;
+        gitWorktreeService: GitWorktreeService;
+        conflictDetectionService: ConflictDetectionService;
+        trackDirectory: string;
+      }) =>
         new TaskSessionService(
           dbClient,
           gitWorktreeService,
@@ -253,34 +284,66 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
     ).singleton(),
 
     taskSyncService: asFunction(
-      ({ dbSource, projectManagementProvider, config, templateService, typeService }) =>
-        new TaskSyncService(
-          dbSource,
-          projectManagementProvider,
-          config.projectId,
-          templateService,
-          typeService
-        )
+      ({
+        dbSource: src,
+        projectManagementProvider: pmp,
+        config: cfg,
+        templateService: tmpl,
+        typeService: ts,
+      }: {
+        dbSource: DbSource;
+        projectManagementProvider: ProjectManagementProvider;
+        config: McpConfig;
+        templateService: TemplateService;
+        typeService: TypeService;
+      }) => new TaskSyncService(src, pmp, cfg.projectId, tmpl, ts)
     ).singleton(),
 
     // Entity services (Service Layer Pattern)
-    planService: asFunction(({ dbClient }) => new PlanService(dbClient)).singleton(),
+    planService: asFunction(
+      ({ dbClient }: { dbClient: DbClient }) => new PlanService(dbClient)
+    ).singleton(),
 
     taskService: asFunction(
-      ({ dbClient, projectManagementProvider, gitWorktreeService }) =>
-        new TaskService(dbClient, projectManagementProvider, gitWorktreeService)
+      ({
+        dbClient,
+        projectManagementProvider,
+        gitWorktreeService,
+      }: {
+        dbClient: DbClient;
+        projectManagementProvider: ProjectManagementProvider;
+        gitWorktreeService: GitWorktreeService;
+      }) => new TaskService(dbClient, projectManagementProvider, gitWorktreeService)
     ).singleton(),
 
     issueService: asFunction(
-      ({ dbClient, taskService, projectManagementProvider }) =>
-        new IssueService(dbClient, taskService, projectManagementProvider)
+      ({
+        dbClient,
+        taskService,
+        projectManagementProvider,
+      }: {
+        dbClient: DbClient;
+        taskService: TaskService;
+        projectManagementProvider: ProjectManagementProvider;
+      }) => new IssueService(dbClient, taskService, projectManagementProvider)
     ).singleton(),
 
-    milestoneService: asFunction(({ dbClient }) => new MilestoneService(dbClient)).singleton(),
+    milestoneService: asFunction(
+      ({ dbClient }: { dbClient: DbClient }) => new MilestoneService(dbClient)
+    ).singleton(),
 
     mergeService: asFunction(
-      ({ dbSource, versioningService, config, githubCLI }) =>
-        new MergeService(dbSource, versioningService, config.projectId, githubCLI)
+      ({
+        dbSource: src,
+        versioningService,
+        config: cfg,
+        githubCLI: cli,
+      }: {
+        dbSource: DbSource;
+        versioningService: VersioningService;
+        config: McpConfig;
+        githubCLI: GitHubCLI;
+      }) => new MergeService(src, versioningService, cfg.projectId, cli)
     ).singleton(),
 
     // Tool classes
