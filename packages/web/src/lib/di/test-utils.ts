@@ -11,6 +11,44 @@ import type { WebCradle } from "./container";
 import type { Endpoint } from "./bootstrap";
 
 // =============================================================================
+// Test Request Creation
+// =============================================================================
+
+/**
+ * Create a Request object for testing.
+ *
+ * @param method - HTTP method (GET, POST, PUT, DELETE, etc.)
+ * @param path - URL path (e.g., "/api/issues/42/close")
+ * @param options - Optional body object (will be JSON stringified)
+ * @returns A Request object ready for use with runTestApiEndpoint
+ *
+ * @example
+ * ```typescript
+ * // POST with body
+ * const req = createTestRequest("POST", "/api/issues/42/close", {
+ *   body: { projectSlug: "my-project" },
+ * });
+ *
+ * // GET without body
+ * const req = createTestRequest("GET", "/api/projects");
+ * ```
+ */
+export function createTestRequest(
+  method: string,
+  path: string,
+  options?: { body?: Record<string, unknown> }
+): Request {
+  const init: RequestInit = { method };
+
+  if (options?.body) {
+    init.headers = { "Content-Type": "application/json" };
+    init.body = JSON.stringify(options.body);
+  }
+
+  return new Request(`http://localhost${path}`, init);
+}
+
+// =============================================================================
 // Test Container Building
 // =============================================================================
 
