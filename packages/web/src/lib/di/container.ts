@@ -44,8 +44,10 @@ export interface WebCradle {
  * Build the web container with all dependencies registered.
  */
 export function buildWebContainer(): AwilixContainer<WebCradle> {
+  // Use PROXY injection mode - supports destructured parameters in asFunction callbacks.
+  // CLASSIC mode requires named parameters matching registration keys exactly.
   const container = createContainer<WebCradle>({
-    injectionMode: InjectionMode.CLASSIC,
+    injectionMode: InjectionMode.PROXY,
   });
 
   container.register({

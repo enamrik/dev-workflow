@@ -153,9 +153,9 @@ function Header({
               <Text> project • </Text>
             </>
           )}
-          <Text color="yellow">i</Text> issues • <Text color="yellow">↑↓←→</Text> select •{" "}
-          <Text color="yellow">Tab</Text> view • <Text color="yellow">o</Text> open GH •{" "}
-          <Text color="yellow">p</Text> open PR • <Text color="yellow">r</Text> refresh •{" "}
+          <Text color="yellow">↑↓←→</Text> navigate • <Text color="yellow">Enter</Text> expand •{" "}
+          <Text color="yellow">Tab</Text> view • <Text color="yellow">o</Text> GH •{" "}
+          <Text color="yellow">p</Text> PR • <Text color="yellow">r</Text> refresh •{" "}
           <Text color="yellow">q</Text> quit
         </Text>
       </Box>
@@ -234,7 +234,126 @@ const PRIORITY_COLORS: Record<string, string> = {
 };
 
 /**
- * Issues ribbon showing available issues horizontally
+ * Computed issue status based on task progress
+ */
+type ComputedIssueStatus = "PLANNED" | "OPEN" | "IN_PROGRESS" | "TASKS_DONE" | "CLOSED";
+
+/**
+ * Status display config matching web UI
+ */
+const COMPUTED_STATUS_CONFIG: Record<ComputedIssueStatus, { label: string; color: string }> = {
+  PLANNED: { label: "plan", color: "gray" },
+  OPEN: { label: "open", color: "green" },
+  IN_PROGRESS: { label: "wip", color: "yellow" },
+  TASKS_DONE: { label: "done", color: "green" },
+  CLOSED: { label: "closed", color: "gray" },
+};
+
+/**
+ * Status order for sorting: TASKS_DONE first (closest to done), PLANNED last
+ */
+const STATUS_ORDER: Record<ComputedIssueStatus, number> = {
+  TASKS_DONE: 0,
+  IN_PROGRESS: 1,
+  OPEN: 2,
+  PLANNED: 3,
+  CLOSED: 4,
+};
+
+/**
+ * Ordered statuses for display (left to right: closest to done → backlog)
+ */
+const ORDERED_STATUSES: ComputedIssueStatus[] = ["TASKS_DONE", "IN_PROGRESS", "OPEN", "PLANNED"];
+
+/**
+ * Compute issue status based on issue state and task progress
+ */
+function computeIssueStatus(
+  issueStatus: string,
+  tasks: Array<{ status: string }>
+): ComputedIssueStatus {
+  if (issueStatus === "PLANNED") {
+    return "PLANNED";
+  }
+  if (issueStatus === "CLOSED") {
+    return "CLOSED";
+  }
+  if (tasks.length === 0) {
+    return "OPEN";
+  }
+
+  const terminal = tasks.filter(
+    (t) => t.status === "COMPLETED" || t.status === "ABANDONED"
+  ).length;
+  const active = tasks.filter(
+    (t) => t.status === "IN_PROGRESS" || t.status === "PR_REVIEW"
+  ).length;
+
+  if (terminal === tasks.length) {
+    return "TASKS_DONE";
+  }
+  if (active === 0) {
+    return "OPEN";
+  }
+  return "IN_PROGRESS";
+}
+
+/**
+ * Issue with computed status
+ */
+interface IssueWithStatus {
+  issue: KanbanIssue;
+  computedStatus: ComputedIssueStatus;
+  taskProgress: string | null;
+}
+
+/**
+ * Single issue card in the ribbon
+ */
+function IssueCard({
+  item,
+  isSelected,
+}: {
+  item: IssueWithStatus;
+  isSelected: boolean;
+}): React.ReactElement {
+  const statusConfig = COMPUTED_STATUS_CONFIG[item.computedStatus];
+
+  return (
+    <Box
+      marginRight={1}
+      borderStyle={isSelected ? "round" : "single"}
+      borderColor={isSelected ? "cyan" : "gray"}
+      paddingX={1}
+      flexDirection="column"
+    >
+      {/* Top row: status tag and task progress */}
+      <Box justifyContent="space-between">
+        <Text color={statusConfig.color} dimColor={!isSelected}>
+          {statusConfig.label}
+        </Text>
+        {item.taskProgress && (
+          <Text color="gray" dimColor>
+            {item.taskProgress}
+          </Text>
+        )}
+      </Box>
+      {/* Issue number and title */}
+      <Box>
+        <Text bold={isSelected} color={isSelected ? "cyan" : "blue"}>
+          #{item.issue.number}
+        </Text>
+        <Text color="gray"> </Text>
+        <Text dimColor={!isSelected}>
+          {item.issue.title.length > 20 ? `${item.issue.title.slice(0, 17)}...` : item.issue.title}
+        </Text>
+      </Box>
+    </Box>
+  );
+}
+
+/**
+ * Work Queue Ribbon showing issues grouped by status (matches web UI design)
  */
 function IssuesRibbon({
   issues,
@@ -245,6 +364,40 @@ function IssuesRibbon({
   selectedIssueId: string | null;
   isIssueModeActive: boolean;
 }): React.ReactElement {
+  // Compute status and task progress for each issue
+  const issuesWithStatus: IssueWithStatus[] = issues.map((issue) => {
+    const terminal = issue.tasks.filter(
+      (t) => t.status === "COMPLETED" || t.status === "ABANDONED"
+    ).length;
+    const taskProgress = issue.tasks.length > 0 ? `${terminal}/${issue.tasks.length}` : null;
+
+    return {
+      issue,
+      computedStatus: computeIssueStatus(issue.status, issue.tasks),
+      taskProgress,
+    };
+  });
+
+  // Sort by status order
+  const sortedIssues = [...issuesWithStatus].sort((a, b) => {
+    const statusDiff = STATUS_ORDER[a.computedStatus] - STATUS_ORDER[b.computedStatus];
+    if (statusDiff !== 0) return statusDiff;
+    return a.issue.number - b.issue.number;
+  });
+
+  // Group by status
+  const groupedByStatus = sortedIssues.reduce(
+    (acc, item) => {
+      const status = item.computedStatus;
+      if (!acc[status]) {
+        acc[status] = [];
+      }
+      acc[status].push(item);
+      return acc;
+    },
+    {} as Record<ComputedIssueStatus, IssueWithStatus[]>
+  );
+
   if (issues.length === 0) {
     return (
       <Box
@@ -254,7 +407,7 @@ function IssuesRibbon({
         marginTop={1}
       >
         <Text color="gray" dimColor>
-          No issues available
+          No issues in work queue
         </Text>
       </Box>
     );
@@ -266,36 +419,46 @@ function IssuesRibbon({
       borderColor={isIssueModeActive ? "cyan" : "gray"}
       paddingX={1}
       marginTop={1}
-      flexDirection="row"
-      flexWrap="wrap"
+      flexDirection="column"
     >
-      {issues.map((issue) => {
-        const isSelected = issue.id === selectedIssueId;
-        const typeColor = TYPE_COLORS[issue.type] ?? "gray";
-        const priorityColor = PRIORITY_COLORS[issue.priority] ?? "gray";
+      {/* Header */}
+      <Box marginBottom={1}>
+        <Text color="gray" bold>
+          Work Queue
+        </Text>
+        <Text color="gray" dimColor>
+          {" "}
+          ({issues.length} issue{issues.length !== 1 ? "s" : ""})
+        </Text>
+      </Box>
+      {/* Issues grouped by status */}
+      <Box flexDirection="row" flexWrap="wrap">
+        {ORDERED_STATUSES.map((status) => {
+          const statusIssues = groupedByStatus[status];
+          if (!statusIssues || statusIssues.length === 0) return null;
 
-        return (
-          <Box
-            key={issue.id}
-            marginRight={1}
-            borderStyle={isSelected ? "round" : undefined}
-            borderColor={isSelected ? "cyan" : undefined}
-            paddingX={isSelected ? 1 : 0}
-          >
-            <Text bold={isSelected} color={isSelected ? "cyan" : "white"}>
-              #{issue.number}
-            </Text>
-            <Text color="gray"> </Text>
-            <Text color={typeColor}>[{TYPE_LABELS[issue.type] ?? issue.type}]</Text>
-            <Text color="gray"> </Text>
-            <Text color={priorityColor}>{issue.priority.charAt(0)}</Text>
-            <Text color="gray"> </Text>
-            <Text dimColor={!isSelected}>
-              {issue.title.length > 25 ? `${issue.title.slice(0, 22)}...` : issue.title}
-            </Text>
-          </Box>
-        );
-      })}
+          const statusConfig = COMPUTED_STATUS_CONFIG[status];
+
+          return (
+            <Box key={status} marginRight={2} flexDirection="column">
+              {/* Status header */}
+              <Text color={statusConfig.color} dimColor bold>
+                {statusConfig.label.toUpperCase()}
+              </Text>
+              {/* Issue cards */}
+              <Box flexDirection="row" flexWrap="wrap">
+                {statusIssues.map((item) => (
+                  <IssueCard
+                    key={item.issue.id}
+                    item={item}
+                    isSelected={item.issue.id === selectedIssueId}
+                  />
+                ))}
+              </Box>
+            </Box>
+          );
+        })}
+      </Box>
     </Box>
   );
 }
@@ -307,10 +470,12 @@ function IssueDetailsPanel({
   issue,
   scrollOffset,
   maxLines,
+  isExpanded,
 }: {
   issue: KanbanIssue;
   scrollOffset: number;
   maxLines: number;
+  isExpanded: boolean;
 }): React.ReactElement {
   const typeColor = TYPE_COLORS[issue.type] ?? "gray";
   const priorityColor = PRIORITY_COLORS[issue.priority] ?? "gray";
@@ -400,10 +565,21 @@ function IssueDetailsPanel({
           )}
         </Box>
         <Box>
-          <Text color="yellow">[PgUp/Dn]</Text>
-          <Text color="gray"> scroll • </Text>
-          <Text color="yellow">[Esc]</Text>
-          <Text color="gray"> exit</Text>
+          {isExpanded ? (
+            <>
+              <Text color="yellow">[Esc]</Text>
+              <Text color="gray"> collapse • </Text>
+              <Text color="yellow">[PgUp/Dn]</Text>
+              <Text color="gray"> scroll</Text>
+            </>
+          ) : (
+            <>
+              <Text color="yellow">[Enter]</Text>
+              <Text color="gray"> expand • </Text>
+              <Text color="yellow">[PgUp/Dn]</Text>
+              <Text color="gray"> scroll</Text>
+            </>
+          )}
         </Box>
       </Box>
 
@@ -559,11 +735,13 @@ function DetailPanel({
   viewMode,
   scrollOffset,
   maxLines,
+  isExpanded,
 }: {
   task: KanbanTask;
   viewMode: ViewMode;
   scrollOffset: number;
   maxLines: number;
+  isExpanded: boolean;
 }): React.ReactElement {
   const taskId = `#${task.issueNumber}.${task.taskNumber}`;
   const typeColor = TYPE_COLORS[task.type] ?? "gray";
@@ -594,6 +772,17 @@ function DetailPanel({
             {VIEW_MODE_LABELS[viewMode]}
           </Text>
           <Text color="gray">] </Text>
+          {isExpanded ? (
+            <>
+              <Text color="yellow">[Esc]</Text>
+              <Text color="gray"> collapse • </Text>
+            </>
+          ) : (
+            <>
+              <Text color="yellow">[Enter]</Text>
+              <Text color="gray"> expand • </Text>
+            </>
+          )}
           <Text color="yellow">[Tab]</Text>
           <Text color="gray"> view • </Text>
           <Text color="yellow">[PgUp/Dn]</Text>
@@ -750,19 +939,25 @@ export function KanbanBoard({
   onProjectChange?: (index: number) => void;
 }): React.ReactElement {
   const { exit } = useApp();
+
+  // Unified selection state - either an issue or task is selected, not both
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+
+  // View mode for task detail panel
   const [viewMode, setViewMode] = useState<ViewMode>("task");
   const [detailScrollOffset, setDetailScrollOffset] = useState(0);
 
-  // Issue mode state
-  const [isIssueModeActive, setIsIssueModeActive] = useState(false);
-  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
-  const [issueDetailScrollOffset, setIssueDetailScrollOffset] = useState(0);
+  // Panel expanded state - when true, panel takes full screen
+  const [isPanelExpanded, setIsPanelExpanded] = useState(false);
 
-  // Calculate max visible lines for detail panel based on terminal height
-  // Reserve space for: header (~4), ribbon (~3), columns (~10 minimum), detail panel border/header (~4)
+  // Calculate max visible lines for detail panel based on terminal height and expanded state
   const terminalRows = process.stdout.rows || 24;
-  const detailMaxLines = Math.max(5, terminalRows - 23);
+  // Collapsed: small panel (5 lines)
+  // Expanded: ~90% of terminal height (reserve 8 lines for header + panel borders)
+  const COLLAPSED_PANEL_LINES = 5;
+  const EXPANDED_PANEL_LINES = Math.max(12, Math.floor((terminalRows - 8) * 0.9));
+  const detailMaxLines = isPanelExpanded ? EXPANDED_PANEL_LINES : COLLAPSED_PANEL_LINES;
 
   // Get selected issue
   const selectedIssue = useMemo(() => {
@@ -770,21 +965,31 @@ export function KanbanBoard({
     return data.issues.find((i) => i.id === selectedIssueId) ?? null;
   }, [selectedIssueId, data]);
 
-  // Reset view mode and scroll when selected task changes
+  // Sort issues by computed status (matches display order in ribbon)
+  const sortedIssues = useMemo(() => {
+    if (!data) return [];
+    return [...data.issues].sort((a, b) => {
+      const statusA = computeIssueStatus(a.status, a.tasks);
+      const statusB = computeIssueStatus(b.status, b.tasks);
+      const statusDiff = STATUS_ORDER[statusA] - STATUS_ORDER[statusB];
+      if (statusDiff !== 0) return statusDiff;
+      return a.number - b.number;
+    });
+  }, [data]);
+
+  // Reset view mode and scroll when selection changes
   useEffect(() => {
     setViewMode("task");
     setDetailScrollOffset(0);
-  }, [selectedTaskId]);
+  }, [selectedTaskId, selectedIssueId]);
 
   // Reset scroll when view mode changes
   useEffect(() => {
     setDetailScrollOffset(0);
   }, [viewMode]);
 
-  // Reset issue scroll when selected issue changes
-  useEffect(() => {
-    setIssueDetailScrollOffset(0);
-  }, [selectedIssueId]);
+  // Determine if issue ribbon is active (an issue is selected)
+  const isIssueSelected = selectedIssueId !== null;
 
   // Cycle through view modes: task -> plan -> details -> task
   const cycleViewMode = (): void => {
@@ -849,6 +1054,18 @@ export function KanbanBoard({
     return offsets;
   }, [data, selectedTaskInfo]);
 
+  // Helper to select an issue and clear task selection
+  const selectIssue = (issueId: string | null): void => {
+    setSelectedIssueId(issueId);
+    setSelectedTaskId(null);
+  };
+
+  // Helper to select a task and clear issue selection
+  const selectTask = (taskId: string | null): void => {
+    setSelectedTaskId(taskId);
+    setSelectedIssueId(null);
+  };
+
   // Handle keyboard input
   useInput((input, key) => {
     if (input === "q" || (key.ctrl && input === "c")) {
@@ -861,83 +1078,19 @@ export function KanbanBoard({
     // Project switching with [ and ]
     if (projectCount > 1 && onProjectChange) {
       if (input === "[") {
-        // Previous project (wrap around)
         const newIndex = currentProjectIndex === 0 ? projectCount - 1 : currentProjectIndex - 1;
         onProjectChange(newIndex);
-        setSelectedTaskId(null); // Clear selection when switching projects
+        setSelectedTaskId(null);
         setSelectedIssueId(null);
-        setIsIssueModeActive(false);
         return;
       }
       if (input === "]") {
-        // Next project (wrap around)
         const newIndex = (currentProjectIndex + 1) % projectCount;
         onProjectChange(newIndex);
-        setSelectedTaskId(null); // Clear selection when switching projects
-        setSelectedIssueId(null);
-        setIsIssueModeActive(false);
-        return;
-      }
-    }
-
-    // 'i' key to toggle issue mode
-    if (input === "i") {
-      if (isIssueModeActive) {
-        // Exit issue mode
-        setIsIssueModeActive(false);
-        setSelectedIssueId(null);
-      } else {
-        // Enter issue mode and select first issue if available
-        setIsIssueModeActive(true);
-        setSelectedTaskId(null); // Clear task selection when entering issue mode
-        if (data?.issues.length && data.issues.length > 0 && !selectedIssueId) {
-          setSelectedIssueId(data.issues[0]?.id ?? null);
-        }
-      }
-      return;
-    }
-
-    // Issue mode navigation
-    if (isIssueModeActive && data?.issues) {
-      // Left/Right to navigate issues in ribbon
-      if (key.leftArrow || key.rightArrow) {
-        const currentIndex = data.issues.findIndex((i) => i.id === selectedIssueId);
-        if (key.leftArrow && currentIndex > 0) {
-          setSelectedIssueId(data.issues[currentIndex - 1]?.id ?? null);
-        } else if (key.rightArrow && currentIndex < data.issues.length - 1) {
-          setSelectedIssueId(data.issues[currentIndex + 1]?.id ?? null);
-        }
-        return;
-      }
-
-      // Up/Down to scroll issue details (alias for PageUp/PageDown)
-      if (key.upArrow) {
-        setIssueDetailScrollOffset((prev) => Math.max(0, prev - 3));
-        return;
-      }
-      if (key.downArrow) {
-        setIssueDetailScrollOffset((prev) => prev + 3);
-        return;
-      }
-
-      // PageUp/PageDown for larger scroll in issue details
-      if (key.pageUp) {
-        setIssueDetailScrollOffset((prev) => Math.max(0, prev - 5));
-        return;
-      }
-      if (key.pageDown) {
-        setIssueDetailScrollOffset((prev) => prev + 5);
-        return;
-      }
-
-      // Escape exits issue mode
-      if (key.escape) {
-        setIsIssueModeActive(false);
+        setSelectedTaskId(null);
         setSelectedIssueId(null);
         return;
       }
-
-      return; // Don't process other keys in issue mode
     }
 
     // Tab key to cycle view modes (only when a task is selected)
@@ -946,83 +1099,127 @@ export function KanbanBoard({
       return;
     }
 
-    // Arrow key navigation (task mode)
-    if (key.upArrow || key.downArrow || key.leftArrow || key.rightArrow) {
-      if (allTasks.length === 0) return;
-
-      // If nothing selected, select first task
-      if (!selectedTaskId) {
-        setSelectedTaskId(allTasks[0]?.task.id ?? null);
-        return;
-      }
-
-      const currentIndex = allTasks.findIndex((t) => t.task.id === selectedTaskId);
-      if (currentIndex === -1) {
-        setSelectedTaskId(allTasks[0]?.task.id ?? null);
-        return;
-      }
-
-      const current = allTasks[currentIndex];
-      if (!current || !data) return;
-
-      if (key.upArrow) {
-        // Move up within column
-        const tasksInColumn = allTasks.filter((t) => t.columnIndex === current.columnIndex);
-        const indexInColumn = tasksInColumn.findIndex((t) => t.task.id === selectedTaskId);
-        if (indexInColumn > 0) {
-          setSelectedTaskId(tasksInColumn[indexInColumn - 1]?.task.id ?? null);
-        }
-      } else if (key.downArrow) {
-        // Move down within column
-        const tasksInColumn = allTasks.filter((t) => t.columnIndex === current.columnIndex);
-        const indexInColumn = tasksInColumn.findIndex((t) => t.task.id === selectedTaskId);
-        if (indexInColumn < tasksInColumn.length - 1) {
-          setSelectedTaskId(tasksInColumn[indexInColumn + 1]?.task.id ?? null);
-        }
-      } else if (key.leftArrow) {
-        // Move to previous column
-        for (let col = current.columnIndex - 1; col >= 0; col--) {
-          const tasksInColumn = allTasks.filter((t) => t.columnIndex === col);
-          if (tasksInColumn.length > 0) {
-            const targetIndex = Math.min(current.taskIndex, tasksInColumn.length - 1);
-            setSelectedTaskId(tasksInColumn[targetIndex]?.task.id ?? null);
-            break;
-          }
-        }
-      } else if (key.rightArrow) {
-        // Move to next column
-        for (let col = current.columnIndex + 1; col < data.columns.length; col++) {
-          const tasksInColumn = allTasks.filter((t) => t.columnIndex === col);
-          if (tasksInColumn.length > 0) {
-            const targetIndex = Math.min(current.taskIndex, tasksInColumn.length - 1);
-            setSelectedTaskId(tasksInColumn[targetIndex]?.task.id ?? null);
-            break;
-          }
-        }
-      }
+    // Enter to toggle panel expansion (when something is selected)
+    if (key.return && (selectedTaskId || selectedIssueId)) {
+      setIsPanelExpanded((prev) => !prev);
+      return;
     }
 
-    // Open GitHub URL
-    if (input === "o" && selectedTask?.githubUrl) {
-      openUrl(selectedTask.githubUrl);
-    }
-
-    // Open PR URL
-    if (input === "p" && selectedTask?.prUrl) {
-      openUrl(selectedTask.prUrl);
-    }
-
-    // Escape to deselect task
+    // Escape: if panel expanded, collapse it; otherwise clear selection
     if (key.escape) {
-      setSelectedTaskId(null);
+      if (isPanelExpanded) {
+        setIsPanelExpanded(false);
+      } else {
+        setSelectedTaskId(null);
+        setSelectedIssueId(null);
+      }
+      return;
     }
 
     // PageUp/PageDown to scroll detail panel content
-    if (selectedTaskId && key.pageUp) {
+    if (key.pageUp) {
       setDetailScrollOffset((prev) => Math.max(0, prev - 5));
+      return;
     }
-    if (selectedTaskId && key.pageDown) {
+    if (key.pageDown) {
       setDetailScrollOffset((prev) => prev + 5);
+      return;
+    }
+
+    // Open GitHub URL (for selected task)
+    if (input === "o" && selectedTask?.githubUrl) {
+      openUrl(selectedTask.githubUrl);
+      return;
+    }
+
+    // Open PR URL (for selected task)
+    if (input === "p" && selectedTask?.prUrl) {
+      openUrl(selectedTask.prUrl);
+      return;
+    }
+
+    // =========================================================================
+    // Unified arrow key navigation between issues (ribbon) and tasks (columns)
+    // =========================================================================
+    if (key.upArrow || key.downArrow || key.leftArrow || key.rightArrow) {
+      // Nothing selected - start with first task or first issue
+      if (!selectedTaskId && !selectedIssueId) {
+        if (allTasks.length > 0) {
+          selectTask(allTasks[0]?.task.id ?? null);
+        } else if (sortedIssues.length > 0) {
+          selectIssue(sortedIssues[0]?.id ?? null);
+        }
+        return;
+      }
+
+      // Issue is selected - navigate in ribbon or move down to tasks
+      if (isIssueSelected) {
+        const currentIssueIndex = sortedIssues.findIndex((i) => i.id === selectedIssueId);
+
+        if (key.leftArrow && currentIssueIndex > 0) {
+          // Move left in ribbon
+          selectIssue(sortedIssues[currentIssueIndex - 1]?.id ?? null);
+        } else if (key.rightArrow && currentIssueIndex < sortedIssues.length - 1) {
+          // Move right in ribbon
+          selectIssue(sortedIssues[currentIssueIndex + 1]?.id ?? null);
+        } else if (key.downArrow) {
+          // Move down to tasks - select first task in first non-empty column
+          if (allTasks.length > 0) {
+            selectTask(allTasks[0]?.task.id ?? null);
+          }
+        }
+        // Up arrow in ribbon does nothing (already at top)
+        return;
+      }
+
+      // Task is selected - navigate in columns or move up to ribbon
+      if (selectedTaskId && data) {
+        const currentTaskInfo = allTasks.find((t) => t.task.id === selectedTaskId);
+        if (!currentTaskInfo) {
+          selectTask(allTasks[0]?.task.id ?? null);
+          return;
+        }
+
+        const { columnIndex, taskIndex } = currentTaskInfo;
+        const tasksInColumn = allTasks.filter((t) => t.columnIndex === columnIndex);
+        const indexInColumn = tasksInColumn.findIndex((t) => t.task.id === selectedTaskId);
+
+        if (key.upArrow) {
+          if (indexInColumn > 0) {
+            // Move up within column
+            selectTask(tasksInColumn[indexInColumn - 1]?.task.id ?? null);
+          } else if (sortedIssues.length > 0) {
+            // At top of column - move up to issue ribbon
+            selectIssue(sortedIssues[0]?.id ?? null);
+          }
+        } else if (key.downArrow) {
+          if (indexInColumn < tasksInColumn.length - 1) {
+            // Move down within column
+            selectTask(tasksInColumn[indexInColumn + 1]?.task.id ?? null);
+          }
+          // At bottom of column - do nothing
+        } else if (key.leftArrow) {
+          // Move to previous column (find nearest task at same row)
+          for (let col = columnIndex - 1; col >= 0; col--) {
+            const colTasks = allTasks.filter((t) => t.columnIndex === col);
+            if (colTasks.length > 0) {
+              const targetIndex = Math.min(taskIndex, colTasks.length - 1);
+              selectTask(colTasks[targetIndex]?.task.id ?? null);
+              break;
+            }
+          }
+        } else if (key.rightArrow) {
+          // Move to next column (find nearest task at same row)
+          for (let col = columnIndex + 1; col < data.columns.length; col++) {
+            const colTasks = allTasks.filter((t) => t.columnIndex === col);
+            if (colTasks.length > 0) {
+              const targetIndex = Math.min(taskIndex, colTasks.length - 1);
+              selectTask(colTasks[targetIndex]?.task.id ?? null);
+              break;
+            }
+          }
+        }
+      }
     }
   });
 
@@ -1051,7 +1248,7 @@ export function KanbanBoard({
 
   return (
     <Box flexDirection="column">
-      {/* Header */}
+      {/* Header - always shown */}
       <Header
         projectName={data.project.name}
         projectSlug={data.project.slug}
@@ -1062,44 +1259,51 @@ export function KanbanBoard({
         projectCount={projectCount}
       />
 
-      {/* Issues ribbon */}
-      <IssuesRibbon
-        issues={data.issues}
-        selectedIssueId={selectedIssueId}
-        isIssueModeActive={isIssueModeActive}
-      />
-
-      {/* Columns */}
-      <Box flexDirection="row" marginTop={1}>
-        {data.columns.map((column, columnIndex) => (
-          <KanbanColumn
-            key={column.status}
-            label={column.label}
-            status={column.status}
-            tasks={column.tasks}
-            width={columnWidth}
-            selectedTaskId={selectedTaskId}
-            scrollOffset={columnScrollOffsets[columnIndex] ?? 0}
+      {/* Board view (hidden when panel expanded) */}
+      {!isPanelExpanded && (
+        <>
+          {/* Issues ribbon */}
+          <IssuesRibbon
+            issues={data.issues}
+            selectedIssueId={selectedIssueId}
+            isIssueModeActive={isIssueSelected}
           />
-        ))}
-      </Box>
+
+          {/* Columns */}
+          <Box flexDirection="row" marginTop={1}>
+            {data.columns.map((column, columnIndex) => (
+              <KanbanColumn
+                key={column.status}
+                label={column.label}
+                status={column.status}
+                tasks={column.tasks}
+                width={columnWidth}
+                selectedTaskId={selectedTaskId}
+                scrollOffset={columnScrollOffsets[columnIndex] ?? 0}
+              />
+            ))}
+          </Box>
+        </>
+      )}
 
       {/* Issue details panel when issue selected */}
-      {selectedIssue && isIssueModeActive && (
+      {selectedIssue && isIssueSelected && (
         <IssueDetailsPanel
           issue={selectedIssue}
-          scrollOffset={issueDetailScrollOffset}
+          scrollOffset={detailScrollOffset}
           maxLines={detailMaxLines}
+          isExpanded={isPanelExpanded}
         />
       )}
 
-      {/* Task detail panel when task selected (and not in issue mode) */}
-      {selectedTask && !isIssueModeActive && (
+      {/* Task detail panel when task selected */}
+      {selectedTask && !isIssueSelected && (
         <DetailPanel
           task={selectedTask}
           viewMode={viewMode}
           scrollOffset={detailScrollOffset}
           maxLines={detailMaxLines}
+          isExpanded={isPanelExpanded}
         />
       )}
 
