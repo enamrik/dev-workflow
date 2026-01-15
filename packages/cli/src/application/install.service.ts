@@ -23,18 +23,15 @@ export class InstallError extends Error {
 
 export class InstallService {
   private project: Project | null = null;
-  private databaseConnectionString: string;
 
   constructor(
     private readonly fileSystem: FileSystem,
     private readonly workingDirectory: string,
     private readonly packageRoot: string,
     private readonly resolver: TrackDirectoryResolver,
-    databaseConnectionString: string
-  ) {
-    this.validateConnectionString(databaseConnectionString);
-    this.databaseConnectionString = databaseConnectionString;
-  }
+    private readonly sourceProvider: DbSourceProvider,
+    private readonly gitOps: GitOperations
+  ) {}
 
   /**
    * Validate connection string format.
@@ -52,22 +49,21 @@ export class InstallService {
   /**
    * Extract the file path from a sqlite connection string for file operations.
    */
-  private getDbFilePath(): string {
-    const cs = this.databaseConnectionString;
-    if (cs.startsWith("sqlite:///")) {
-      return cs.slice(9); // "sqlite://" is 9 chars, path starts with /
+  private getDbFilePath(connectionString: string): string {
+    if (connectionString.startsWith("sqlite:///")) {
+      return connectionString.slice(9); // "sqlite://" is 9 chars, path starts with /
     }
-    if (cs.startsWith("sqlite::memory:")) {
+    if (connectionString.startsWith("sqlite::memory:")) {
       return ":memory:";
     }
-    throw new InstallError(`Cannot extract path from connection string: ${cs}`);
+    throw new InstallError(`Cannot extract path from connection string: ${connectionString}`);
   }
 
   /**
    * Check if a connection string is for a remote database.
    */
-  private isRemoteConnectionString(): boolean {
-    return this.databaseConnectionString.startsWith("postgres");
+  private isRemoteConnectionString(connectionString: string): boolean {
+    return connectionString.startsWith("postgres");
   }
 
   /**
@@ -76,29 +72,24 @@ export class InstallService {
    * Uses git's initial commit hash as stable identifier.
    * Must be called after initializeDatabase().
    *
+   * @param connectionString - Database connection string
    * @returns The registered project
    */
-  async registerProject(): Promise<Project> {
-    if (this.isRemoteConnectionString()) {
+  async registerProject(connectionString: string): Promise<Project> {
+    this.validateConnectionString(connectionString);
+
+    if (this.isRemoteConnectionString(connectionString)) {
       throw new InstallError(
         "Remote database support for project registration is not yet implemented. " +
           "Use a local SQLite database for now."
       );
     }
 
-    const source = new DbSourceProvider().getOrCreate({
-      connectionString: this.databaseConnectionString,
-    });
+    const source = this.sourceProvider.getOrCreate({ connectionString });
+    const projectService = new ProjectService(source, this.gitOps);
 
-    try {
-      const gitOps = new GitOperations();
-      const projectService = new ProjectService(source, gitOps);
-
-      this.project = await projectService.getOrCreateProject(this.workingDirectory);
-      return this.project;
-    } finally {
-      source.close();
-    }
+    this.project = await projectService.getOrCreateProject(this.workingDirectory);
+    return this.project;
   }
 
   /**
@@ -246,16 +237,23 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
     }
   }
 
-  async initializeDatabase(): Promise<void> {
+  /**
+   * Initialize the database (run migrations).
+   *
+   * @param connectionString - Database connection string
+   */
+  async initializeDatabase(connectionString: string): Promise<void> {
+    this.validateConnectionString(connectionString);
+
     try {
-      if (this.isRemoteConnectionString()) {
+      if (this.isRemoteConnectionString(connectionString)) {
         throw new InstallError(
           "Remote database initialization is not yet implemented. " +
             "Use a local SQLite database for now."
         );
       }
 
-      const dbPath = this.getDbFilePath();
+      const dbPath = this.getDbFilePath(connectionString);
 
       // Ensure parent directory exists for SQLite
       const dbDir = path.dirname(dbPath);
@@ -422,15 +420,18 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
    *
    * Used to detect if this is a repair scenario (repo moved, config stale).
    *
+   * @param connectionString - Database connection string
    * @returns The existing project if found, null otherwise
    */
-  async findExistingProject(): Promise<Project | null> {
+  async findExistingProject(connectionString: string): Promise<Project | null> {
+    this.validateConnectionString(connectionString);
+
     // Remote database check not yet implemented
-    if (this.isRemoteConnectionString()) {
+    if (this.isRemoteConnectionString(connectionString)) {
       return null;
     }
 
-    const dbPath = this.getDbFilePath();
+    const dbPath = this.getDbFilePath(connectionString);
 
     // Check if database file exists (only applicable for SQLite)
     const dbExists = await this.fileSystem.exists(dbPath);
@@ -442,21 +443,13 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
     // This is critical for handling cases where the database exists but is out of date
     runSqliteMigrations(dbPath);
 
-    const source = new DbSourceProvider().getOrCreate({
-      connectionString: this.databaseConnectionString,
-    });
+    const source = this.sourceProvider.getOrCreate({ connectionString });
 
-    try {
-      const gitOps = new GitOperations();
+    // Get gitRootHash for current directory
+    const gitRootHash = this.gitOps.getInitialCommitHash(this.workingDirectory);
 
-      // Get gitRootHash for current directory
-      const gitRootHash = gitOps.getInitialCommitHash(this.workingDirectory);
-
-      // Look up by gitRootHash
-      return await source.projects.findByGitRootHash(gitRootHash);
-    } finally {
-      source.close();
-    }
+    // Look up by gitRootHash
+    return await source.projects.findByGitRootHash(gitRootHash);
   }
 
   /**
@@ -533,43 +526,41 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
    * available. Custom types can be added via the create_type MCP tool.
    *
    * Should be called after initializeDatabase().
+   *
+   * @param connectionString - Database connection string
    */
-  async seedDefaultTypes(): Promise<{ seeded: number; existing: number }> {
+  async seedDefaultTypes(connectionString: string): Promise<{ seeded: number; existing: number }> {
+    this.validateConnectionString(connectionString);
+
     try {
       // Skip for remote databases - will be handled differently
-      if (this.isRemoteConnectionString()) {
+      if (this.isRemoteConnectionString(connectionString)) {
         return { seeded: 0, existing: 0 };
       }
 
-      const source = new DbSourceProvider().getOrCreate({
-        connectionString: this.databaseConnectionString,
-      });
+      const source = this.sourceProvider.getOrCreate({ connectionString });
 
-      try {
-        // Convert DEFAULT_TYPE_DEFINITIONS to CreateTypeData format
-        const typesToSeed = DEFAULT_TYPE_DEFINITIONS.map((typeDef) => ({
-          name: typeDef.name,
-          displayName: typeDef.name.charAt(0) + typeDef.name.slice(1).toLowerCase(),
-          description: typeDef.description,
-          keywords: typeDef.keywords,
-        }));
+      // Convert DEFAULT_TYPE_DEFINITIONS to CreateTypeData format
+      const typesToSeed = DEFAULT_TYPE_DEFINITIONS.map((typeDef) => ({
+        name: typeDef.name,
+        displayName: typeDef.name.charAt(0) + typeDef.name.slice(1).toLowerCase(),
+        description: typeDef.description,
+        keywords: typeDef.keywords,
+      }));
 
-        // Check how many already exist
-        const existingTypes = source.types.findAll(true);
-        const existingNames = new Set(existingTypes.map((t) => t.name));
+      // Check how many already exist
+      const existingTypes = source.types.findAll(true);
+      const existingNames = new Set(existingTypes.map((t) => t.name));
 
-        const toSeed = typesToSeed.filter((t) => !existingNames.has(t.name));
+      const toSeed = typesToSeed.filter((t) => !existingNames.has(t.name));
 
-        // Seed the types
-        source.types.seedTypes(toSeed);
+      // Seed the types
+      source.types.seedTypes(toSeed);
 
-        return {
-          seeded: toSeed.length,
-          existing: existingTypes.length,
-        };
-      } finally {
-        source.close();
-      }
+      return {
+        seeded: toSeed.length,
+        existing: existingTypes.length,
+      };
     } catch (error) {
       throw new InstallError("Failed to seed default types", error);
     }

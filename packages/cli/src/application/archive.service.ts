@@ -31,7 +31,9 @@ export class ArchiveService {
     private readonly fileSystem: FileSystem,
     private readonly workingDirectory: string,
     private readonly resolver: TrackDirectoryResolver,
-    private readonly packageRoot?: string
+    private readonly sourceProvider: DbSourceProvider,
+    private readonly gitOps: GitOperations,
+    private readonly installService: InstallService
   ) {}
 
   /**
@@ -61,23 +63,18 @@ export class ArchiveService {
    */
   async hasInProgressTasks(projectId: string): Promise<boolean> {
     const dbPath = this.resolver.getDatabasePath();
-    const sourceProvider = new DbSourceProvider();
-    const source = sourceProvider.getOrCreate({ connectionString: dbPath });
+    const source = this.sourceProvider.getOrCreate({ connectionString: dbPath });
     const client = source.createClient(projectId);
 
-    try {
-      // Check for IN_PROGRESS tasks
-      const inProgressTasks = client.tasks.findMany({ status: "IN_PROGRESS" });
-      if (inProgressTasks.length > 0) {
-        return true;
-      }
-
-      // Also check for PR_REVIEW tasks (work in progress awaiting merge)
-      const prReviewTasks = client.tasks.findMany({ status: "PR_REVIEW" });
-      return prReviewTasks.length > 0;
-    } finally {
-      sourceProvider.closeAll();
+    // Check for IN_PROGRESS tasks
+    const inProgressTasks = client.tasks.findMany({ status: "IN_PROGRESS" });
+    if (inProgressTasks.length > 0) {
+      return true;
     }
+
+    // Also check for PR_REVIEW tasks (work in progress awaiting merge)
+    const prReviewTasks = client.tasks.findMany({ status: "PR_REVIEW" });
+    return prReviewTasks.length > 0;
   }
 
   /**
@@ -121,19 +118,14 @@ export class ArchiveService {
    */
   async hasOpenIssues(projectId: string): Promise<boolean> {
     const dbPath = this.resolver.getDatabasePath();
-    const sourceProvider = new DbSourceProvider();
-    const source = sourceProvider.getOrCreate({ connectionString: dbPath });
+    const source = this.sourceProvider.getOrCreate({ connectionString: dbPath });
     const client = source.createClient(projectId);
 
-    try {
-      // Get all non-deleted issues
-      const issues = client.issues.findMany({ includeDeleted: false });
+    // Get all non-deleted issues
+    const issues = client.issues.findMany({ includeDeleted: false });
 
-      // Check if any are not CLOSED (open issues exist)
-      return issues.some((issue) => !isIssueClosed(issue));
-    } finally {
-      sourceProvider.closeAll();
-    }
+    // Check if any are not CLOSED (open issues exist)
+    return issues.some((issue) => !isIssueClosed(issue));
   }
 
   /**
@@ -196,14 +188,8 @@ export class ArchiveService {
 
     // Hard delete project from database
     const dbPath = this.resolver.getDatabasePath();
-    const sourceProvider = new DbSourceProvider();
-    const source = sourceProvider.getOrCreate({ connectionString: dbPath });
-
-    try {
-      await source.projects.hardDelete(project.id);
-    } finally {
-      sourceProvider.closeAll();
-    }
+    const source = this.sourceProvider.getOrCreate({ connectionString: dbPath });
+    await source.projects.hardDelete(project.id);
 
     // Remove track directory
     const trackDir = this.resolver.getTrackDirectory();
@@ -228,18 +214,11 @@ export class ArchiveService {
       return null;
     }
 
-    const sourceProvider = new DbSourceProvider();
-    const source = sourceProvider.getOrCreate({ connectionString: dbPath });
+    const source = this.sourceProvider.getOrCreate({ connectionString: dbPath });
 
-    try {
-      const gitOps = new GitOperations();
-
-      // Look up by gitRootHash (first commit hash)
-      const gitRootHash = gitOps.getInitialCommitHash(this.workingDirectory);
-      return await source.projects.findByGitRootHash(gitRootHash);
-    } finally {
-      sourceProvider.closeAll();
-    }
+    // Look up by gitRootHash (first commit hash)
+    const gitRootHash = this.gitOps.getInitialCommitHash(this.workingDirectory);
+    return await source.projects.findByGitRootHash(gitRootHash);
   }
 
   /**
@@ -278,14 +257,8 @@ export class ArchiveService {
 
     // Mark project as archived in database
     const dbPath = this.resolver.getDatabasePath();
-    const sourceProvider = new DbSourceProvider();
-    const source = sourceProvider.getOrCreate({ connectionString: dbPath });
-
-    try {
-      return await source.projects.archive(project.id);
-    } finally {
-      sourceProvider.closeAll();
-    }
+    const source = this.sourceProvider.getOrCreate({ connectionString: dbPath });
+    return await source.projects.archive(project.id);
   }
 
   /**
@@ -303,27 +276,20 @@ export class ArchiveService {
       return null;
     }
 
-    const sourceProvider = new DbSourceProvider();
-    const source = sourceProvider.getOrCreate({ connectionString: dbPath });
+    const source = this.sourceProvider.getOrCreate({ connectionString: dbPath });
 
-    try {
-      const gitOps = new GitOperations();
+    // Get gitRootHash for current directory
+    const gitRootHash = this.gitOps.getInitialCommitHash(this.workingDirectory);
 
-      // Get gitRootHash for current directory
-      const gitRootHash = gitOps.getInitialCommitHash(this.workingDirectory);
+    // Look up by gitRootHash
+    const project = await source.projects.findByGitRootHash(gitRootHash);
 
-      // Look up by gitRootHash
-      const project = await source.projects.findByGitRootHash(gitRootHash);
-
-      // Only return if it's archived
-      if (project && project.isArchived) {
-        return project;
-      }
-
-      return null;
-    } finally {
-      sourceProvider.closeAll();
+    // Only return if it's archived
+    if (project && project.isArchived) {
+      return project;
     }
+
+    return null;
   }
 
   /**
@@ -341,10 +307,6 @@ export class ArchiveService {
       throw new ArchiveError("Project is not archived.");
     }
 
-    if (!this.packageRoot) {
-      throw new ArchiveError("Package root not provided. Cannot reinstall skills.");
-    }
-
     // Get database connection string from config - must exist for unarchive
     const slug = this.resolver.getProjectId();
     let databaseConnectionString: string;
@@ -358,42 +320,27 @@ export class ArchiveService {
       );
     }
 
-    const dbPath = this.resolver.getDatabasePath();
-    const sourceProvider = new DbSourceProvider();
-    const source = sourceProvider.getOrCreate({ connectionString: dbPath });
+    const source = this.sourceProvider.getOrCreate({ connectionString: databaseConnectionString });
 
-    try {
-      // Mark project as unarchived in database first
-      const unarchivedProject = await source.projects.unarchive(project.id);
+    // Mark project as unarchived in database first
+    const unarchivedProject = await source.projects.unarchive(project.id);
 
-      // Re-install Claude integration
-      const installer = new InstallService(
-        this.fileSystem,
-        this.workingDirectory,
-        this.packageRoot,
-        this.resolver,
-        databaseConnectionString
-      );
+    // Set the project so installer can use it
+    this.installService.setProject(unarchivedProject);
 
-      // Set the project so installer can use it
-      installer.setProject(unarchivedProject);
-
-      // Ensure track directory exists (it should, since archive preserves it)
-      const trackDir = this.resolver.getTrackDirectory();
-      const trackDirExists = await this.fileSystem.exists(trackDir);
-      if (!trackDirExists) {
-        await installer.createTrackDirectory();
-      }
-
-      // Re-install skills
-      await installer.installSkills();
-
-      // Re-register MCP server
-      await installer.registerMCPServer();
-
-      return unarchivedProject;
-    } finally {
-      sourceProvider.closeAll();
+    // Ensure track directory exists (it should, since archive preserves it)
+    const trackDir = this.resolver.getTrackDirectory();
+    const trackDirExists = await this.fileSystem.exists(trackDir);
+    if (!trackDirExists) {
+      await this.installService.createTrackDirectory();
     }
+
+    // Re-install skills
+    await this.installService.installSkills();
+
+    // Re-register MCP server
+    await this.installService.registerMCPServer();
+
+    return unarchivedProject;
   }
 }
