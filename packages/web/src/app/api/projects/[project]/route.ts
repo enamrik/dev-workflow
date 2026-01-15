@@ -1,30 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
-import { ProjectsResolver } from "@/server";
+import { createApiEndpoint, createApiRoute } from "@/lib/di/bootstrap";
+import { getProjectEndpoint } from "./endpoint";
 
-interface RouteParams {
-  params: Promise<{
-    project: string;
-  }>;
-}
+export const dynamic = "force-dynamic";
 
-/**
- * GET /api/projects/[project]
- *
- * Returns project info by slug.
- */
-export async function GET(_request: NextRequest, { params }: RouteParams) {
-  try {
-    const { project: projectSlug } = await params;
-
-    const registry = new ProjectsResolver();
-    try {
-      const project = await registry.getProjectBySlug(projectSlug);
-      return NextResponse.json(project);
-    } catch {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
-    }
-  } catch (error) {
-    console.error("Error fetching project:", error);
-    return NextResponse.json({ error: "Failed to fetch project" }, { status: 500 });
-  }
-}
+export const endpoint = createApiEndpoint(getProjectEndpoint);
+export const GET = createApiRoute(endpoint);

@@ -6,14 +6,14 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { createTestDatabase, type TestDatabase } from "../setup.js";
+import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import {
   createClientForProject,
   createTestIssue,
   createTestPlan,
   createTestTask,
   createMockProvider,
-} from "../helpers.js";
+} from "../../test/helpers.js";
 import {
   MockGitHubCLI,
   MockGitWorktreeService,

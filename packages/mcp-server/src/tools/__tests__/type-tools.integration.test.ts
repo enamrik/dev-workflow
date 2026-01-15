@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createContainer, asValue, asClass, InjectionMode } from "awilix";
 import type { AwilixContainer } from "awilix";
 import { TypeService } from "@dev-workflow/core";
-import { createTestDatabase, type TestDatabase } from "../setup.js";
+import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import { handleListTypes } from "../../tools/type-tool-def.js";
 import { TypeTool } from "../../tools/type-tool.js";
 import { createMcpTool, type McpTool } from "../../di/bootstrap.js";

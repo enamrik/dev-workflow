@@ -15,8 +15,8 @@ import {
   type DbClient,
   type Project,
 } from "@dev-workflow/core";
-import { createTestDatabase, type TestDatabase } from "../setup.js";
-import { createClientForProject, createTestIssue, createNoOpProvider } from "../helpers.js";
+import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
+import { createClientForProject, createTestIssue, createNoOpProvider } from "../../test/helpers.js";
 import {
   handleCreateMilestone,
   handleGetMilestone,

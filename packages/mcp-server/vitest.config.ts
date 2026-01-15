@@ -6,10 +6,10 @@ export default defineConfig({
     environment: "node",
 
     // Include test files
-    include: ["src/test/**/*.test.ts"],
+    include: ["src/**/__tests__/**/*.test.ts"],
 
     // Exclude E2E tests from default run (use vitest.e2e.config.ts)
-    exclude: ["src/test/e2e/**"],
+    exclude: ["src/**/e2e/**"],
 
     // Global setup/teardown
     setupFiles: ["src/test/setup.ts"],

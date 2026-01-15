@@ -5,13 +5,13 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { createTestDatabase, type TestDatabase } from "../setup.js";
+import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import {
   createClientForProject,
   createTestIssue,
   createNoOpProvider,
   createMockProvider,
-} from "../helpers.js";
+} from "../../test/helpers.js";
 import {
   PlanningService,
   VersioningService,
