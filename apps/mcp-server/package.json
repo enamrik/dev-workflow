@@ -1,0 +1,51 @@
+{
+  "name": "@dev-workflow/mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server for dev-workflow task tracker",
+  "type": "module",
+  "main": "./dist/main.js",
+  "exports": {
+    ".": "./dist/main.js",
+    "./di/container.js": {
+      "types": "./dist/di/container.d.ts",
+      "default": "./dist/di/container.js"
+    },
+    "./tools/tools-registry.js": {
+      "types": "./dist/tools/tools-registry.d.ts",
+      "default": "./dist/tools/tools-registry.js"
+    }
+  },
+  "bin": {
+    "dev-workflow-mcp": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@dev-workflow/database": "workspace:*",
+    "@dev-workflow/tracking": "workspace:*",
+    "@dev-workflow/git": "workspace:*",
+    "@dev-workflow/dispatch": "workspace:*",
+    "@dev-workflow/local-workers": "workspace:*",
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "awilix": "^12.0.5",
+    "drizzle-orm": "^0.36.0",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^20.10.6",
+    "better-sqlite3": "^12.5.0",
+    "typescript": "^5.3.3",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

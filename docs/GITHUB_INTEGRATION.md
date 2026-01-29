@@ -306,7 +306,7 @@ Ensure:
 
 ### Task Not Moving Columns
 
-1. Check task has `projectItemId` (view task details)
+1. Check task has `remoteProjectId` (view task details)
 2. Verify column names match your project
 3. Run `sync_issue` to repair state
 

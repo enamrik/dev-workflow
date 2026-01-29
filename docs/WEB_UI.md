@@ -294,7 +294,7 @@ The web UI is built with:
 ### Package Structure
 
 ```
-packages/web/
+apps/web/
 ├── src/
 │   ├── app/              # Next.js App Router pages
 │   │   ├── page.tsx      # Task board (/)

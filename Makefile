@@ -49,8 +49,8 @@ link: build
 	@echo "🔗 Linking dev-workflow globally for development..."
 	@# Remove any stale global references first (prevents ENOENT errors from old tarballs)
 	@pnpm remove -g @dev-workflow/mcp-server @dev-workflow/cli 2>/dev/null || true
-	@cd packages/mcp-server && pnpm link --global
-	@cd packages/cli && pnpm link --global
+	@cd apps/mcp-server && pnpm link --global
+	@cd apps/cli && pnpm link --global
 	@echo "✓ dev-workflow is now linked globally"
 	@echo ""
 	@if ! command -v dev-workflow >/dev/null 2>&1; then \
@@ -99,7 +99,7 @@ init: link
 
 dogfood: install
 	@echo "🧹 Clearing Next.js cache..."
-	@rm -rf packages/web/.next
+	@rm -rf apps/web/.next
 	@$(MAKE) build
 	@$(MAKE) link
 	@echo ""
@@ -174,10 +174,10 @@ ui: ui-stop build
 ui-dev:
 	@-lsof -ti :3457 | xargs kill 2>/dev/null || true
 	@echo "🧹 Clearing Next.js cache..."
-	@rm -rf packages/web/.next packages/web/node_modules/.cache
+	@rm -rf apps/web/.next apps/web/node_modules/.cache
 	@echo "🔥 Starting UI in dev mode (hot reload enabled)..."
 	@echo "   http://localhost:3457"
-	@(cd packages/web && npx wait-on tcp:3457 && open http://localhost:3457) &
+	@(cd apps/web && npx wait-on tcp:3457 && open http://localhost:3457) &
 	@pnpm --filter @dev-workflow/web dev
 
 local-track:
@@ -187,7 +187,7 @@ local-track:
 worktree-setup:
 	@echo "📦 Ensuring dependencies are up to date..."
 	@pnpm install
-	@if [ ! -d "packages/core/dist" ]; then \
+	@if [ ! -d "packages/tracking/dist" ]; then \
 		echo "🔨 Building packages..."; \
 		pnpm build; \
 	fi

@@ -164,5 +164,5 @@ Rejected because:
 
 ## References
 
-- Task domain in [packages/mcp-server/src/domain/task.ts](../../packages/mcp-server/src/domain/task.ts)
-- Hook config domain in [packages/mcp-server/src/domain/hook-config.ts](../../packages/mcp-server/src/domain/hook-config.ts)
+- Task domain in [packages/tracking/src/tasks/types.ts](../../packages/tracking/src/tasks/types.ts)
+- Hook config domain in [packages/tracking/src/tasks/types.ts](../../packages/tracking/src/tasks/types.ts)

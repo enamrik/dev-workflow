@@ -18,8 +18,8 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-CORE_PKG="$PROJECT_ROOT/packages/core"
-DRIZZLE_DIR="$CORE_PKG/drizzle"
+DATABASE_PKG="$PROJECT_ROOT/packages/database"
+DRIZZLE_DIR="$DATABASE_PKG/drizzle"
 DB_PATH="$HOME/.track/workflow.db"
 
 # Colors for output

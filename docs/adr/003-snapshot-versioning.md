@@ -171,5 +171,5 @@ CREATE TABLE snapshots (
 
 ## References
 
-- Snapshot domain in [packages/mcp-server/src/domain/snapshot.ts](../../packages/mcp-server/src/domain/snapshot.ts)
-- Schema in [packages/mcp-server/src/infrastructure/schema.ts](../../packages/mcp-server/src/infrastructure/schema.ts)
+- Snapshot domain in [packages/tracking/src/snapshots/types.ts](../../packages/tracking/src/snapshots/types.ts)
+- Schema in [packages/database/src/schema.ts](../../packages/database/src/schema.ts)

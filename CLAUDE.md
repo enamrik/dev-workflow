@@ -110,7 +110,7 @@ class SqliteIssueRepository implements IssueRepository {
 For external project management systems (GitHub, Jira, Linear, etc.), use the `ProjectManagementProvider` interface:
 
 ```typescript
-// Domain interface - packages/core/src/domain/project-management-provider.ts
+// Domain interface - packages/tracking/src/project-sync/types.ts
 interface ProjectManagementProvider {
   readonly providerId: string; // "github", "jira", "linear"
   readonly displayName: string;
@@ -124,7 +124,7 @@ interface ProjectManagementProvider {
   moveToColumn(itemId: string, projectId: string, columnName: string): Promise<void>;
 }
 
-// Implementation - packages/core/src/infrastructure/providers/
+// Implementation - packages/tracking/src/project-sync/github/
 class GitHubProjectManagementProvider implements ProjectManagementProvider {
   // Wraps GitHubCLI for GitHub-specific operations
 }
@@ -132,7 +132,7 @@ class GitHubProjectManagementProvider implements ProjectManagementProvider {
 
 **Key rules:**
 
-- Application services (e.g., `TaskSyncService`) depend on `ProjectManagementProvider`, not GitHub-specific code
+- Application services (e.g., `TaskService`) depend on `ProjectManagementProvider`, not GitHub-specific code
 - Never call GitHub CLI directly from application layer - always go through the provider
 - The provider handles all external API calls and error translation
 
@@ -140,10 +140,10 @@ class GitHubProjectManagementProvider implements ProjectManagementProvider {
 
 **This is the most important abstraction in the codebase. NEVER bypass it.**
 
-The `DataSourceProvider` interface (`packages/core/src/domain/data-source.ts`) abstracts database operations to support multiple backends (SQLite for CLI/MCP, PostgreSQL/Neon for web). **ALL repositories MUST be created through this interface.**
+The `DataSourceProvider` interface (`packages/database/src/data-source.ts`) abstracts database operations to support multiple backends (SQLite for CLI/MCP, PostgreSQL/Neon for web). **ALL repositories MUST be created through this interface.**
 
 ```typescript
-// Domain interface - packages/core/src/domain/data-source.ts
+// Domain interface - packages/database/src/data-source.ts
 interface DataSourceProvider {
   readonly providerId: string; // "sqlite", "neon"
 
@@ -160,8 +160,8 @@ interface DataSourceProvider {
 }
 
 // Implementations:
-// - SqliteDataSource (packages/core/src/infrastructure/database/sqlite-data-source.ts)
-// - NeonDataSource (packages/core/src/infrastructure/database/neon-data-source.ts)
+// - SqliteDataSource (packages/database/src/sqlite-data-source.ts)
+// - NeonDataSource (packages/database/src/neon-data-source.ts)
 ```
 
 **⚠️ When adding a new table or repository, you MUST:**
@@ -425,9 +425,9 @@ And in worktree `issue-54-task-2`:
 When making schema changes:
 
 1. **Update BOTH schemas:**
-   - `packages/core/src/infrastructure/database/schema.ts` (SQLite)
-   - `packages/core/src/infrastructure/database/schema-pg.ts` (PostgreSQL)
-2. Run `pnpm drizzle-kit generate` in `packages/core` to create an incremental migration
+   - `packages/database/src/schema.ts` (SQLite)
+   - `packages/database/src/schema-pg.ts` (PostgreSQL)
+2. Run `pnpm drizzle-kit generate` in `packages/database` to create an incremental migration
 3. Run `dev-workflow update` to apply the migration
 4. **If adding a new table:** Follow the DataSourceProvider checklist above (add repository interface, factory method, implement in both data sources)
 
@@ -547,7 +547,7 @@ Our `tsconfig.json` enforces maximum type safety:
 ❌ **Bypassing DataSourceFactory** - calling `createSqlite()` or `createNeon()` directly, checking `isRemote()` before creating data source
 ❌ **Bypassing Service Layer** - calling repository mutations directly from MCP tools, API routes, or CLI instead of through services
 ❌ **Duplicated Logic Across Services** - implementing the same operation in multiple services instead of one service calling another
-❌ **Scattered Status Identity Checks** - checking `status === "COMPLETED" || status === "ABANDONED"` instead of using trait functions like `isTerminal(task)`. Status semantics are defined in `packages/core/src/domain/task.ts` via `STATUS_TRAITS`. Use `isTerminal()`, `isWorkable()`, `isActive()` for all status queries.
+❌ **Scattered Status Identity Checks** - checking `status === "COMPLETED" || status === "ABANDONED"` instead of using trait functions like `isTerminal(task)`. Status semantics are defined in `packages/tracking/src/tasks/types.ts` via `STATUS_TRAITS`. Use `isTerminal()`, `isWorkable()`, `isActive()` for all status queries.
 
 ## Dependency Injection Patterns
 
@@ -604,7 +604,7 @@ let registry: DataSourceRegistry | null = null;
 For long-running servers (web, mcp-server), use a DIContext class per package:
 
 ```typescript
-// packages/web/src/lib/di-context.ts
+// apps/web/src/lib/di-context.ts
 export class WebDIContext {
   readonly issueRepository: IssueRepository;
   readonly planRepository: PlanRepository;
@@ -806,7 +806,7 @@ class IssueService {
 | Milestone | `MilestoneService` | create, update, delete                                             |
 | Plan      | `PlanningService`  | generate, regenerate (already exists)                              |
 
-**Service Location:** `packages/core/src/application/{entity}-service.ts`
+**Service Location:** `packages/tracking/src/{entity}/{entity}-service.ts` (e.g., `packages/tracking/src/issues/issue-service.ts`)
 
 **DI Context Updates:** Both `McpDIContext` and `WebDIContext` must expose services for mutations.
 
@@ -839,7 +839,7 @@ getNextTaskNumber(planId: string): number {
 
 ### TaskStatus Traits (Table-Driven Methods)
 
-**Location**: `packages/core/src/domain/task.ts`
+**Location**: `packages/tracking/src/tasks/types.ts`
 
 Status semantics are centralized in `STATUS_TRAITS`. **NEVER** check status identities directly:
 
@@ -849,7 +849,7 @@ const terminal = tasks.filter((t) => t.status === "COMPLETED" || t.status === "A
 const active = tasks.filter((t) => t.status === "IN_PROGRESS" || t.status === "PR_REVIEW");
 
 // ✅ GOOD - Use trait functions (single source of truth)
-import { isTerminal, isActive } from "@dev-workflow/core";
+import { isTerminal, isActive } from "@dev-workflow/tracking";
 const terminal = tasks.filter(isTerminal);
 const active = tasks.filter(isActive);
 ```
@@ -866,7 +866,7 @@ const active = tasks.filter(isActive);
 
 ### IssueStatus Traits (Table-Driven Methods)
 
-**Location**: `packages/core/src/domain/issue.ts`
+**Location**: `packages/tracking/src/issues/types.ts`
 
 Issue status semantics are centralized in `ISSUE_STATUS_TRAITS` and `COMPUTED_ISSUE_STATUS_TRAITS`. **NEVER** check status identities directly:
 
@@ -876,7 +876,7 @@ const closed = issues.filter((i) => i.status === "CLOSED");
 const active = issues.filter((i) => i.status === "OPEN" || i.status === "IN_PROGRESS");
 
 // ✅ GOOD - Use trait functions (single source of truth)
-import { isIssueClosed, isIssueInPlanning } from "@dev-workflow/core";
+import { isIssueClosed, isIssueInPlanning } from "@dev-workflow/tracking";
 const closed = issues.filter(isIssueClosed);
 const active = issues.filter((i) => !isIssueClosed(i) && !isIssueInPlanning(i));
 ```
@@ -936,7 +936,7 @@ This script tests the full issue lifecycle with verification steps using `gh api
 These guide Claude's behavior during conversations. Claude decides when to activate them.
 
 - **Location**: `.claude/skills/dwf-*/SKILL.md`
-- **Source**: `packages/cli/skills/dwf-*/SKILL.md`
+- **Source**: `apps/cli/skills/dwf-*/SKILL.md`
 - **Discovery**: Auto-discovered by Claude Code at startup via semantic matching on `description` field
 - **Naming**: Must be flat (no nested folders), use `dwf-` prefix for namespacing
 - **Skills**:

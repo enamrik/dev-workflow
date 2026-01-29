@@ -24,7 +24,7 @@ const betterSqlitePaths = [
   // Standard node_modules
   join(rootDir, "node_modules/better-sqlite3"),
   // Nested in mcp-server
-  join(rootDir, "packages/mcp-server/node_modules/better-sqlite3"),
+  join(rootDir, "apps/mcp-server/node_modules/better-sqlite3"),
 ];
 
 const betterSqlitePath = betterSqlitePaths.find((p) => existsSync(p));

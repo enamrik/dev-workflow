@@ -299,7 +299,7 @@ git add . && git commit -m "WIP"
 2. **If migration is stuck**, check for pending migrations:
 
    ```bash
-   cd packages/core
+   cd packages/database
    pnpm drizzle-kit generate
    ```
 

@@ -24,11 +24,11 @@ pnpm build
 # Pack the packages
 echo ""
 echo "📦 Step 2: Creating tarballs..."
-cd "$PROJECT_ROOT/packages/mcp-server"
+cd "$PROJECT_ROOT/apps/mcp-server"
 MCP_TARBALL=$(pnpm pack --pack-destination "$TEST_DIR" 2>&1 | grep "\.tgz" | awk '{print $NF}')
 echo "   Created: $MCP_TARBALL"
 
-cd "$PROJECT_ROOT/packages/cli"
+cd "$PROJECT_ROOT/apps/cli"
 CLI_TARBALL=$(pnpm pack --pack-destination "$TEST_DIR" 2>&1 | grep "\.tgz" | awk '{print $NF}')
 echo "   Created: $CLI_TARBALL"
 

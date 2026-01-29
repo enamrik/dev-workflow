@@ -30,14 +30,14 @@ fi
 lsof -ti :"$PORT" | xargs kill 2>/dev/null || true
 
 echo "🧹 Clearing Next.js cache..."
-rm -rf packages/web/.next packages/web/node_modules/.cache
+rm -rf apps/web/.next apps/web/node_modules/.cache
 
 echo "🔥 Starting UI in dev mode with local data..."
 echo "   http://localhost:$PORT$QUERY"
 echo "   Using: TRACK_DIR=$(pwd)/.track"
 
 # Open browser when server is ready
-(cd packages/web && npx wait-on tcp:"$PORT" && open "http://localhost:$PORT$QUERY") &
+(cd apps/web && npx wait-on tcp:"$PORT" && open "http://localhost:$PORT$QUERY") &
 
 # Start the dev server
 TRACK_DIR="$(pwd)/.track" PORT="$PORT" pnpm --filter @dev-workflow/web dev
