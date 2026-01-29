@@ -17,8 +17,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 60 * 1000, // 1 minute
-            refetchOnWindowFocus: false,
+            staleTime: 2 * 1000, // 2 seconds
+            refetchInterval: 2 * 1000, // Poll every 2 seconds (pauses when tab hidden)
+            refetchOnWindowFocus: true, // Immediate refresh when user returns
           },
         },
       })
