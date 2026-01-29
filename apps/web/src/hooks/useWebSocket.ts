@@ -111,20 +111,6 @@ export function useWebSocket() {
 
       if (!eventType) return;
 
-      // Handle cross-process database change detection
-      // This is a catch-all that invalidates all caches when another process
-      // (like MCP tools) modifies the database
-      if (eventType === "db:changed") {
-        console.log("[WS] Database changed by another process, refreshing...");
-        queryClient.invalidateQueries({ queryKey: ["issues"] });
-        queryClient.invalidateQueries({ queryKey: ["issue"] });
-        queryClient.invalidateQueries({ queryKey: ["tasks"] });
-        queryClient.invalidateQueries({ queryKey: ["milestones"] });
-        queryClient.invalidateQueries({ queryKey: ["projects"] });
-        queryClient.invalidateQueries({ queryKey: ["workerData"] });
-        return;
-      }
-
       // Invalidate relevant query caches based on event type
       if (eventType.startsWith("issue:")) {
         queryClient.invalidateQueries({ queryKey: ["issues"] });
