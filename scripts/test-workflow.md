@@ -185,11 +185,11 @@ git fetch --prune
 
 ### Sync Not Working
 
-| Check                 | Command                                                                                              |
-| --------------------- | ---------------------------------------------------------------------------------------------------- |
-| Rebuild & restart MCP | `pnpm --filter @dev-workflow/core build && pnpm --filter @dev-workflow/mcp-server build` then `/mcp` |
-| Task sync error       | `sqlite3 ~/.track/workflow.db "SELECT github_last_sync_error FROM tasks WHERE id = '[TASK_ID]'"`     |
-| Project config        | `sqlite3 ~/.track/workflow.db "SELECT github_sync FROM projects LIMIT 1"`                            |
+| Check                 | Command                                                                                                  |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| Rebuild & restart MCP | `pnpm --filter @dev-workflow/tracking build && pnpm --filter @dev-workflow/mcp-server build` then `/mcp` |
+| Task sync error       | `sqlite3 ~/.track/workflow.db "SELECT github_last_sync_error FROM tasks WHERE id = '[TASK_ID]'"`         |
+| Project config        | `sqlite3 ~/.track/workflow.db "SELECT github_sync FROM projects LIMIT 1"`                                |
 
 ### Fix Stuck Project Items
 

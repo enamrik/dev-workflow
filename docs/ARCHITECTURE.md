@@ -165,7 +165,7 @@ See [ADR-002: Hook Composition](adr/002-hook-composition.md) for design rational
 
 ## Key Tools Reference
 
-### MCP Tools (packages/mcp-server)
+### MCP Tools (apps/mcp-server)
 
 Issue management:
 
@@ -194,7 +194,7 @@ Versioning:
 - `get_snapshot_history` - View all versions
 - `revert_to_snapshot` - Restore previous version
 
-### Skills (packages/cli/skills)
+### Skills (apps/cli/skills)
 
 Skills are Claude Code extensions defined in `SKILL.md` files:
 
@@ -214,4 +214,4 @@ SQLite database with Drizzle ORM. Key tables:
 - `task_status_history` - Audit trail for task status changes
 - `task_execution_logs` - Subagent execution audit trail
 
-Schema defined in: [packages/mcp-server/src/infrastructure/schema.ts](../packages/mcp-server/src/infrastructure/schema.ts)
+Schema defined in: [packages/database/src/schema.ts](../packages/database/src/schema.ts)

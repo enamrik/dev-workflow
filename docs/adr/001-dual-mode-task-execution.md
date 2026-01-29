@@ -118,5 +118,5 @@ Rejected: User preference varies by situation. Same task might be inline when de
 
 ## References
 
-- [work-task skill](../../packages/cli/skills/work-task/SKILL.md)
-- MCP tools in [packages/mcp-server/src/index.ts](../../packages/mcp-server/src/index.ts)
+- [work-task skill](../../apps/cli/skills/dwf-work-task/SKILL.md)
+- MCP tools in [apps/mcp-server/src/main.ts](../../apps/mcp-server/src/main.ts)

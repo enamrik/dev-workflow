@@ -24,7 +24,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
-import { createTrackDirectoryResolver } from "@dev-workflow/core";
+import { createTrackDirectoryResolver } from "@dev-workflow/git/track-directory-resolver.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -110,8 +110,8 @@ export class E2ETestHarness {
    * Get path to CLI executable
    */
   private getCliPath(): string {
-    // Navigate from e2e/src/harness to cli/dist/index.js
-    return resolve(__dirname, "../../../cli/dist/index.js");
+    // Navigate from packages/e2e/dist/harness to apps/cli/dist/main.js
+    return resolve(__dirname, "../../../../apps/cli/dist/main.js");
   }
 
   /**

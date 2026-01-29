@@ -10,7 +10,10 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@dev-workflow/core": "workspace:*",
+    "@dev-workflow/database": "workspace:*",
+    "@dev-workflow/tracking": "workspace:*",
+    "@dev-workflow/git": "workspace:*",
+    "@dev-workflow/mcp-server": "workspace:*",
     "@playwright/test": "^1.40.0",
     "@types/better-sqlite3": "^7.6.8",
     "@types/node": "^20.10.6",

@@ -1,0 +1,52 @@
+{
+  "name": "@dev-workflow/database",
+  "version": "0.1.0",
+  "description": "Database schema, migrations, and DrizzleDatabase abstraction",
+  "type": "module",
+  "main": "./dist/schema.js",
+  "types": "./dist/schema.d.ts",
+  "exports": {
+    "./schema.js": {
+      "types": "./dist/schema.d.ts",
+      "default": "./dist/schema.js"
+    },
+    "./schema-pg.js": {
+      "types": "./dist/schema-pg.d.ts",
+      "default": "./dist/schema-pg.js"
+    },
+    "./drizzle-db.js": {
+      "types": "./dist/drizzle-db.d.ts",
+      "default": "./dist/drizzle-db.js"
+    },
+    "./types.js": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc && npm run copy-migrations",
+    "copy-migrations": "mkdir -p dist/drizzle && cp -r drizzle/* dist/drizzle/ 2>/dev/null || true",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.2",
+    "better-sqlite3": "^12.5.0",
+    "drizzle-orm": "^0.36.0",
+    "sql.js": "^1.10.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^20.10.6",
+    "@types/sql.js": "^1.4.9",
+    "drizzle-kit": "^0.28.0",
+    "typescript": "^5.3.3",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

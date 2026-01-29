@@ -7,14 +7,14 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { chromium, type Browser, type Page } from "@playwright/test";
-import { getSavedDaemonPort } from "@dev-workflow/core";
+import { getSavedDaemonPort } from "@dev-workflow/git/port-manager.js";
 import type { E2ETestHarness } from "./test-harness.js";
 
 // Use a different port than production (3456) and dev mode (3457)
 const DEFAULT_PORT = 3458;
 
 // Re-export for convenience
-export { getSavedDaemonPort as getDaemonPort } from "@dev-workflow/core";
+export { getSavedDaemonPort as getDaemonPort } from "@dev-workflow/git/port-manager.js";
 
 export class UIHarness {
   private serverProcess: ChildProcess | null = null;

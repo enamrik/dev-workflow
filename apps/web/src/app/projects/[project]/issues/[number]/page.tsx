@@ -1,0 +1,293 @@
+"use client";
+
+import { use, useState } from "react";
+import Link from "next/link";
+import { format } from "date-fns";
+import { useIssue } from "@/hooks";
+import { TaskList } from "@/components/tasks";
+import {
+  Card,
+  Badge,
+  Tabs,
+  TabPanel,
+  ProgressBar,
+  LoadingState,
+  ErrorState,
+  EmptyState,
+  Markdown,
+  GitHubLink,
+} from "@/components/ui";
+import { IssueTransitionButton, IssueCloseButton, IssueDeleteButton } from "@/components/issues";
+import { isTerminal, isActive, computeIssueStatus } from "@/lib/types";
+import type { Issue, Plan, Task } from "@/lib/types";
+
+type TabId = "details" | "plan" | "tasks";
+
+interface PageProps {
+  params: Promise<{
+    project: string;
+    number: string;
+  }>;
+}
+
+export default function IssueDetailPage({ params }: PageProps) {
+  const { project: projectSlug, number } = use(params);
+  const [activeTab, setActiveTab] = useState<TabId>("details");
+
+  const issueNumber = number ? parseInt(number, 10) : undefined;
+
+  const { data, isLoading, error, refetch } = useIssue(projectSlug, issueNumber);
+
+  function handleTabChange(tabId: string) {
+    setActiveTab(tabId as TabId);
+  }
+
+  if (isLoading) {
+    return (
+      <Card>
+        <LoadingState message="Loading issue..." />
+      </Card>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <Card>
+        <ErrorState
+          title="Issue Not Found"
+          message={error instanceof Error ? error.message : "The issue could not be found."}
+          onRetry={() => refetch()}
+        />
+      </Card>
+    );
+  }
+
+  const { issue, plan, tasks } = data;
+  const taskCounts = {
+    total: tasks.length,
+    completed: tasks.filter(isTerminal).length,
+    inProgress: tasks.filter(isActive).length,
+  };
+
+  // Compute single status from issue state and tasks
+  const computedStatus = computeIssueStatus(issue, tasks);
+
+  // Back URL just goes to root - the useUrlState hook will restore _state on navigation
+  const backUrl = "/";
+
+  const tabs = [
+    { id: "details", label: "Details" },
+    { id: "plan", label: plan ? "Plan \u2713" : "Plan" },
+    {
+      id: "tasks",
+      label: tasks.length > 0 ? `Tasks (${taskCounts.completed}/${taskCounts.total})` : "Tasks",
+    },
+  ];
+
+  return (
+    <Card>
+      {/* Header */}
+      <div className="mb-6">
+        <Link
+          href={backUrl}
+          className="text-gray-600 hover:text-gray-800 text-sm mb-3 inline-block"
+        >
+          &larr; Back to Issues
+        </Link>
+        <h2 className="text-lg font-semibold text-gray-600 mb-2">Issue #{issue.number}</h2>
+      </div>
+
+      {/* Title and badges */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-800 mb-3">{issue.title}</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="type" value={issue.type} />
+          <Badge variant="priority" value={issue.priority} />
+          <Badge variant="status" value={computedStatus} />
+          {issue.syncConfig?.githubUrl && (
+            <GitHubLink
+              url={issue.syncConfig.githubUrl}
+              label={`#${issue.syncConfig.githubIssueNumber}`}
+              tooltip={`View on GitHub: ${issue.syncConfig.githubUrl}`}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
+
+      {/* Tab content */}
+      {activeTab === "details" && <DetailsTab issue={issue} />}
+      {activeTab === "plan" && <PlanTab plan={plan} />}
+      {activeTab === "tasks" && (
+        <TasksTab
+          tasks={tasks}
+          taskCounts={taskCounts}
+          projectId={projectSlug}
+          issueNumber={issue.number}
+        />
+      )}
+
+      {/* Action buttons - sticky footer */}
+      <div className="sticky bottom-0 flex flex-wrap items-center gap-2 mt-6 pt-4 pb-2 border-t border-gray-200 bg-white -mx-6 px-6 -mb-6">
+        <IssueTransitionButton
+          issue={issue}
+          tasks={tasks}
+          projectSlug={projectSlug}
+          onSuccess={() => refetch()}
+        />
+        <IssueCloseButton
+          issue={issue}
+          tasks={tasks}
+          projectSlug={projectSlug}
+          onSuccess={() => refetch()}
+        />
+        <IssueDeleteButton issue={issue} projectSlug={projectSlug} onSuccess={() => refetch()} />
+      </div>
+    </Card>
+  );
+}
+
+interface DetailsTabProps {
+  issue: Issue;
+}
+
+function DetailsTab({ issue }: DetailsTabProps) {
+  return (
+    <TabPanel>
+      {/* Description */}
+      <section className="mb-6">
+        <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">
+          Description
+        </h3>
+        <Markdown>{issue.description}</Markdown>
+      </section>
+
+      {/* Acceptance Criteria */}
+      {issue.acceptanceCriteria.length > 0 && (
+        <section className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">
+            Acceptance Criteria
+          </h3>
+          <ul className="space-y-2">
+            {issue.acceptanceCriteria.map((criterion, idx) => (
+              <li key={idx} className="flex items-start gap-2">
+                <input type="checkbox" disabled className="mt-1 rounded border-gray-300" />
+                <span className="text-gray-800">{criterion}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Metadata */}
+      <section className="border-t border-gray-200 pt-4">
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+          <div>
+            <dt className="text-gray-500">Created</dt>
+            <dd className="text-gray-800">{formatDate(issue.createdAt)}</dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">Updated</dt>
+            <dd className="text-gray-800">{formatDate(issue.updatedAt)}</dd>
+          </div>
+        </dl>
+      </section>
+    </TabPanel>
+  );
+}
+
+interface PlanTabProps {
+  plan: Plan | null;
+}
+
+function PlanTab({ plan }: PlanTabProps) {
+  if (!plan) {
+    return (
+      <TabPanel>
+        <EmptyState
+          title="No Implementation Plan"
+          description="No implementation plan has been generated yet. Use the MCP tool generate_plan to create a plan for this issue."
+        />
+      </TabPanel>
+    );
+  }
+
+  return (
+    <TabPanel>
+      {/* Complexity badge */}
+      <div className="mb-4">
+        <Badge variant="complexity" value={plan.estimatedComplexity} />
+        <span className="ml-2 text-sm text-gray-600">Complexity</span>
+      </div>
+
+      {/* Summary */}
+      <section className="mb-6">
+        <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">
+          Summary
+        </h3>
+        <Markdown>{plan.summary}</Markdown>
+      </section>
+
+      {/* Approach */}
+      <section className="mb-6">
+        <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">
+          Approach
+        </h3>
+        <Markdown>{plan.approach}</Markdown>
+      </section>
+
+      {/* Metadata */}
+      <section className="border-t border-gray-200 pt-4 text-sm text-gray-500">
+        Generated on {formatDate(plan.createdAt)}
+      </section>
+    </TabPanel>
+  );
+}
+
+interface TasksTabProps {
+  tasks: Task[];
+  taskCounts: { total: number; completed: number; inProgress: number };
+  projectId: string;
+  issueNumber: number;
+}
+
+function TasksTab({ tasks, taskCounts, projectId, issueNumber }: TasksTabProps) {
+  if (tasks.length === 0) {
+    return (
+      <TabPanel>
+        <EmptyState
+          title="No Tasks"
+          description="No tasks have been created for this issue. Generate an implementation plan to create tasks."
+        />
+      </TabPanel>
+    );
+  }
+
+  return (
+    <TabPanel>
+      {/* Progress header */}
+      <div className="mb-6">
+        <div className="max-w-xs">
+          <div className="text-sm text-gray-600 mb-1">
+            {taskCounts.completed}/{taskCounts.total} completed
+          </div>
+          <ProgressBar
+            completed={taskCounts.completed}
+            total={taskCounts.total}
+            inProgress={taskCounts.inProgress}
+            showLabel={false}
+          />
+        </div>
+      </div>
+
+      {/* Task list */}
+      <TaskList tasks={tasks} projectId={projectId} issueNumber={issueNumber} />
+    </TabPanel>
+  );
+}
+
+function formatDate(isoString: string): string {
+  return format(new Date(isoString), "MMM d, yyyy 'at' h:mm a");
+}
