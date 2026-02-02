@@ -27,7 +27,7 @@ import {
   handleSearchIssues,
   handleGetWorkQueue,
   handleImportGitHubIssue,
-} from "./issue-tool-def.js";
+} from "./issue-tools.js";
 
 import {
   handleGeneratePlan,
@@ -36,7 +36,7 @@ import {
   handleMoveIssueToReady,
   handleMoveIssueToBacklog,
   handleSyncIssue,
-} from "./plan-tool-def.js";
+} from "./plan-tools.js";
 
 import {
   handleLoadTaskSession,
@@ -49,15 +49,15 @@ import {
   handleLogTaskProgress,
   handleGetTaskExecutionLog,
   handleCheckTaskConflicts,
-} from "./task-tool-def.js";
+} from "./task-tools.js";
 
 import {
   handleGetSnapshotHistory,
   handleRevertToSnapshot,
   handleViewSnapshot,
-} from "./snapshot-tool-def.js";
+} from "./snapshot-tools.js";
 
-import { handleUpdateSettings } from "./settings-tool-def.js";
+import { handleUpdateSettings } from "./settings-tools.js";
 
 import {
   handleCreateMilestone,
@@ -67,31 +67,31 @@ import {
   handleDeleteMilestone,
   handleAssignIssueToMilestone,
   handleRemoveIssueFromMilestone,
-} from "./milestone-tool-def.js";
+} from "./milestone-tools.js";
 
-import { handleListWorktrees, handlePruneStaleWorktrees } from "./worktree-tool-def.js";
+import { handleListWorktrees, handlePruneStaleWorktrees } from "./worktree-tools.js";
 
 import {
   handleGetTaskPRStatus,
   handleCreatePR,
   handleSubmitForReview,
   handleCompleteTask,
-} from "./pr-tool-def.js";
+} from "./pr-tools.js";
 
-import { handleMergeIssues } from "./merge-tool-def.js";
+import { handleMergeIssues } from "./merge-tools.js";
 
 import {
   handleListTypes,
   handleCreateType,
   handleUpdateType,
   handleDeleteType,
-} from "./type-tool-def.js";
+} from "./type-tools.js";
 
 import {
   handleDispatchTask,
   handleGetDispatchStatus,
   handleEndWorkerSession,
-} from "./dispatch-tool-def.js";
+} from "./dispatch-tools.js";
 
 /**
  * Tool registry type - maps tool names to bound handlers.

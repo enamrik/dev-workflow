@@ -7,7 +7,6 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execSync } from "node:child_process";
 import {
   TrackDirectoryResolver,
   getGlobalDatabasePath,
@@ -36,22 +35,15 @@ export class InitCommand {
    */
   async execute(options: InitOptions = {}): Promise<void> {
     // Check for git repository and at least one commit
-    if (!this.hasGitCommit()) {
-      // Check if it's a git repo at all
-      try {
-        execSync("git rev-parse --git-dir", {
-          cwd: this.workingDirectory,
-          stdio: ["pipe", "pipe", "pipe"],
-        });
-        // It's a git repo but no commits
-        console.error("❌ No commits found. dev-workflow requires at least one commit.");
-        console.error('   Run: git commit --allow-empty -m "Initial commit"');
-        process.exit(1);
-      } catch {
-        // Not a git repo
-        console.error("❌ Not a git repository. dev-workflow requires git.");
-        process.exit(1);
-      }
+    if (!this.gitOps.isGitRepository(this.workingDirectory)) {
+      console.error("❌ Not a git repository. dev-workflow requires git.");
+      process.exit(1);
+    }
+
+    if (!this.gitOps.hasCommit(this.workingDirectory)) {
+      console.error("❌ No commits found. dev-workflow requires at least one commit.");
+      console.error('   Run: git commit --allow-empty -m "Initial commit"');
+      process.exit(1);
     }
 
     // Check if running from a worktree
@@ -129,18 +121,6 @@ export class InitCommand {
 
     // Fresh install mode
     await this.handleFreshInstall(gitRoot, slug, databaseConnectionString, options, trackDir);
-  }
-
-  private hasGitCommit(): boolean {
-    try {
-      execSync("git rev-parse HEAD", {
-        cwd: this.workingDirectory,
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-      return true;
-    } catch {
-      return false;
-    }
   }
 
   private getDatabaseConnectionString(options: InitOptions, gitRoot: string): string {

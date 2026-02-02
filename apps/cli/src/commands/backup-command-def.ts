@@ -5,7 +5,9 @@
  */
 
 import { createCliHandler, createCliCommand, defaultMiddleware } from "../di/bootstrap.js";
-import type { BackupCommand, S3ConfigOptions, RestoreOptions } from "./backup-command.js";
+import { Effect } from "@dev-workflow/effect";
+import { BackupCommandTag } from "../di/cli-tags.js";
+import type { S3ConfigOptions, RestoreOptions } from "./backup-command.js";
 
 /**
  * Options for backup commands (currently no options for create)
@@ -15,62 +17,74 @@ export type BackupCreateOptions = Record<string, never>;
 /**
  * Handler for backup create command.
  */
-export const handleBackupCreate = createCliHandler(
-  async (_options: BackupCreateOptions, { backupCommand }: { backupCommand: BackupCommand }) => {
-    await backupCommand.create();
-  },
-  defaultMiddleware
-);
+export const handleBackupCreate = createCliHandler({
+  handler: (_options: BackupCreateOptions) =>
+    Effect.gen(function* () {
+      const backupCommand = yield* BackupCommandTag;
+      yield* Effect.promise(() => backupCommand.create());
+    }),
+  middleware: defaultMiddleware,
+});
 
 /**
  * Handler for backup configure command.
  */
-export const handleBackupConfigure = createCliHandler(
-  async (options: S3ConfigOptions, { backupCommand }: { backupCommand: BackupCommand }) => {
-    await backupCommand.configure(options);
-  },
-  defaultMiddleware
-);
+export const handleBackupConfigure = createCliHandler({
+  handler: (options: S3ConfigOptions) =>
+    Effect.gen(function* () {
+      const backupCommand = yield* BackupCommandTag;
+      yield* Effect.promise(() => backupCommand.configure(options));
+    }),
+  middleware: defaultMiddleware,
+});
 
 /**
  * Handler for backup setup command.
  */
-export const handleBackupSetup = createCliHandler(
-  async (_options: BackupCreateOptions, { backupCommand }: { backupCommand: BackupCommand }) => {
-    await backupCommand.setup();
-  },
-  defaultMiddleware
-);
+export const handleBackupSetup = createCliHandler({
+  handler: (_options: BackupCreateOptions) =>
+    Effect.gen(function* () {
+      const backupCommand = yield* BackupCommandTag;
+      yield* Effect.promise(() => backupCommand.setup());
+    }),
+  middleware: defaultMiddleware,
+});
 
 /**
  * Handler for backup status command.
  */
-export const handleBackupStatus = createCliHandler(
-  async (_options: BackupCreateOptions, { backupCommand }: { backupCommand: BackupCommand }) => {
-    await backupCommand.status();
-  },
-  defaultMiddleware
-);
+export const handleBackupStatus = createCliHandler({
+  handler: (_options: BackupCreateOptions) =>
+    Effect.gen(function* () {
+      const backupCommand = yield* BackupCommandTag;
+      yield* Effect.promise(() => backupCommand.status());
+    }),
+  middleware: defaultMiddleware,
+});
 
 /**
  * Handler for backup list command.
  */
-export const handleBackupList = createCliHandler(
-  async (_options: BackupCreateOptions, { backupCommand }: { backupCommand: BackupCommand }) => {
-    await backupCommand.list();
-  },
-  defaultMiddleware
-);
+export const handleBackupList = createCliHandler({
+  handler: (_options: BackupCreateOptions) =>
+    Effect.gen(function* () {
+      const backupCommand = yield* BackupCommandTag;
+      yield* Effect.promise(() => backupCommand.list());
+    }),
+  middleware: defaultMiddleware,
+});
 
 /**
  * Handler for backup unconfigure command.
  */
-export const handleBackupUnconfigure = createCliHandler(
-  async (_options: BackupCreateOptions, { backupCommand }: { backupCommand: BackupCommand }) => {
-    await backupCommand.unconfigure();
-  },
-  defaultMiddleware
-);
+export const handleBackupUnconfigure = createCliHandler({
+  handler: (_options: BackupCreateOptions) =>
+    Effect.gen(function* () {
+      const backupCommand = yield* BackupCommandTag;
+      yield* Effect.promise(() => backupCommand.unconfigure());
+    }),
+  middleware: defaultMiddleware,
+});
 
 /**
  * Handler for restore command.
@@ -79,12 +93,14 @@ export interface RestoreHandlerOptions extends RestoreOptions {
   backup?: string;
 }
 
-export const handleRestore = createCliHandler(
-  async (options: RestoreHandlerOptions, { backupCommand }: { backupCommand: BackupCommand }) => {
-    await backupCommand.restore(options.backup, options);
-  },
-  defaultMiddleware
-);
+export const handleRestore = createCliHandler({
+  handler: (options: RestoreHandlerOptions) =>
+    Effect.gen(function* () {
+      const backupCommand = yield* BackupCommandTag;
+      yield* Effect.promise(() => backupCommand.restore(options.backup, options));
+    }),
+  middleware: defaultMiddleware,
+});
 
 /**
  * Executable runners.

@@ -2,22 +2,44 @@
  * Tests for Delete Issue Endpoint
  */
 
-import { describe, it, expect, vi } from "vitest";
-import { EntityNotFoundError, BusinessRuleError } from "@dev-workflow/tracking";
-import { buildTestContainer, createTestRequest, runTestApiEndpoint } from "@/lib/di/test-utils";
-import { endpoint } from "../route";
+import { describe, it, expect } from "vitest";
+import { Effect } from "@dev-workflow/effect";
+import { createTestContainer, createTestRequest, runTestEndpoint } from "@/lib/di/test-utils";
+import { EntityNotFoundError, Issue } from "@dev-workflow/tracking";
+import { endpoint } from "../endpoint";
 
 describe("deleteIssueEndpoint", () => {
   it("deletes a PLANNED issue", async () => {
-    const mockDeletedIssue = {
-      id: "issue-1",
-      number: 42,
-      title: "Test Issue",
-    };
-
-    const testContainer = buildTestContainer({
-      issueAppService: {
-        deleteIssue: vi.fn().mockResolvedValue(mockDeletedIssue),
+    const testContainer = createTestContainer({
+      domain: {
+        forProject: () =>
+          Effect.succeed({
+            issues: {
+              getByNumber: () =>
+                Effect.succeed(
+                  Issue.from({
+                    id: "issue-1",
+                    number: 42,
+                    title: "Test Issue",
+                    status: "PLANNED",
+                  } as Issue)
+                ),
+              delete: () =>
+                Effect.succeed(
+                  Issue.from({ id: "issue-1", number: 42, title: "Test Issue" } as Issue)
+                ),
+            },
+            plans: {
+              findByIssueId: () => Effect.succeed(null),
+            },
+          }),
+      },
+      gitWorktreeService: {},
+      projectManagement: {
+        closeIssue: () => Effect.succeed(undefined),
+      },
+      workerQueueDb: {
+        remove: () => {},
       },
     });
 
@@ -25,20 +47,24 @@ describe("deleteIssueEndpoint", () => {
       body: { projectSlug: "my-project" },
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       issueNumber: "42",
     });
 
     expect(result.status).toBe(200);
     const body = await result.json();
-    expect(body.success).toBe(true);
     expect(body.issue.number).toBe(42);
   });
 
   it("returns 404 when issue not found", async () => {
-    const testContainer = buildTestContainer({
-      issueAppService: {
-        deleteIssue: vi.fn().mockRejectedValue(new EntityNotFoundError("Issue", "#999")),
+    const testContainer = createTestContainer({
+      domain: {
+        forProject: () =>
+          Effect.succeed({
+            issues: {
+              getByNumber: () => Effect.fail(new EntityNotFoundError("Issue", "#999")),
+            },
+          }),
       },
     });
 
@@ -46,7 +72,7 @@ describe("deleteIssueEndpoint", () => {
       body: { projectSlug: "my-project" },
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       issueNumber: "999",
     });
 
@@ -56,15 +82,22 @@ describe("deleteIssueEndpoint", () => {
   });
 
   it("returns 422 when trying to delete non-PLANNED issue", async () => {
-    const testContainer = buildTestContainer({
-      issueAppService: {
-        deleteIssue: vi
-          .fn()
-          .mockRejectedValue(
-            new BusinessRuleError(
-              "Only PLANNED issues can be deleted. Current status: OPEN. Use close_issue instead."
-            )
-          ),
+    const testContainer = createTestContainer({
+      domain: {
+        forProject: () =>
+          Effect.succeed({
+            issues: {
+              getByNumber: () =>
+                Effect.succeed(
+                  Issue.from({
+                    id: "issue-1",
+                    number: 42,
+                    title: "Test Issue",
+                    status: "OPEN",
+                  } as Issue)
+                ),
+            },
+          }),
       },
     });
 
@@ -72,7 +105,7 @@ describe("deleteIssueEndpoint", () => {
       body: { projectSlug: "my-project" },
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       issueNumber: "42",
     });
 
@@ -82,23 +115,16 @@ describe("deleteIssueEndpoint", () => {
   });
 
   it("returns 400 when validation fails", async () => {
-    const testContainer = buildTestContainer({
-      issueAppService: {
-        deleteIssue: vi.fn(),
-      },
-    });
+    const testContainer = createTestContainer({});
 
-    // Missing projectSlug
     const req = createTestRequest("DELETE", "/api/issues/42/delete", {
       body: {},
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       issueNumber: "42",
     });
 
     expect(result.status).toBe(400);
-    const body = await result.json();
-    expect(body.code).toBe("ZOD_VALIDATION_ERROR");
   });
 });

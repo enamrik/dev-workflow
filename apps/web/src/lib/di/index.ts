@@ -6,13 +6,7 @@
 export { getWebContainer, buildWebContainer, type WebCradle } from "./container";
 
 // Bootstrap utilities
-export {
-  parseJsonBody,
-  createApiEndpoint,
-  createApiRoute,
-  type Endpoint,
-  type ApiMiddleware,
-} from "./bootstrap";
+export { createApiEndpoint, createApiRoute, jsonBody } from "./bootstrap";
 
 // Test utilities
-export { buildTestContainer, runTestApiEndpoint } from "./test-utils";
+export { createTestContainer, createTestRequest, runTestEndpoint } from "./test-utils";

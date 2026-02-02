@@ -19,8 +19,8 @@ import type {
   SetFieldResult,
   AvailableLabelsResult,
 } from "./project-management-provider.js";
-import type { Issue } from "../issues/issue.js";
-import type { Task, TaskStatus } from "../tasks/task.js";
+import type { Issue } from "../domain/issues/issue.js";
+import type { Task, TaskStatus } from "../domain/tasks/task.js";
 
 /**
  * NoOpProjectManagementProvider - Does nothing

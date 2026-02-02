@@ -12,8 +12,9 @@
 import type { ProviderFactory, ProviderDependencies } from "./provider-factory.js";
 import { GitHubProviderFactory } from "./provider-factory.js";
 import type { ProjectManagementProvider } from "./project-management-provider.js";
-import type { Project } from "../projects/project.js";
+import type { Project } from "../domain/projects/project.js";
 import { getProviderId } from "./project-management-config.js";
+import { Service } from "@dev-workflow/effect";
 
 /**
  * Information about a registered provider
@@ -68,7 +69,9 @@ export class ProviderDependencyError extends Error {
  * Singleton pattern - use getInstance() to get the shared instance.
  * Pre-registers GitHub provider by default.
  */
-export class ProjectManagementRegistry {
+export class ProjectManagementRegistry extends Service<ProjectManagementRegistry>()(
+  "providerRegistry"
+) {
   private static instance: ProjectManagementRegistry | null = null;
   private factories: Map<string, ProviderFactory> = new Map();
 
@@ -76,6 +79,7 @@ export class ProjectManagementRegistry {
    * Private constructor - use getInstance() instead
    */
   private constructor() {
+    super();
     // Pre-register built-in providers
     this.register(new GitHubProviderFactory());
   }

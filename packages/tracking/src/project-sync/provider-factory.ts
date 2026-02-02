@@ -13,7 +13,7 @@
 
 import type { ProjectManagementProvider } from "./project-management-provider.js";
 import type { ProjectManagementClient } from "./project-management-client.js";
-import type { Project } from "../projects/project.js";
+import type { Project } from "../domain/projects/project.js";
 import { GitHubProjectManagementProvider } from "./github/github-project-management-provider.js";
 import { GitHubProjectManagementClient } from "./github/github-project-management-client.js";
 import { NoOpProjectManagementClient } from "./noop-project-management-client.js";

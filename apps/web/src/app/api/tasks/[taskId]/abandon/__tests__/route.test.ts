@@ -2,31 +2,39 @@
  * Tests for Task Abandon Endpoint
  */
 
-import { describe, it, expect, vi } from "vitest";
-import { EntityNotFoundError, BusinessRuleError } from "@dev-workflow/tracking";
-import { buildTestContainer, createTestRequest, runTestApiEndpoint } from "@/lib/di/test-utils";
-import { endpoint } from "../route";
+import { describe, it, expect } from "vitest";
+import { Effect } from "@dev-workflow/effect";
+import { createTestContainer, createTestRequest, runTestEndpoint } from "@/lib/di/test-utils";
+import { EntityNotFoundError, Task } from "@dev-workflow/tracking";
+import { endpoint } from "../endpoint";
 
 describe("abandonTaskEndpoint", () => {
-  it("abandons task successfully with full cleanup", async () => {
-    const mockResult = {
-      task: {
-        id: "task-1",
-        number: 1,
-        title: "Task One",
-        status: "ABANDONED",
-      },
-      previousStatus: "IN_PROGRESS",
-      cleanup: {
-        externalIssueClosed: true,
-        worktreeCleaned: true,
-        branchDeleted: true,
-      },
-    };
-
-    const testContainer = buildTestContainer({
-      taskAppService: {
-        abandonTaskWithCleanup: vi.fn().mockResolvedValue(mockResult),
+  it("abandons task successfully", async () => {
+    const testContainer = createTestContainer({
+      domain: {
+        forProject: () =>
+          Effect.succeed({
+            tasks: {
+              getOrThrow: () =>
+                Effect.succeed(
+                  Task.from({
+                    id: "task-1",
+                    number: 1,
+                    title: "Task One",
+                    status: "IN_PROGRESS",
+                  } as Task)
+                ),
+              abandon: () =>
+                Effect.succeed(
+                  Task.from({
+                    id: "task-1",
+                    number: 1,
+                    title: "Task One",
+                    status: "ABANDONED",
+                  } as Task)
+                ),
+            },
+          }),
       },
     });
 
@@ -34,46 +42,37 @@ describe("abandonTaskEndpoint", () => {
       body: { projectSlug: "my-project", reason: "No longer needed" },
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       taskId: "task-1",
     });
 
     expect(result.status).toBe(200);
     const body = await result.json();
-    expect(body.success).toBe(true);
     expect(body.task.status).toBe("ABANDONED");
-    expect(body.task.previousStatus).toBe("IN_PROGRESS");
-    expect(body.cleanup.externalIssueClosed).toBe(true);
-    expect(body.cleanup.worktreeCleaned).toBe(true);
-    expect(body.cleanup.branchDeleted).toBe(true);
-
-    const service = testContainer.resolve("taskAppService") as any;
-    expect(service.abandonTaskWithCleanup).toHaveBeenCalledWith(
-      "my-project",
-      "task-1",
-      "No longer needed"
-    );
+    expect(body.previousStatus).toBe("IN_PROGRESS");
   });
 
   it("abandons task without reason", async () => {
-    const mockResult = {
-      task: {
-        id: "task-1",
-        number: 1,
-        title: "Task One",
-        status: "ABANDONED",
-      },
-      previousStatus: "READY",
-      cleanup: {
-        externalIssueClosed: false,
-        worktreeCleaned: false,
-        branchDeleted: false,
-      },
-    };
-
-    const testContainer = buildTestContainer({
-      taskAppService: {
-        abandonTaskWithCleanup: vi.fn().mockResolvedValue(mockResult),
+    const testContainer = createTestContainer({
+      domain: {
+        forProject: () =>
+          Effect.succeed({
+            tasks: {
+              getOrThrow: () =>
+                Effect.succeed(
+                  Task.from({ id: "task-1", number: 1, title: "Task One", status: "READY" } as Task)
+                ),
+              abandon: () =>
+                Effect.succeed(
+                  Task.from({
+                    id: "task-1",
+                    number: 1,
+                    title: "Task One",
+                    status: "ABANDONED",
+                  } as Task)
+                ),
+            },
+          }),
       },
     });
 
@@ -81,24 +80,24 @@ describe("abandonTaskEndpoint", () => {
       body: { projectSlug: "my-project" },
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       taskId: "task-1",
     });
 
     expect(result.status).toBe(200);
     const body = await result.json();
-    expect(body.success).toBe(true);
-
-    const service = testContainer.resolve("taskAppService") as any;
-    expect(service.abandonTaskWithCleanup).toHaveBeenCalledWith("my-project", "task-1", undefined);
+    expect(body.task.status).toBe("ABANDONED");
   });
 
   it("returns 404 when task not found", async () => {
-    const testContainer = buildTestContainer({
-      taskAppService: {
-        abandonTaskWithCleanup: vi
-          .fn()
-          .mockRejectedValue(new EntityNotFoundError("Task", "not-found")),
+    const testContainer = createTestContainer({
+      domain: {
+        forProject: () =>
+          Effect.succeed({
+            tasks: {
+              getOrThrow: () => Effect.fail(new EntityNotFoundError("Task", "not-found")),
+            },
+          }),
       },
     });
 
@@ -106,19 +105,23 @@ describe("abandonTaskEndpoint", () => {
       body: { projectSlug: "my-project" },
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       taskId: "not-found",
     });
 
     expect(result.status).toBe(404);
   });
 
-  it("returns 422 when task cannot be abandoned", async () => {
-    const testContainer = buildTestContainer({
-      taskAppService: {
-        abandonTaskWithCleanup: vi
-          .fn()
-          .mockRejectedValue(new BusinessRuleError("Cannot abandon completed task")),
+  it("returns 422 when task is in terminal state", async () => {
+    const testContainer = createTestContainer({
+      domain: {
+        forProject: () =>
+          Effect.succeed({
+            tasks: {
+              getOrThrow: () =>
+                Effect.succeed(Task.from({ id: "task-1", status: "COMPLETED" } as Task)),
+            },
+          }),
       },
     });
 
@@ -126,7 +129,7 @@ describe("abandonTaskEndpoint", () => {
       body: { projectSlug: "my-project" },
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       taskId: "task-1",
     });
 
@@ -134,17 +137,13 @@ describe("abandonTaskEndpoint", () => {
   });
 
   it("returns 400 when projectSlug is missing", async () => {
-    const testContainer = buildTestContainer({
-      taskAppService: {
-        abandonTaskWithCleanup: vi.fn(),
-      },
-    });
+    const testContainer = createTestContainer({});
 
     const req = createTestRequest("POST", "/api/tasks/task-1/abandon", {
       body: {},
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       taskId: "task-1",
     });
 

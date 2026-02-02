@@ -2,38 +2,48 @@
  * Tests for List Projects Endpoint
  */
 
-import { describe, it, expect, vi } from "vitest";
-import { buildTestContainer, createTestRequest, runTestApiEndpoint } from "@/lib/di/test-utils";
+import { describe, it, expect } from "vitest";
+import {
+  createTestContainer,
+  createTestRequest,
+  createMockSourceProvider,
+  runTestEndpoint,
+} from "@/lib/di/test-utils";
+
 import { endpoint } from "../route";
 
 describe("listProjectsEndpoint", () => {
   it("returns all projects with GitHub sync info", async () => {
-    const mockProjects = [
+    const enrichedProjects = [
       {
-        id: "project-1",
+        projectId: "project-1",
         name: "Project One",
         slug: "project-one-abc123",
         gitRoot: "/path/to/project-one",
+        sourceInfo: { connectionString: "test://db" },
         syncConfig: { enabled: true, repo: "owner/repo" },
       },
       {
-        id: "project-2",
+        projectId: "project-2",
         name: "Project Two",
         slug: "project-two-def456",
         gitRoot: "/path/to/project-two",
+        sourceInfo: { connectionString: "test://db" },
         syncConfig: null,
       },
     ];
 
-    const testContainer = buildTestContainer({
-      projectAppService: {
-        listProjectsWithSync: vi.fn().mockResolvedValue(mockProjects),
+    const testContainer = createTestContainer({
+      projectsResolver: {
+        getAllProjects: async () => enrichedProjects,
+        enrichWithDbData: async () => enrichedProjects,
       },
+      sourceProvider: createMockSourceProvider({}),
     });
 
     const req = createTestRequest("GET", "/api/projects");
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {});
+    const result = await runTestEndpoint(testContainer, endpoint, req, {});
 
     expect(result.status).toBe(200);
     const body = await result.json();
@@ -44,15 +54,17 @@ describe("listProjectsEndpoint", () => {
   });
 
   it("returns empty array when no projects", async () => {
-    const testContainer = buildTestContainer({
-      projectAppService: {
-        listProjectsWithSync: vi.fn().mockResolvedValue([]),
+    const testContainer = createTestContainer({
+      projectsResolver: {
+        getAllProjects: async () => [],
+        enrichWithDbData: async () => [],
       },
+      sourceProvider: createMockSourceProvider({}),
     });
 
     const req = createTestRequest("GET", "/api/projects");
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {});
+    const result = await runTestEndpoint(testContainer, endpoint, req, {});
 
     expect(result.status).toBe(200);
     const body = await result.json();

@@ -1,7 +1,7 @@
-import { createApiEndpoint, createApiRoute } from "@/lib/di/bootstrap";
-import { getTaskDependenciesEndpoint } from "./endpoint";
+import { createApiRoute } from "@/lib/di/bootstrap";
+import { endpoint } from "./endpoint";
 
+export { endpoint };
 export const dynamic = "force-dynamic";
 
-export const endpoint = createApiEndpoint(getTaskDependenciesEndpoint);
 export const GET = createApiRoute(endpoint);

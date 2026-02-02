@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@dev-workflow/database": "workspace:*",
+    "@dev-workflow/effect": "workspace:*",
     "@dev-workflow/dispatch": "workspace:*",
     "@dev-workflow/git": "workspace:*",
     "@dev-workflow/local-workers": "workspace:*",

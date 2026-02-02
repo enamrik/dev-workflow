@@ -20,11 +20,11 @@ import {
   DbSourceProvider,
   ProjectsResolver,
   DependencyService,
-  isTerminal,
   type DbSource,
   type Task,
 } from "@dev-workflow/tracking";
 import { issues, plans, tasks, sql } from "@dev-workflow/database/schema.js";
+import { Effect } from "@dev-workflow/effect";
 import type { WorkerQueueDb } from "@dev-workflow/dispatch/worker-queue-db.js";
 import type { WorkerStatus } from "@dev-workflow/dispatch/worker.js";
 
@@ -152,15 +152,15 @@ export class ClaudeWorkerService {
   /**
    * Update terminal title based on current state
    */
-  private updateTitle(): void {
+  private async updateTitle(): Promise<void> {
     let title: string;
 
     if (this.state.status === "DRAINING") {
       title = `${this.state.workerName} | draining...`;
     } else if (this.state.currentTaskId && this.currentSource) {
-      const task = this.findTaskById(this.state.currentTaskId);
+      const task = await this.findTaskById(this.state.currentTaskId);
       const issueNumber = this.getIssueNumber(this.state.currentTaskId);
-      const totalTasks = task ? this.getTotalTaskCount(task.planId) : null;
+      const totalTasks = task ? await this.getTotalTaskCount(task.planId) : null;
 
       if (issueNumber && task) {
         const taskPosition = totalTasks ? ` [${task.number}/${totalTasks}]` : "";
@@ -182,7 +182,7 @@ export class ClaudeWorkerService {
   /**
    * Find a task by ID in the current tracking database
    */
-  private findTaskById(taskId: string): Task | null {
+  private async findTaskById(taskId: string): Promise<Task | null> {
     if (!this.currentSource || !this.state.currentProjectSlug) {
       return null;
     }
@@ -193,7 +193,7 @@ export class ClaudeWorkerService {
       if (!projectInfo) return null;
 
       const client = this.currentSource.createClient(projectInfo.projectId);
-      return client.tasks.findById(taskId) ?? null;
+      return (await Effect.runPromise(client.tasks.findById(taskId))) ?? null;
     } catch {
       return null;
     }
@@ -222,7 +222,7 @@ export class ClaudeWorkerService {
   /**
    * Get the total number of tasks for a plan
    */
-  private getTotalTaskCount(planId: string): number | null {
+  private async getTotalTaskCount(planId: string): Promise<number | null> {
     if (!this.currentSource || !this.state.currentProjectSlug) {
       return null;
     }
@@ -232,7 +232,7 @@ export class ClaudeWorkerService {
       if (!projectInfo) return null;
 
       const client = this.currentSource.createClient(projectInfo.projectId);
-      const planTasks = client.tasks.findByPlanId(planId);
+      const planTasks = await Effect.runPromise(client.tasks.findByPlanId(planId));
       return planTasks.length > 0 ? planTasks.length : null;
     } catch {
       return null;
@@ -271,7 +271,7 @@ export class ClaudeWorkerService {
     );
 
     // Update terminal title
-    this.updateTitle();
+    await this.updateTitle();
 
     // Setup signal handlers for graceful shutdown
     this.setupSignalHandlers();
@@ -309,7 +309,7 @@ export class ClaudeWorkerService {
       this.state.status = "DRAINING";
       this.queue.updateStatus(this.state.workerId, "DRAINING");
       console.log("Status: DRAINING (finishing current task)");
-      this.updateTitle();
+      await this.updateTitle();
 
       // Wait for current Claude process to finish
       if (this.state.currentClaudeProcess) {
@@ -450,7 +450,7 @@ export class ClaudeWorkerService {
         const dependencyService = new DependencyService(client);
 
         // Find READY tasks
-        const readyTasks = client.tasks.findMany({ status: "READY" });
+        const readyTasks = await Effect.runPromise(client.tasks.findMany({ status: "READY" }));
 
         for (const task of readyTasks) {
           // Skip if already in dispatch queue
@@ -465,7 +465,7 @@ export class ClaudeWorkerService {
           }
 
           // Skip if dependencies are not satisfied
-          if (!dependencyService.areDependenciesSatisfied(task)) {
+          if (!(await dependencyService.areDependenciesSatisfied(task))) {
             continue;
           }
 
@@ -533,10 +533,10 @@ export class ClaudeWorkerService {
     this.state.currentProjectSlug = projectSlug;
     this.state.status = "WORKING";
     this.queue.updateStatus(this.state.workerId, "WORKING");
-    this.updateTitle();
+    await this.updateTitle();
 
     // Get task details
-    const task = this.findTaskById(taskId);
+    const task = await this.findTaskById(taskId);
     if (!task) {
       console.error(`Task not found: ${taskId}`);
       await this.releaseTask(taskId);
@@ -614,8 +614,8 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
       // Worker waits indefinitely until Claude calls end_worker_session
       let sessionEnded = false;
 
-      this.taskWatchInterval = setInterval(() => {
-        const task = this.findTaskById(taskId);
+      this.taskWatchInterval = setInterval(async () => {
+        const task = await this.findTaskById(taskId);
         if (!task) {
           console.log(term.red("\nTask no longer exists, ending session..."));
           claudeProcess.kill("SIGTERM");
@@ -623,7 +623,7 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
         }
 
         // Update terminal title with current status
-        this.updateTitle();
+        await this.updateTitle();
 
         // Check for claudeDone flag from the dispatch queue
         const queueEntry = this.queue.findByTaskId(taskId);
@@ -694,8 +694,8 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
    * Release a task from the dispatch queue and return to polling
    */
   private async releaseTask(taskId: string): Promise<void> {
-    const task = this.findTaskById(taskId);
-    const taskIsTerminal = task ? isTerminal(task) : false;
+    const task = await this.findTaskById(taskId);
+    const taskIsTerminal = task ? task.isTerminal : false;
 
     if (taskIsTerminal) {
       this.queue.remove(taskId);
@@ -718,7 +718,7 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
       this.queue.updateStatus(this.state.workerId, "IDLE");
     }
 
-    this.updateTitle();
+    await this.updateTitle();
 
     // Resume polling if not shutting down
     if (!this.isShuttingDown && this.state.status !== "DRAINING") {

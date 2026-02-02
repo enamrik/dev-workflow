@@ -1,14 +1,16 @@
 /**
  * Test Utilities for API Endpoints
  *
- * This module provides utilities for testing API endpoints in isolation:
- * - runTestApiEndpoint: Execute an endpoint with a test container
- * - buildTestContainer: Create a container with mocked dependencies
+ * Provides utilities for testing Effect-based API endpoints:
+ * - createTestContainer: Build a container with mocked dependencies
+ * - runTestEndpoint: Execute an Effect handler with a test container
  */
 
 import { createContainer, InjectionMode, asValue, type AwilixContainer } from "awilix";
-import type { WebCradle } from "./container";
-import type { Endpoint } from "./bootstrap";
+import { createRuntime } from "@dev-workflow/effect";
+import { NextResponse } from "next/server";
+import { mapError } from "@dev-workflow/tracking";
+import type { WebProgram } from "./bootstrap";
 
 // =============================================================================
 // Test Request Creation
@@ -16,22 +18,6 @@ import type { Endpoint } from "./bootstrap";
 
 /**
  * Create a Request object for testing.
- *
- * @param method - HTTP method (GET, POST, PUT, DELETE, etc.)
- * @param path - URL path (e.g., "/api/issues/42/close")
- * @param options - Optional body object (will be JSON stringified)
- * @returns A Request object ready for use with runTestApiEndpoint
- *
- * @example
- * ```typescript
- * // POST with body
- * const req = createTestRequest("POST", "/api/issues/42/close", {
- *   body: { projectSlug: "my-project" },
- * });
- *
- * // GET without body
- * const req = createTestRequest("GET", "/api/projects");
- * ```
  */
 export function createTestRequest(
   method: string,
@@ -49,32 +35,72 @@ export function createTestRequest(
 }
 
 // =============================================================================
+// Mock Source Provider
+// =============================================================================
+
+/**
+ * Create a mock DbSourceProvider that returns a mock DbClient.
+ *
+ * Builds the sourceProvider → source → client chain so operations
+ * that call `getDbClient(project, sourceProvider)` get the provided mock client.
+ *
+ * @example
+ * ```typescript
+ * const container = createTestContainer({
+ *   projectsResolver: { getAllProjects: async () => [mockProject] },
+ *   sourceProvider: createMockSourceProvider({
+ *     issues: { findMany: async () => mockIssues },
+ *     plans: { findByIssueId: async () => null },
+ *   }),
+ * });
+ * ```
+ */
+export function createMockSourceProvider(
+  mockClient: Record<string, unknown>
+): Record<string, unknown> {
+  return {
+    getOrCreate: () => ({
+      provision: async () => {},
+      createClient: () => mockClient,
+    }),
+  };
+}
+
+// =============================================================================
 // Test Container Building
 // =============================================================================
 
 /**
  * Build a test container with mocked dependencies.
  *
- * @param mocks - Partial mocks for WebCradle dependencies
- * @returns An Awilix container with the mocked dependencies
- *
+ * For mutation endpoints, provide a mock DomainExecutorFactory:
  * @example
  * ```typescript
- * const testContainer = buildTestContainer({
- *   issueAppService: {
- *     closeIssue: vi.fn().mockResolvedValue({ id: '1', status: 'CLOSED' }),
+ * const container = createTestContainer({
+ *   domain: {
+ *     forProject: () => Effect.succeed({
+ *       tasks: { getOrThrow: () => Effect.succeed(mockTask) },
+ *     }),
  *   },
  * });
  * ```
+ *
+ * For query endpoints, provide stub infrastructure deps:
+ * @example
+ * ```typescript
+ * const container = createTestContainer({
+ *   projectsResolver: { getAllProjects: vi.fn() },
+ *   sourceProvider: { getOrCreate: vi.fn() },
+ * });
+ * ```
  */
-export function buildTestContainer(
-  mocks: Partial<{ [K in keyof WebCradle]: Partial<WebCradle[K]> }>
-): AwilixContainer<Partial<WebCradle>> {
-  const container = createContainer<Partial<WebCradle>>({
-    injectionMode: InjectionMode.CLASSIC,
+export function createTestContainer(
+  mocks: Record<string, unknown>
+): AwilixContainer<Record<string, unknown>> {
+  const container = createContainer<Record<string, unknown>>({
+    injectionMode: InjectionMode.PROXY,
   });
 
-  // Register each mock as a value
   for (const [key, value] of Object.entries(mocks)) {
     container.register({
       [key]: asValue(value),
@@ -89,78 +115,36 @@ export function buildTestContainer(
 // =============================================================================
 
 /**
- * Execute an endpoint with a test container.
+ * Execute an Effect endpoint handler with a test container.
  *
- * This allows testing endpoints in isolation by providing mocked dependencies.
- * The endpoint is called with the test container's cradle instead of production.
- *
- * @param req - The Request object (can be constructed with `new Request(...)`)
- * @param endpoint - The wrapped endpoint (result of createApiEndpoint)
- * @param testContainer - A container with mocked dependencies
- * @param params - Optional route params (default: {})
- * @returns The NextResponse from the endpoint
+ * Accepts a WebProgram struct (from createApiEndpoint). Mirrors production
+ * createApiRoute behavior: runs middleware (if any), runs the Effect, and
+ * catches any thrown exceptions (e.g., ZodValidationError from validateInput),
+ * mapping them to HTTP error responses via mapError.
  *
  * @example
  * ```typescript
- * describe('closeIssueEndpoint', () => {
- *   it('closes an issue', async () => {
- *     const testContainer = buildTestContainer({
- *       issueAppService: {
- *         closeIssue: vi.fn().mockResolvedValue({
- *           issue: { id: '1', number: 42, status: 'CLOSED' },
- *           abandonedTasks: [],
- *         }),
- *       },
- *     });
- *
- *     const req = new Request('http://localhost/api/issues/42/close', {
- *       method: 'POST',
- *       body: JSON.stringify({ projectSlug: 'my-project' }),
- *     });
- *
- *     const result = await runTestApiEndpoint(
- *       req,
- *       endpoint,
- *       testContainer,
- *       { issueNumber: '42' }
- *     );
- *
- *     expect(result.status).toBe(200);
- *     const body = await result.json();
- *     expect(body.issue.status).toBe('CLOSED');
- *   });
- *
- *   it('returns 404 for non-existent issue', async () => {
- *     const testContainer = buildTestContainer({
- *       issueAppService: {
- *         closeIssue: vi.fn().mockRejectedValue(
- *           new EntityNotFoundError('Issue', '999')
- *         ),
- *       },
- *     });
- *
- *     const req = new Request('http://localhost/api/issues/999/close', {
- *       method: 'POST',
- *       body: JSON.stringify({ projectSlug: 'my-project' }),
- *     });
- *
- *     const result = await runTestApiEndpoint(
- *       req,
- *       endpoint,
- *       testContainer,
- *       { issueNumber: '999' }
- *     );
- *
- *     expect(result.status).toBe(404);
- *   });
- * });
+ * const result = await runTestEndpoint(
+ *   container,
+ *   endpoint,
+ *   createTestRequest("POST", "/api/tasks/t1/abandon", { body: { projectSlug: "p" } }),
+ *   { taskId: "t1" },
+ * );
+ * expect(result.status).toBe(200);
  * ```
  */
-export async function runTestApiEndpoint<TDeps extends keyof WebCradle>(
+export async function runTestEndpoint(
+  container: AwilixContainer<Record<string, unknown>>,
+  program: WebProgram<unknown>,
   req: Request,
-  endpoint: Endpoint<TDeps>,
-  testContainer: AwilixContainer<Partial<WebCradle>>,
   params: Record<string, string> = {}
 ): Promise<Response> {
-  return endpoint(req, params, testContainer.cradle as Pick<WebCradle, TDeps>);
+  try {
+    if (program.middleware) await program.middleware(container);
+    const runtime = createRuntime(container);
+    return await runtime.runEffectAndUnwrap(program.run(req, params));
+  } catch (error) {
+    const mapped = mapError(error);
+    return NextResponse.json(mapped.body, { status: mapped.status });
+  }
 }

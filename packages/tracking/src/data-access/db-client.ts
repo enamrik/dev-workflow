@@ -17,12 +17,13 @@
  * ```
  */
 
-import type { IssueRepository } from "../issues/issue.js";
-import type { PlanRepository } from "../plans/plan.js";
-import type { TaskRepository } from "../tasks/task.js";
-import type { MilestoneRepository } from "../milestones/milestone.js";
-import type { SnapshotRepository } from "../snapshots/snapshot.js";
-import type { ExecutionLogRepository } from "../execution-log.js";
+import { Service } from "@dev-workflow/effect";
+import type { IssueRepository } from "../domain/issues/issue.js";
+import type { PlanRepository } from "../domain/plans/plan.js";
+import type { TaskRepository } from "../domain/tasks/task.js";
+import type { MilestoneRepository } from "../domain/milestones/milestone.js";
+import type { SnapshotRepository } from "../domain/snapshots/snapshot.js";
+import type { ExecutionLogRepository } from "../domain/execution-log.js";
 
 /**
  * DbClient provides access to project-scoped repositories.
@@ -42,6 +43,15 @@ export interface DbClient {
   readonly executionLogs: ExecutionLogRepository;
 
   /**
+   * Execute a function inside a database transaction.
+   *
+   * The callback receives a new DbClient whose repositories are
+   * scoped to the transaction. If the callback throws, the
+   * transaction is rolled back.
+   */
+  transaction<T>(fn: (tx: DbClient) => Promise<T>): Promise<T>;
+
+  /**
    * Close the database connection.
    *
    * SQLite: Closes the underlying better-sqlite3 connection.
@@ -49,3 +59,9 @@ export interface DbClient {
    */
   close(): void;
 }
+
+/**
+ * Standalone Service tag for DbClient.
+ * Allows operations to yield* DbClientTag to get the project-scoped DbClient.
+ */
+export class DbClientTag extends Service<DbClient>()("dbClient") {}

@@ -20,6 +20,7 @@
  * ```
  */
 
+import { Service } from "@dev-workflow/effect";
 import * as path from "node:path";
 import * as os from "node:os";
 import { fileURLToPath } from "node:url";
@@ -39,10 +40,10 @@ import type { DbClient } from "./db-client.js";
 import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
 
 import { DrizzleDbClient } from "./drizzle-db-client.js";
-import { DrizzleProjectRepository } from "../projects/project-repository.js";
-import { DrizzleTypeRepository } from "../types/type-repository.js";
-import { DrizzleGlobalSettingsRepository } from "../global-settings-repository.js";
-import { DEFAULT_TYPE_DEFINITIONS } from "../types/type-definition.js";
+import { DrizzleProjectRepository } from "../domain/projects/project-repository.js";
+import { DrizzleTypeRepository } from "../domain/types/type-repository.js";
+import { DrizzleGlobalSettingsRepository } from "../domain/global-settings-repository.js";
+import { DEFAULT_TYPE_DEFINITIONS } from "../domain/types/type-definition.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,7 +85,7 @@ interface ParsedConnection {
 /**
  * Provider for creating DbSource instances with connection caching
  */
-export class DbSourceProvider {
+export class DbSourceProvider extends Service<DbSourceProvider>()("sourceProvider") {
   /** Cache of DbSource instances by connection string */
   private readonly sources = new Map<string, DbSource>();
 
@@ -148,8 +149,30 @@ export class DbSourceProvider {
     const sqlite = new Database(driverPath);
     sqlite.pragma("foreign_keys = ON");
     const db = sqliteDrizzle(sqlite, { schema: sqliteSchema });
-    const drizzleDb = db as unknown as DrizzleDb;
+    const rawDrizzleDb = db as unknown as DrizzleDb;
     const migrationsFolder = path.resolve(__dirname, "../../../drizzle");
+
+    // Wrap to support async transaction callbacks.
+    // better-sqlite3's native transaction() is synchronous and commits before
+    // async callbacks finish. We use raw BEGIN/COMMIT/ROLLBACK instead.
+    // In SQLite, all operations on the same connection are in the transaction.
+    const drizzleDb: DrizzleDb = {
+      select: (fields) => rawDrizzleDb.select(fields),
+      insert: (table) => rawDrizzleDb.insert(table),
+      update: (table) => rawDrizzleDb.update(table),
+      delete: (table) => rawDrizzleDb.delete(table),
+      async transaction<T>(fn: (tx: DrizzleDb) => Promise<T>): Promise<T> {
+        sqlite.exec("BEGIN");
+        try {
+          const result = await fn(rawDrizzleDb);
+          sqlite.exec("COMMIT");
+          return result;
+        } catch (e) {
+          sqlite.exec("ROLLBACK");
+          throw e;
+        }
+      },
+    };
 
     // Create global repositories
     const projects = new DrizzleProjectRepository(drizzleDb);

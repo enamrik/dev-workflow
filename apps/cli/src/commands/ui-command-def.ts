@@ -5,7 +5,8 @@
  */
 
 import { createCliHandler, createCliCommand, defaultMiddleware } from "../di/bootstrap.js";
-import type { UICommand } from "./ui-command.js";
+import { Effect } from "@dev-workflow/effect";
+import { UICommandTag } from "../di/cli-tags.js";
 
 /**
  * Options for UI commands (currently no options)
@@ -15,32 +16,38 @@ export type UIOptions = Record<string, never>;
 /**
  * Handler for ui (start) command.
  */
-export const handleUI = createCliHandler(
-  async (_options: UIOptions, { uiCommand }: { uiCommand: UICommand }) => {
-    await uiCommand.start();
-  },
-  defaultMiddleware
-);
+export const handleUI = createCliHandler({
+  handler: (_options: UIOptions) =>
+    Effect.gen(function* () {
+      const uiCommand = yield* UICommandTag;
+      yield* Effect.promise(() => uiCommand.start());
+    }),
+  middleware: defaultMiddleware,
+});
 
 /**
  * Handler for ui:install command.
  */
-export const handleUIInstall = createCliHandler(
-  async (_options: UIOptions, { uiCommand }: { uiCommand: UICommand }) => {
-    await uiCommand.install();
-  },
-  defaultMiddleware
-);
+export const handleUIInstall = createCliHandler({
+  handler: (_options: UIOptions) =>
+    Effect.gen(function* () {
+      const uiCommand = yield* UICommandTag;
+      yield* Effect.promise(() => uiCommand.install());
+    }),
+  middleware: defaultMiddleware,
+});
 
 /**
  * Handler for ui:uninstall command.
  */
-export const handleUIUninstall = createCliHandler(
-  async (_options: UIOptions, { uiCommand }: { uiCommand: UICommand }) => {
-    await uiCommand.uninstall();
-  },
-  defaultMiddleware
-);
+export const handleUIUninstall = createCliHandler({
+  handler: (_options: UIOptions) =>
+    Effect.gen(function* () {
+      const uiCommand = yield* UICommandTag;
+      yield* Effect.promise(() => uiCommand.uninstall());
+    }),
+  middleware: defaultMiddleware,
+});
 
 /**
  * Executable runners.

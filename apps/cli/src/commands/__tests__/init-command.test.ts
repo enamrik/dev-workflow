@@ -33,19 +33,6 @@ afterAll(() => {
   vi.restoreAllMocks();
 });
 
-// Mock child_process for git commands
-vi.mock("node:child_process", () => ({
-  execSync: vi.fn((cmd: string) => {
-    if (cmd === "git rev-parse HEAD") {
-      return "abc123\n";
-    }
-    if (cmd === "git rev-parse --git-dir") {
-      return ".git\n";
-    }
-    return "";
-  }),
-}));
-
 /**
  * Create mock FileSystem
  */
@@ -69,6 +56,7 @@ function createMockFileSystem(): FileSystem {
 function createMockGitOps(options: { isWorktree?: boolean } = {}): GitOperations {
   return {
     isGitRepository: vi.fn().mockReturnValue(true),
+    hasCommit: vi.fn().mockReturnValue(true),
     isWorktree: vi.fn().mockReturnValue(options.isWorktree ?? false),
     findGitRoot: vi.fn().mockReturnValue("/test/repo"),
     readSlugFromGitConfig: vi.fn().mockReturnValue(null),

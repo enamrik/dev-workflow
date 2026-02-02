@@ -8,9 +8,9 @@
  *
  * Design (mirrors MCP pattern with CLI-specific container middleware):
  * - Tool classes encapsulate business logic with constructor DI
- * - Handlers are thin wrappers: (opts, { tool }) => tool.action()
+ * - Handlers return Effects: (opts) => Effect<void, E, R>
  * - Container middleware injects dynamic values before handler runs
- * - createCliHandler wraps with error handling: (opts, cradle) => void
+ * - createCliHandler wraps with error handling and Effect runtime
  * - createCliCommand binds to container: (opts) => void
  *
  * @example
@@ -27,28 +27,30 @@
  *   container.register({ trackDirectoryResolver: asValue(new Resolver(config)) });
  * };
  *
- * // 3. Handler - thin wrapper that destructures what it needs
- * export const handleUninit = createCliHandler(
- *   async (_opts: UninitOptions, { uninitTool }: { uninitTool: UninitTool }) => {
- *     await uninitTool.uninit();
- *   },
- *   resolveConfigMiddleware
- * );
+ * // 3. Handler - thin wrapper that yields the command from Effect context
+ * export const handleUninit = createCliHandler({
+ *   handler: (_opts: UninitOptions) =>
+ *     Effect.gen(function* () {
+ *       const uninitTool = yield* UninitToolTag;
+ *       yield* Effect.promise(() => uninitTool.uninit());
+ *     }),
+ *   middleware: resolveConfigMiddleware,
+ * });
  *
  * // 4. Runner - binds to container for CLI entry point
- * const container = createCliContainer();
- * const runUninit = createCliCommand(handleUninit, container);
+ * const runUninit = createCliCommand(handleUninit);
  * ```
  */
 
-import { asValue } from "awilix";
+import { asValue, type AwilixContainer } from "awilix";
 import {
   ProjectConfigError,
   ValidationError,
   EntityNotFoundError,
   BusinessRuleError,
 } from "@dev-workflow/tracking";
-import { createCliContainer, type CliCradle, type CliContainer } from "./container.js";
+import { Effect, createRuntime } from "@dev-workflow/effect";
+import { createCliContainer, type CliContainer } from "./container.js";
 
 // =============================================================================
 // Type Definitions
@@ -65,13 +67,10 @@ export class CliValidationError extends Error {
 }
 
 /**
- * A handler function that receives options and cradle.
- * Handler destructures what it needs from cradle (typically just the tool class).
+ * A handler function that receives options and returns an Effect.
+ * Handler uses yield* to resolve service tags from the Effect context.
  */
-export type CliHandler<TOpts, TCradle = CliCradle> = (
-  options: TOpts,
-  cradle: TCradle
-) => Promise<void> | void;
+export type CliHandler<TOpts, E = unknown, R = never> = (options: TOpts) => Effect<void, E, R>;
 
 /**
  * A wrapped handler with error handling.
@@ -256,13 +255,16 @@ export const withResolverMiddleware = composeMiddleware(
  * Wraps a handler with container middleware and error handling.
  * Returns: (opts, container) => Promise<void>
  *
- * @param handler - The handler function (options, cradle) => void
- * @param middleware - Optional container middleware to run before handler
+ * @param params.handler - The handler function (options) => Effect
+ * @param params.middleware - Optional container middleware to run before handler
  */
-export function createCliHandler<TOpts, TCradle = CliCradle>(
-  handler: CliHandler<TOpts, TCradle>,
-  middleware?: ContainerMiddleware
-): WrappedCliHandler<TOpts> {
+export function createCliHandler<TOpts, E, R>({
+  handler,
+  middleware,
+}: {
+  handler: CliHandler<TOpts, E, R>;
+  middleware?: ContainerMiddleware;
+}): WrappedCliHandler<TOpts> {
   return async (options: TOpts, container: CliContainer): Promise<void> => {
     try {
       // Run container middleware first (can register dynamic values)
@@ -270,8 +272,11 @@ export function createCliHandler<TOpts, TCradle = CliCradle>(
         await middleware(container);
       }
 
-      // Execute handler with cradle
-      await handler(options, container.cradle as TCradle);
+      // Run Effect with container dependencies
+      // E-channel errors thrown by runEffectAndUnwrap → caught by try/catch
+      // Cast is safe: runtime resolves dependencies dynamically from container cradle
+      const runtime = createRuntime(container as AwilixContainer);
+      await runtime.runEffectAndUnwrap(handler(options));
     } catch (error) {
       handleCliError(error);
     }

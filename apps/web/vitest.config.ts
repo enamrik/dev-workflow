@@ -10,6 +10,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": resolve(__dirname, "./src"),
+      "next/link": resolve(__dirname, "./src/__tests__/stubs/next-link.tsx"),
+      "next/navigation": resolve(__dirname, "./src/__tests__/stubs/next-navigation.ts"),
     },
   },
 });

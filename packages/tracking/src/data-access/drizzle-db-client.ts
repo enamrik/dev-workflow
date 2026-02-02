@@ -9,20 +9,20 @@
 
 import type { DbClient } from "./db-client.js";
 import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
-import type { IssueRepository } from "../issues/issue.js";
-import type { PlanRepository } from "../plans/plan.js";
-import type { TaskRepository } from "../tasks/task.js";
-import type { MilestoneRepository } from "../milestones/milestone.js";
-import type { SnapshotRepository } from "../snapshots/snapshot.js";
-import type { ExecutionLogRepository } from "../execution-log.js";
+import type { IssueRepository } from "../domain/issues/issue.js";
+import type { PlanRepository } from "../domain/plans/plan.js";
+import type { TaskRepository } from "../domain/tasks/task.js";
+import type { MilestoneRepository } from "../domain/milestones/milestone.js";
+import type { SnapshotRepository } from "../domain/snapshots/snapshot.js";
+import type { ExecutionLogRepository } from "../domain/execution-log.js";
 
 // Repository implementations
-import { DrizzleIssueRepository } from "../issues/issue-repository.js";
-import { DrizzlePlanRepository } from "../plans/plan-repository.js";
-import { DrizzleTaskRepository } from "../tasks/task-repository.js";
-import { DrizzleMilestoneRepository } from "../milestones/milestone-repository.js";
-import { DrizzleSnapshotRepository } from "../snapshots/snapshot-repository.js";
-import { DrizzleExecutionLogRepository } from "../execution-log-repository.js";
+import { DrizzleIssueRepository } from "../domain/issues/issue-repository.js";
+import { DrizzlePlanRepository } from "../domain/plans/plan-repository.js";
+import { DrizzleTaskRepository } from "../domain/tasks/task-repository.js";
+import { DrizzleMilestoneRepository } from "../domain/milestones/milestone-repository.js";
+import { DrizzleSnapshotRepository } from "../domain/snapshots/snapshot-repository.js";
+import { DrizzleExecutionLogRepository } from "../domain/execution-log-repository.js";
 
 /**
  * Drizzle implementation of DbClient
@@ -45,7 +45,7 @@ export class DrizzleDbClient implements DbClient {
    * @param projectId - The project to scope repositories to
    */
   constructor(
-    db: DrizzleDb,
+    private readonly db: DrizzleDb,
     public readonly projectId: string
   ) {
     // Project-scoped repositories
@@ -57,6 +57,19 @@ export class DrizzleDbClient implements DbClient {
     this.plans = new DrizzlePlanRepository(db);
     this.tasks = new DrizzleTaskRepository(db);
     this.executionLogs = new DrizzleExecutionLogRepository(db);
+  }
+
+  /**
+   * Execute a function inside a database transaction.
+   *
+   * Creates a new DbClient whose repositories are scoped to the
+   * transactional connection. Commits on success, rolls back on throw.
+   */
+  async transaction<T>(fn: (tx: DbClient) => Promise<T>): Promise<T> {
+    return this.db.transaction(async (txDb) => {
+      const txClient = new DrizzleDbClient(txDb, this.projectId);
+      return fn(txClient);
+    });
   }
 
   /**

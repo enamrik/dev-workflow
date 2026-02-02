@@ -6,12 +6,14 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
+import { Effect } from "@dev-workflow/effect";
 import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import {
   createClientForProject,
   createTestIssue,
   createTestPlan,
   createTestTask,
+  runMcpHandler,
 } from "../../test/helpers.js";
 import {
   VersioningService,
@@ -19,9 +21,7 @@ import {
   MergeService,
   type DbClient,
 } from "@dev-workflow/tracking";
-import { handleMergeIssues } from "../../tools/merge-tool-def.js";
-import { MergeTool } from "../../tools/merge-tool.js";
-import { MergeIssuesSchema } from "../../tools/schemas.js";
+import { handleMergeIssues, MergeIssuesSchema } from "../../tools/merge-tools.js";
 
 /** Test project ID */
 const TEST_PROJECT_ID = "test-project-merge-integration";
@@ -57,12 +57,8 @@ async function createMergeToolContext(testDb: TestDatabase): Promise<{
     mockGitHubCLI
   );
 
-  // Create MergeTool
-  const mergeTool = new MergeTool(mergeService);
-
   return {
     ctx: {
-      mergeTool,
       mergeService,
     },
     client,
@@ -86,23 +82,24 @@ describe("Merge Tools Integration", () => {
     describe("create_new mode", () => {
       it("should create a new issue from two source issues", async () => {
         // Create two issues with plans and tasks
-        const issue1 = createTestIssue(client.issues, {
+        const issue1 = await createTestIssue(client.issues, {
           title: "Feature A",
           description: "Description for feature A",
         });
-        const plan1 = createTestPlan(client.plans, issue1.id);
-        createTestTask(client.tasks, plan1.id, { title: "Task A1" });
-        createTestTask(client.tasks, plan1.id, { title: "Task A2" });
+        const plan1 = await createTestPlan(client.plans, issue1.id);
+        await createTestTask(client.tasks, plan1.id, { title: "Task A1" });
+        await createTestTask(client.tasks, plan1.id, { title: "Task A2" });
 
-        const issue2 = createTestIssue(client.issues, {
+        const issue2 = await createTestIssue(client.issues, {
           title: "Feature B",
           description: "Description for feature B",
         });
-        const plan2 = createTestPlan(client.plans, issue2.id);
-        createTestTask(client.tasks, plan2.id, { title: "Task B1" });
+        const plan2 = await createTestPlan(client.plans, issue2.id);
+        await createTestTask(client.tasks, plan2.id, { title: "Task B1" });
 
         // Merge in create_new mode
-        const result = await handleMergeIssues(
+        const result = await runMcpHandler(
+          handleMergeIssues,
           {
             sourceIssueNumber: issue1.number,
             targetIssueNumber: issue2.number,
@@ -119,17 +116,18 @@ describe("Merge Tools Integration", () => {
         expect(content.resultIssueNumber).toBeGreaterThan(issue2.number);
 
         // Verify original issues are unchanged
-        const originalIssue1 = client.issues.findById(issue1.id);
-        const originalIssue2 = client.issues.findById(issue2.id);
+        const originalIssue1 = await Effect.runPromise(client.issues.findById(issue1.id));
+        const originalIssue2 = await Effect.runPromise(client.issues.findById(issue2.id));
         expect(originalIssue1?.isDeleted).toBeFalsy();
         expect(originalIssue2?.isDeleted).toBeFalsy();
       });
 
       it("should use custom title and description when provided", async () => {
-        const issue1 = createTestIssue(client.issues, { title: "Issue 1" });
-        const issue2 = createTestIssue(client.issues, { title: "Issue 2" });
+        const issue1 = await createTestIssue(client.issues, { title: "Issue 1" });
+        const issue2 = await createTestIssue(client.issues, { title: "Issue 2" });
 
-        const result = await handleMergeIssues(
+        const result = await runMcpHandler(
+          handleMergeIssues,
           {
             sourceIssueNumber: issue1.number,
             targetIssueNumber: issue2.number,
@@ -150,24 +148,25 @@ describe("Merge Tools Integration", () => {
     describe("merge_into mode", () => {
       it("should fold source into target and soft-delete source", async () => {
         // Create source issue with tasks
-        const sourceIssue = createTestIssue(client.issues, {
+        const sourceIssue = await createTestIssue(client.issues, {
           title: "Source Issue",
           description: "Source description",
         });
-        const sourcePlan = createTestPlan(client.plans, sourceIssue.id);
-        createTestTask(client.tasks, sourcePlan.id, { title: "Source Task 1" });
-        createTestTask(client.tasks, sourcePlan.id, { title: "Source Task 2" });
+        const sourcePlan = await createTestPlan(client.plans, sourceIssue.id);
+        await createTestTask(client.tasks, sourcePlan.id, { title: "Source Task 1" });
+        await createTestTask(client.tasks, sourcePlan.id, { title: "Source Task 2" });
 
         // Create target issue with tasks
-        const targetIssue = createTestIssue(client.issues, {
+        const targetIssue = await createTestIssue(client.issues, {
           title: "Target Issue",
           description: "Target description",
         });
-        const targetPlan = createTestPlan(client.plans, targetIssue.id);
-        createTestTask(client.tasks, targetPlan.id, { title: "Target Task 1" });
+        const targetPlan = await createTestPlan(client.plans, targetIssue.id);
+        await createTestTask(client.tasks, targetPlan.id, { title: "Target Task 1" });
 
         // Merge source into target
-        const result = await handleMergeIssues(
+        const result = await runMcpHandler(
+          handleMergeIssues,
           {
             sourceIssueNumber: sourceIssue.number,
             targetIssueNumber: targetIssue.number,
@@ -185,11 +184,11 @@ describe("Merge Tools Integration", () => {
 
         // Verify source is soft-deleted
         // Use includeDeleted: true since findById filters out deleted issues by default
-        const deletedSource = client.issues.findById(sourceIssue.id, true);
+        const deletedSource = await Effect.runPromise(client.issues.findById(sourceIssue.id, true));
         expect(deletedSource?.isDeleted).toBe(true);
 
         // Verify target is unchanged (not deleted)
-        const updatedTarget = client.issues.findById(targetIssue.id);
+        const updatedTarget = await Effect.runPromise(client.issues.findById(targetIssue.id));
         expect(updatedTarget?.isDeleted).toBeFalsy();
       });
     });
@@ -197,16 +196,17 @@ describe("Merge Tools Integration", () => {
     describe("warnings", () => {
       it("should return warnings for in-progress tasks", async () => {
         // Create issue with an in-progress task
-        const issue1 = createTestIssue(client.issues, { title: "Issue 1" });
-        const plan1 = createTestPlan(client.plans, issue1.id);
-        createTestTask(client.tasks, plan1.id, {
+        const issue1 = await createTestIssue(client.issues, { title: "Issue 1" });
+        const plan1 = await createTestPlan(client.plans, issue1.id);
+        await createTestTask(client.tasks, plan1.id, {
           title: "In Progress Task",
           status: "IN_PROGRESS",
         });
 
-        const issue2 = createTestIssue(client.issues, { title: "Issue 2" });
+        const issue2 = await createTestIssue(client.issues, { title: "Issue 2" });
 
-        const result = await handleMergeIssues(
+        const result = await runMcpHandler(
+          handleMergeIssues,
           {
             sourceIssueNumber: issue1.number,
             targetIssueNumber: issue2.number,
@@ -225,16 +225,17 @@ describe("Merge Tools Integration", () => {
       });
 
       it("should return warnings for PR review tasks", async () => {
-        const issue1 = createTestIssue(client.issues, { title: "Issue 1" });
-        const plan1 = createTestPlan(client.plans, issue1.id);
-        createTestTask(client.tasks, plan1.id, {
+        const issue1 = await createTestIssue(client.issues, { title: "Issue 1" });
+        const plan1 = await createTestPlan(client.plans, issue1.id);
+        await createTestTask(client.tasks, plan1.id, {
           title: "PR Review Task",
           status: "PR_REVIEW",
         });
 
-        const issue2 = createTestIssue(client.issues, { title: "Issue 2" });
+        const issue2 = await createTestIssue(client.issues, { title: "Issue 2" });
 
-        const result = await handleMergeIssues(
+        const result = await runMcpHandler(
+          handleMergeIssues,
           {
             sourceIssueNumber: issue1.number,
             targetIssueNumber: issue2.number,
@@ -255,9 +256,10 @@ describe("Merge Tools Integration", () => {
 
     describe("error cases", () => {
       it("should fail when trying to merge an issue with itself", async () => {
-        const issue = createTestIssue(client.issues, { title: "Self Issue" });
+        const issue = await createTestIssue(client.issues, { title: "Self Issue" });
 
-        const result = await handleMergeIssues(
+        const result = await runMcpHandler(
+          handleMergeIssues,
           {
             sourceIssueNumber: issue.number,
             targetIssueNumber: issue.number,
@@ -273,13 +275,14 @@ describe("Merge Tools Integration", () => {
       });
 
       it("should fail when source issue is CLOSED", async () => {
-        const closedIssue = createTestIssue(client.issues, {
+        const closedIssue = await createTestIssue(client.issues, {
           title: "Closed Issue",
           status: "CLOSED",
         });
-        const openIssue = createTestIssue(client.issues, { title: "Open Issue" });
+        const openIssue = await createTestIssue(client.issues, { title: "Open Issue" });
 
-        const result = await handleMergeIssues(
+        const result = await runMcpHandler(
+          handleMergeIssues,
           {
             sourceIssueNumber: closedIssue.number,
             targetIssueNumber: openIssue.number,
@@ -295,13 +298,14 @@ describe("Merge Tools Integration", () => {
       });
 
       it("should fail when target issue is CLOSED", async () => {
-        const openIssue = createTestIssue(client.issues, { title: "Open Issue" });
-        const closedIssue = createTestIssue(client.issues, {
+        const openIssue = await createTestIssue(client.issues, { title: "Open Issue" });
+        const closedIssue = await createTestIssue(client.issues, {
           title: "Closed Issue",
           status: "CLOSED",
         });
 
-        const result = await handleMergeIssues(
+        const result = await runMcpHandler(
+          handleMergeIssues,
           {
             sourceIssueNumber: openIssue.number,
             targetIssueNumber: closedIssue.number,
@@ -317,9 +321,10 @@ describe("Merge Tools Integration", () => {
       });
 
       it("should fail when source issue does not exist", async () => {
-        const issue = createTestIssue(client.issues, { title: "Existing Issue" });
+        const issue = await createTestIssue(client.issues, { title: "Existing Issue" });
 
-        const result = await handleMergeIssues(
+        const result = await runMcpHandler(
+          handleMergeIssues,
           {
             sourceIssueNumber: 9999,
             targetIssueNumber: issue.number,
@@ -335,10 +340,11 @@ describe("Merge Tools Integration", () => {
       });
 
       it("should fail with invalid mode", async () => {
-        const issue1 = createTestIssue(client.issues, { title: "Issue 1" });
-        const issue2 = createTestIssue(client.issues, { title: "Issue 2" });
+        const issue1 = await createTestIssue(client.issues, { title: "Issue 1" });
+        const issue2 = await createTestIssue(client.issues, { title: "Issue 2" });
 
-        const result = await handleMergeIssues(
+        const result = await runMcpHandler(
+          handleMergeIssues,
           {
             sourceIssueNumber: issue1.number,
             targetIssueNumber: issue2.number,

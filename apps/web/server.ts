@@ -33,6 +33,7 @@ async function main() {
   const wsHandler = new WebSocketHandler();
 
   // Handle WebSocket upgrades
+  const upgradeHandler = app.getUpgradeHandler();
   server.on("upgrade", (request: IncomingMessage, socket, head) => {
     const { pathname } = parse(request.url || "", true);
 
@@ -41,7 +42,8 @@ async function main() {
         wsHandler.handleConnection(ws);
       });
     } else {
-      socket.destroy();
+      // Let Next.js handle HMR and other upgrade requests
+      upgradeHandler(request, socket, head);
     }
   });
 

@@ -8,12 +8,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { Effect } from "@dev-workflow/effect";
 import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import {
   createClientForProject,
   createTestIssue,
   createTestPlan,
   createTestTask,
+  runMcpHandler,
 } from "../../test/helpers.js";
 import {
   TaskSessionService,
@@ -35,9 +37,6 @@ import {
   handleLogTaskProgress,
   handleGetTaskExecutionLog,
   handleLoadTaskSession,
-} from "../../tools/task-tool-def.js";
-import { TaskTool } from "../../tools/task-tool.js";
-import {
   GetTaskSchema,
   ListAvailableTasksSchema,
   UpdateTaskSchema,
@@ -48,7 +47,7 @@ import {
   DeleteTaskSchema,
   GetTaskExecutionPromptSchema,
   CheckTaskConflictsSchema,
-} from "../../tools/schemas.js";
+} from "../../tools/task-tools.js";
 
 /**
  * Tracking for mock service calls
@@ -180,25 +179,8 @@ async function createTaskToolContext(
   const taskService = new TaskService(client, projectManagement, mockGitWorktreeService);
   const issueService = new IssueService(client, taskService, projectManagement);
 
-  // Create TaskTool with all dependencies
-  const taskTool = new TaskTool(
-    taskService,
-    taskSessionService,
-    taskManagementService,
-    planService,
-    issueService,
-    client,
-    workerQueueDb,
-    conflictDetectionService,
-    null, // providerRegistry
-    null, // project
-    null, // dbSource
-    null // githubCLI
-  );
-
   return {
     ctx: {
-      taskTool,
       dbClient: client,
       issueService,
       planService,
@@ -248,14 +230,14 @@ describe("Task Tools Integration", () => {
 
   describe("handleGetTask", () => {
     it("should get task by ID", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test Task",
         status: "BACKLOG",
       });
 
-      const result = await handleGetTask({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleGetTask, { taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -265,11 +247,12 @@ describe("Task Tools Integration", () => {
     });
 
     it("should get task by issue and task number", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      createTestTask(client.tasks, plan.id, { title: "First Task" });
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      await createTestTask(client.tasks, plan.id, { title: "First Task" });
 
-      const result = await handleGetTask(
+      const result = await runMcpHandler(
+        handleGetTask,
         {
           issueNumber: issue.number,
           taskNumber: 1,
@@ -283,20 +266,20 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return error for non-existent task", async () => {
-      const result = await handleGetTask({ taskId: "non-existent-id" }, ctx);
+      const result = await runMcpHandler(handleGetTask, { taskId: "non-existent-id" }, ctx);
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
     });
 
     it("should return stored task number", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task1 = createTestTask(client.tasks, plan.id, { title: "Task 1" });
-      const task2 = createTestTask(client.tasks, plan.id, { title: "Task 2" });
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task1 = await createTestTask(client.tasks, plan.id, { title: "Task 1" });
+      const task2 = await createTestTask(client.tasks, plan.id, { title: "Task 2" });
 
-      const result1 = await handleGetTask({ taskId: task1.id }, ctx);
-      const result2 = await handleGetTask({ taskId: task2.id }, ctx);
+      const result1 = await runMcpHandler(handleGetTask, { taskId: task1.id }, ctx);
+      const result2 = await runMcpHandler(handleGetTask, { taskId: task2.id }, ctx);
 
       const content1 = JSON.parse(result1.content[0].text);
       const content2 = JSON.parse(result2.content[0].text);
@@ -306,12 +289,13 @@ describe("Task Tools Integration", () => {
     });
 
     it("should find task by stored number", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      createTestTask(client.tasks, plan.id, { title: "Task 1" });
-      createTestTask(client.tasks, plan.id, { title: "Task 2" });
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      await createTestTask(client.tasks, plan.id, { title: "Task 1" });
+      await createTestTask(client.tasks, plan.id, { title: "Task 2" });
 
-      const result = await handleGetTask(
+      const result = await runMcpHandler(
+        handleGetTask,
         {
           issueNumber: issue.number,
           taskNumber: 2,
@@ -326,15 +310,15 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return task labels and type", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Task with labels",
         type: "FEATURE",
         labels: { priority: "high", sprint: "sprint-1" },
       });
 
-      const result = await handleGetTask({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleGetTask, { taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -343,17 +327,17 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return workerInfo when task is IN_PROGRESS with session", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Task in progress",
         status: "IN_PROGRESS",
       });
 
       // Simulate a task with sessionId (as would happen during load_task_session)
-      client.tasks.update(task.id, { sessionId: "test-session-123" });
+      await Effect.runPromise(client.tasks.update(task.id, { sessionId: "test-session-123" }));
 
-      const result = await handleGetTask({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleGetTask, { taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -365,14 +349,14 @@ describe("Task Tools Integration", () => {
     });
 
     it("should not return workerInfo when task is not IN_PROGRESS", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Task in backlog",
         status: "BACKLOG",
       });
 
-      const result = await handleGetTask({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleGetTask, { taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -381,21 +365,23 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return prInfo when task has a PR", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Task with PR",
         status: "PR_REVIEW",
       });
 
       // Simulate a task with PR info
-      client.tasks.update(task.id, {
-        prNumber: 42,
-        prUrl: "https://github.com/test/repo/pull/42",
-        prStatus: "OPEN",
-      });
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          prNumber: 42,
+          prUrl: "https://github.com/test/repo/pull/42",
+          prStatus: "OPEN",
+        })
+      );
 
-      const result = await handleGetTask({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleGetTask, { taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -406,14 +392,14 @@ describe("Task Tools Integration", () => {
     });
 
     it("should not return prInfo when task has no PR", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Task without PR",
         status: "IN_PROGRESS",
       });
 
-      const result = await handleGetTask({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleGetTask, { taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -421,22 +407,24 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return both workerInfo and prInfo when applicable", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Task with worker and PR",
         status: "IN_PROGRESS",
       });
 
       // Simulate a task with both session and PR info
-      client.tasks.update(task.id, {
-        sessionId: "session-456",
-        prNumber: 99,
-        prUrl: "https://github.com/test/repo/pull/99",
-        prStatus: "DRAFT",
-      });
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          sessionId: "session-456",
+          prNumber: 99,
+          prUrl: "https://github.com/test/repo/pull/99",
+          prStatus: "DRAFT",
+        })
+      );
 
-      const result = await handleGetTask({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleGetTask, { taskId: task.id }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -452,13 +440,13 @@ describe("Task Tools Integration", () => {
 
   describe("handleListAvailableTasks", () => {
     it("should list available tasks", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      createTestTask(client.tasks, plan.id, { title: "Task 1", status: "BACKLOG" });
-      createTestTask(client.tasks, plan.id, { title: "Task 2", status: "READY" });
-      createTestTask(client.tasks, plan.id, { title: "Task 3", status: "IN_PROGRESS" });
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      await createTestTask(client.tasks, plan.id, { title: "Task 1", status: "BACKLOG" });
+      await createTestTask(client.tasks, plan.id, { title: "Task 2", status: "READY" });
+      await createTestTask(client.tasks, plan.id, { title: "Task 3", status: "IN_PROGRESS" });
 
-      const result = await handleListAvailableTasks({}, ctx);
+      const result = await runMcpHandler(handleListAvailableTasks, {}, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -467,14 +455,15 @@ describe("Task Tools Integration", () => {
     });
 
     it("should filter by issue number", async () => {
-      const issue1 = createTestIssue(client.issues, { title: "Issue 1" });
-      const issue2 = createTestIssue(client.issues, { title: "Issue 2" });
-      const plan1 = createTestPlan(client.plans, issue1.id);
-      const plan2 = createTestPlan(client.plans, issue2.id);
-      createTestTask(client.tasks, plan1.id, { title: "Task A", status: "BACKLOG" });
-      createTestTask(client.tasks, plan2.id, { title: "Task B", status: "BACKLOG" });
+      const issue1 = await createTestIssue(client.issues, { title: "Issue 1" });
+      const issue2 = await createTestIssue(client.issues, { title: "Issue 2" });
+      const plan1 = await createTestPlan(client.plans, issue1.id);
+      const plan2 = await createTestPlan(client.plans, issue2.id);
+      await createTestTask(client.tasks, plan1.id, { title: "Task A", status: "BACKLOG" });
+      await createTestTask(client.tasks, plan2.id, { title: "Task B", status: "BACKLOG" });
 
-      const result = await handleListAvailableTasks(
+      const result = await runMcpHandler(
+        handleListAvailableTasks,
         {
           issueNumber: issue1.number,
         },
@@ -488,12 +477,16 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return stored task numbers", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      createTestTask(client.tasks, plan.id, { title: "Task 1", status: "BACKLOG" });
-      createTestTask(client.tasks, plan.id, { title: "Task 2", status: "BACKLOG" });
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      await createTestTask(client.tasks, plan.id, { title: "Task 1", status: "BACKLOG" });
+      await createTestTask(client.tasks, plan.id, { title: "Task 2", status: "BACKLOG" });
 
-      const result = await handleListAvailableTasks({ issueNumber: issue.number }, ctx);
+      const result = await runMcpHandler(
+        handleListAvailableTasks,
+        { issueNumber: issue.number },
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -507,13 +500,14 @@ describe("Task Tools Integration", () => {
 
   describe("handleUpdateTask", () => {
     it("should update task properties", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Original Title",
       });
 
-      const result = await handleUpdateTask(
+      const result = await runMcpHandler(
+        handleUpdateTask,
         {
           taskId: task.id,
           title: "Updated Title",
@@ -528,20 +522,21 @@ describe("Task Tools Integration", () => {
       expect(content.task.title).toBe("Updated Title");
 
       // Verify database state
-      const updated = client.tasks.findById(task.id);
+      const updated = await Effect.runPromise(client.tasks.findById(task.id));
       expect(updated!.title).toBe("Updated Title");
       expect(updated!.description).toBe("New description");
       expect(updated!.estimatedMinutes).toBe(60);
     });
 
     it("should add labels to a task", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Task without labels",
       });
 
-      const result = await handleUpdateTask(
+      const result = await runMcpHandler(
+        handleUpdateTask,
         {
           taskId: task.id,
           labels: {
@@ -562,7 +557,7 @@ describe("Task Tools Integration", () => {
       });
 
       // Verify database state
-      const updated = client.tasks.findById(task.id);
+      const updated = await Effect.runPromise(client.tasks.findById(task.id));
       expect(updated!.labels).toEqual({
         priority: "high",
         sprint: "sprint-1",
@@ -571,14 +566,15 @@ describe("Task Tools Integration", () => {
     });
 
     it("should merge labels with existing ones", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Task with labels",
         labels: { existing: "value", toUpdate: "old" },
       });
 
-      const result = await handleUpdateTask(
+      const result = await runMcpHandler(
+        handleUpdateTask,
         {
           taskId: task.id,
           labels: {
@@ -599,14 +595,15 @@ describe("Task Tools Integration", () => {
     });
 
     it("should remove labels when value is null", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Task with labels",
         labels: { keep: "value", remove: "gone" },
       });
 
-      const result = await handleUpdateTask(
+      const result = await runMcpHandler(
+        handleUpdateTask,
         {
           taskId: task.id,
           labels: {
@@ -624,19 +621,20 @@ describe("Task Tools Integration", () => {
       });
 
       // Verify database state
-      const updated = client.tasks.findById(task.id);
+      const updated = await Effect.runPromise(client.tasks.findById(task.id));
       expect(updated!.labels).toEqual({ keep: "value" });
     });
 
     it("should clear all labels when all are removed", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Task with labels",
         labels: { only: "label" },
       });
 
-      const result = await handleUpdateTask(
+      const result = await runMcpHandler(
+        handleUpdateTask,
         {
           taskId: task.id,
           labels: {
@@ -652,19 +650,20 @@ describe("Task Tools Integration", () => {
       expect(content.task.labels).toBeUndefined();
 
       // Verify database state
-      const updated = client.tasks.findById(task.id);
+      const updated = await Effect.runPromise(client.tasks.findById(task.id));
       expect(updated!.labels).toBeUndefined();
     });
   });
 
   describe("handleLogTaskProgress and handleGetTaskExecutionLog", () => {
     it("should log and retrieve task progress", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id);
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id);
 
       // Log progress
-      const logResult = await handleLogTaskProgress(
+      const logResult = await runMcpHandler(
+        handleLogTaskProgress,
         {
           taskId: task.id,
           sessionId: "test-session",
@@ -677,7 +676,7 @@ describe("Task Tools Integration", () => {
       expect(logResult.isError).toBeUndefined();
 
       // Retrieve log
-      const getResult = await handleGetTaskExecutionLog({ taskId: task.id }, ctx);
+      const getResult = await runMcpHandler(handleGetTaskExecutionLog, { taskId: task.id }, ctx);
 
       expect(getResult.isError).toBeUndefined();
       const content = JSON.parse(getResult.content[0].text);
@@ -712,26 +711,29 @@ describe("Task Tools Integration", () => {
         );
 
         // Create task with GitHub sync info
-        const issue = createTestIssue(clientWithAssignee.issues);
-        const plan = createTestPlan(clientWithAssignee.plans, issue.id);
-        const task = createTestTask(clientWithAssignee.tasks, plan.id, {
+        const issue = await createTestIssue(clientWithAssignee.issues);
+        const plan = await createTestPlan(clientWithAssignee.plans, issue.id);
+        const task = await createTestTask(clientWithAssignee.tasks, plan.id, {
           title: "Task with GitHub",
           status: "BACKLOG",
         });
 
         // Add GitHub sync state to the task
-        clientWithAssignee.tasks.updateSyncState(task.id, {
-          externalId: "42",
-          externalUrl: "https://github.com/test/repo/issues/42",
-          externalNodeId: "I_test_42",
-          syncStatus: "SYNCED",
-          lastSyncedAt: new Date().toISOString(),
-          lastSyncError: null,
-          remoteProjectId: null,
-        });
+        await Effect.runPromise(
+          clientWithAssignee.tasks.updateSyncState(task.id, {
+            externalId: "42",
+            externalUrl: "https://github.com/test/repo/issues/42",
+            externalNodeId: "I_test_42",
+            syncStatus: "SYNCED",
+            lastSyncedAt: new Date().toISOString(),
+            lastSyncError: null,
+            remoteProjectId: null,
+          })
+        );
 
         // Start the task
-        const result = await handleLoadTaskSession(
+        const result = await runMcpHandler(
+          handleLoadTaskSession,
           {
             taskId: task.id,
             sessionId: "test-session",
@@ -782,26 +784,29 @@ describe("Task Tools Integration", () => {
         );
 
         // Create task with GitHub sync info
-        const issue = createTestIssue(clientNoAssignee.issues);
-        const plan = createTestPlan(clientNoAssignee.plans, issue.id);
-        const task = createTestTask(clientNoAssignee.tasks, plan.id, {
+        const issue = await createTestIssue(clientNoAssignee.issues);
+        const plan = await createTestPlan(clientNoAssignee.plans, issue.id);
+        const task = await createTestTask(clientNoAssignee.tasks, plan.id, {
           title: "Task with GitHub",
           status: "BACKLOG",
         });
 
         // Add GitHub sync state to the task
-        clientNoAssignee.tasks.updateSyncState(task.id, {
-          externalId: "42",
-          externalUrl: "https://github.com/test/repo/issues/42",
-          externalNodeId: "I_test_42",
-          syncStatus: "SYNCED",
-          lastSyncedAt: new Date().toISOString(),
-          lastSyncError: null,
-          remoteProjectId: null,
-        });
+        await Effect.runPromise(
+          clientNoAssignee.tasks.updateSyncState(task.id, {
+            externalId: "42",
+            externalUrl: "https://github.com/test/repo/issues/42",
+            externalNodeId: "I_test_42",
+            syncStatus: "SYNCED",
+            lastSyncedAt: new Date().toISOString(),
+            lastSyncError: null,
+            remoteProjectId: null,
+          })
+        );
 
         // Start the task
-        const result = await handleLoadTaskSession(
+        const result = await runMcpHandler(
+          handleLoadTaskSession,
           {
             taskId: task.id,
             sessionId: "test-session",
@@ -846,26 +851,29 @@ describe("Task Tools Integration", () => {
         );
 
         // Create task with GitHub sync info (simulating a previously synced task)
-        const issue = createTestIssue(clientDisabled.issues);
-        const plan = createTestPlan(clientDisabled.plans, issue.id);
-        const task = createTestTask(clientDisabled.tasks, plan.id, {
+        const issue = await createTestIssue(clientDisabled.issues);
+        const plan = await createTestPlan(clientDisabled.plans, issue.id);
+        const task = await createTestTask(clientDisabled.tasks, plan.id, {
           title: "Task with GitHub",
           status: "BACKLOG",
         });
 
         // Add GitHub sync state to the task
-        clientDisabled.tasks.updateSyncState(task.id, {
-          externalId: "42",
-          externalUrl: "https://github.com/test/repo/issues/42",
-          externalNodeId: "I_test_42",
-          syncStatus: "SYNCED",
-          lastSyncedAt: new Date().toISOString(),
-          lastSyncError: null,
-          remoteProjectId: null,
-        });
+        await Effect.runPromise(
+          clientDisabled.tasks.updateSyncState(task.id, {
+            externalId: "42",
+            externalUrl: "https://github.com/test/repo/issues/42",
+            externalNodeId: "I_test_42",
+            syncStatus: "SYNCED",
+            lastSyncedAt: new Date().toISOString(),
+            lastSyncError: null,
+            remoteProjectId: null,
+          })
+        );
 
         // Start the task
-        const result = await handleLoadTaskSession(
+        const result = await runMcpHandler(
+          handleLoadTaskSession,
           {
             taskId: task.id,
             sessionId: "test-session",
@@ -913,9 +921,9 @@ describe("Task Tools Integration", () => {
         );
 
         // Create task WITHOUT GitHub sync info
-        const issue = createTestIssue(clientNoSync.issues);
-        const plan = createTestPlan(clientNoSync.plans, issue.id);
-        const task = createTestTask(clientNoSync.tasks, plan.id, {
+        const issue = await createTestIssue(clientNoSync.issues);
+        const plan = await createTestPlan(clientNoSync.plans, issue.id);
+        const task = await createTestTask(clientNoSync.tasks, plan.id, {
           title: "Task without GitHub",
           status: "BACKLOG",
         });
@@ -923,7 +931,8 @@ describe("Task Tools Integration", () => {
         // Don't add GitHub sync state - task has no linked GitHub issue
 
         // Start the task
-        const result = await handleLoadTaskSession(
+        const result = await runMcpHandler(
+          handleLoadTaskSession,
           {
             taskId: task.id,
             sessionId: "test-session",
@@ -964,9 +973,9 @@ describe("Task Tools Integration", () => {
         );
 
         // Create task
-        const issue = createTestIssue(clientQueue.issues);
-        const plan = createTestPlan(clientQueue.plans, issue.id);
-        const task = createTestTask(clientQueue.tasks, plan.id, {
+        const issue = await createTestIssue(clientQueue.issues);
+        const plan = await createTestPlan(clientQueue.plans, issue.id);
+        const task = await createTestTask(clientQueue.tasks, plan.id, {
           title: "Queued Task",
           status: "BACKLOG",
         });
@@ -975,7 +984,8 @@ describe("Task Tools Integration", () => {
         queueDb.enqueue(task.id, "test-project");
 
         // Try to start without workerId
-        const result = await handleLoadTaskSession(
+        const result = await runMcpHandler(
+          handleLoadTaskSession,
           {
             taskId: task.id,
             sessionId: "test-session",
@@ -1015,9 +1025,9 @@ describe("Task Tools Integration", () => {
         );
 
         // Create task
-        const issue = createTestIssue(clientQueue.issues);
-        const plan = createTestPlan(clientQueue.plans, issue.id);
-        const task = createTestTask(clientQueue.tasks, plan.id, {
+        const issue = await createTestIssue(clientQueue.issues);
+        const plan = await createTestPlan(clientQueue.plans, issue.id);
+        const task = await createTestTask(clientQueue.tasks, plan.id, {
           title: "Queued Task",
           status: "BACKLOG",
         });
@@ -1033,7 +1043,8 @@ describe("Task Tools Integration", () => {
         expect(claimed?.taskId).toBe(task.id);
 
         // Start with workerId (isolated mode is enforced for workers)
-        const result = await handleLoadTaskSession(
+        const result = await runMcpHandler(
+          handleLoadTaskSession,
           {
             taskId: task.id,
             sessionId: "test-session",
@@ -1060,18 +1071,19 @@ describe("Task Tools Integration", () => {
     });
 
     it("should resume non-queued IN_PROGRESS task by any session", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "In Progress Task",
         status: "IN_PROGRESS",
       });
 
       // Update task with session info (as if started by another session)
-      client.tasks.update(task.id, { sessionId: "original-session" });
+      await Effect.runPromise(client.tasks.update(task.id, { sessionId: "original-session" }));
 
       // Resume with different session
-      const result = await handleLoadTaskSession(
+      const result = await runMcpHandler(
+        handleLoadTaskSession,
         {
           taskId: task.id,
           sessionId: "new-session",
@@ -1086,16 +1098,17 @@ describe("Task Tools Integration", () => {
     });
 
     it("should resume non-queued PR_REVIEW task by any session", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
       // Create task directly in PR_REVIEW status (bypassing state machine)
-      const task = createTestTask(client.tasks, plan.id, {
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "PR Review Task",
         status: "PR_REVIEW",
       });
 
       // Resume with new session
-      const result = await handleLoadTaskSession(
+      const result = await runMcpHandler(
+        handleLoadTaskSession,
         {
           taskId: task.id,
           sessionId: "new-session",
@@ -1111,16 +1124,17 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return gracefully for COMPLETED task with context", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
       // Create task directly in COMPLETED status (bypassing state machine)
-      const task = createTestTask(client.tasks, plan.id, {
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Completed Task",
         status: "COMPLETED",
       });
 
       // Try to load
-      const result = await handleLoadTaskSession(
+      const result = await runMcpHandler(
+        handleLoadTaskSession,
         {
           taskId: task.id,
           sessionId: "new-session",
@@ -1139,16 +1153,17 @@ describe("Task Tools Integration", () => {
     });
 
     it("should return gracefully for ABANDONED task with context", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
       // Create task directly in ABANDONED status (bypassing state machine)
-      const task = createTestTask(client.tasks, plan.id, {
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Abandoned Task",
         status: "ABANDONED",
       });
 
       // Try to load
-      const result = await handleLoadTaskSession(
+      const result = await runMcpHandler(
+        handleLoadTaskSession,
         {
           taskId: task.id,
           sessionId: "new-session",
@@ -1167,14 +1182,15 @@ describe("Task Tools Integration", () => {
     });
 
     it("should start fresh for non-queued BACKLOG task", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Backlog Task",
         status: "BACKLOG",
       });
 
-      const result = await handleLoadTaskSession(
+      const result = await runMcpHandler(
+        handleLoadTaskSession,
         {
           taskId: task.id,
           sessionId: "test-session",
@@ -1191,14 +1207,15 @@ describe("Task Tools Integration", () => {
     });
 
     it("should start fresh for non-queued READY task", async () => {
-      const issue = createTestIssue(client.issues);
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Ready Task",
         status: "READY",
       });
 
-      const result = await handleLoadTaskSession(
+      const result = await runMcpHandler(
+        handleLoadTaskSession,
         {
           taskId: task.id,
           sessionId: "test-session",

@@ -26,7 +26,7 @@ import type {
   AvailableLabel,
   AvailableLabelsResult,
 } from "../project-management-provider.js";
-import type { TaskStatus } from "../../tasks/task.js";
+import type { TaskStatus } from "../../domain/tasks/task.js";
 import type { ProjectManagementClient } from "../project-management-client.js";
 import { ProjectManagementClientError } from "../project-management-client.js";
 import type { GitHubCLI, GitHubIssueData } from "./github-cli.js";

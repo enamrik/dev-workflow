@@ -118,4 +118,20 @@ export class GitOperations {
       stdio: ["pipe", "pipe", "pipe"],
     });
   }
+
+  /**
+   * Check if the repository has at least one commit
+   */
+  hasCommit(cwd: string): boolean {
+    try {
+      execSync("git rev-parse HEAD", {
+        cwd,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
 }

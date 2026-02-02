@@ -5,7 +5,8 @@
  */
 
 import { createCliHandler, createCliCommand, withConfigMiddleware } from "../di/bootstrap.js";
-import type { UpdateCommand } from "./update-command.js";
+import { Effect } from "@dev-workflow/effect";
+import { UpdateCommandTag } from "../di/cli-tags.js";
 
 /**
  * Options for the update command (currently no options)
@@ -13,14 +14,16 @@ import type { UpdateCommand } from "./update-command.js";
 export type UpdateOptions = Record<string, never>;
 
 /**
- * Handler - thin wrapper that destructures just what it needs (the command).
+ * Handler - thin wrapper that yields the command from Effect context.
  */
-export const handleUpdate = createCliHandler(
-  async (_options: UpdateOptions, { updateCommand }: { updateCommand: UpdateCommand }) => {
-    await updateCommand.execute();
-  },
-  withConfigMiddleware
-);
+export const handleUpdate = createCliHandler({
+  handler: (_options: UpdateOptions) =>
+    Effect.gen(function* () {
+      const updateCommand = yield* UpdateCommandTag;
+      yield* Effect.promise(() => updateCommand.execute());
+    }),
+  middleware: withConfigMiddleware,
+});
 
 /**
  * Executable runner for the update command.

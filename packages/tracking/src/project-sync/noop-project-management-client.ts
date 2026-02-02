@@ -17,7 +17,7 @@ import type {
   SetFieldResult,
   AvailableLabelsResult,
 } from "./project-management-provider.js";
-import type { TaskStatus } from "../tasks/task.js";
+import type { TaskStatus } from "../domain/tasks/task.js";
 import type { ProjectManagementClient } from "./project-management-client.js";
 
 /**

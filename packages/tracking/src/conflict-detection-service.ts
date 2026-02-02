@@ -5,8 +5,9 @@
  * file conflicts before starting a new task.
  */
 
-import type { Task } from "./tasks/task.js";
+import type { Task } from "./domain/tasks/task.js";
 import type { DbClient } from "./data-access/db-client.js";
+import { Effect, Service } from "@dev-workflow/effect";
 
 /**
  * Information about a file that was modified by a prior task
@@ -47,8 +48,12 @@ export interface ConflictDetectionResult {
  * This is a non-blocking warning system - conflicts don't prevent
  * task execution, they just inform the user of potential issues.
  */
-export class ConflictDetectionService {
-  constructor(private readonly db: DbClient) {}
+export class ConflictDetectionService extends Service<ConflictDetectionService>()(
+  "conflictDetectionService"
+) {
+  constructor(private readonly db: DbClient) {
+    super();
+  }
 
   /**
    * Detect potential conflicts for a task by analyzing
@@ -57,14 +62,14 @@ export class ConflictDetectionService {
    * @param taskId - The task to check for conflicts
    * @returns ConflictDetectionResult with warnings if conflicts found
    */
-  detectConflicts(taskId: string): ConflictDetectionResult {
-    const task = this.db.tasks.findById(taskId);
+  async detectConflicts(taskId: string): Promise<ConflictDetectionResult> {
+    const task = await Effect.runPromise(this.db.tasks.findById(taskId));
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
 
     // Get all completed tasks in the same plan
-    const planTasks = this.db.tasks.findByPlanId(task.planId);
+    const planTasks = await Effect.runPromise(this.db.tasks.findByPlanId(task.planId));
     const completedTaskIds = planTasks
       .filter((t) => t.status === "COMPLETED" && t.id !== taskId)
       .map((t) => t.id);
@@ -78,7 +83,7 @@ export class ConflictDetectionService {
     }
 
     // Get execution logs with filesModified from completed tasks
-    const logs = this.db.executionLogs.findWithFileModifications(completedTaskIds);
+    const logs = await this.db.executionLogs.findWithFileModifications(completedTaskIds);
 
     // Build a map of file paths to the tasks that modified them
     const priorTaskFiles = new Map<string, FileModification[]>();
@@ -145,15 +150,15 @@ export class ConflictDetectionService {
    * @param planId - The plan to analyze
    * @returns Map of file paths to their modifications
    */
-  getModifiedFilesForPlan(planId: string): Map<string, FileModification[]> {
-    const planTasks = this.db.tasks.findByPlanId(planId);
+  async getModifiedFilesForPlan(planId: string): Promise<Map<string, FileModification[]>> {
+    const planTasks = await Effect.runPromise(this.db.tasks.findByPlanId(planId));
     const completedTaskIds = planTasks.filter((t) => t.status === "COMPLETED").map((t) => t.id);
 
     if (completedTaskIds.length === 0) {
       return new Map();
     }
 
-    const logs = this.db.executionLogs.findWithFileModifications(completedTaskIds);
+    const logs = await this.db.executionLogs.findWithFileModifications(completedTaskIds);
 
     const fileMap = new Map<string, FileModification[]>();
     const taskMap = new Map(planTasks.map((t) => [t.id, t]));

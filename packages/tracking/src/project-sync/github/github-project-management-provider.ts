@@ -28,8 +28,8 @@ import type {
   AvailableLabel,
   AvailableLabelsResult,
 } from "../project-management-provider.js";
-import type { Issue } from "../../issues/issue.js";
-import type { Task, TaskStatus } from "../../tasks/task.js";
+import type { Issue } from "../../domain/issues/issue.js";
+import type { Task, TaskStatus } from "../../domain/tasks/task.js";
 import { ProjectManagementProviderError } from "../project-management-provider.js";
 import type { GitHubCLI, GitHubIssueData } from "./github-cli.js";
 import type { ProjectManagementConfig } from "../project-management-config.js";

@@ -8,6 +8,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { Service } from "@dev-workflow/effect";
 import type { GitHubPRData, GitHubMergeStrategy } from "./github.js";
 export type { GitHubPRData, GitHubMergeStrategy } from "./github.js";
 
@@ -239,6 +240,8 @@ export interface GitHubCLI {
    */
   run(args: string[]): Promise<GitHubCLIResult>;
 }
+
+export class GitHubCLITag extends Service<GitHubCLI>()("githubCLI") {}
 
 /**
  * Node.js implementation of GitHubCLI using the gh CLI

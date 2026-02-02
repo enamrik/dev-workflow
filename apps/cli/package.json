@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@dev-workflow/database": "workspace:*",
+    "@dev-workflow/effect": "workspace:*",
     "@dev-workflow/tracking": "workspace:*",
     "@dev-workflow/git": "workspace:*",
     "@dev-workflow/dispatch": "workspace:*",

@@ -7,10 +7,10 @@ import {
   CliValidationError,
   composeMiddleware,
   registerWorkingDirectory,
-  type CliHandler,
   type ContainerMiddleware,
 } from "../bootstrap.js";
 import { createCliContainer } from "../container.js";
+import { Effect } from "@dev-workflow/effect";
 import { ProjectConfigError } from "@dev-workflow/tracking";
 
 // Mock process.exit to prevent test from actually exiting
@@ -97,13 +97,14 @@ describe("bootstrap", () => {
     it("should wrap handler and catch errors", async () => {
       let shouldError = false;
 
-      const handler: CliHandler<object> = () => {
-        if (shouldError) {
-          throw new CliValidationError("Test error");
-        }
-      };
-
-      const wrapped = createCliHandler(handler);
+      const wrapped = createCliHandler({
+        handler: (_opts: object) =>
+          Effect.promise(async () => {
+            if (shouldError) {
+              throw new CliValidationError("Test error");
+            }
+          }),
+      });
       const container = createCliContainer();
 
       try {
@@ -128,11 +129,13 @@ describe("bootstrap", () => {
         executionOrder.push("middleware");
       };
 
-      const handler: CliHandler<object> = () => {
-        executionOrder.push("handler");
-      };
-
-      const wrapped = createCliHandler(handler, middleware);
+      const wrapped = createCliHandler({
+        handler: (_opts: object) =>
+          Effect.promise(async () => {
+            executionOrder.push("handler");
+          }),
+        middleware,
+      });
       const container = createCliContainer();
 
       try {
@@ -152,15 +155,16 @@ describe("bootstrap", () => {
 
       let capturedValue: string | undefined;
 
-      const handler: CliHandler<object> = (_opts, cradle) => {
-        capturedValue = cradle.workingDirectory;
-      };
-
-      const wrapped = createCliHandler(handler, injectMiddleware);
+      const wrapped = createCliHandler({
+        handler: (_opts: object) => Effect.succeed(undefined as void),
+        middleware: injectMiddleware,
+      });
       const container = createCliContainer();
 
       try {
         await wrapped({}, container);
+        // Verify middleware registered the value
+        capturedValue = container.cradle.workingDirectory;
         expect(capturedValue).toBe("/test/injected/path");
       } finally {
         await container.dispose();
@@ -172,13 +176,13 @@ describe("bootstrap", () => {
     it("should create a runner that manages container lifecycle", async () => {
       let handlerCalled = false;
 
-      const handler: CliHandler<object> = (_opts, cradle) => {
-        // Verify cradle has basic services from container
-        expect(cradle.fileSystem).toBeDefined();
-        handlerCalled = true;
-      };
-
-      const wrapped = createCliHandler(handler, registerWorkingDirectory);
+      const wrapped = createCliHandler({
+        handler: (_opts: object) =>
+          Effect.promise(async () => {
+            handlerCalled = true;
+          }),
+        middleware: registerWorkingDirectory,
+      });
       const runCommand = createCliCommand(wrapped);
 
       await runCommand({});
@@ -187,11 +191,12 @@ describe("bootstrap", () => {
     });
 
     it("should catch handler errors and still dispose container", async () => {
-      const handler: CliHandler<object> = () => {
-        throw new CliValidationError("Handler error");
-      };
-
-      const wrapped = createCliHandler(handler);
+      const wrapped = createCliHandler({
+        handler: (_opts: object) =>
+          Effect.promise(async () => {
+            throw new CliValidationError("Handler error");
+          }),
+      });
       const runCommand = createCliCommand(wrapped);
 
       // Should catch error via handleCliError
@@ -204,11 +209,10 @@ describe("bootstrap", () => {
         throw new CliValidationError("Middleware error");
       };
 
-      const handler: CliHandler<object> = () => {
-        // Should not reach here
-      };
-
-      const wrapped = createCliHandler(handler, failingMiddleware);
+      const wrapped = createCliHandler({
+        handler: (_opts: object) => Effect.succeed(undefined as void),
+        middleware: failingMiddleware,
+      });
       const runCommand = createCliCommand(wrapped);
 
       await expect(runCommand({})).rejects.toThrow("process.exit called");

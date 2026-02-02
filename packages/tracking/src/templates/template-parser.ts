@@ -7,7 +7,7 @@
 
 import * as yaml from "js-yaml";
 import type { Template, TemplateMetadata } from "../template.js";
-import type { IssueType, IssuePriority } from "../issues/issue.js";
+import type { IssueType, IssuePriority } from "../domain/issues/issue.js";
 
 /**
  * Template parse error

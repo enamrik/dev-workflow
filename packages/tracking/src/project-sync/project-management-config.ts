@@ -5,10 +5,10 @@
  * They are provider-agnostic versions of the GitHub-specific config types.
  */
 
-import type { TaskStatus } from "../tasks/task.js";
+import type { TaskStatus } from "../domain/tasks/task.js";
 
 // Re-export TaskStatus for convenience (it's the source of truth)
-export type { TaskStatus } from "../tasks/task.js";
+export type { TaskStatus } from "../domain/tasks/task.js";
 
 // =============================================================================
 // Label Configuration

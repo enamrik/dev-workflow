@@ -12,8 +12,9 @@
  * - Provider identity is explicit for logging and debugging
  */
 
-import type { Issue } from "../issues/issue.js";
-import type { Task, TaskStatus } from "../tasks/task.js";
+import { Service } from "@dev-workflow/effect";
+import type { Issue } from "../domain/issues/issue.js";
+import type { Task, TaskStatus } from "../domain/tasks/task.js";
 
 // =============================================================================
 // Sync State Types
@@ -667,6 +668,14 @@ export interface ProjectManagementProvider {
 /**
  * Error thrown by ProjectManagementProvider operations
  */
+/**
+ * Standalone Service tag for ProjectManagementProvider.
+ * Allows operations to yield* ProjectManagementProviderTag.
+ */
+export class ProjectManagementProviderTag extends Service<ProjectManagementProvider>()(
+  "projectManagementProvider"
+) {}
+
 export class ProjectManagementProviderError extends Error {
   constructor(
     message: string,

@@ -9,11 +9,12 @@
  * - Provides consistent query behavior across all consumers
  */
 
-import type { Issue } from "../issues/issue.js";
-import type { Plan } from "../plans/plan.js";
-import type { Task, TaskStatus } from "../tasks/task.js";
+import type { Issue } from "../domain/issues/issue.js";
+import type { Plan } from "../domain/plans/plan.js";
+import type { Task, TaskStatus } from "../domain/tasks/task.js";
 import type { DbClient } from "../data-access/db-client.js";
 import type { WorkerQueueDb } from "@dev-workflow/dispatch/worker-queue-db.js";
+import { Effect } from "@dev-workflow/effect";
 
 /**
  * Issue with its plan, tasks, and optional milestone info
@@ -121,9 +122,11 @@ export class BoardQueryService {
    * Used for the work queue ribbon in the UI.
    * Filters out closed issues at the database level for better performance.
    */
-  getActiveIssuesWithTasks(): BoardIssueWithTasks[] {
-    const issues = this.db.issues.findMany({ excludeStatuses: ["CLOSED"] });
-    return this.enrichIssuesWithTasksAndMilestones(issues);
+  async getActiveIssuesWithTasks(): Promise<BoardIssueWithTasks[]> {
+    const issues = await Effect.runPromise(
+      this.db.issues.findMany({ excludeStatuses: ["CLOSED"] })
+    );
+    return await this.enrichIssuesWithTasksAndMilestones(issues);
   }
 
   /**
@@ -134,24 +137,26 @@ export class BoardQueryService {
    *
    * @deprecated Use getActiveIssuesWithTasks() for work queue or getBoardData() for kanban
    */
-  getIssuesWithTasks(): BoardIssueWithTasks[] {
-    const issues = this.db.issues.findMany({});
-    return this.enrichIssuesWithTasksAndMilestones(issues);
+  async getIssuesWithTasks(): Promise<BoardIssueWithTasks[]> {
+    const issues = await Effect.runPromise(this.db.issues.findMany({}));
+    return await this.enrichIssuesWithTasksAndMilestones(issues);
   }
 
   /**
    * Enrich issues with their plans, tasks, and milestone info
    */
-  private enrichIssuesWithTasksAndMilestones(issues: Issue[]): BoardIssueWithTasks[] {
+  private async enrichIssuesWithTasksAndMilestones(
+    issues: Issue[]
+  ): Promise<BoardIssueWithTasks[]> {
     const result: BoardIssueWithTasks[] = [];
 
     for (const issue of issues) {
-      const plan = this.db.plans.findByIssueId(issue.id);
-      const tasks = plan ? this.db.tasks.findByPlanId(plan.id) : [];
+      const plan = await this.db.plans.findByIssueId(issue.id);
+      const tasks = plan ? await Effect.runPromise(this.db.tasks.findByPlanId(plan.id)) : [];
 
       let milestone: { number: number; title: string } | undefined;
       if (issue.milestoneId) {
-        const m = this.db.milestones.findById(issue.milestoneId);
+        const m = await Effect.runPromise(this.db.milestones.findById(issue.milestoneId));
         if (m) {
           milestone = { number: m.number, title: m.title };
         }
@@ -230,8 +235,8 @@ export class BoardQueryService {
    * This is the main method for CLI board display.
    * Returns tasks flattened and grouped by status.
    */
-  getBoardData(): BoardData {
-    const issuesWithTasks = this.getIssuesWithTasks();
+  async getBoardData(): Promise<BoardData> {
+    const issuesWithTasks = await this.getIssuesWithTasks();
 
     // Flatten all tasks with issue context
     const allTasks: BoardTask[] = [];

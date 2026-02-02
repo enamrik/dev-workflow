@@ -1,123 +1,163 @@
 /**
- * Web Bootstrap - API endpoint and route creation utilities
+ * Web Bootstrap - Effect-based API route creation
  *
- * This module provides the infrastructure for creating type-safe API routes:
- * - parseJsonBody: Validates request body with Zod, throws on failure
- * - createApiEndpoint: Wraps endpoint with middleware and error handling
- * - createApiRoute: Binds endpoint to production container
+ * createApiEndpoint: Creates a WebProgram from an Effect-returning handler.
+ * createApiRoute: Binds a WebProgram to the container, producing a Next.js route handler.
  */
 
 import { NextResponse } from "next/server";
-import type { z } from "zod";
+import { Effect, createRuntime } from "@dev-workflow/effect";
+import type { AwilixContainer } from "awilix";
 import { mapError, ZodValidationError } from "@dev-workflow/tracking";
-import { getWebContainer, type WebCradle } from "./container";
-
-// =============================================================================
-// Validation
-// =============================================================================
+import { getWebContainer } from "./container";
 
 /**
- * Validates request body against a Zod schema.
- * Throws ZodValidationError if validation fails (caught by createApiEndpoint).
- *
- * @param schema - Zod schema to validate against
- * @param body - Request body to validate
- * @returns Validated and typed data
- * @throws ZodValidationError if validation fails
+ * Version-agnostic schema interface. Works with both Zod 3 and Zod 4.
+ * Any schema with a `parse` method that throws on invalid input.
  */
-export function parseJsonBody<T extends z.ZodSchema>(schema: T, body: unknown): z.infer<T> {
-  const result = schema.safeParse(body);
-  if (!result.success) {
-    // Map Zod issues to our expected format (PropertyKey[] -> (string | number)[])
-    const issues = result.error.issues.map((issue) => ({
-      path: issue.path.map((p) => (typeof p === "symbol" ? String(p) : p)),
-      message: issue.message,
-    }));
-    throw new ZodValidationError(issues);
+interface ParseableSchema<T> {
+  parse(input: unknown): T;
+}
+
+/**
+ * Parse input against a schema, converting parse failures to ZodValidationError.
+ *
+ * Unlike validateInput (which requires ZodSchema), this works with any
+ * ParseableSchema. Parse errors with an `issues` array (Zod convention)
+ * are converted to ZodValidationError for consistent HTTP 400 mapping.
+ */
+function parseSchema<T>(schema: ParseableSchema<T>, input: unknown): T {
+  try {
+    return schema.parse(input);
+  } catch (error: unknown) {
+    if (
+      error != null &&
+      typeof error === "object" &&
+      "issues" in error &&
+      Array.isArray((error as Record<string, unknown>)["issues"])
+    ) {
+      const issues = (error as { issues: Array<{ path?: unknown[]; message?: string }> }).issues;
+      throw new ZodValidationError(
+        issues.map((i) => ({
+          path: (i.path ?? []).filter(
+            (p): p is string | number => typeof p === "string" || typeof p === "number"
+          ),
+          message: typeof i.message === "string" ? i.message : "Validation failed",
+        }))
+      );
+    }
+    throw error;
   }
-  return result.data;
+}
+
+/**
+ * Container middleware for registering dynamic values before handler runs.
+ */
+export type ContainerMiddleware = (container: AwilixContainer) => Promise<void> | void;
+
+// =============================================================================
+// Type Definitions
+// =============================================================================
+
+interface RouteContext {
+  params: Promise<Record<string, string>>;
+}
+
+/**
+ * Program struct returned by createApiEndpoint.
+ * Contains the Effect function and optional middleware.
+ */
+export interface WebProgram<R> {
+  readonly run: (req: Request, params: Record<string, string>) => Effect<NextResponse, never, R>;
+  readonly middleware?: ContainerMiddleware;
 }
 
 // =============================================================================
-// Endpoint Types
+// Program Creator — Overloads
 // =============================================================================
 
 /**
- * An endpoint function that processes a request with access to the DI cradle.
- * Endpoints are pure functions that validate input, call AppServices, and return NextResponse.
+ * Creates a WebProgram from an Effect handler.
  *
- * @template TDeps - The subset of WebCradle dependencies this endpoint needs
+ * Two overloads:
+ * 1. Without bodySchema — for GET endpoints
+ * 2. With bodySchema — for POST/PUT/PATCH endpoints (auto-parses and validates body)
  */
-export type Endpoint<TDeps extends keyof WebCradle = keyof WebCradle> = (
-  req: Request,
-  params: Record<string, string>,
-  cradle: Pick<WebCradle, TDeps>
-) => Promise<NextResponse>;
 
-/**
- * Middleware that runs before the endpoint.
- * Can throw errors (caught by error handler) or return early responses.
- */
-export type ApiMiddleware = (
-  req: Request,
-  params: Record<string, string>,
-  cradle: WebCradle
-) => Promise<NextResponse | void> | NextResponse | void;
+// Overload: No body (GET endpoints)
+export function createApiEndpoint<E, R>(config: {
+  handler: (req: Request, params: Record<string, string>) => Effect<NextResponse, E, R>;
+  middleware?: ContainerMiddleware;
+}): WebProgram<R>;
 
-// =============================================================================
-// Endpoint Creation
-// =============================================================================
+// Overload: With body (POST/PUT/PATCH endpoints)
+export function createApiEndpoint<T, E, R>(config: {
+  bodySchema: ParseableSchema<T>;
+  handler: (req: Request, params: Record<string, string>, body: T) => Effect<NextResponse, E, R>;
+  middleware?: ContainerMiddleware;
+}): WebProgram<R>;
 
-/**
- * Wraps an endpoint with middleware and error handling.
- *
- * The wrapped endpoint:
- * 1. Runs middleware (if provided)
- * 2. Executes the endpoint
- * 3. Catches errors and maps them to HTTP responses via mapError
- *
- * @param endpoint - The pure endpoint function
- * @param middleware - Optional middleware to run before the endpoint
- * @returns A wrapped endpoint with error handling
- *
- * @example
- * ```typescript
- * const closeIssueEndpoint = async (
- *   req: Request,
- *   params: { issueNumber: string },
- *   { issueAppService }: Pick<WebCradle, 'issueAppService'>
- * ) => {
- *   const body = await req.json();
- *   const validated = parseJsonBody(CloseIssueSchema, { ...body, ...params });
- *   const result = await issueAppService.closeIssue(validated.projectSlug, validated.issueNumber);
- *   return NextResponse.json(result);
- * };
- *
- * export const endpoint = createApiEndpoint(closeIssueEndpoint);
- * ```
- */
-export function createApiEndpoint<TDeps extends keyof WebCradle>(
-  endpoint: Endpoint<TDeps>,
-  middleware?: ApiMiddleware
-): Endpoint<TDeps> {
-  return async (
-    req: Request,
-    params: Record<string, string>,
-    cradle: Pick<WebCradle, TDeps>
-  ): Promise<NextResponse> => {
-    try {
-      // Run middleware first if provided
-      if (middleware) {
-        const earlyReturn = await middleware(req, params, cradle as WebCradle);
-        if (earlyReturn !== undefined) {
-          return earlyReturn;
+// Implementation
+export function createApiEndpoint<T, E, R>(config: {
+  bodySchema?: ParseableSchema<T>;
+  handler:
+    | ((req: Request, params: Record<string, string>) => Effect<NextResponse, E, R>)
+    | ((req: Request, params: Record<string, string>, body: T) => Effect<NextResponse, E, R>);
+  middleware?: ContainerMiddleware;
+}): WebProgram<R> {
+  const { bodySchema, handler, middleware } = config;
+
+  return {
+    run: (req: Request, params: Record<string, string>) =>
+      Effect.catchAll(
+        bodySchema
+          ? Effect.gen(function* () {
+              const raw: unknown = yield* Effect.tryPromise({
+                try: async () => await req.json(),
+                catch: (e) => (e instanceof Error ? e : new Error("Invalid JSON body")),
+              });
+              const body = parseSchema(bodySchema, raw);
+              return yield* (
+                handler as (
+                  req: Request,
+                  params: Record<string, string>,
+                  body: T
+                ) => Effect<NextResponse, E, R>
+              )(req, params, body);
+            })
+          : (
+              handler as (
+                req: Request,
+                params: Record<string, string>
+              ) => Effect<NextResponse, E, R>
+            )(req, params),
+        (error: unknown) => {
+          const mapped = mapError(error);
+          return Effect.succeed(NextResponse.json(mapped.body, { status: mapped.status }));
         }
-      }
+      ),
+    middleware,
+  };
+}
 
-      // Execute the endpoint
-      return await endpoint(req, params, cradle);
+// =============================================================================
+// Route Binding (Runner)
+// =============================================================================
+
+/**
+ * Binds a WebProgram to the container, producing a Next.js route handler.
+ * Executes middleware (if any) before each request, then runs the Effect.
+ */
+export function createApiRoute<R>(
+  program: WebProgram<R>
+): (req: Request, context?: RouteContext) => Promise<NextResponse> {
+  return async (req: Request, context?: RouteContext): Promise<NextResponse> => {
+    try {
+      if (program.middleware) await program.middleware(getWebContainer());
+      const runtime = createRuntime(getWebContainer());
+      const params = context?.params ? await context.params : {};
+      return await runtime.runEffectAndUnwrap(program.run(req, params));
     } catch (error) {
-      // Map domain errors to HTTP responses
       const mapped = mapError(error);
       return NextResponse.json(mapped.body, { status: mapped.status });
     }
@@ -125,43 +165,17 @@ export function createApiEndpoint<TDeps extends keyof WebCradle>(
 }
 
 // =============================================================================
-// Route Creation
+// Helpers (Deprecated — use bodySchema instead)
 // =============================================================================
 
 /**
- * Next.js route context with params promise
+ * Parse and validate JSON body from a request as an Effect.
+ *
+ * @deprecated Use `bodySchema` option in `createApiEndpoint` instead.
  */
-interface RouteContext {
-  params: Promise<Record<string, string>>;
-}
-
-/**
- * Creates a Next.js route handler from an endpoint.
- *
- * This function:
- * 1. Imports the production container
- * 2. Extracts route params
- * 3. Calls the endpoint with the container's cradle
- *
- * @param endpoint - The wrapped endpoint (result of createApiEndpoint)
- * @returns A Next.js route handler function
- *
- * @example
- * ```typescript
- * // route.ts
- * import { createApiEndpoint, createApiRoute } from '@/lib/di/bootstrap';
- * import { closeIssueEndpoint } from './endpoint';
- *
- * export const endpoint = createApiEndpoint(closeIssueEndpoint);
- * export const POST = createApiRoute(endpoint);
- * ```
- */
-export function createApiRoute<TDeps extends keyof WebCradle>(
-  endpoint: Endpoint<TDeps>
-): (req: Request, context?: RouteContext) => Promise<NextResponse> {
-  return async (req: Request, context?: RouteContext): Promise<NextResponse> => {
-    const container = getWebContainer();
-    const params = context?.params ? await context.params : {};
-    return endpoint(req, params, container.cradle as Pick<WebCradle, TDeps>);
-  };
+export function jsonBody<T>(req: Request, schema: ParseableSchema<T>): Effect<T, Error, never> {
+  return Effect.tryPromise({
+    try: async () => parseSchema(schema, await req.json()),
+    catch: (e) => (e instanceof Error ? e : new Error("Invalid JSON body")),
+  });
 }

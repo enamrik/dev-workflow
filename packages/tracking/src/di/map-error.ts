@@ -15,7 +15,7 @@ import {
   BusinessRuleError,
   AuthenticationError,
   AuthorizationError,
-} from "../errors.js";
+} from "../domain/errors.js";
 
 /**
  * HTTP response structure for errors

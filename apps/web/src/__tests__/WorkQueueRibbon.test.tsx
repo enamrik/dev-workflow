@@ -3,25 +3,6 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { WorkQueueRibbon } from "../components/kanban/WorkQueueRibbon";
 import type { ProjectIssueWithTasks } from "../lib/types";
 
-// Mock next/link to capture navigation
-vi.mock("next/link", () => ({
-  default: ({
-    href,
-    children,
-    onClick,
-    className,
-  }: {
-    href: string;
-    children: React.ReactNode;
-    onClick?: (e: React.MouseEvent) => void;
-    className?: string;
-  }) => (
-    <a href={href} onClick={onClick} className={className} data-testid="link">
-      {children}
-    </a>
-  ),
-}));
-
 const mockIssue: ProjectIssueWithTasks = {
   issue: {
     id: "issue-1",
@@ -82,7 +63,7 @@ describe("WorkQueueRibbon", () => {
       render(<WorkQueueRibbon issuesWithTasks={[mockIssue]} />);
 
       // The card should be a link (the entire card is the link)
-      const links = screen.getAllByTestId("link");
+      const links = screen.getAllByRole("link");
       expect(links.length).toBeGreaterThan(0);
 
       // Should link to the issue page
@@ -113,7 +94,7 @@ describe("WorkQueueRibbon", () => {
       render(<WorkQueueRibbon issuesWithTasks={[mockIssue]} onIssueClick={onIssueClick} />);
 
       // Find the issue number link inside the card
-      const links = screen.getAllByTestId("link");
+      const links = screen.getAllByRole("link");
       const issueNumberLink = links.find(
         (link) =>
           link.getAttribute("href")?.includes("/issues/42") && link.textContent?.includes("#42")
@@ -170,7 +151,7 @@ describe("WorkQueueRibbon", () => {
       expect(buttons.length).toBe(0);
 
       // Click on the card - should not call onIssueClick
-      const links = screen.getAllByTestId("link");
+      const links = screen.getAllByRole("link");
       fireEvent.click(links[0]!);
 
       expect(onIssueClick).not.toHaveBeenCalled();

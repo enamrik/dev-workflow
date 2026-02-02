@@ -5,7 +5,8 @@
  */
 
 import { createCliHandler, createCliCommand, withConfigMiddleware } from "../di/bootstrap.js";
-import type { UninitCommand } from "./uninit-command.js";
+import { Effect } from "@dev-workflow/effect";
+import { UninitCommandTag } from "../di/cli-tags.js";
 
 /**
  * Options for the uninit command (currently no options)
@@ -13,14 +14,16 @@ import type { UninitCommand } from "./uninit-command.js";
 export type UninitOptions = Record<string, never>;
 
 /**
- * Handler - thin wrapper that destructures just what it needs (the command).
+ * Handler - thin wrapper that yields the command from Effect context.
  */
-export const handleUninit = createCliHandler(
-  async (_options: UninitOptions, { uninitCommand }: { uninitCommand: UninitCommand }) => {
-    await uninitCommand.execute();
-  },
-  withConfigMiddleware
-);
+export const handleUninit = createCliHandler({
+  handler: (_options: UninitOptions) =>
+    Effect.gen(function* () {
+      const uninitCommand = yield* UninitCommandTag;
+      yield* Effect.promise(() => uninitCommand.execute());
+    }),
+  middleware: withConfigMiddleware,
+});
 
 /**
  * Executable runner for the uninit command.
