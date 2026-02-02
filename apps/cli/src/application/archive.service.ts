@@ -40,7 +40,7 @@ export class ArchiveService {
   async hasActiveWorktrees(): Promise<boolean> {
     try {
       const gitWorktreeService = new NodeGitWorktreeService(this.workingDirectory);
-      const worktrees = await gitWorktreeService.listWorktrees();
+      const worktrees = await Effect.runPromise(gitWorktreeService.listWorktrees());
 
       // Filter out main worktree - only count non-main worktrees
       const nonMainWorktrees = worktrees.filter((wt) => !wt.isMain);
@@ -187,7 +187,7 @@ export class ArchiveService {
     // Hard delete project from database
     const dbPath = this.resolver.getDatabasePath();
     const source = this.sourceProvider.getOrCreate({ connectionString: dbPath });
-    await source.projects.hardDelete(project.id);
+    await Effect.runPromise(source.projects.hardDelete(project.id));
 
     // Remove track directory
     const trackDir = this.resolver.getTrackDirectory();
@@ -216,7 +216,7 @@ export class ArchiveService {
 
     // Look up by gitRootHash (first commit hash)
     const gitRootHash = this.gitOps.getInitialCommitHash(this.workingDirectory);
-    return await source.projects.findByGitRootHash(gitRootHash);
+    return await Effect.runPromise(source.projects.findByGitRootHash(gitRootHash));
   }
 
   /**
@@ -256,7 +256,7 @@ export class ArchiveService {
     // Mark project as archived in database
     const dbPath = this.resolver.getDatabasePath();
     const source = this.sourceProvider.getOrCreate({ connectionString: dbPath });
-    return await source.projects.archive(project.id);
+    return await Effect.runPromise(source.projects.archive(project.id));
   }
 
   /**
@@ -280,7 +280,7 @@ export class ArchiveService {
     const gitRootHash = this.gitOps.getInitialCommitHash(this.workingDirectory);
 
     // Look up by gitRootHash
-    const project = await source.projects.findByGitRootHash(gitRootHash);
+    const project = await Effect.runPromise(source.projects.findByGitRootHash(gitRootHash));
 
     // Only return if it's archived
     if (project && project.isArchived) {
@@ -321,7 +321,7 @@ export class ArchiveService {
     const source = this.sourceProvider.getOrCreate({ connectionString: databaseConnectionString });
 
     // Mark project as unarchived in database first
-    const unarchivedProject = await source.projects.unarchive(project.id);
+    const unarchivedProject = await Effect.runPromise(source.projects.unarchive(project.id));
 
     // Set the project so installer can use it
     this.installService.setProject(unarchivedProject);

@@ -15,8 +15,6 @@ import {
 } from "@dev-workflow/tracking";
 import { getDbClient, filterProjects } from "./helpers";
 
-const { runPromise } = Effect;
-
 // =============================================================================
 // Schemas
 // =============================================================================
@@ -83,34 +81,32 @@ export function listAllMilestones(input: ListAllMilestonesInput) {
     const projectsResolver = yield* ProjectsResolver;
     const sourceProvider = yield* DbSourceProvider;
 
-    return yield* Effect.promise(async () => {
-      const validated = validateInput(ListAllMilestonesSchema, input);
-      const projects = filterProjects(
-        await projectsResolver.getAllProjects(),
-        validated.projectFilter
-      );
+    const validated = validateInput(ListAllMilestonesSchema, input);
+    const projects = filterProjects(
+      yield* projectsResolver.getAllProjects(),
+      validated.projectFilter
+    );
 
-      const allMilestones: MilestoneWithProject[] = [];
+    const allMilestones: MilestoneWithProject[] = [];
 
-      for (const project of projects) {
-        try {
-          const db = await getDbClient(project, sourceProvider);
-          const milestones = await runPromise(db.milestones.findMany());
+    for (const project of projects) {
+      try {
+        const db = yield* Effect.promise(() => getDbClient(project, sourceProvider));
+        const milestones = yield* db.milestones.findMany();
 
-          for (const milestone of milestones) {
-            allMilestones.push({
-              ...milestone,
-              projectSlug: project.slug,
-              projectName: project.name,
-            });
-          }
-        } catch {
-          // Skip inaccessible projects
+        for (const milestone of milestones) {
+          allMilestones.push({
+            ...milestone,
+            projectSlug: project.slug,
+            projectName: project.name,
+          });
         }
+      } catch {
+        // Skip inaccessible projects
       }
+    }
 
-      return allMilestones;
-    });
+    return allMilestones;
   });
 }
 
@@ -119,77 +115,73 @@ export function getMilestonesWithDetails(input: GetMilestonesWithDetailsInput) {
     const projectsResolver = yield* ProjectsResolver;
     const sourceProvider = yield* DbSourceProvider;
 
-    return yield* Effect.promise(async () => {
-      const validated = validateInput(GetMilestonesWithDetailsSchema, input);
-      let projects = filterProjects(
-        await projectsResolver.getAllProjects(),
-        validated.projectFilter
-      );
+    const validated = validateInput(GetMilestonesWithDetailsSchema, input);
+    let projects = filterProjects(
+      yield* projectsResolver.getAllProjects(),
+      validated.projectFilter
+    );
 
-      if (validated.sourceFilter) {
-        projects = projects.filter((p) => p.slug === validated.sourceFilter);
-      }
+    if (validated.sourceFilter) {
+      projects = projects.filter((p) => p.slug === validated.sourceFilter);
+    }
 
-      const result: MilestoneWithDetails[] = [];
+    const result: MilestoneWithDetails[] = [];
 
-      for (const project of projects) {
-        try {
-          const db = await getDbClient(project, sourceProvider);
-          const milestones = await runPromise(db.milestones.findMany());
-          const statusService = new IssueStatusService(db);
+    for (const project of projects) {
+      try {
+        const db = yield* Effect.promise(() => getDbClient(project, sourceProvider));
+        const milestones = yield* db.milestones.findMany();
+        const statusService = new IssueStatusService(db);
 
-          for (const milestone of milestones) {
-            const issues = await runPromise(db.issues.findMany({ milestoneId: milestone.id }));
-            const closedIssues = issues.filter((i) => i.isClosed).length;
+        for (const milestone of milestones) {
+          const issues = yield* db.issues.findMany({ milestoneId: milestone.id });
+          const closedIssues = issues.filter((i) => i.isClosed).length;
 
-            const milestoneIssueStats: MilestoneIssueStats = {
-              totalIssues: issues.length,
-              closedIssues,
-              openOrInProgressIssues: issues.filter((i) => !i.isClosed && !i.isInPlanning).length,
-            };
+          const milestoneIssueStats: MilestoneIssueStats = {
+            totalIssues: issues.length,
+            closedIssues,
+            openOrInProgressIssues: issues.filter((i) => !i.isClosed && !i.isInPlanning).length,
+          };
 
-            const computedMilestoneStatus = Milestone.computeStatus(
-              milestone.status,
-              milestoneIssueStats,
-              milestone.endDate
-            );
+          const computedMilestoneStatus = Milestone.computeStatus(
+            milestone.status,
+            milestoneIssueStats,
+            milestone.endDate
+          );
 
-            const issuesWithStatus = await Promise.all(
-              issues.map(async (issue) => {
-                const { computedStatus } = await statusService.computeStatus(issue);
-                return {
-                  number: issue.number,
-                  title: issue.title,
-                  status: issue.status,
-                  computedStatus,
-                  type: issue.type,
-                };
-              })
-            );
-
-            result.push({
-              milestone: {
-                ...milestone,
-                status: computedMilestoneStatus,
-                projectName: project.name,
-                projectSlug: project.slug,
-              },
-              issues: issuesWithStatus,
-              progress: {
-                total: issues.length,
-                closed: closedIssues,
-                percentage:
-                  issues.length > 0 ? Math.round((closedIssues / issues.length) * 100) : 0,
-              },
+          const issuesWithStatus: MilestoneIssueInfo[] = [];
+          for (const issue of issues) {
+            const { computedStatus } = yield* statusService.computeStatus(issue);
+            issuesWithStatus.push({
+              number: issue.number,
+              title: issue.title,
+              status: issue.status,
+              computedStatus,
+              type: issue.type,
             });
           }
-        } catch {
-          // Skip inaccessible projects
-        }
-      }
 
-      result.sort((a, b) => a.milestone.startDate.localeCompare(b.milestone.startDate));
-      return result;
-    });
+          result.push({
+            milestone: {
+              ...milestone,
+              status: computedMilestoneStatus,
+              projectName: project.name,
+              projectSlug: project.slug,
+            },
+            issues: issuesWithStatus,
+            progress: {
+              total: issues.length,
+              closed: closedIssues,
+              percentage: issues.length > 0 ? Math.round((closedIssues / issues.length) * 100) : 0,
+            },
+          });
+        }
+      } catch {
+        // Skip inaccessible projects
+      }
+    }
+
+    result.sort((a, b) => a.milestone.startDate.localeCompare(b.milestone.startDate));
+    return result;
   });
 }

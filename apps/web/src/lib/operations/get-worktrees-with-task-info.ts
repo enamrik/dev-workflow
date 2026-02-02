@@ -50,62 +50,60 @@ export function getWorktreesWithTaskInfo(input: GetWorktreesWithTaskInfoInput) {
     const sourceProvider = yield* DbSourceProvider;
     const createWorktreeService = yield* WorktreeServiceFactoryTag;
 
-    return yield* Effect.promise(async () => {
-      const validated = validateInput(GetWorktreesWithTaskInfoSchema, input);
-      const projects = filterProjects(
-        await projectsResolver.getAllProjects(),
-        validated.projectFilter
-      );
+    const validated = validateInput(GetWorktreesWithTaskInfoSchema, input);
+    const projects = filterProjects(
+      yield* projectsResolver.getAllProjects(),
+      validated.projectFilter
+    );
 
-      const allWorktrees: ProjectWorktree[] = [];
+    const allWorktrees: ProjectWorktree[] = [];
 
-      for (const project of projects) {
-        try {
-          if (!project.gitRoot) continue;
+    for (const project of projects) {
+      try {
+        if (!project.gitRoot) continue;
 
-          const db = await getDbClient(project, sourceProvider);
-          const worktreeService = createWorktreeService(project.gitRoot);
-          const worktrees = await worktreeService.listWorktrees();
+        const db = yield* Effect.promise(() => getDbClient(project, sourceProvider));
+        const worktreeService = createWorktreeService(project.gitRoot);
+        const worktrees = yield* worktreeService.listWorktrees();
 
-          const tasksByWorktreePath = new Map<string, { task: Task; issueNumber: number }>();
-          const issues = await Effect.runPromise(db.issues.findMany({}));
+        const tasksByWorktreePath = new Map<string, { task: Task; issueNumber: number }>();
+        const issues = yield* db.issues.findMany({});
 
-          for (const issue of issues) {
-            const plan = await db.plans.findByIssueId(issue.id);
-            if (!plan) continue;
+        for (const issue of issues) {
+          const plan = yield* db.plans.findByIssueId(issue.id);
+          if (!plan) continue;
 
-            const tasks = await Effect.runPromise(db.tasks.findByPlanId(plan.id));
-            for (const task of tasks) {
-              if (task.worktreePath) {
-                tasksByWorktreePath.set(task.worktreePath, { task, issueNumber: issue.number });
-              }
+          const tasks = yield* db.tasks.findByPlanId(plan.id);
+          for (const task of tasks) {
+            if (task.worktreePath) {
+              tasksByWorktreePath.set(task.worktreePath, { task, issueNumber: issue.number });
             }
           }
-
-          for (const wt of worktrees) {
-            if (wt.isMain) continue;
-
-            const taskInfo = tasksByWorktreePath.get(wt.path);
-            allWorktrees.push({
-              projectId: project.projectId,
-              path: wt.path,
-              branch: wt.branch,
-              head: wt.head,
-              isMain: wt.isMain,
-              diskUsageBytes: wt.diskUsageBytes,
-              taskId: taskInfo?.task?.id,
-              taskNumber: taskInfo?.task?.number,
-              taskTitle: taskInfo?.task?.title,
-              taskStatus: taskInfo?.task?.status,
-              issueNumber: taskInfo?.issueNumber,
-            });
-          }
-        } catch {
-          // Skip inaccessible projects
         }
-      }
 
-      return allWorktrees;
-    });
+        for (const wt of worktrees) {
+          if (wt.isMain) continue;
+
+          const taskInfo = tasksByWorktreePath.get(wt.path);
+          allWorktrees.push({
+            projectId: project.projectId,
+            path: wt.path,
+            branch: wt.branch,
+            head: wt.head,
+            isMain: wt.isMain,
+            diskUsageBytes: wt.diskUsageBytes,
+            taskId: taskInfo?.task?.id,
+            taskNumber: taskInfo?.task?.number,
+            taskTitle: taskInfo?.task?.title,
+            taskStatus: taskInfo?.task?.status,
+            issueNumber: taskInfo?.issueNumber,
+          });
+        }
+      } catch {
+        // Skip inaccessible projects
+      }
+    }
+
+    return allWorktrees;
   });
 }

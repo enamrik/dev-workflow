@@ -45,9 +45,7 @@ export function getTemplate(input: GetTemplateInput) {
     const { filename, category = "issue", scope } = validateInput(GetTemplateSchema, input);
     const templateService = yield* TemplateService;
 
-    const result = yield* Effect.promise(() =>
-      templateService.getTemplate(filename, category, scope)
-    );
+    const result = yield* templateService.getTemplate(filename, category, scope);
 
     if (!result) {
       const scopeLabel = scope ? `${scope} ` : "";

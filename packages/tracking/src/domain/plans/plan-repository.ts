@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { plans, type PlanRow } from "@dev-workflow/database/schema.js";
 import type { Plan, PlanRepository } from "./plan.js";
 import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
+import { Effect } from "@dev-workflow/effect";
 
 /**
  * Drizzle implementation of PlanRepository
@@ -13,72 +14,80 @@ import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
 export class DrizzlePlanRepository implements PlanRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  async create(data: Omit<Plan, "id" | "createdAt" | "updatedAt">): Promise<Plan> {
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
+  create(data: Omit<Plan, "id" | "createdAt" | "updatedAt">): Effect<Plan> {
+    return Effect.promise(async () => {
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
 
-    const plan: Plan = {
-      id,
-      ...data,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    // Insert into database
-    this.db
-      .insert(plans)
-      .values({
-        id: plan.id,
-        issueId: plan.issueId,
-        summary: plan.summary,
-        approach: plan.approach,
-        estimatedComplexity: plan.estimatedComplexity,
-        generatedBy: plan.generatedBy,
-        createdAt: plan.createdAt,
-        updatedAt: plan.updatedAt,
-      })
-      .run();
-
-    return plan;
-  }
-
-  async findById(id: string): Promise<Plan | null> {
-    const result = this.db.select().from(plans).where(eq(plans.id, id)).get();
-
-    return result ? this.mapRowToPlan(result) : null;
-  }
-
-  async findByIssueId(issueId: string): Promise<Plan | null> {
-    const result = this.db.select().from(plans).where(eq(plans.issueId, issueId)).get();
-
-    return result ? this.mapRowToPlan(result) : null;
-  }
-
-  async update(
-    id: string,
-    data: Partial<Omit<Plan, "id" | "issueId" | "createdAt">>
-  ): Promise<Plan> {
-    const now = new Date().toISOString();
-
-    this.db
-      .update(plans)
-      .set({
+      const plan: Plan = {
+        id,
         ...data,
+        createdAt: now,
         updatedAt: now,
-      })
-      .where(eq(plans.id, id))
-      .run();
+      };
 
-    const updatedPlan = await this.findById(id);
-    if (!updatedPlan) {
-      throw new Error(`Failed to update plan: ${id}`);
-    }
+      // Insert into database
+      this.db
+        .insert(plans)
+        .values({
+          id: plan.id,
+          issueId: plan.issueId,
+          summary: plan.summary,
+          approach: plan.approach,
+          estimatedComplexity: plan.estimatedComplexity,
+          generatedBy: plan.generatedBy,
+          createdAt: plan.createdAt,
+          updatedAt: plan.updatedAt,
+        })
+        .run();
 
-    return updatedPlan;
+      return plan;
+    });
   }
 
-  async delete(id: string): Promise<void> {
-    this.db.delete(plans).where(eq(plans.id, id)).run();
+  findById(id: string): Effect<Plan | null> {
+    return Effect.promise(async () => {
+      const result = this.db.select().from(plans).where(eq(plans.id, id)).get();
+
+      return result ? this.mapRowToPlan(result) : null;
+    });
+  }
+
+  findByIssueId(issueId: string): Effect<Plan | null> {
+    return Effect.promise(async () => {
+      const result = this.db.select().from(plans).where(eq(plans.issueId, issueId)).get();
+
+      return result ? this.mapRowToPlan(result) : null;
+    });
+  }
+
+  update(id: string, data: Partial<Omit<Plan, "id" | "issueId" | "createdAt">>): Effect<Plan> {
+    const db = this.db;
+    const findById = (planId: string) => this.findById(planId);
+    return Effect.gen(function* () {
+      const now = new Date().toISOString();
+
+      db.update(plans)
+        .set({
+          ...data,
+          updatedAt: now,
+        })
+        .where(eq(plans.id, id))
+        .run();
+
+      const updatedPlan = yield* findById(id);
+      if (!updatedPlan) {
+        throw new Error(`Failed to update plan: ${id}`);
+      }
+
+      return updatedPlan;
+    });
+  }
+
+  delete(id: string): Effect<void> {
+    return Effect.promise(async () => {
+      this.db.delete(plans).where(eq(plans.id, id)).run();
+    });
   }
 
   /**

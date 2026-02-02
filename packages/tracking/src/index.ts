@@ -128,8 +128,7 @@ export {
   getProjectManagementProvider,
 } from "./project-sync/provider-registry.js";
 export { getProjectManagementService } from "./project-sync/provider-factory.js";
-export type { GitHubCLI } from "./project-sync/github/github-cli.js";
-export { NodeGitHubCLI } from "./project-sync/github/github-cli.js";
+export { GitHubCLI, NodeGitHubCLI } from "./project-sync/github/github-cli.js";
 export { GitHubProjectManagementProvider } from "./project-sync/github/github-project-management-provider.js";
 export { GitHubProjectManagementClient } from "./project-sync/github/github-project-management-client.js";
 export { NoOpProjectManagementProvider } from "./project-sync/noop-project-management-provider.js";

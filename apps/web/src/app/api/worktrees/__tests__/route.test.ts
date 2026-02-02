@@ -34,7 +34,7 @@ const mockProject = {
 describe("listWorktreesEndpoint", () => {
   it("returns worktrees with task details", async () => {
     const mockProjectsResolver = {
-      getAllProjects: async () => [mockProject],
+      getAllProjects: () => Effect.succeed([mockProject]),
     };
 
     // DB repos for task enrichment
@@ -43,10 +43,8 @@ describe("listWorktreesEndpoint", () => {
         findMany: () => Effect.succeed([{ id: "issue-1", number: 5, title: "Issue Five" }]),
       },
       plans: {
-        findByIssueId: async (issueId: string) => {
-          if (issueId === "issue-1") return { id: "plan-1", issueId: "issue-1" };
-          return null;
-        },
+        findByIssueId: (issueId: string) =>
+          Effect.succeed(issueId === "issue-1" ? { id: "plan-1", issueId: "issue-1" } : null),
       },
       tasks: {
         findByPlanId: () =>
@@ -65,22 +63,23 @@ describe("listWorktreesEndpoint", () => {
 
     // Mock worktree service factory
     const mockCreateWorktreeService = () => ({
-      listWorktrees: async () => [
-        {
-          path: "/test/project",
-          branch: "main",
-          head: "abc000",
-          isMain: true,
-          diskUsageBytes: 2048000,
-        },
-        {
-          path: "/path/to/worktree",
-          branch: "issue-5/task-1",
-          head: "abc123",
-          isMain: false,
-          diskUsageBytes: 1024000,
-        },
-      ],
+      listWorktrees: () =>
+        Effect.succeed([
+          {
+            path: "/test/project",
+            branch: "main",
+            head: "abc000",
+            isMain: true,
+            diskUsageBytes: 2048000,
+          },
+          {
+            path: "/path/to/worktree",
+            branch: "issue-5/task-1",
+            head: "abc123",
+            isMain: false,
+            diskUsageBytes: 1024000,
+          },
+        ]),
     });
 
     const testContainer = createTestContainer({
@@ -113,18 +112,18 @@ describe("listWorktreesEndpoint", () => {
     };
 
     const mockProjectsResolver = {
-      getAllProjects: async () => [mockProject, filteredProject],
+      getAllProjects: () => Effect.succeed([mockProject, filteredProject]),
     };
 
     // DB repos return empty data for filtered project
     const mockDbClient = {
       issues: { findMany: () => Effect.succeed([]) },
-      plans: { findByIssueId: async () => null },
+      plans: { findByIssueId: () => Effect.succeed(null) },
       tasks: { findByPlanId: () => Effect.succeed([]) },
     };
 
     const mockCreateWorktreeService = () => ({
-      listWorktrees: async () => [],
+      listWorktrees: () => Effect.succeed([]),
     });
 
     const testContainer = createTestContainer({
@@ -143,17 +142,17 @@ describe("listWorktreesEndpoint", () => {
 
   it("returns empty array when no worktrees", async () => {
     const mockProjectsResolver = {
-      getAllProjects: async () => [mockProject],
+      getAllProjects: () => Effect.succeed([mockProject]),
     };
 
     const mockDbClient = {
       issues: { findMany: () => Effect.succeed([]) },
-      plans: { findByIssueId: async () => null },
+      plans: { findByIssueId: () => Effect.succeed(null) },
       tasks: { findByPlanId: () => Effect.succeed([]) },
     };
 
     const mockCreateWorktreeService = () => ({
-      listWorktrees: async () => [],
+      listWorktrees: () => Effect.succeed([]),
     });
 
     const testContainer = createTestContainer({
@@ -178,26 +177,28 @@ describe("listWorktreesEndpoint", () => {
 describe("pruneWorktreesEndpoint", () => {
   it("prunes worktrees successfully", async () => {
     const mockProjectsResolver = {
-      getAllProjects: async () => [mockProject],
+      getAllProjects: () => Effect.succeed([mockProject]),
     };
 
     // listWorktrees is called twice: before prune (3 non-main) and after (0)
     let callCount = 0;
     const mockCreateWorktreeService = () => ({
-      listWorktrees: async () => {
+      listWorktrees: () => {
         callCount++;
         if (callCount === 1) {
-          return [
+          return Effect.succeed([
             { path: "/test/project", branch: "main", head: "aaa", isMain: true },
             { path: "/wt/1", branch: "issue-1/task-1", head: "bbb", isMain: false },
             { path: "/wt/2", branch: "issue-2/task-1", head: "ccc", isMain: false },
             { path: "/wt/3", branch: "issue-3/task-1", head: "ddd", isMain: false },
-          ];
+          ]);
         }
         // After prune: only main remains
-        return [{ path: "/test/project", branch: "main", head: "aaa", isMain: true }];
+        return Effect.succeed([
+          { path: "/test/project", branch: "main", head: "aaa", isMain: true },
+        ]);
       },
-      pruneWorktrees: async () => {},
+      pruneWorktrees: () => Effect.succeed(undefined),
     });
 
     const testContainer = createTestContainer({
@@ -219,14 +220,14 @@ describe("pruneWorktreesEndpoint", () => {
 
   it("returns 400 when projectId is missing", async () => {
     const mockProjectsResolver = {
-      getAllProjects: async () => [mockProject],
+      getAllProjects: () => Effect.succeed([mockProject]),
     };
 
     const testContainer = createTestContainer({
       projectsResolver: mockProjectsResolver,
       createWorktreeService: () => ({
-        listWorktrees: async () => [],
-        pruneWorktrees: async () => {},
+        listWorktrees: () => Effect.succeed([]),
+        pruneWorktrees: () => Effect.succeed(undefined),
       }),
     });
 

@@ -2,6 +2,8 @@
  * Domain types for Plan entity
  */
 
+import type { Effect } from "@dev-workflow/effect";
+
 export type PlanComplexity = "LOW" | "MEDIUM" | "HIGH" | "VERY_HIGH";
 
 /**
@@ -34,7 +36,7 @@ export interface PlanRepository {
    * @param plan - Plan data (without id, createdAt, updatedAt which are generated)
    * @returns The created plan with id and timestamps assigned
    */
-  create(plan: Omit<Plan, "id" | "createdAt" | "updatedAt">): Promise<Plan>;
+  create(plan: Omit<Plan, "id" | "createdAt" | "updatedAt">): Effect<Plan>;
 
   /**
    * Find a plan by its UUID
@@ -42,7 +44,7 @@ export interface PlanRepository {
    * @param id - Plan UUID
    * @returns The plan if found, null otherwise
    */
-  findById(id: string): Promise<Plan | null>;
+  findById(id: string): Effect<Plan | null>;
 
   /**
    * Find the plan for an issue
@@ -52,7 +54,7 @@ export interface PlanRepository {
    * @param issueId - Issue UUID
    * @returns The plan if found, null otherwise
    */
-  findByIssueId(issueId: string): Promise<Plan | null>;
+  findByIssueId(issueId: string): Effect<Plan | null>;
 
   /**
    * Update an existing plan
@@ -61,12 +63,12 @@ export interface PlanRepository {
    * @param data - Partial plan data to update
    * @returns The updated plan
    */
-  update(id: string, data: Partial<Omit<Plan, "id" | "issueId" | "createdAt">>): Promise<Plan>;
+  update(id: string, data: Partial<Omit<Plan, "id" | "issueId" | "createdAt">>): Effect<Plan>;
 
   /**
    * Delete a plan
    *
    * @param id - Plan UUID
    */
-  delete(id: string): Promise<void>;
+  delete(id: string): Effect<void>;
 }

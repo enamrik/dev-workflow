@@ -118,13 +118,17 @@ function createMockProjectsRepository(
   return {
     findByGitRootHash: vi.fn().mockImplementation(() => {
       // Return archived project if looking for archived, otherwise regular project
-      return archivedValue ?? projectValue;
+      return Effect.succeed(archivedValue ?? projectValue);
     }),
-    archive: vi.fn().mockResolvedValue(projectValue ? { ...projectValue, isArchived: true } : null),
+    archive: vi
+      .fn()
+      .mockReturnValue(Effect.succeed(projectValue ? { ...projectValue, isArchived: true } : null)),
     unarchive: vi
       .fn()
-      .mockResolvedValue(projectValue ? { ...projectValue, isArchived: false } : null),
-    hardDelete: vi.fn().mockResolvedValue(undefined),
+      .mockReturnValue(
+        Effect.succeed(projectValue ? { ...projectValue, isArchived: false } : null)
+      ),
+    hardDelete: vi.fn().mockReturnValue(Effect.succeed(undefined)),
   } as unknown as ProjectRepository;
 }
 

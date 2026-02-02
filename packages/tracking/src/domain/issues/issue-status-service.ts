@@ -69,29 +69,32 @@ export class IssueStatusService {
    * @param issue - The issue to compute status for
    * @returns Computed status and optional task counts
    */
-  async computeStatus(issue: Issue): Promise<ComputedStatusResult> {
-    // Get plan and tasks
-    const plan = await this.db.plans.findByIssueId(issue.id);
-    const tasks = plan ? await Effect.runPromise(this.db.tasks.findByPlanId(plan.id)) : [];
+  computeStatus(issue: Issue): Effect<ComputedStatusResult> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Get plan and tasks
+      const plan = yield* self.db.plans.findByIssueId(issue.id);
+      const tasks = plan ? yield* self.db.tasks.findByPlanId(plan.id) : [];
 
-    // Use domain function for status computation
-    const status = Issue.computeStatus(issue, tasks);
+      // Use domain function for status computation
+      const status = Issue.computeStatus(issue, tasks);
 
-    if (tasks.length === 0) {
-      return { computedStatus: status };
-    }
+      if (tasks.length === 0) {
+        return { computedStatus: status };
+      }
 
-    // Count task states using trait functions (single source of truth)
-    const terminal = tasks.filter((t) => t.isTerminal).length;
-    const active = tasks.filter((t) => t.isActive).length;
+      // Count task states using trait functions (single source of truth)
+      const terminal = tasks.filter((t) => t.isTerminal).length;
+      const active = tasks.filter((t) => t.isActive).length;
 
-    const taskCounts: TaskCounts = {
-      total: tasks.length,
-      completed: terminal,
-      inProgress: active,
-    };
+      const taskCounts: TaskCounts = {
+        total: tasks.length,
+        completed: terminal,
+        inProgress: active,
+      };
 
-    return { computedStatus: status, taskCounts };
+      return { computedStatus: status, taskCounts };
+    });
   }
 
   /**

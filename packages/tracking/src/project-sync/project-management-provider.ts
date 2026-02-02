@@ -12,7 +12,7 @@
  * - Provider identity is explicit for logging and debugging
  */
 
-import { Service } from "@dev-workflow/effect";
+import { Effect, Service } from "@dev-workflow/effect";
 import type { Issue } from "../domain/issues/issue.js";
 import type { Task, TaskStatus } from "../domain/tasks/task.js";
 
@@ -408,7 +408,7 @@ export interface ProjectManagementProvider {
    * @param itemId - The project item ID (will be remoteProjectItemId after rename)
    * @param status - The status to move to
    */
-  moveItemToStatusColumn(itemId: string | null | undefined, status: TaskStatus): Promise<void>;
+  moveItemToStatusColumn(itemId: string | null | undefined, status: TaskStatus): Effect<void>;
 
   /**
    * Assign an issue to the configured assignee
@@ -418,7 +418,7 @@ export interface ProjectManagementProvider {
    *
    * @param issueRef - External issue reference (will be remoteIssueNumber after rename)
    */
-  assignIssueToConfiguredUser(issueRef: string): Promise<void>;
+  assignIssueToConfiguredUser(issueRef: string): Effect<void>;
 
   // ===========================================================================
   // Authentication & Validation
@@ -427,7 +427,7 @@ export interface ProjectManagementProvider {
   /**
    * Check if the provider is authenticated and ready to use
    */
-  checkAuth(): Promise<AuthResult>;
+  checkAuth(): Effect<AuthResult>;
 
   /**
    * Check if the current repository/workspace is accessible
@@ -435,7 +435,7 @@ export interface ProjectManagementProvider {
    * For GitHub: checks if we're in a git repo with a GitHub remote
    * For Jira: checks if the workspace is configured
    */
-  checkRepository(): Promise<RepositoryResult>;
+  checkRepository(): Effect<RepositoryResult>;
 
   // ===========================================================================
   // Issue Operations
@@ -444,12 +444,12 @@ export interface ProjectManagementProvider {
   /**
    * Create a new issue in the external system
    */
-  createIssue(params: CreateIssueParams): Promise<ExternalIssue>;
+  createIssue(params: CreateIssueParams): Effect<ExternalIssue>;
 
   /**
    * Update an existing issue
    */
-  updateIssue(params: UpdateIssueParams): Promise<ExternalIssue>;
+  updateIssue(params: UpdateIssueParams): Effect<ExternalIssue>;
 
   /**
    * Close an issue's external issue in the external system
@@ -462,7 +462,7 @@ export interface ProjectManagementProvider {
    * @param issue - The Issue to close externally
    * @param comment - Optional comment to add when closing
    */
-  closeIssue(issue: Issue, comment?: string): Promise<void>;
+  closeIssue(issue: Issue, comment?: string): Effect<void>;
 
   /**
    * Close a task's external issue in the external system
@@ -472,14 +472,14 @@ export interface ProjectManagementProvider {
    * @param task - The Task to close externally
    * @param comment - Optional comment to add when closing
    */
-  closeIssueByTask(task: Task, comment?: string): Promise<void>;
+  closeIssueByTask(task: Task, comment?: string): Effect<void>;
 
   /**
    * Reopen a closed issue
    *
    * @param issueRef - External issue identifier
    */
-  reopenIssue(issueRef: string): Promise<void>;
+  reopenIssue(issueRef: string): Effect<void>;
 
   /**
    * Get issue details
@@ -487,7 +487,7 @@ export interface ProjectManagementProvider {
    * @param issueRef - External issue identifier
    * @returns Issue data or null if not found
    */
-  getIssue(issueRef: string): Promise<ExternalIssue | null>;
+  getIssue(issueRef: string): Effect<ExternalIssue | null>;
 
   /**
    * Search for issues matching a query
@@ -500,7 +500,7 @@ export interface ProjectManagementProvider {
     query: string,
     state?: "open" | "closed" | "all",
     limit?: number
-  ): Promise<ExternalIssue[]>;
+  ): Effect<ExternalIssue[]>;
 
   // ===========================================================================
   // Label/Tag Operations
@@ -513,7 +513,7 @@ export interface ProjectManagementProvider {
    *
    * @param labels - Array of label names to ensure exist
    */
-  ensureLabelsExist(labels: string[]): Promise<void>;
+  ensureLabelsExist(labels: string[]): Effect<void>;
 
   // ===========================================================================
   // Project/Board Operations
@@ -526,7 +526,7 @@ export interface ProjectManagementProvider {
    * @param projectId - Project/board identifier
    * @returns Result with project item ID
    */
-  addToProject(issueNodeId: string, projectId: string): Promise<ProjectItemResult>;
+  addToProject(issueNodeId: string, projectId: string): Effect<ProjectItemResult>;
 
   /**
    * Move an issue to a specific column/status on a project board
@@ -535,7 +535,7 @@ export interface ProjectManagementProvider {
    * @param projectId - Project/board identifier
    * @param columnName - Name of the column/status to move to
    */
-  moveToColumn(itemId: string, projectId: string, columnName: string): Promise<void>;
+  moveToColumn(itemId: string, projectId: string, columnName: string): Effect<void>;
 
   /**
    * Check if a project/board exists and is accessible
@@ -543,7 +543,7 @@ export interface ProjectManagementProvider {
    * @param projectId - Project/board identifier
    * @returns True if accessible
    */
-  checkProject(projectId: string): Promise<boolean>;
+  checkProject(projectId: string): Effect<boolean>;
 
   /**
    * Get project/board details
@@ -551,7 +551,7 @@ export interface ProjectManagementProvider {
    * @param projectId - Project/board identifier
    * @returns Project details or null if not found
    */
-  getProjectDetails(projectId: string): Promise<ProjectDetails | null>;
+  getProjectDetails(projectId: string): Effect<ProjectDetails | null>;
 
   /**
    * Get the status field information for a project
@@ -559,7 +559,7 @@ export interface ProjectManagementProvider {
    * @param projectId - Project/board identifier
    * @returns Status field info with available columns, or null if not applicable
    */
-  getProjectStatusField(projectId: string): Promise<ProjectStatusField | null>;
+  getProjectStatusField(projectId: string): Effect<ProjectStatusField | null>;
 
   /**
    * Get all fields for a project
@@ -570,7 +570,7 @@ export interface ProjectManagementProvider {
    * @param projectId - Project/board identifier
    * @returns Array of project fields
    */
-  getProjectFields(projectId: string): Promise<ProjectField[]>;
+  getProjectFields(projectId: string): Effect<ProjectField[]>;
 
   /**
    * Set a field value on a project item
@@ -589,7 +589,7 @@ export interface ProjectManagementProvider {
     itemId: string,
     fieldId: string,
     value: string
-  ): Promise<SetFieldResult>;
+  ): Effect<SetFieldResult>;
 
   /**
    * Clear a field value on a project item
@@ -599,11 +599,7 @@ export interface ProjectManagementProvider {
    * @param fieldId - Field identifier
    * @returns Result indicating success or failure
    */
-  clearProjectItemField(
-    projectId: string,
-    itemId: string,
-    fieldId: string
-  ): Promise<SetFieldResult>;
+  clearProjectItemField(projectId: string, itemId: string, fieldId: string): Effect<SetFieldResult>;
 
   // ===========================================================================
   // Labels
@@ -622,7 +618,7 @@ export interface ProjectManagementProvider {
    *
    * @returns Available labels with their valid values
    */
-  getAvailableLabels(): Promise<AvailableLabelsResult>;
+  getAvailableLabels(): Effect<AvailableLabelsResult>;
 
   // ===========================================================================
   // Hierarchical Issues (Parent-Child Linking)
@@ -638,7 +634,7 @@ export interface ProjectManagementProvider {
    * @param parentRef - External identifier of the parent issue
    * @param childRef - External identifier of the child issue
    */
-  linkParentChild(parentRef: string, childRef: string): Promise<void>;
+  linkParentChild(parentRef: string, childRef: string): Effect<void>;
 
   // ===========================================================================
   // Comments
@@ -650,7 +646,7 @@ export interface ProjectManagementProvider {
    * @param issueRef - External issue identifier
    * @param body - Comment text (supports markdown)
    */
-  addComment(issueRef: string, body: string): Promise<void>;
+  addComment(issueRef: string, body: string): Effect<void>;
 
   // ===========================================================================
   // Assignment
@@ -662,7 +658,7 @@ export interface ProjectManagementProvider {
    * @param issueRef - External issue identifier
    * @param assignee - Username to assign (provider-specific format)
    */
-  assignIssue(issueRef: string, assignee: string): Promise<void>;
+  assignIssue(issueRef: string, assignee: string): Effect<void>;
 }
 
 /**

@@ -39,38 +39,36 @@ export function getTaskDependencies(input: GetTaskDependenciesInput) {
     const projectsResolver = yield* ProjectsResolver;
     const sourceProvider = yield* DbSourceProvider;
 
-    return yield* Effect.promise(async (): Promise<TaskDependencyWithIssue[]> => {
-      const validated = validateInput(GetTaskDependenciesSchema, input);
-      const projects = await projectsResolver.getAllProjects();
+    const validated = validateInput(GetTaskDependenciesSchema, input);
+    const projects = yield* projectsResolver.getAllProjects();
 
-      for (const project of projects) {
-        try {
-          const db = await getDbClient(project, sourceProvider);
-          const task = await Effect.runPromise(db.tasks.findById(validated.taskId));
+    for (const project of projects) {
+      try {
+        const db = yield* Effect.promise(() => getDbClient(project, sourceProvider));
+        const task = yield* db.tasks.findById(validated.taskId);
 
-          if (task) {
-            if (!task.dependsOn || task.dependsOn.length === 0) {
-              return [];
-            }
-            const dependencies = await Effect.runPromise(db.tasks.findByIds(task.dependsOn));
-            return await Promise.all(
-              dependencies.map(async (dep) => {
-                const depPlan = await db.plans.findById(dep.planId);
-                const depIssue = depPlan
-                  ? await Effect.runPromise(db.issues.findById(depPlan.issueId))
-                  : null;
-                return Object.assign(Task.from(dep), {
-                  issueNumber: depIssue?.number ?? null,
-                });
+        if (task) {
+          if (!task.dependsOn || task.dependsOn.length === 0) {
+            return [];
+          }
+          const dependencies = yield* db.tasks.findByIds(task.dependsOn);
+          const result: TaskDependencyWithIssue[] = [];
+          for (const dep of dependencies) {
+            const depPlan = yield* db.plans.findById(dep.planId);
+            const depIssue = depPlan ? yield* db.issues.findById(depPlan.issueId) : null;
+            result.push(
+              Object.assign(Task.from(dep), {
+                issueNumber: depIssue?.number ?? null,
               })
             );
           }
-        } catch {
-          // Continue searching
+          return result;
         }
+      } catch {
+        // Continue searching
       }
+    }
 
-      throw new EntityNotFoundError("Task", validated.taskId);
-    });
+    throw new EntityNotFoundError("Task", validated.taskId);
   });
 }

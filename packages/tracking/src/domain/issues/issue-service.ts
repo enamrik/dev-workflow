@@ -163,7 +163,6 @@ export class IssueService extends Service<IssueService>()("issueService") {
     force = false,
     closedBy?: string
   ): Effect<CloseIssueResult, IssueServiceError> {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     return Effect.gen(function* () {
       const issue = yield* self.getIssue(issueId);
@@ -184,9 +183,7 @@ export class IssueService extends Service<IssueService>()("issueService") {
       };
 
       // 1. Check for incomplete tasks
-      const incompleteTasks = yield* Effect.promise(() =>
-        self.taskService.getIncompleteTasksForIssue(issueId)
-      );
+      const incompleteTasks = yield* self.taskService.getIncompleteTasksForIssue(issueId);
 
       if (incompleteTasks.length > 0) {
         if (!force) {
@@ -205,8 +202,10 @@ export class IssueService extends Service<IssueService>()("issueService") {
         // With force: abandon incomplete tasks
         for (const task of incompleteTasks) {
           try {
-            const abandonResult = yield* Effect.promise(() =>
-              self.taskService.abandonTask(task.id, "Issue closed", closedBy)
+            const abandonResult = yield* self.taskService.abandonTask(
+              task.id,
+              "Issue closed",
+              closedBy
             );
             result.abandonedTasks.push(abandonResult);
           } catch (error) {
@@ -240,7 +239,7 @@ export class IssueService extends Service<IssueService>()("issueService") {
    * Delegates to TaskService to avoid duplicating logic.
    */
   areAllTasksComplete(issueId: string): Effect<boolean> {
-    return Effect.promise(() => this.taskService.areAllTasksComplete(issueId));
+    return this.taskService.areAllTasksComplete(issueId);
   }
 
   /**
@@ -253,7 +252,6 @@ export class IssueService extends Service<IssueService>()("issueService") {
    * @returns The updated issue
    */
   updateStatus(issueId: string, newStatus: IssueStatus): Effect<Issue, IssueServiceError> {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     return Effect.gen(function* () {
       if (newStatus === "CLOSED") {

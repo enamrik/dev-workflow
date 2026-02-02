@@ -122,9 +122,12 @@ export class MergeService extends Service<MergeService>()("mergeService") {
   /**
    * Check if GitHub sync is enabled for this project
    */
-  private async isGitHubSyncEnabled(): Promise<boolean> {
-    const project = await this.source.projects.findById(this.projectId);
-    return project?.syncConfig?.enabled ?? false;
+  private isGitHubSyncEnabled(): Effect<boolean> {
+    const self = this;
+    return Effect.gen(function* () {
+      const project = yield* self.source.projects.findById(self.projectId);
+      return project?.syncConfig?.enabled ?? false;
+    });
   }
 
   /**
@@ -134,105 +137,114 @@ export class MergeService extends Service<MergeService>()("mergeService") {
    * @returns MergeResult with the resulting issue, plan, tasks, and warnings
    * @throws MergeValidationError if validation fails
    */
-  async merge(request: MergeIssuesRequest): Promise<MergeResult> {
-    // Resolve issues from IDs or numbers
-    const sourceIssue = await this.resolveIssue(
-      request.sourceIssueId,
-      request.sourceIssueNumber,
-      "source"
-    );
-    const targetIssue = await this.resolveIssue(
-      request.targetIssueId,
-      request.targetIssueNumber,
-      "target"
-    );
-
-    // Validate issues are not the same
-    if (sourceIssue.id === targetIssue.id) {
-      throw new MergeValidationError("Cannot merge an issue with itself");
-    }
-
-    // Validate issues are not CLOSED - use trait function
-    if (sourceIssue.isClosed) {
-      throw new MergeValidationError(
-        `Source issue #${sourceIssue.number} is CLOSED and cannot be merged`
+  merge(request: MergeIssuesRequest): Effect<MergeResult> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Resolve issues from IDs or numbers
+      const sourceIssue = yield* self.resolveIssue(
+        request.sourceIssueId,
+        request.sourceIssueNumber,
+        "source"
       );
-    }
-    if (targetIssue.isClosed) {
-      throw new MergeValidationError(
-        `Target issue #${targetIssue.number} is CLOSED and cannot be merged`
+      const targetIssue = yield* self.resolveIssue(
+        request.targetIssueId,
+        request.targetIssueNumber,
+        "target"
       );
-    }
 
-    // Collect warnings about in-progress work
-    const warnings = await this.detectWarnings(sourceIssue, targetIssue);
+      // Validate issues are not the same
+      if (sourceIssue.id === targetIssue.id) {
+        throw new MergeValidationError("Cannot merge an issue with itself");
+      }
 
-    // Execute merge based on mode
-    let result: MergeResult;
-    if (request.mode === "create_new") {
-      result = await this.executeCreateNew(
-        sourceIssue,
-        targetIssue,
-        warnings,
-        request.newTitle,
-        request.newDescription,
-        request.mergedBy
-      );
-    } else {
-      result = await this.executeMergeInto(sourceIssue, targetIssue, warnings, request.mergedBy);
-    }
+      // Validate issues are not CLOSED - use trait function
+      if (sourceIssue.isClosed) {
+        throw new MergeValidationError(
+          `Source issue #${sourceIssue.number} is CLOSED and cannot be merged`
+        );
+      }
+      if (targetIssue.isClosed) {
+        throw new MergeValidationError(
+          `Target issue #${targetIssue.number} is CLOSED and cannot be merged`
+        );
+      }
 
-    // Sync merge to GitHub (comments, close source in merge_into mode)
-    await this.syncMergeToGitHub(sourceIssue, targetIssue, result, request.mode);
+      // Collect warnings about in-progress work
+      const warnings = yield* self.detectWarnings(sourceIssue, targetIssue);
 
-    return result;
+      // Execute merge based on mode
+      let result: MergeResult;
+      if (request.mode === "create_new") {
+        result = yield* self.executeCreateNew(
+          sourceIssue,
+          targetIssue,
+          warnings,
+          request.newTitle,
+          request.newDescription,
+          request.mergedBy
+        );
+      } else {
+        result = yield* self.executeMergeInto(sourceIssue, targetIssue, warnings, request.mergedBy);
+      }
+
+      // Sync merge to GitHub (comments, close source in merge_into mode)
+      yield* self.syncMergeToGitHub(sourceIssue, targetIssue, result, request.mode);
+
+      return result;
+    });
   }
 
   /**
    * Resolve an issue from ID or number
    */
-  private async resolveIssue(
+  private resolveIssue(
     id: string | undefined,
     number: number | undefined,
     label: "source" | "target"
-  ): Promise<Issue> {
-    let issue: Issue | null = null;
+  ): Effect<Issue> {
+    const self = this;
+    return Effect.gen(function* () {
+      let issue: Issue | null = null;
 
-    if (id) {
-      issue = await Effect.runPromise(this.db.issues.findById(id));
-    } else if (number !== undefined) {
-      issue = await Effect.runPromise(this.db.issues.findByNumber(number));
-    }
+      if (id) {
+        issue = yield* self.db.issues.findById(id);
+      } else if (number !== undefined) {
+        issue = yield* self.db.issues.findByNumber(number);
+      }
 
-    if (!issue) {
-      const identifier = id ? `ID ${id}` : `#${number}`;
-      throw new MergeValidationError(`${label} issue not found: ${identifier}`);
-    }
+      if (!issue) {
+        const identifier = id ? `ID ${id}` : `#${number}`;
+        throw new MergeValidationError(`${label} issue not found: ${identifier}`);
+      }
 
-    return issue;
+      return issue;
+    });
   }
 
   /**
    * Detect warnings about in-progress or PR_REVIEW tasks
    */
-  private async detectWarnings(sourceIssue: Issue, targetIssue: Issue): Promise<MergeWarning[]> {
-    const warnings: MergeWarning[] = [];
+  private detectWarnings(sourceIssue: Issue, targetIssue: Issue): Effect<MergeWarning[]> {
+    const self = this;
+    return Effect.gen(function* () {
+      const warnings: MergeWarning[] = [];
 
-    // Check source issue tasks
-    const sourcePlan = await this.db.plans.findByIssueId(sourceIssue.id);
-    if (sourcePlan) {
-      const sourceTasks = await Effect.runPromise(this.db.tasks.findByPlanId(sourcePlan.id, false));
-      warnings.push(...this.checkTasksForWarnings(sourceTasks, sourceIssue.number));
-    }
+      // Check source issue tasks
+      const sourcePlan = yield* self.db.plans.findByIssueId(sourceIssue.id);
+      if (sourcePlan) {
+        const sourceTasks = yield* self.db.tasks.findByPlanId(sourcePlan.id, false);
+        warnings.push(...self.checkTasksForWarnings(sourceTasks, sourceIssue.number));
+      }
 
-    // Check target issue tasks
-    const targetPlan = await this.db.plans.findByIssueId(targetIssue.id);
-    if (targetPlan) {
-      const targetTasks = await Effect.runPromise(this.db.tasks.findByPlanId(targetPlan.id, false));
-      warnings.push(...this.checkTasksForWarnings(targetTasks, targetIssue.number));
-    }
+      // Check target issue tasks
+      const targetPlan = yield* self.db.plans.findByIssueId(targetIssue.id);
+      if (targetPlan) {
+        const targetTasks = yield* self.db.tasks.findByPlanId(targetPlan.id, false);
+        warnings.push(...self.checkTasksForWarnings(targetTasks, targetIssue.number));
+      }
 
-    return warnings;
+      return warnings;
+    });
   }
 
   /**
@@ -267,44 +279,45 @@ export class MergeService extends Service<MergeService>()("mergeService") {
   /**
    * Execute create_new mode: Create a new issue from both sources
    */
-  private async executeCreateNew(
+  private executeCreateNew(
     sourceIssue: Issue,
     targetIssue: Issue,
     warnings: MergeWarning[],
     customTitle?: string,
     customDescription?: string,
     mergedBy?: string
-  ): Promise<MergeResult> {
-    // Create snapshot before merge (using ISSUE_UPDATE as the snapshot type)
-    await this.versioningService.createSnapshot(
-      sourceIssue.number,
-      "ISSUE_UPDATE",
-      mergedBy ?? "merge-service",
-      `Pre-merge snapshot (create_new mode)`
-    );
-    await this.versioningService.createSnapshot(
-      targetIssue.number,
-      "ISSUE_UPDATE",
-      mergedBy ?? "merge-service",
-      `Pre-merge snapshot (create_new mode)`
-    );
+  ): Effect<MergeResult> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Create snapshot before merge (using ISSUE_UPDATE as the snapshot type)
+      yield* self.versioningService.createSnapshot(
+        sourceIssue.number,
+        "ISSUE_UPDATE",
+        mergedBy ?? "merge-service",
+        `Pre-merge snapshot (create_new mode)`
+      );
+      yield* self.versioningService.createSnapshot(
+        targetIssue.number,
+        "ISSUE_UPDATE",
+        mergedBy ?? "merge-service",
+        `Pre-merge snapshot (create_new mode)`
+      );
 
-    // Create combined title and description
-    const title = customTitle ?? `Merged: ${sourceIssue.title} + ${targetIssue.title}`;
-    const description = customDescription ?? this.combineDescriptions(sourceIssue, targetIssue);
+      // Create combined title and description
+      const title = customTitle ?? `Merged: ${sourceIssue.title} + ${targetIssue.title}`;
+      const description = customDescription ?? self.combineDescriptions(sourceIssue, targetIssue);
 
-    // Combine acceptance criteria (deduplicated)
-    const acceptanceCriteria = this.combineAcceptanceCriteria(
-      sourceIssue.acceptanceCriteria,
-      targetIssue.acceptanceCriteria
-    );
+      // Combine acceptance criteria (deduplicated)
+      const acceptanceCriteria = self.combineAcceptanceCriteria(
+        sourceIssue.acceptanceCriteria,
+        targetIssue.acceptanceCriteria
+      );
 
-    // Use higher priority
-    const priority = this.getHigherPriority(sourceIssue.priority, targetIssue.priority);
+      // Use higher priority
+      const priority = self.getHigherPriority(sourceIssue.priority, targetIssue.priority);
 
-    // Create new issue
-    const newIssue = await Effect.runPromise(
-      this.db.issues.create({
+      // Create new issue
+      const newIssue = yield* self.db.issues.create({
         title,
         description,
         type: sourceIssue.type, // Use source type
@@ -312,253 +325,251 @@ export class MergeService extends Service<MergeService>()("mergeService") {
         status: "OPEN",
         acceptanceCriteria,
         createdBy: mergedBy ?? "merge-service",
-      })
-    );
-
-    // Emit issue created event
-    this.eventBus.emit("issue:created", {
-      issueId: newIssue.id,
-      issueNumber: newIssue.number,
-    });
-
-    // Handle plan and task merging
-    const sourcePlan = await this.db.plans.findByIssueId(sourceIssue.id);
-    const targetPlan = await this.db.plans.findByIssueId(targetIssue.id);
-
-    let resultPlan: Plan | undefined;
-    const resultTasks: Task[] = [];
-
-    if (sourcePlan || targetPlan) {
-      // Create a combined plan
-      const planSummary = this.combinePlanSummaries(sourcePlan, targetPlan);
-      const planApproach = this.combinePlanApproaches(sourcePlan, targetPlan);
-      const complexity = this.getHigherComplexity(
-        sourcePlan?.estimatedComplexity,
-        targetPlan?.estimatedComplexity
-      );
-
-      resultPlan = await this.db.plans.create({
-        issueId: newIssue.id,
-        summary: planSummary,
-        approach: planApproach,
-        estimatedComplexity: complexity,
-        generatedBy: mergedBy ?? "merge-service",
       });
 
-      // Emit plan created event
-      this.eventBus.emit("plan:generated", {
-        planId: resultPlan.id,
+      // Emit issue created event
+      self.eventBus.emit("issue:created", {
         issueId: newIssue.id,
         issueNumber: newIssue.number,
       });
 
-      // Copy tasks from both plans
-      if (sourcePlan) {
-        const sourceTasks = await Effect.runPromise(
-          this.db.tasks.findByPlanId(sourcePlan.id, false)
-        );
-        resultTasks.push(
-          ...(await this.copyTasksToPlan(sourceTasks, resultPlan.id, sourceIssue.number))
-        );
-      }
-      if (targetPlan) {
-        const targetTasks = await Effect.runPromise(
-          this.db.tasks.findByPlanId(targetPlan.id, false)
-        );
-        resultTasks.push(
-          ...(await this.copyTasksToPlan(targetTasks, resultPlan.id, targetIssue.number))
-        );
-      }
+      // Handle plan and task merging
+      const sourcePlan = yield* self.db.plans.findByIssueId(sourceIssue.id);
+      const targetPlan = yield* self.db.plans.findByIssueId(targetIssue.id);
 
-      // Emit task created events
-      for (const task of resultTasks) {
-        this.eventBus.emit("task:created", {
-          taskId: task.id,
+      let resultPlan: Plan | undefined;
+      const resultTasks: Task[] = [];
+
+      if (sourcePlan || targetPlan) {
+        // Create a combined plan
+        const planSummary = self.combinePlanSummaries(sourcePlan, targetPlan);
+        const planApproach = self.combinePlanApproaches(sourcePlan, targetPlan);
+        const complexity = self.getHigherComplexity(
+          sourcePlan?.estimatedComplexity,
+          targetPlan?.estimatedComplexity
+        );
+
+        resultPlan = yield* self.db.plans.create({
+          issueId: newIssue.id,
+          summary: planSummary,
+          approach: planApproach,
+          estimatedComplexity: complexity,
+          generatedBy: mergedBy ?? "merge-service",
+        });
+
+        // Emit plan created event
+        self.eventBus.emit("plan:generated", {
           planId: resultPlan.id,
+          issueId: newIssue.id,
           issueNumber: newIssue.number,
         });
+
+        // Copy tasks from both plans
+        if (sourcePlan) {
+          const sourceTasks = yield* self.db.tasks.findByPlanId(sourcePlan.id, false);
+          resultTasks.push(
+            ...(yield* self.copyTasksToPlan(sourceTasks, resultPlan.id, sourceIssue.number))
+          );
+        }
+        if (targetPlan) {
+          const targetTasks = yield* self.db.tasks.findByPlanId(targetPlan.id, false);
+          resultTasks.push(
+            ...(yield* self.copyTasksToPlan(targetTasks, resultPlan.id, targetIssue.number))
+          );
+        }
+
+        // Emit task created events
+        for (const task of resultTasks) {
+          self.eventBus.emit("task:created", {
+            taskId: task.id,
+            planId: resultPlan.id,
+            issueNumber: newIssue.number,
+          });
+        }
       }
-    }
 
-    // Create snapshot after merge
-    await this.versioningService.createSnapshot(
-      newIssue.number,
-      "ISSUE_UPDATE",
-      mergedBy ?? "merge-service",
-      `Created from merge of #${sourceIssue.number} and #${targetIssue.number}`
-    );
+      // Create snapshot after merge
+      yield* self.versioningService.createSnapshot(
+        newIssue.number,
+        "ISSUE_UPDATE",
+        mergedBy ?? "merge-service",
+        `Created from merge of #${sourceIssue.number} and #${targetIssue.number}`
+      );
 
-    return {
-      resultIssue: newIssue,
-      resultPlan,
-      resultTasks,
-      sourceIssues: [sourceIssue, targetIssue],
-      warnings,
-      mode: "create_new",
-    };
+      return {
+        resultIssue: newIssue,
+        resultPlan,
+        resultTasks,
+        sourceIssues: [sourceIssue, targetIssue],
+        warnings,
+        mode: "create_new" as const,
+      };
+    });
   }
 
   /**
    * Execute merge_into mode: Fold source into target, soft-delete source
    */
-  private async executeMergeInto(
+  private executeMergeInto(
     sourceIssue: Issue,
     targetIssue: Issue,
     warnings: MergeWarning[],
     mergedBy?: string
-  ): Promise<MergeResult> {
-    // Create snapshots before merge (using ISSUE_UPDATE as the snapshot type)
-    await this.versioningService.createSnapshot(
-      sourceIssue.number,
-      "ISSUE_UPDATE",
-      mergedBy ?? "merge-service",
-      `Pre-merge snapshot (merge_into mode - source)`
-    );
-    await this.versioningService.createSnapshot(
-      targetIssue.number,
-      "ISSUE_UPDATE",
-      mergedBy ?? "merge-service",
-      `Pre-merge snapshot (merge_into mode - target)`
-    );
+  ): Effect<MergeResult> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Create snapshots before merge (using ISSUE_UPDATE as the snapshot type)
+      yield* self.versioningService.createSnapshot(
+        sourceIssue.number,
+        "ISSUE_UPDATE",
+        mergedBy ?? "merge-service",
+        `Pre-merge snapshot (merge_into mode - source)`
+      );
+      yield* self.versioningService.createSnapshot(
+        targetIssue.number,
+        "ISSUE_UPDATE",
+        mergedBy ?? "merge-service",
+        `Pre-merge snapshot (merge_into mode - target)`
+      );
 
-    // Update target description to include reference to merged source
-    const updatedDescription = this.appendMergeNote(targetIssue.description, sourceIssue);
+      // Update target description to include reference to merged source
+      const updatedDescription = self.appendMergeNote(targetIssue.description, sourceIssue);
 
-    // Combine acceptance criteria
-    const combinedCriteria = this.combineAcceptanceCriteria(
-      targetIssue.acceptanceCriteria,
-      sourceIssue.acceptanceCriteria
-    );
+      // Combine acceptance criteria
+      const combinedCriteria = self.combineAcceptanceCriteria(
+        targetIssue.acceptanceCriteria,
+        sourceIssue.acceptanceCriteria
+      );
 
-    // Update target issue
-    const updatedTarget = await Effect.runPromise(
-      this.db.issues.update(targetIssue.id, {
+      // Update target issue
+      const updatedTarget = yield* self.db.issues.update(targetIssue.id, {
         description: updatedDescription,
         acceptanceCriteria: combinedCriteria,
-      })
-    );
+      });
 
-    // Handle plan and task merging
-    const sourcePlan = await this.db.plans.findByIssueId(sourceIssue.id);
-    const targetPlan = await this.db.plans.findByIssueId(targetIssue.id);
+      // Handle plan and task merging
+      const sourcePlan = yield* self.db.plans.findByIssueId(sourceIssue.id);
+      const targetPlan = yield* self.db.plans.findByIssueId(targetIssue.id);
 
-    let resultPlan: Plan | undefined = targetPlan ?? undefined;
-    let resultTasks: Task[] = [];
+      let resultPlan: Plan | undefined = targetPlan ?? undefined;
+      let resultTasks: Task[] = [];
 
-    if (sourcePlan) {
-      const sourceTasks = await Effect.runPromise(this.db.tasks.findByPlanId(sourcePlan.id, false));
+      if (sourcePlan) {
+        const sourceTasks = yield* self.db.tasks.findByPlanId(sourcePlan.id, false);
 
-      if (targetPlan) {
-        // Target has a plan - add source tasks to it
-        resultTasks = await Effect.runPromise(this.db.tasks.findByPlanId(targetPlan.id, false));
-        const copiedTasks = await this.copyTasksToPlan(
-          sourceTasks,
-          targetPlan.id,
-          sourceIssue.number
-        );
-        resultTasks.push(...copiedTasks);
+        if (targetPlan) {
+          // Target has a plan - add source tasks to it
+          resultTasks = yield* self.db.tasks.findByPlanId(targetPlan.id, false);
+          const copiedTasks = yield* self.copyTasksToPlan(
+            sourceTasks,
+            targetPlan.id,
+            sourceIssue.number
+          );
+          resultTasks.push(...copiedTasks);
 
-        // Update plan approach to include source approach
-        const updatedApproach = this.appendPlanApproach(
-          targetPlan.approach,
-          sourcePlan.approach,
-          sourceIssue.number
-        );
-        resultPlan = await this.db.plans.update(targetPlan.id, {
-          approach: updatedApproach,
-        });
-
-        // Emit task created events
-        for (const task of copiedTasks) {
-          this.eventBus.emit("task:created", {
-            taskId: task.id,
-            planId: targetPlan.id,
-            issueNumber: updatedTarget.number,
+          // Update plan approach to include source approach
+          const updatedApproach = self.appendPlanApproach(
+            targetPlan.approach,
+            sourcePlan.approach,
+            sourceIssue.number
+          );
+          resultPlan = yield* self.db.plans.update(targetPlan.id, {
+            approach: updatedApproach,
           });
-        }
-      } else {
-        // Target has no plan - create one from source
-        resultPlan = await this.db.plans.create({
-          issueId: targetIssue.id,
-          summary: sourcePlan.summary,
-          approach: sourcePlan.approach,
-          estimatedComplexity: sourcePlan.estimatedComplexity,
-          generatedBy: mergedBy ?? "merge-service",
-        });
 
-        // Copy tasks to new plan
-        resultTasks = await this.copyTasksToPlan(sourceTasks, resultPlan.id, sourceIssue.number);
+          // Emit task created events
+          for (const task of copiedTasks) {
+            self.eventBus.emit("task:created", {
+              taskId: task.id,
+              planId: targetPlan.id,
+              issueNumber: updatedTarget.number,
+            });
+          }
+        } else {
+          // Target has no plan - create one from source
+          resultPlan = yield* self.db.plans.create({
+            issueId: targetIssue.id,
+            summary: sourcePlan.summary,
+            approach: sourcePlan.approach,
+            estimatedComplexity: sourcePlan.estimatedComplexity,
+            generatedBy: mergedBy ?? "merge-service",
+          });
 
-        // Emit events
-        this.eventBus.emit("plan:generated", {
-          planId: resultPlan.id,
-          issueId: targetIssue.id,
-          issueNumber: updatedTarget.number,
-        });
-        for (const task of resultTasks) {
-          this.eventBus.emit("task:created", {
-            taskId: task.id,
+          // Copy tasks to new plan
+          resultTasks = yield* self.copyTasksToPlan(sourceTasks, resultPlan.id, sourceIssue.number);
+
+          // Emit events
+          self.eventBus.emit("plan:generated", {
             planId: resultPlan.id,
+            issueId: targetIssue.id,
             issueNumber: updatedTarget.number,
           });
+          for (const task of resultTasks) {
+            self.eventBus.emit("task:created", {
+              taskId: task.id,
+              planId: resultPlan.id,
+              issueNumber: updatedTarget.number,
+            });
+          }
         }
+      } else if (targetPlan) {
+        // Source has no plan, target does - just get existing tasks
+        resultTasks = yield* self.db.tasks.findByPlanId(targetPlan.id, false);
       }
-    } else if (targetPlan) {
-      // Source has no plan, target does - just get existing tasks
-      resultTasks = await Effect.runPromise(this.db.tasks.findByPlanId(targetPlan.id, false));
-    }
 
-    // Soft-delete the source issue
-    await Effect.runPromise(this.db.issues.delete(sourceIssue.id, mergedBy ?? "merge-service"));
+      // Soft-delete the source issue
+      yield* self.db.issues.delete(sourceIssue.id, mergedBy ?? "merge-service");
 
-    // Emit event for target issue update
-    this.eventBus.emit("issue:updated", {
-      issueId: updatedTarget.id,
-      issueNumber: updatedTarget.number,
-      fields: ["description", "acceptanceCriteria"],
+      // Emit event for target issue update
+      self.eventBus.emit("issue:updated", {
+        issueId: updatedTarget.id,
+        issueNumber: updatedTarget.number,
+        fields: ["description", "acceptanceCriteria"],
+      });
+
+      // Note: Source issue is soft-deleted, no "issue:deleted" event exists in the domain events
+      // The soft delete is tracked in the database with isDeleted=true
+
+      // Create snapshot after merge
+      yield* self.versioningService.createSnapshot(
+        updatedTarget.number,
+        "ISSUE_UPDATE",
+        mergedBy ?? "merge-service",
+        `Merged #${sourceIssue.number} into this issue`
+      );
+
+      return {
+        resultIssue: updatedTarget,
+        resultPlan,
+        resultTasks,
+        sourceIssues: [sourceIssue, targetIssue],
+        warnings,
+        mode: "merge_into" as const,
+      };
     });
-
-    // Note: Source issue is soft-deleted, no "issue:deleted" event exists in the domain events
-    // The soft delete is tracked in the database with isDeleted=true
-
-    // Create snapshot after merge
-    await this.versioningService.createSnapshot(
-      updatedTarget.number,
-      "ISSUE_UPDATE",
-      mergedBy ?? "merge-service",
-      `Merged #${sourceIssue.number} into this issue`
-    );
-
-    return {
-      resultIssue: updatedTarget,
-      resultPlan,
-      resultTasks,
-      sourceIssues: [sourceIssue, targetIssue],
-      warnings,
-      mode: "merge_into",
-    };
   }
 
   /**
    * Copy tasks from one plan to another, preserving state and GitHub links
    */
-  private async copyTasksToPlan(
+  private copyTasksToPlan(
     tasks: Task[],
     targetPlanId: string,
     sourceIssueNumber: number
-  ): Promise<Task[]> {
-    const copiedTasks: Task[] = [];
+  ): Effect<Task[]> {
+    const self = this;
+    return Effect.gen(function* () {
+      const copiedTasks: Task[] = [];
 
-    for (const task of tasks) {
-      // Determine the status for the copied task
-      // PLANNED/BACKLOG/READY → BACKLOG
-      // IN_PROGRESS/PR_REVIEW → preserve (with warning)
-      // COMPLETED/ABANDONED → preserve
-      const newStatus = this.mapTaskStatusForCopy(task.status);
+      for (const task of tasks) {
+        // Determine the status for the copied task
+        // PLANNED/BACKLOG/READY → BACKLOG
+        // IN_PROGRESS/PR_REVIEW → preserve (with warning)
+        // COMPLETED/ABANDONED → preserve
+        const newStatus = self.mapTaskStatusForCopy(task.status);
 
-      // Create the copied task, preserving GitHub sync state
-      const copiedTask = await Effect.runPromise(
-        this.db.tasks.create({
+        // Create the copied task, preserving GitHub sync state
+        const copiedTask = yield* self.db.tasks.create({
           id: crypto.randomUUID(),
           planId: targetPlanId,
           title: task.title,
@@ -572,13 +583,13 @@ export class MergeService extends Service<MergeService>()("mergeService") {
           implementationPlan: task.implementationPlan,
           syncState: task.syncState,
           // Note: dependsOn is cleared since task IDs are different in the new plan
-        })
-      );
+        });
 
-      copiedTasks.push(copiedTask);
-    }
+        copiedTasks.push(copiedTask);
+      }
 
-    return copiedTasks;
+      return copiedTasks;
+    });
   }
 
   /**
@@ -693,70 +704,71 @@ export class MergeService extends Service<MergeService>()("mergeService") {
    * This is best-effort: if GitHub sync fails, the merge still succeeds
    * (the local merge is the source of truth)
    */
-  private async syncMergeToGitHub(
+  private syncMergeToGitHub(
     sourceIssue: Issue,
     targetIssue: Issue,
     result: MergeResult,
     mode: MergeMode
-  ): Promise<void> {
-    // Skip if GitHub sync is not enabled or no CLI available
-    if (!(await this.isGitHubSyncEnabled()) || !this.githubCLI) {
-      return;
-    }
+  ): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Skip if GitHub sync is not enabled or no CLI available
+      if (!(yield* self.isGitHubSyncEnabled()) || !self.githubCLI) {
+        return;
+      }
 
-    const resultIssueNumber = result.resultIssue.number;
+      const resultIssueNumber = result.resultIssue.number;
 
-    // Comment on source issue's GitHub issue (if it has one)
-    if (sourceIssue.syncState?.externalId) {
-      try {
-        const comment = this.buildMergeComment(sourceIssue.number, resultIssueNumber, mode);
-
+      // Comment on source issue's GitHub issue (if it has one)
+      if (sourceIssue.syncState?.externalId) {
+        const comment = self.buildMergeComment(sourceIssue.number, resultIssueNumber, mode);
         const issueNumber = parseInt(sourceIssue.syncState.externalId, 10);
-        if (mode === "merge_into") {
-          // Close with comment for merge_into mode
-          await this.githubCLI.closeIssueWithComment(issueNumber, comment);
-        } else {
-          // Just comment for create_new mode
-          await this.githubCLI.commentOnIssue(issueNumber, comment);
-        }
-      } catch (error) {
-        // Log but don't fail the merge - GitHub sync is best-effort
-        console.warn(
-          `Failed to sync merge to GitHub issue #${sourceIssue.syncState.externalId}:`,
-          error
+
+        // Best-effort: log but don't fail the merge if GitHub sync fails
+        yield* Effect.catchAll(
+          mode === "merge_into"
+            ? self.githubCLI.closeIssueWithComment(issueNumber, comment)
+            : self.githubCLI.commentOnIssue(issueNumber, comment),
+          (error) => {
+            console.warn(
+              `Failed to sync merge to GitHub issue #${sourceIssue.syncState?.externalId}:`,
+              error
+            );
+            return Effect.succeed(undefined as void);
+          }
         );
       }
-    }
 
-    // Comment on target issue's GitHub issue (if it has one and mode is merge_into)
-    // Note: In create_new mode, we commented on both source issues above
-    // In merge_into mode, target issue continues, so add a note about the merge
-    if (mode === "merge_into" && targetIssue.syncState?.externalId) {
-      try {
+      // Comment on target issue's GitHub issue (if it has one and mode is merge_into)
+      // Note: In create_new mode, we commented on both source issues above
+      // In merge_into mode, target issue continues, so add a note about the merge
+      if (mode === "merge_into" && targetIssue.syncState?.externalId) {
         const comment = `**Merged:** Issue #${sourceIssue.number} has been merged into this issue.`;
         const issueNumber = parseInt(targetIssue.syncState.externalId, 10);
-        await this.githubCLI.commentOnIssue(issueNumber, comment);
-      } catch (error) {
-        console.warn(
-          `Failed to comment on target GitHub issue #${targetIssue.syncState.externalId}:`,
-          error
-        );
-      }
-    }
 
-    // For create_new mode, also comment on target's GitHub issue
-    if (mode === "create_new" && targetIssue.syncState?.externalId) {
-      try {
-        const comment = this.buildMergeComment(targetIssue.number, resultIssueNumber, mode);
-        const issueNumber = parseInt(targetIssue.syncState.externalId, 10);
-        await this.githubCLI.commentOnIssue(issueNumber, comment);
-      } catch (error) {
-        console.warn(
-          `Failed to comment on GitHub issue #${targetIssue.syncState.externalId}:`,
-          error
-        );
+        yield* Effect.catchAll(self.githubCLI.commentOnIssue(issueNumber, comment), (error) => {
+          console.warn(
+            `Failed to comment on target GitHub issue #${targetIssue.syncState?.externalId}:`,
+            error
+          );
+          return Effect.succeed(undefined as void);
+        });
       }
-    }
+
+      // For create_new mode, also comment on target's GitHub issue
+      if (mode === "create_new" && targetIssue.syncState?.externalId) {
+        const comment = self.buildMergeComment(targetIssue.number, resultIssueNumber, mode);
+        const issueNumber = parseInt(targetIssue.syncState.externalId, 10);
+
+        yield* Effect.catchAll(self.githubCLI.commentOnIssue(issueNumber, comment), (error) => {
+          console.warn(
+            `Failed to comment on GitHub issue #${targetIssue.syncState?.externalId}:`,
+            error
+          );
+          return Effect.succeed(undefined as void);
+        });
+      }
+    });
   }
 
   /**

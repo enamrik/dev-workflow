@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
+import { Effect } from "@dev-workflow/effect";
 import { createContainer, asValue, InjectionMode } from "awilix";
 import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import {
@@ -46,10 +47,12 @@ async function createSettingsTestContext(
   // Create project if not provided
   const testProject =
     project ??
-    (await testDb.source.projects.create({
-      name: "test-project",
-      gitRootHash: TEST_GIT_ROOT_HASH,
-    }));
+    (await Effect.runPromise(
+      testDb.source.projects.create({
+        name: "test-project",
+        gitRootHash: TEST_GIT_ROOT_HASH,
+      })
+    ));
 
   const providerRegistry = ProjectManagementRegistry.getInstance();
 
@@ -250,7 +253,7 @@ describe("update_settings - configure_column_mapping", () => {
       });
 
       // Assert - verify persisted in database
-      const project = await ctx.dbSource.projects.findById(ctx.project.id);
+      const project = await Effect.runPromise(ctx.dbSource.projects.findById(ctx.project.id));
       expect(project?.syncConfig?.columnMapping).toEqual({ PR_REVIEW: "Review" });
     });
   });
@@ -373,7 +376,7 @@ describe("update_settings - assignee configuration", () => {
       expect(content.config.syncIssues.assignee).toBe("octocat");
 
       // Verify persisted in database
-      const project = await ctx.dbSource.projects.findById(ctx.project.id);
+      const project = await Effect.runPromise(ctx.dbSource.projects.findById(ctx.project.id));
       expect(project?.syncConfig?.assignee).toBe("octocat");
     });
 
@@ -468,7 +471,7 @@ describe("update_settings - assignee configuration", () => {
       expect(content.config.syncIssues.assignee).toBeUndefined();
 
       // Verify in database
-      const project = await ctx.dbSource.projects.findById(ctx.project.id);
+      const project = await Effect.runPromise(ctx.dbSource.projects.findById(ctx.project.id));
       expect(project?.syncConfig?.assignee).toBeUndefined();
     });
 
@@ -486,7 +489,7 @@ describe("update_settings - assignee configuration", () => {
       });
 
       // Assert - assignee should still be there
-      const project = await ctx.dbSource.projects.findById(ctx.project.id);
+      const project = await Effect.runPromise(ctx.dbSource.projects.findById(ctx.project.id));
       expect(project?.syncConfig?.assignee).toBe("existinguser");
     });
 

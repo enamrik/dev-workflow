@@ -67,10 +67,12 @@ async function createPRToolContext(
   mockGitWorktreeService?: MockGitWorktreeService
 ): Promise<{ ctx: any; client: DbClient }> {
   // Create project first
-  const project = await testDb.source.projects.create({
-    gitRootHash: TEST_PROJECT_ID,
-    name: "Test Project",
-  });
+  const project = await Effect.runPromise(
+    testDb.source.projects.create({
+      gitRootHash: TEST_PROJECT_ID,
+      name: "Test Project",
+    })
+  );
 
   const client = createClientForProject(testDb, project.id);
 
@@ -713,28 +715,30 @@ describe("submit_for_review", () => {
       const mockGitWorktreeService = new MockGitWorktreeService();
 
       // Create a project with GitHub sync enabled (including projectId)
-      const project = await testDb.source.projects.create({
-        name: "Test Project",
-        gitRootHash: "test-hash-123",
-        syncConfig: {
-          enabled: true,
-          projectId: "PVT_test_project",
-          labels: {
-            typeLabels: {
-              FEATURE: "feature",
-              BUG: "bug",
-              ENHANCEMENT: "enhancement",
-              TASK: "task",
+      const project = await Effect.runPromise(
+        testDb.source.projects.create({
+          name: "Test Project",
+          gitRootHash: "test-hash-123",
+          syncConfig: {
+            enabled: true,
+            projectId: "PVT_test_project",
+            labels: {
+              typeLabels: {
+                FEATURE: "feature",
+                BUG: "bug",
+                ENHANCEMENT: "enhancement",
+                TASK: "task",
+              },
             },
           },
-        },
-      });
+        })
+      );
 
       // Create client scoped to this project
       const client = createClientForProject(testDb, project.id);
 
       // Create a mock client that tracks calls using vitest spies
-      const moveToColumnMock = vi.fn().mockResolvedValue(undefined);
+      const moveToColumnMock = vi.fn().mockReturnValue(Effect.succeed(undefined as void));
       const mockClient: ProjectManagementClient = {
         providerId: "mock",
         displayName: "Mock Client",
@@ -744,35 +748,36 @@ describe("submit_for_review", () => {
         getColumnForStatus: (status) => (status === "PR_REVIEW" ? "In Review" : "Backlog"),
         getProjectId: () => "PVT_test_project",
         getLabelFieldMapping: () => ({}),
-        checkAuth: async () => ({ authenticated: true }),
-        checkRepository: async () => ({ accessible: true }),
-        createIssue: async () => ({
-          id: "1",
-          numericId: 1,
-          url: "https://example.com/1",
-          nodeId: "mock_1",
-          title: "Mock",
-          body: "",
-          state: "OPEN",
-          labels: [],
-        }),
-        closeIssue: async () => {},
-        reopenIssue: async () => {},
-        getIssue: async () => null,
-        searchIssues: async () => [],
-        ensureLabelsExist: async () => {},
-        addToProject: async () => ({ success: true, itemId: "mock_item" }),
+        checkAuth: () => Effect.succeed({ authenticated: true }),
+        checkRepository: () => Effect.succeed({ accessible: true }),
+        createIssue: () =>
+          Effect.succeed({
+            id: "1",
+            numericId: 1,
+            url: "https://example.com/1",
+            nodeId: "mock_1",
+            title: "Mock",
+            body: "",
+            state: "OPEN",
+            labels: [],
+          }),
+        closeIssue: () => Effect.succeed(undefined as void),
+        reopenIssue: () => Effect.succeed(undefined as void),
+        getIssue: () => Effect.succeed(null),
+        searchIssues: () => Effect.succeed([]),
+        ensureLabelsExist: () => Effect.succeed(undefined as void),
+        addToProject: () => Effect.succeed({ success: true, itemId: "mock_item" }),
         moveToColumn: moveToColumnMock,
-        checkProject: async () => true,
-        getProjectDetails: async () => null,
-        getProjectStatusField: async () => null,
-        getProjectFields: async () => [],
-        setProjectItemField: async () => ({ success: true }),
-        clearProjectItemField: async () => ({ success: true }),
-        getAvailableLabels: async () => ({ supported: true, labels: [] }),
-        linkParentChild: async () => {},
-        addComment: async () => {},
-        assignIssue: async () => {},
+        checkProject: () => Effect.succeed(true),
+        getProjectDetails: () => Effect.succeed(null),
+        getProjectStatusField: () => Effect.succeed(null),
+        getProjectFields: () => Effect.succeed([]),
+        setProjectItemField: () => Effect.succeed({ success: true }),
+        clearProjectItemField: () => Effect.succeed({ success: true }),
+        getAvailableLabels: () => Effect.succeed({ supported: true, labels: [] }),
+        linkParentChild: () => Effect.succeed(undefined as void),
+        addComment: () => Effect.succeed(undefined as void),
+        assignIssue: () => Effect.succeed(undefined as void),
       };
       const projectManagement = new ProjectManagementService(mockClient);
 

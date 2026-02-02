@@ -61,13 +61,13 @@ export function getPlan(input: GetPlanInput) {
     }
 
     // 2. Fetch plan
-    const plan = yield* Effect.promise(() => planService.findByIssueId(resolvedIssueId));
+    const plan = yield* planService.findByIssueId(resolvedIssueId);
     if (!plan) {
       throw new Error("No plan found for this issue");
     }
 
     // 3. Fetch tasks
-    const tasks = yield* Effect.promise(() => taskService.findByPlanId(plan.id));
+    const tasks = yield* taskService.findByPlanId(plan.id);
 
     return { plan, tasks } satisfies GetPlanResult;
   });

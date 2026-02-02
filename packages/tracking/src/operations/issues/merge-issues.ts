@@ -58,16 +58,14 @@ export function mergeIssues(input: MergeIssuesInput) {
     const mergeService = yield* MergeService;
 
     try {
-      const result = yield* Effect.promise(() =>
-        mergeService.merge({
-          sourceIssueNumber,
-          targetIssueNumber,
-          mode,
-          newTitle,
-          newDescription,
-          mergedBy: "claude-code",
-        })
-      );
+      const result = yield* mergeService.merge({
+        sourceIssueNumber,
+        targetIssueNumber,
+        mode,
+        newTitle,
+        newDescription,
+        mergedBy: "claude-code",
+      });
 
       return {
         success: true,

@@ -11,7 +11,7 @@
 
 import type { Plan } from "./plan.js";
 import type { DbClient } from "../../data-access/db-client.js";
-import { Service } from "@dev-workflow/effect";
+import { Service, Effect } from "@dev-workflow/effect";
 
 /**
  * Error thrown when plan operation fails
@@ -41,36 +41,42 @@ export class PlanService extends Service<PlanService>()("planService") {
   /**
    * Find a plan by ID
    */
-  async findById(planId: string): Promise<Plan | null> {
-    return await this.db.plans.findById(planId);
+  findById(planId: string): Effect<Plan | null> {
+    return this.db.plans.findById(planId);
   }
 
   /**
    * Get a plan by ID, throws if not found
    */
-  async getPlan(planId: string): Promise<Plan> {
-    const plan = await this.db.plans.findById(planId);
-    if (!plan) {
-      throw new PlanServiceError(`Plan not found: ${planId}`, "NOT_FOUND");
-    }
-    return plan;
+  getPlan(planId: string): Effect<Plan> {
+    const self = this;
+    return Effect.gen(function* () {
+      const plan = yield* self.db.plans.findById(planId);
+      if (!plan) {
+        throw new PlanServiceError(`Plan not found: ${planId}`, "NOT_FOUND");
+      }
+      return plan;
+    });
   }
 
   /**
    * Find a plan by issue ID
    */
-  async findByIssueId(issueId: string): Promise<Plan | null> {
-    return await this.db.plans.findByIssueId(issueId);
+  findByIssueId(issueId: string): Effect<Plan | null> {
+    return this.db.plans.findByIssueId(issueId);
   }
 
   /**
    * Get a plan by issue ID, throws if not found
    */
-  async getPlanByIssueId(issueId: string): Promise<Plan> {
-    const plan = await this.db.plans.findByIssueId(issueId);
-    if (!plan) {
-      throw new PlanServiceError(`Plan not found for issue: ${issueId}`, "NOT_FOUND");
-    }
-    return plan;
+  getPlanByIssueId(issueId: string): Effect<Plan> {
+    const self = this;
+    return Effect.gen(function* () {
+      const plan = yield* self.db.plans.findByIssueId(issueId);
+      if (!plan) {
+        throw new PlanServiceError(`Plan not found for issue: ${issueId}`, "NOT_FOUND");
+      }
+      return plan;
+    });
   }
 }

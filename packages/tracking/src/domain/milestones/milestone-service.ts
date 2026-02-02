@@ -132,7 +132,6 @@ export class MilestoneService extends Service<MilestoneService>()("milestoneServ
    * Get a milestone with computed status
    */
   private withComputedStatus(milestone: Milestone): Effect<MilestoneWithStatus> {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     return Effect.gen(function* () {
       const issueStats = yield* self.computeIssueStats(milestone.id);
@@ -156,7 +155,6 @@ export class MilestoneService extends Service<MilestoneService>()("milestoneServ
    * @returns Effect that fails with MilestoneServiceError if milestone not found
    */
   getMilestone(milestoneId: string): Effect<MilestoneWithStatus, MilestoneServiceError> {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     return Effect.gen(function* () {
       const milestone = yield* self.db.milestones.findById(milestoneId);
@@ -175,7 +173,6 @@ export class MilestoneService extends Service<MilestoneService>()("milestoneServ
    * @returns Effect that fails with MilestoneServiceError if milestone not found
    */
   getMilestoneByNumber(number: number): Effect<MilestoneWithStatus, MilestoneServiceError> {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     return Effect.gen(function* () {
       const milestone = yield* self.db.milestones.findByNumber(number);
@@ -200,7 +197,6 @@ export class MilestoneService extends Service<MilestoneService>()("milestoneServ
     startDate: string;
     endDate: string;
   }): Effect<MilestoneWithStatus, MilestoneServiceError> {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     return Effect.gen(function* () {
       // Validate date format
@@ -251,7 +247,6 @@ export class MilestoneService extends Service<MilestoneService>()("milestoneServ
       status?: MilestoneStatus;
     }
   ): Effect<MilestoneWithStatus, MilestoneServiceError> {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     return Effect.gen(function* () {
       const milestone = yield* self.db.milestones.findById(milestoneId);
@@ -307,7 +302,6 @@ export class MilestoneService extends Service<MilestoneService>()("milestoneServ
    * @returns Number of issues that were unassigned
    */
   deleteMilestone(milestoneId: string): Effect<number, MilestoneServiceError> {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     return Effect.gen(function* () {
       const milestone = yield* self.db.milestones.findById(milestoneId);
@@ -333,7 +327,6 @@ export class MilestoneService extends Service<MilestoneService>()("milestoneServ
    * Assign an issue to a milestone
    */
   assignIssue(issueId: string, milestoneId: string): Effect<void, MilestoneServiceError> {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     return Effect.gen(function* () {
       const milestone = yield* self.db.milestones.findById(milestoneId);
@@ -360,7 +353,6 @@ export class MilestoneService extends Service<MilestoneService>()("milestoneServ
    * @param statusFilter - Optional filter by computed status
    */
   listMilestones(statusFilter?: MilestoneStatus): Effect<MilestoneWithStatus[]> {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     return Effect.gen(function* () {
       const allMilestones = yield* self.db.milestones.findMany();

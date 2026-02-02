@@ -62,85 +62,88 @@ export class ConflictDetectionService extends Service<ConflictDetectionService>(
    * @param taskId - The task to check for conflicts
    * @returns ConflictDetectionResult with warnings if conflicts found
    */
-  async detectConflicts(taskId: string): Promise<ConflictDetectionResult> {
-    const task = await Effect.runPromise(this.db.tasks.findById(taskId));
-    if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
-
-    // Get all completed tasks in the same plan
-    const planTasks = await Effect.runPromise(this.db.tasks.findByPlanId(task.planId));
-    const completedTaskIds = planTasks
-      .filter((t) => t.status === "COMPLETED" && t.id !== taskId)
-      .map((t) => t.id);
-
-    if (completedTaskIds.length === 0) {
-      return {
-        hasConflicts: false,
-        warnings: [],
-        priorTaskFiles: new Map(),
-      };
-    }
-
-    // Get execution logs with filesModified from completed tasks
-    const logs = await this.db.executionLogs.findWithFileModifications(completedTaskIds);
-
-    // Build a map of file paths to the tasks that modified them
-    const priorTaskFiles = new Map<string, FileModification[]>();
-    const taskMap = new Map(planTasks.map((t) => [t.id, t]));
-
-    for (const log of logs) {
-      if (!log.filesModified || log.filesModified.length === 0) {
-        continue;
+  detectConflicts(taskId: string): Effect<ConflictDetectionResult> {
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.db.tasks.findById(taskId);
+      if (!task) {
+        throw new Error(`Task not found: ${taskId}`);
       }
 
-      const logTask = taskMap.get(log.taskId);
-      if (!logTask) continue;
+      // Get all completed tasks in the same plan
+      const planTasks = yield* self.db.tasks.findByPlanId(task.planId);
+      const completedTaskIds = planTasks
+        .filter((t) => t.status === "COMPLETED" && t.id !== taskId)
+        .map((t) => t.id);
 
-      for (const filePath of log.filesModified) {
-        const existing = priorTaskFiles.get(filePath) || [];
-        existing.push({
-          filePath,
-          taskId: log.taskId,
-          taskNumber: logTask.number,
-          taskTitle: logTask.title,
-          modifiedAt: log.createdAt,
-        });
-        priorTaskFiles.set(filePath, existing);
+      if (completedTaskIds.length === 0) {
+        return {
+          hasConflicts: false,
+          warnings: [],
+          priorTaskFiles: new Map(),
+        };
       }
-    }
 
-    // Check if the new task might touch files that were already modified
-    // We infer potential files from task description and acceptance criteria
-    const potentialFiles = this.inferPotentialFiles(task);
-    const warnings: ConflictWarning[] = [];
+      // Get execution logs with filesModified from completed tasks
+      const logs = yield* self.db.executionLogs.findWithFileModifications(completedTaskIds);
 
-    // Look for overlaps between potential files and prior modifications
-    for (const potentialFile of potentialFiles) {
-      // Check for exact matches or pattern matches
-      for (const [modifiedFile, modifications] of priorTaskFiles) {
-        if (this.filesOverlap(potentialFile, modifiedFile)) {
-          // Check if we already have a warning for this file
-          const existingWarning = warnings.find((w) => w.filePath === modifiedFile);
-          if (!existingWarning) {
-            warnings.push({
-              filePath: modifiedFile,
-              modifiedBy: modifications.map((m) => ({
-                taskId: m.taskId,
-                taskNumber: m.taskNumber,
-                taskTitle: m.taskTitle,
-              })),
-            });
+      // Build a map of file paths to the tasks that modified them
+      const priorTaskFiles = new Map<string, FileModification[]>();
+      const taskMap = new Map(planTasks.map((t) => [t.id, t]));
+
+      for (const log of logs) {
+        if (!log.filesModified || log.filesModified.length === 0) {
+          continue;
+        }
+
+        const logTask = taskMap.get(log.taskId);
+        if (!logTask) continue;
+
+        for (const filePath of log.filesModified) {
+          const existing = priorTaskFiles.get(filePath) || [];
+          existing.push({
+            filePath,
+            taskId: log.taskId,
+            taskNumber: logTask.number,
+            taskTitle: logTask.title,
+            modifiedAt: log.createdAt,
+          });
+          priorTaskFiles.set(filePath, existing);
+        }
+      }
+
+      // Check if the new task might touch files that were already modified
+      // We infer potential files from task description and acceptance criteria
+      const potentialFiles = self.inferPotentialFiles(task);
+      const warnings: ConflictWarning[] = [];
+
+      // Look for overlaps between potential files and prior modifications
+      for (const potentialFile of potentialFiles) {
+        // Check for exact matches or pattern matches
+        for (const [modifiedFile, modifications] of priorTaskFiles) {
+          if (self.filesOverlap(potentialFile, modifiedFile)) {
+            // Check if we already have a warning for this file
+            const existingWarning = warnings.find((w) => w.filePath === modifiedFile);
+            if (!existingWarning) {
+              warnings.push({
+                filePath: modifiedFile,
+                modifiedBy: modifications.map((m) => ({
+                  taskId: m.taskId,
+                  taskNumber: m.taskNumber,
+                  taskTitle: m.taskTitle,
+                })),
+              });
+            }
           }
         }
       }
-    }
 
-    return {
-      hasConflicts: warnings.length > 0,
-      warnings,
-      priorTaskFiles,
-    };
+      return {
+        hasConflicts: warnings.length > 0,
+        warnings,
+        priorTaskFiles,
+      };
+    });
   }
 
   /**
@@ -150,41 +153,44 @@ export class ConflictDetectionService extends Service<ConflictDetectionService>(
    * @param planId - The plan to analyze
    * @returns Map of file paths to their modifications
    */
-  async getModifiedFilesForPlan(planId: string): Promise<Map<string, FileModification[]>> {
-    const planTasks = await Effect.runPromise(this.db.tasks.findByPlanId(planId));
-    const completedTaskIds = planTasks.filter((t) => t.status === "COMPLETED").map((t) => t.id);
+  getModifiedFilesForPlan(planId: string): Effect<Map<string, FileModification[]>> {
+    const self = this;
+    return Effect.gen(function* () {
+      const planTasks = yield* self.db.tasks.findByPlanId(planId);
+      const completedTaskIds = planTasks.filter((t) => t.status === "COMPLETED").map((t) => t.id);
 
-    if (completedTaskIds.length === 0) {
-      return new Map();
-    }
-
-    const logs = await this.db.executionLogs.findWithFileModifications(completedTaskIds);
-
-    const fileMap = new Map<string, FileModification[]>();
-    const taskMap = new Map(planTasks.map((t) => [t.id, t]));
-
-    for (const log of logs) {
-      if (!log.filesModified || log.filesModified.length === 0) {
-        continue;
+      if (completedTaskIds.length === 0) {
+        return new Map();
       }
 
-      const logTask = taskMap.get(log.taskId);
-      if (!logTask) continue;
+      const logs = yield* self.db.executionLogs.findWithFileModifications(completedTaskIds);
 
-      for (const filePath of log.filesModified) {
-        const existing = fileMap.get(filePath) || [];
-        existing.push({
-          filePath,
-          taskId: log.taskId,
-          taskNumber: logTask.number,
-          taskTitle: logTask.title,
-          modifiedAt: log.createdAt,
-        });
-        fileMap.set(filePath, existing);
+      const fileMap = new Map<string, FileModification[]>();
+      const taskMap = new Map(planTasks.map((t) => [t.id, t]));
+
+      for (const log of logs) {
+        if (!log.filesModified || log.filesModified.length === 0) {
+          continue;
+        }
+
+        const logTask = taskMap.get(log.taskId);
+        if (!logTask) continue;
+
+        for (const filePath of log.filesModified) {
+          const existing = fileMap.get(filePath) || [];
+          existing.push({
+            filePath,
+            taskId: log.taskId,
+            taskNumber: logTask.number,
+            taskTitle: logTask.title,
+            modifiedAt: log.createdAt,
+          });
+          fileMap.set(filePath, existing);
+        }
       }
-    }
 
-    return fileMap;
+      return fileMap;
+    });
   }
 
   /**

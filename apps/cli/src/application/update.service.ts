@@ -1,3 +1,4 @@
+import { Effect } from "@dev-workflow/effect";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { execSync, spawnSync } from "node:child_process";
@@ -64,7 +65,9 @@ export class UpdateService {
       const gitOps = new GitOperations();
       const projectService = new ProjectService(source, gitOps);
 
-      this.project = await projectService.getOrCreateProject(this.workingDirectory);
+      this.project = await Effect.runPromise(
+        projectService.getOrCreateProject(this.workingDirectory)
+      );
       return this.project;
     } finally {
       source.close();

@@ -439,7 +439,7 @@ export class ClaudeWorkerService {
    */
   private async tryAutoClaimReadyTask(): Promise<Task | null> {
     // Get all configured projects
-    const projects = await this.projectsResolver.getAllProjects();
+    const projects = await Effect.runPromise(this.projectsResolver.getAllProjects());
 
     for (const projectInfo of projects) {
       try {
@@ -520,7 +520,7 @@ export class ClaudeWorkerService {
     // Resolve project config
     let projectInfo;
     try {
-      projectInfo = await this.projectsResolver.getProjectBySlug(projectSlug);
+      projectInfo = await Effect.runPromise(this.projectsResolver.getProjectBySlug(projectSlug));
     } catch (error) {
       console.error(`Failed to resolve project: ${projectSlug}`, error);
       await this.releaseTask(taskId);

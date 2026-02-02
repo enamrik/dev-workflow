@@ -48,7 +48,7 @@ export function endWorkerSession(input: EndWorkerSessionInput) {
     const taskService = yield* TaskService;
 
     // 1. Verify task exists
-    const task = yield* Effect.promise(() => taskService.findById(taskId));
+    const task = yield* taskService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }

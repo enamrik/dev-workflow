@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { Effect } from "@dev-workflow/effect";
 import {
   createTestContainer,
   createTestRequest,
@@ -35,8 +36,8 @@ describe("listProjectsEndpoint", () => {
 
     const testContainer = createTestContainer({
       projectsResolver: {
-        getAllProjects: async () => enrichedProjects,
-        enrichWithDbData: async () => enrichedProjects,
+        getAllProjects: () => Effect.succeed(enrichedProjects),
+        enrichWithDbData: () => Effect.succeed(enrichedProjects),
       },
       sourceProvider: createMockSourceProvider({}),
     });
@@ -56,8 +57,8 @@ describe("listProjectsEndpoint", () => {
   it("returns empty array when no projects", async () => {
     const testContainer = createTestContainer({
       projectsResolver: {
-        getAllProjects: async () => [],
-        enrichWithDbData: async () => [],
+        getAllProjects: () => Effect.succeed([]),
+        enrichWithDbData: () => Effect.succeed([]),
       },
       sourceProvider: createMockSourceProvider({}),
     });

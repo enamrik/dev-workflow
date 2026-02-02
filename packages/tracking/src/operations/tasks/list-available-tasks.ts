@@ -47,26 +47,26 @@ export function listAvailableTasks(input: ListAvailableTasksInput) {
     const issueService = yield* IssueService;
     const planService = yield* PlanService;
 
-    let tasks: Awaited<ReturnType<typeof taskService.findMany>> = [];
+    let tasks: Task[] = [];
 
     if (planId) {
-      tasks = yield* Effect.promise(() => taskService.findByPlanId(planId));
+      tasks = yield* taskService.findByPlanId(planId);
     } else if (issueNumber) {
       const issue = yield* issueService.findByNumber(issueNumber);
       if (issue) {
-        const plan = yield* Effect.promise(() => planService.findByIssueId(issue.id));
+        const plan = yield* planService.findByIssueId(issue.id);
         if (plan) {
-          tasks = yield* Effect.promise(() => taskService.findByPlanId(plan.id));
+          tasks = yield* taskService.findByPlanId(plan.id);
         }
       }
     } else {
-      tasks = yield* Effect.promise(() => taskService.findMany({}));
+      tasks = yield* taskService.findMany({});
     }
 
     // Filter to only available tasks and include availability info
     const availableTasks: Array<Task & { isAvailable: boolean; blockedBy: string[] }> = [];
     for (const task of tasks) {
-      const isAvailable = yield* Effect.promise(() => taskSessionService.isTaskAvailable(task.id));
+      const isAvailable = yield* taskSessionService.isTaskAvailable(task.id);
       if (isAvailable) {
         availableTasks.push(
           Object.assign(Task.from(task), {

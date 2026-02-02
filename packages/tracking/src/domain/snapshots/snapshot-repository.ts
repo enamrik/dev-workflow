@@ -2,6 +2,7 @@ import { eq, max, and, desc } from "drizzle-orm";
 import { snapshots, type SnapshotRow } from "@dev-workflow/database/schema.js";
 import type { Snapshot, SnapshotRepository } from "./snapshot.js";
 import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
+import { Effect } from "@dev-workflow/effect";
 
 /**
  * Drizzle implementation of SnapshotRepository
@@ -19,118 +20,132 @@ export class DrizzleSnapshotRepository implements SnapshotRepository {
     private readonly projectId: string
   ) {}
 
-  async create(
-    data: Omit<Snapshot, "id" | "projectId" | "version" | "createdAt">
-  ): Promise<Snapshot> {
-    const id = crypto.randomUUID();
-    const version = await this.getNextVersion(data.issueNumber);
-    const now = new Date().toISOString();
+  create(data: Omit<Snapshot, "id" | "projectId" | "version" | "createdAt">): Effect<Snapshot> {
+    const db = this.db;
+    const projectId = this.projectId;
+    const getNextVersion = (issueNumber: number) => this.getNextVersion(issueNumber);
+    return Effect.gen(function* () {
+      const id = crypto.randomUUID();
+      const version = yield* getNextVersion(data.issueNumber);
+      const now = new Date().toISOString();
 
-    const snapshot: Snapshot = {
-      id,
-      projectId: this.projectId,
-      version,
-      ...data,
-      createdAt: now,
-    };
+      const snapshot: Snapshot = {
+        id,
+        projectId,
+        version,
+        ...data,
+        createdAt: now,
+      };
 
-    // Insert into database
-    this.db
-      .insert(snapshots)
-      .values({
-        id: snapshot.id,
-        projectId: snapshot.projectId,
-        issueNumber: snapshot.issueNumber,
-        version: snapshot.version,
-        status: snapshot.status,
-        snapshotType: snapshot.snapshotType,
-        issueState: snapshot.issueState,
-        planState: snapshot.planState,
-        tasksState: snapshot.tasksState,
-        createdBy: snapshot.createdBy,
-        createdAt: snapshot.createdAt,
-        notes: snapshot.notes,
-      })
-      .run();
+      // Insert into database
+      db.insert(snapshots)
+        .values({
+          id: snapshot.id,
+          projectId: snapshot.projectId,
+          issueNumber: snapshot.issueNumber,
+          version: snapshot.version,
+          status: snapshot.status,
+          snapshotType: snapshot.snapshotType,
+          issueState: snapshot.issueState,
+          planState: snapshot.planState,
+          tasksState: snapshot.tasksState,
+          createdBy: snapshot.createdBy,
+          createdAt: snapshot.createdAt,
+          notes: snapshot.notes,
+        })
+        .run();
 
-    return snapshot;
+      return snapshot;
+    });
   }
 
-  async findById(id: string): Promise<Snapshot | null> {
-    const result = this.db
-      .select()
-      .from(snapshots)
-      .where(and(eq(snapshots.projectId, this.projectId), eq(snapshots.id, id)))
-      .get();
+  findById(id: string): Effect<Snapshot | null> {
+    return Effect.promise(async () => {
+      const result = this.db
+        .select()
+        .from(snapshots)
+        .where(and(eq(snapshots.projectId, this.projectId), eq(snapshots.id, id)))
+        .get();
 
-    return result ? this.mapRowToSnapshot(result) : null;
+      return result ? this.mapRowToSnapshot(result) : null;
+    });
   }
 
-  async findActiveByIssueNumber(issueNumber: number): Promise<Snapshot | null> {
-    const result = this.db
-      .select()
-      .from(snapshots)
-      .where(
-        and(
-          eq(snapshots.projectId, this.projectId),
-          eq(snapshots.issueNumber, issueNumber),
-          eq(snapshots.status, "ACTIVE")
+  findActiveByIssueNumber(issueNumber: number): Effect<Snapshot | null> {
+    return Effect.promise(async () => {
+      const result = this.db
+        .select()
+        .from(snapshots)
+        .where(
+          and(
+            eq(snapshots.projectId, this.projectId),
+            eq(snapshots.issueNumber, issueNumber),
+            eq(snapshots.status, "ACTIVE")
+          )
         )
-      )
-      .get();
+        .get();
 
-    return result ? this.mapRowToSnapshot(result) : null;
+      return result ? this.mapRowToSnapshot(result) : null;
+    });
   }
 
-  async findByIssueNumber(issueNumber: number): Promise<Snapshot[]> {
-    const results = this.db
-      .select()
-      .from(snapshots)
-      .where(and(eq(snapshots.projectId, this.projectId), eq(snapshots.issueNumber, issueNumber)))
-      .orderBy(desc(snapshots.version))
-      .all();
+  findByIssueNumber(issueNumber: number): Effect<Snapshot[]> {
+    return Effect.promise(async () => {
+      const results = this.db
+        .select()
+        .from(snapshots)
+        .where(and(eq(snapshots.projectId, this.projectId), eq(snapshots.issueNumber, issueNumber)))
+        .orderBy(desc(snapshots.version))
+        .all();
 
-    return results.map((row) => this.mapRowToSnapshot(row));
+      return results.map((row) => this.mapRowToSnapshot(row));
+    });
   }
 
-  async getNextVersion(issueNumber: number): Promise<number> {
-    const result = this.db
-      .select({ maxVersion: max(snapshots.version) })
-      .from(snapshots)
-      .where(and(eq(snapshots.projectId, this.projectId), eq(snapshots.issueNumber, issueNumber)))
-      .get();
+  getNextVersion(issueNumber: number): Effect<number> {
+    return Effect.promise(async () => {
+      const result = this.db
+        .select({ maxVersion: max(snapshots.version) })
+        .from(snapshots)
+        .where(and(eq(snapshots.projectId, this.projectId), eq(snapshots.issueNumber, issueNumber)))
+        .get();
 
-    return (result?.maxVersion ?? 0) + 1;
+      return (result?.maxVersion ?? 0) + 1;
+    });
   }
 
-  async archiveCurrent(issueNumber: number): Promise<void> {
-    this.db
-      .update(snapshots)
-      .set({ status: "ARCHIVED" })
-      .where(
-        and(
-          eq(snapshots.projectId, this.projectId),
-          eq(snapshots.issueNumber, issueNumber),
-          eq(snapshots.status, "ACTIVE")
+  archiveCurrent(issueNumber: number): Effect<void> {
+    return Effect.promise(async () => {
+      this.db
+        .update(snapshots)
+        .set({ status: "ARCHIVED" })
+        .where(
+          and(
+            eq(snapshots.projectId, this.projectId),
+            eq(snapshots.issueNumber, issueNumber),
+            eq(snapshots.status, "ACTIVE")
+          )
         )
-      )
-      .run();
+        .run();
+    });
   }
 
-  async findByVersion(issueNumber: number, version: number): Promise<Snapshot | null> {
-    const result = this.db
-      .select()
-      .from(snapshots)
-      .where(
-        and(
-          eq(snapshots.projectId, this.projectId),
-          eq(snapshots.issueNumber, issueNumber),
-          eq(snapshots.version, version)
+  findByVersion(issueNumber: number, version: number): Effect<Snapshot | null> {
+    return Effect.promise(async () => {
+      const result = this.db
+        .select()
+        .from(snapshots)
+        .where(
+          and(
+            eq(snapshots.projectId, this.projectId),
+            eq(snapshots.issueNumber, issueNumber),
+            eq(snapshots.version, version)
+          )
         )
-      )
-      .get();
+        .get();
 
-    return result ? this.mapRowToSnapshot(result) : null;
+      return result ? this.mapRowToSnapshot(result) : null;
+    });
   }
 
   /**

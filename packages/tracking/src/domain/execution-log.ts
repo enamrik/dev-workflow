@@ -5,6 +5,8 @@
  * which files were modified. Used for conflict detection and audit trails.
  */
 
+import type { Effect } from "@dev-workflow/effect";
+
 /**
  * A single execution log entry
  */
@@ -34,20 +36,20 @@ export interface ExecutionLogRepository {
   /**
    * Create a new execution log entry
    */
-  create(data: CreateExecutionLogData): Promise<ExecutionLog>;
+  create(data: CreateExecutionLogData): Effect<ExecutionLog>;
 
   /**
    * Find all logs for a task
    */
-  findByTaskId(taskId: string): Promise<ExecutionLog[]>;
+  findByTaskId(taskId: string): Effect<ExecutionLog[]>;
 
   /**
    * Find all logs for multiple tasks, ordered by creation time
    */
-  findByTaskIds(taskIds: string[]): Promise<ExecutionLog[]>;
+  findByTaskIds(taskIds: string[]): Effect<ExecutionLog[]>;
 
   /**
    * Find logs that have file modifications for the given task IDs
    */
-  findWithFileModifications(taskIds: string[]): Promise<ExecutionLog[]>;
+  findWithFileModifications(taskIds: string[]): Effect<ExecutionLog[]>;
 }

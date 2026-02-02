@@ -46,10 +46,12 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<{
   client: DbClient;
 }> {
   // Create project first to get the generated ID
-  const project = await testDb.source.projects.create({
-    gitRootHash: TEST_PROJECT_ID,
-    name: "Test Project",
-  });
+  const project = await Effect.runPromise(
+    testDb.source.projects.create({
+      gitRootHash: TEST_PROJECT_ID,
+      name: "Test Project",
+    })
+  );
 
   // Create a client scoped to this project
   const client = createClientForProject(testDb, project.id);
@@ -129,7 +131,7 @@ describe("Plan Tools Integration", () => {
       expect(content.tasks).toHaveLength(2);
 
       // Verify database state
-      const plan = await client.plans.findByIssueId(issue.id);
+      const plan = await Effect.runPromise(client.plans.findByIssueId(issue.id));
       expect(plan).toBeDefined();
       expect(plan!.summary).toBe("Implementation plan");
 
@@ -318,7 +320,7 @@ describe("Plan Tools Integration", () => {
       const updatedIssue = await Effect.runPromise(client.issues.findByNumber(issue.number));
       expect(updatedIssue!.status).toBe("OPEN");
 
-      const plan = await client.plans.findByIssueId(issue.id);
+      const plan = await Effect.runPromise(client.plans.findByIssueId(issue.id));
       const tasks = await Effect.runPromise(client.tasks.findByPlanId(plan!.id));
       expect(tasks.every((t) => t.status === "BACKLOG")).toBe(true);
     });
@@ -362,7 +364,7 @@ describe("Plan Tools Integration", () => {
       const updatedIssue = await Effect.runPromise(client.issues.findByNumber(issue.number));
       expect(updatedIssue!.status).toBe("OPEN");
 
-      const plan = await client.plans.findByIssueId(issue.id);
+      const plan = await Effect.runPromise(client.plans.findByIssueId(issue.id));
       const tasks = await Effect.runPromise(client.tasks.findByPlanId(plan!.id));
       expect(tasks.every((t) => t.status === "BACKLOG")).toBe(true);
 
@@ -437,7 +439,7 @@ describe("Plan Tools Integration", () => {
       expect(content.message).toContain("is ready");
 
       // Verify database state
-      const plan = await client.plans.findByIssueId(issue.id);
+      const plan = await Effect.runPromise(client.plans.findByIssueId(issue.id));
       const tasks = await Effect.runPromise(client.tasks.findByPlanId(plan!.id));
       expect(tasks.every((t) => t.status === "READY")).toBe(true);
     });

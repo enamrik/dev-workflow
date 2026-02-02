@@ -15,8 +15,6 @@ import {
 } from "@dev-workflow/tracking";
 import { getDbClient, filterProjects } from "./helpers";
 
-const { runPromise } = Effect;
-
 // =============================================================================
 // Schema
 // =============================================================================
@@ -50,58 +48,56 @@ export function listAllIssues(input: ListAllIssuesInput) {
     const projectsResolver = yield* ProjectsResolver;
     const sourceProvider = yield* DbSourceProvider;
 
-    return yield* Effect.promise(async () => {
-      const validated = validateInput(ListAllIssuesSchema, input);
-      const projects = filterProjects(
-        await projectsResolver.getAllProjects(),
-        validated.projectFilter
-      );
+    const validated = validateInput(ListAllIssuesSchema, input);
+    const projects = filterProjects(
+      yield* projectsResolver.getAllProjects(),
+      validated.projectFilter
+    );
 
-      const allIssues: IssueWithPlanInfo[] = [];
+    const allIssues: IssueWithPlanInfo[] = [];
 
-      for (const project of projects) {
-        try {
-          const db = await getDbClient(project, sourceProvider);
-          const issues = await runPromise(db.issues.findMany({}));
-          const statusService = new IssueStatusService(db);
+    for (const project of projects) {
+      try {
+        const db = yield* Effect.promise(() => getDbClient(project, sourceProvider));
+        const issues = yield* db.issues.findMany({});
+        const statusService = new IssueStatusService(db);
 
-          for (const issue of issues) {
-            const { computedStatus, taskCounts } = await statusService.computeStatus(issue);
+        for (const issue of issues) {
+          const { computedStatus, taskCounts } = yield* statusService.computeStatus(issue);
 
-            let milestoneNumber: number | undefined;
-            let milestoneTitle: string | undefined;
-            if (issue.milestoneId) {
-              const milestone = await runPromise(db.milestones.findById(issue.milestoneId));
-              if (milestone) {
-                milestoneNumber = milestone.number;
-                milestoneTitle = milestone.title;
-              }
+          let milestoneNumber: number | undefined;
+          let milestoneTitle: string | undefined;
+          if (issue.milestoneId) {
+            const milestone = yield* db.milestones.findById(issue.milestoneId);
+            if (milestone) {
+              milestoneNumber = milestone.number;
+              milestoneTitle = milestone.title;
             }
-
-            allIssues.push({
-              issue,
-              hasPlan: !!(await db.plans.findByIssueId(issue.id)),
-              taskCounts,
-              computedStatus,
-              projectName: project.name,
-              projectSlug: project.slug,
-              milestoneNumber,
-              milestoneTitle,
-            });
           }
-        } catch {
-          // Skip inaccessible projects
+
+          allIssues.push({
+            issue,
+            hasPlan: !!(yield* db.plans.findByIssueId(issue.id)),
+            taskCounts,
+            computedStatus,
+            projectName: project.name,
+            projectSlug: project.slug,
+            milestoneNumber,
+            milestoneTitle,
+          });
         }
+      } catch {
+        // Skip inaccessible projects
       }
+    }
 
-      allIssues.sort((a, b) => {
-        if (a.issue.projectId !== b.issue.projectId) {
-          return a.issue.projectId.localeCompare(b.issue.projectId);
-        }
-        return b.issue.number - a.issue.number;
-      });
-
-      return allIssues;
+    allIssues.sort((a, b) => {
+      if (a.issue.projectId !== b.issue.projectId) {
+        return a.issue.projectId.localeCompare(b.issue.projectId);
+      }
+      return b.issue.number - a.issue.number;
     });
+
+    return allIssues;
   });
 }

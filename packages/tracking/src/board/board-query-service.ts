@@ -122,11 +122,12 @@ export class BoardQueryService {
    * Used for the work queue ribbon in the UI.
    * Filters out closed issues at the database level for better performance.
    */
-  async getActiveIssuesWithTasks(): Promise<BoardIssueWithTasks[]> {
-    const issues = await Effect.runPromise(
-      this.db.issues.findMany({ excludeStatuses: ["CLOSED"] })
-    );
-    return await this.enrichIssuesWithTasksAndMilestones(issues);
+  getActiveIssuesWithTasks(): Effect<BoardIssueWithTasks[]> {
+    const self = this;
+    return Effect.gen(function* () {
+      const issues = yield* self.db.issues.findMany({ excludeStatuses: ["CLOSED"] });
+      return yield* self.enrichIssuesWithTasksAndMilestones(issues);
+    });
   }
 
   /**
@@ -137,35 +138,39 @@ export class BoardQueryService {
    *
    * @deprecated Use getActiveIssuesWithTasks() for work queue or getBoardData() for kanban
    */
-  async getIssuesWithTasks(): Promise<BoardIssueWithTasks[]> {
-    const issues = await Effect.runPromise(this.db.issues.findMany({}));
-    return await this.enrichIssuesWithTasksAndMilestones(issues);
+  getIssuesWithTasks(): Effect<BoardIssueWithTasks[]> {
+    const self = this;
+    return Effect.gen(function* () {
+      const issues = yield* self.db.issues.findMany({});
+      return yield* self.enrichIssuesWithTasksAndMilestones(issues);
+    });
   }
 
   /**
    * Enrich issues with their plans, tasks, and milestone info
    */
-  private async enrichIssuesWithTasksAndMilestones(
-    issues: Issue[]
-  ): Promise<BoardIssueWithTasks[]> {
-    const result: BoardIssueWithTasks[] = [];
+  private enrichIssuesWithTasksAndMilestones(issues: Issue[]): Effect<BoardIssueWithTasks[]> {
+    const self = this;
+    return Effect.gen(function* () {
+      const result: BoardIssueWithTasks[] = [];
 
-    for (const issue of issues) {
-      const plan = await this.db.plans.findByIssueId(issue.id);
-      const tasks = plan ? await Effect.runPromise(this.db.tasks.findByPlanId(plan.id)) : [];
+      for (const issue of issues) {
+        const plan = yield* self.db.plans.findByIssueId(issue.id);
+        const tasks = plan ? yield* self.db.tasks.findByPlanId(plan.id) : [];
 
-      let milestone: { number: number; title: string } | undefined;
-      if (issue.milestoneId) {
-        const m = await Effect.runPromise(this.db.milestones.findById(issue.milestoneId));
-        if (m) {
-          milestone = { number: m.number, title: m.title };
+        let milestone: { number: number; title: string } | undefined;
+        if (issue.milestoneId) {
+          const m = yield* self.db.milestones.findById(issue.milestoneId);
+          if (m) {
+            milestone = { number: m.number, title: m.title };
+          }
         }
+
+        result.push({ issue, plan, tasks, milestone });
       }
 
-      result.push({ issue, plan, tasks, milestone });
-    }
-
-    return result;
+      return result;
+    });
   }
 
   /**
@@ -235,69 +240,72 @@ export class BoardQueryService {
    * This is the main method for CLI board display.
    * Returns tasks flattened and grouped by status.
    */
-  async getBoardData(): Promise<BoardData> {
-    const issuesWithTasks = await this.getIssuesWithTasks();
+  getBoardData(): Effect<BoardData> {
+    const self = this;
+    return Effect.gen(function* () {
+      const issuesWithTasks = yield* self.getIssuesWithTasks();
 
-    // Flatten all tasks with issue context
-    const allTasks: BoardTask[] = [];
-    for (const { issue, tasks } of issuesWithTasks) {
-      for (const task of tasks) {
-        allTasks.push({
-          id: task.id,
-          issueNumber: issue.number,
-          issueTitle: issue.title,
-          issueType: issue.type,
-          taskNumber: task.number,
-          title: task.title,
-          description: task.description,
-          acceptanceCriteria: task.acceptanceCriteria,
-          implementationPlan: task.implementationPlan,
-          type: task.type,
-          status: task.status,
-          branchName: task.branchName,
-          worktreePath: task.worktreePath,
-          prUrl: task.prUrl,
-          prNumber: task.prNumber,
-          prStatus: task.prStatus,
-          githubIssueNumber: task.syncState?.externalId
-            ? parseInt(task.syncState.externalId, 10)
-            : undefined,
-          githubUrl: task.syncState?.externalUrl ?? undefined,
-          startedAt: task.startedAt,
-          completedAt: task.completedAt,
-          abandonedAt: task.abandonedAt,
-          submittedForReviewAt: task.submittedForReviewAt,
-          createdAt: task.createdAt,
-        });
-      }
-    }
-
-    // Group tasks by status
-    const columns: BoardColumn[] = COLUMN_CONFIG.map(({ status, label }) => {
-      let tasks = allTasks.filter((t) => t.status === status);
-
-      // Include ABANDONED tasks in COMPLETED column
-      if (status === "COMPLETED") {
-        const abandonedTasks = allTasks.filter((t) => t.status === "ABANDONED");
-        tasks = [...tasks, ...abandonedTasks];
+      // Flatten all tasks with issue context
+      const allTasks: BoardTask[] = [];
+      for (const { issue, tasks } of issuesWithTasks) {
+        for (const task of tasks) {
+          allTasks.push({
+            id: task.id,
+            issueNumber: issue.number,
+            issueTitle: issue.title,
+            issueType: issue.type,
+            taskNumber: task.number,
+            title: task.title,
+            description: task.description,
+            acceptanceCriteria: task.acceptanceCriteria,
+            implementationPlan: task.implementationPlan,
+            type: task.type,
+            status: task.status,
+            branchName: task.branchName,
+            worktreePath: task.worktreePath,
+            prUrl: task.prUrl,
+            prNumber: task.prNumber,
+            prStatus: task.prStatus,
+            githubIssueNumber: task.syncState?.externalId
+              ? parseInt(task.syncState.externalId, 10)
+              : undefined,
+            githubUrl: task.syncState?.externalUrl ?? undefined,
+            startedAt: task.startedAt,
+            completedAt: task.completedAt,
+            abandonedAt: task.abandonedAt,
+            submittedForReviewAt: task.submittedForReviewAt,
+            createdAt: task.createdAt,
+          });
+        }
       }
 
-      // Sort by appropriate date
-      tasks = this.sortTasks(tasks, status);
+      // Group tasks by status
+      const columns: BoardColumn[] = COLUMN_CONFIG.map(({ status, label }) => {
+        let tasks = allTasks.filter((t) => t.status === status);
 
-      // Limit COMPLETED to 20
-      if (status === "COMPLETED") {
-        tasks = tasks.slice(0, 20);
-      }
+        // Include ABANDONED tasks in COMPLETED column
+        if (status === "COMPLETED") {
+          const abandonedTasks = allTasks.filter((t) => t.status === "ABANDONED");
+          tasks = [...tasks, ...abandonedTasks];
+        }
 
-      return { status, label, tasks };
+        // Sort by appropriate date
+        tasks = self.sortTasks(tasks, status);
+
+        // Limit COMPLETED to 20
+        if (status === "COMPLETED") {
+          tasks = tasks.slice(0, 20);
+        }
+
+        return { status, label, tasks };
+      });
+
+      return {
+        columns,
+        workers: self.getWorkerCounts(),
+        lastUpdated: new Date(),
+      };
     });
-
-    return {
-      columns,
-      workers: this.getWorkerCounts(),
-      lastUpdated: new Date(),
-    };
   }
 
   /**

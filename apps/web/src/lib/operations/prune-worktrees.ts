@@ -34,28 +34,26 @@ export function pruneWorktrees(input: PruneWorktreesInput) {
     const projectsResolver = yield* ProjectsResolver;
     const createWorktreeService = yield* WorktreeServiceFactoryTag;
 
-    return yield* Effect.promise(async (): Promise<PruneWorktreesResult> => {
-      const validated = validateInput(PruneWorktreesSchema, input);
-      const allProjects = await projectsResolver.getAllProjects();
-      const project = allProjects.find((p) => p.projectId === validated.projectId);
+    const validated = validateInput(PruneWorktreesSchema, input);
+    const allProjects = yield* projectsResolver.getAllProjects();
+    const project = allProjects.find((p) => p.projectId === validated.projectId);
 
-      if (!project) {
-        throw new EntityNotFoundError("Project", validated.projectId);
-      }
+    if (!project) {
+      throw new EntityNotFoundError("Project", validated.projectId);
+    }
 
-      if (!project.gitRoot) {
-        throw new Error(
-          "Project config.json not found. Run 'dev-workflow init' in the project directory first."
-        );
-      }
+    if (!project.gitRoot) {
+      throw new Error(
+        "Project config.json not found. Run 'dev-workflow init' in the project directory first."
+      );
+    }
 
-      const worktreeService = createWorktreeService(project.gitRoot);
+    const worktreeService = createWorktreeService(project.gitRoot);
 
-      const beforeCount = (await worktreeService.listWorktrees()).filter((w) => !w.isMain).length;
-      await worktreeService.pruneWorktrees();
-      const afterCount = (await worktreeService.listWorktrees()).filter((w) => !w.isMain).length;
+    const beforeCount = (yield* worktreeService.listWorktrees()).filter((w) => !w.isMain).length;
+    yield* worktreeService.pruneWorktrees();
+    const afterCount = (yield* worktreeService.listWorktrees()).filter((w) => !w.isMain).length;
 
-      return { success: true, pruned: beforeCount - afterCount };
-    });
+    return { success: true, pruned: beforeCount - afterCount } satisfies PruneWorktreesResult;
   });
 }

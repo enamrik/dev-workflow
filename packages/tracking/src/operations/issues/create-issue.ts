@@ -72,7 +72,7 @@ export function createIssue(input: CreateIssueInput) {
     if (useTemplate) {
       const templateService = yield* TemplateService;
       try {
-        const template = yield* Effect.promise(() => templateService.selectTemplate(description));
+        const template = yield* templateService.selectTemplate(description);
         templateUsed = template.filename;
 
         // Use template metadata as defaults (if not explicitly provided)

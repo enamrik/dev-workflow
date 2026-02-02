@@ -44,13 +44,13 @@ export function getTaskExecutionPrompt(input: GetTaskExecutionPromptInput) {
     const planService = yield* PlanService;
     const issueService = yield* IssueService;
 
-    const task = yield* Effect.promise(() => taskService.findById(taskId));
+    const task = yield* taskService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
 
     // Get parent context
-    const plan = yield* Effect.promise(() => planService.findById(task.planId));
+    const plan = yield* planService.findById(task.planId);
     if (!plan) {
       throw new Error(`Plan not found for task: ${taskId}`);
     }

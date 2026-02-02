@@ -35,26 +35,24 @@ export function listProjectsWithSync() {
     const projectsResolver = yield* ProjectsResolver;
     const sourceProvider = yield* DbSourceProvider;
 
-    return yield* Effect.promise(async () => {
-      const projects = await projectsResolver.getAllProjects();
+    const projects = yield* projectsResolver.getAllProjects();
 
-      const enrichedProjects = await projectsResolver.enrichWithDbData(
-        projects,
-        async (sourceInfo) => {
-          const source = sourceProvider.getOrCreate(sourceInfo);
-          await source.provision();
-          return source;
-        }
-      );
+    const enrichedProjects = yield* projectsResolver.enrichWithDbData(
+      projects,
+      async (sourceInfo) => {
+        const source = sourceProvider.getOrCreate(sourceInfo);
+        await source.provision();
+        return source;
+      }
+    );
 
-      return enrichedProjects.map((p) => ({
-        id: p.projectId,
-        name: p.name,
-        slug: p.slug,
-        gitRoot: p.gitRoot,
-        syncConfig: p.syncConfig ?? null,
-      }));
-    });
+    return enrichedProjects.map((p) => ({
+      id: p.projectId,
+      name: p.name,
+      slug: p.slug,
+      gitRoot: p.gitRoot,
+      syncConfig: p.syncConfig ?? null,
+    }));
   });
 }
 
@@ -63,38 +61,36 @@ export function listProjects() {
     const projectsResolver = yield* ProjectsResolver;
     const sourceProvider = yield* DbSourceProvider;
 
-    return yield* Effect.promise(async () => {
-      const projects = await projectsResolver.getAllProjects();
-      const result: ProjectWithStats[] = [];
+    const projects = yield* projectsResolver.getAllProjects();
+    const result: ProjectWithStats[] = [];
 
-      for (const project of projects) {
-        try {
-          const db = await getDbClient(project, sourceProvider);
-          const issues = await Effect.runPromise(db.issues.findMany({}));
-          const plans = (await Promise.all(issues.map((i) => db.plans.findByIssueId(i.id)))).filter(
-            Boolean
-          );
-          let taskCount = 0;
-          for (const plan of plans) {
-            if (plan) {
-              const tasks = await Effect.runPromise(db.tasks.findByPlanId(plan.id));
-              taskCount += tasks.length;
-            }
-          }
-
-          result.push({
-            projectId: project.projectId,
-            name: project.name,
-            slug: project.slug,
-            issueCount: issues.length,
-            taskCount,
-          });
-        } catch {
-          // Skip inaccessible projects
+    for (const project of projects) {
+      try {
+        const db = yield* Effect.promise(() => getDbClient(project, sourceProvider));
+        const issues = yield* db.issues.findMany({});
+        const plans = [];
+        for (const issue of issues) {
+          const plan = yield* db.plans.findByIssueId(issue.id);
+          if (plan) plans.push(plan);
         }
-      }
+        let taskCount = 0;
+        for (const plan of plans) {
+          const tasks = yield* db.tasks.findByPlanId(plan.id);
+          taskCount += tasks.length;
+        }
 
-      return result;
-    });
+        result.push({
+          projectId: project.projectId,
+          name: project.name,
+          slug: project.slug,
+          issueCount: issues.length,
+          taskCount,
+        });
+      } catch {
+        // Skip inaccessible projects
+      }
+    }
+
+    return result;
   });
 }

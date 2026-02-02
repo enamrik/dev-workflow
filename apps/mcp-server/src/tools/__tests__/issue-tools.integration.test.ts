@@ -61,10 +61,12 @@ async function createIssueToolContext(
   client: DbClient;
 }> {
   // Create project first to get the generated ID
-  const project = await testDb.source.projects.create({
-    gitRootHash: TEST_PROJECT_ID,
-    name: "Test Project",
-  });
+  const project = await Effect.runPromise(
+    testDb.source.projects.create({
+      gitRootHash: TEST_PROJECT_ID,
+      name: "Test Project",
+    })
+  );
 
   // Create a client scoped to this project
   const client = createClientForProject(testDb, project.id);
@@ -772,13 +774,15 @@ describe("Issue Tools Integration", () => {
       const created = JSON.parse(createResult.content[0].text);
 
       // Create a plan with tasks
-      const plan = await client.plans.create({
-        issueId: created.issue.id,
-        summary: "Test plan",
-        approach: "Test approach",
-        estimatedComplexity: "LOW",
-        generatedBy: "test",
-      });
+      const plan = await Effect.runPromise(
+        client.plans.create({
+          issueId: created.issue.id,
+          summary: "Test plan",
+          approach: "Test approach",
+          estimatedComplexity: "LOW",
+          generatedBy: "test",
+        })
+      );
 
       const task1 = await Effect.runPromise(
         client.tasks.create({
@@ -862,13 +866,15 @@ describe("Issue Tools Integration", () => {
       const created = JSON.parse(createResult.content[0].text);
 
       // Create a plan with tasks
-      const plan = await client.plans.create({
-        issueId: created.issue.id,
-        summary: "Test plan",
-        approach: "Test approach",
-        estimatedComplexity: "LOW",
-        generatedBy: "test",
-      });
+      const plan = await Effect.runPromise(
+        client.plans.create({
+          issueId: created.issue.id,
+          summary: "Test plan",
+          approach: "Test approach",
+          estimatedComplexity: "LOW",
+          generatedBy: "test",
+        })
+      );
 
       await Effect.runPromise(
         client.tasks.create({

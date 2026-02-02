@@ -58,7 +58,7 @@ export function changeIssueType(input: ChangeIssueTypeInput) {
     const defaultValidTypes = ["FEATURE", "BUG", "ENHANCEMENT", "TASK"];
     const typeService = yield* TypeService;
 
-    const typeDefinitions = yield* Effect.promise(() => typeService.loadTypes());
+    const typeDefinitions = yield* typeService.loadTypes();
     const availableTypes = typeDefinitions.types.map((t) => t.name);
 
     if (availableTypes.length > 0) {
@@ -82,9 +82,7 @@ export function changeIssueType(input: ChangeIssueTypeInput) {
 
     // Apply the type change via PlanningService (no plan regeneration for type-only change)
     const planningService = yield* PlanningService;
-    const result = yield* Effect.promise(() =>
-      planningService.updateIssue(issue.id, { type: type as IssueType }, false)
-    );
+    const result = yield* planningService.updateIssue(issue.id, { type: type as IssueType }, false);
 
     return {
       issue: result.issue,

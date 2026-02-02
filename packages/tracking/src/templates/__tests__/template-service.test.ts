@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { Dirent } from "node:fs";
 import type { FileSystem } from "../../file-system/file-system.js";
+import { Effect } from "@dev-workflow/effect";
 import { TemplateService, type TemplateServiceConfig } from "../template-service.js";
 
 // Valid template content for testing
@@ -102,7 +103,7 @@ describe("TemplateService", () => {
 
   describe("discoverTemplates", () => {
     it("should return empty arrays when no templates exist", async () => {
-      const result = await service.discoverTemplates();
+      const result = await Effect.runPromise(service.discoverTemplates());
 
       expect(result.userTemplates).toEqual([]);
       expect(result.defaultTemplates).toEqual([]);
@@ -112,7 +113,7 @@ describe("TemplateService", () => {
     it("should discover local templates", async () => {
       addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
 
-      const result = await service.discoverTemplates();
+      const result = await Effect.runPromise(service.discoverTemplates());
 
       expect(result.userTemplates).toHaveLength(1);
       expect(result.userTemplates[0]?.filename).toBe("feature.md");
@@ -122,7 +123,7 @@ describe("TemplateService", () => {
     it("should discover global templates", async () => {
       addTemplate(config.globalIssueTemplatesPath, "bug.md", makeTemplate("BUG"));
 
-      const result = await service.discoverTemplates();
+      const result = await Effect.runPromise(service.discoverTemplates());
 
       expect(result.defaultTemplates).toHaveLength(1);
       expect(result.defaultTemplates[0]?.filename).toBe("bug.md");
@@ -133,7 +134,7 @@ describe("TemplateService", () => {
       addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
       addTemplate(config.globalIssueTemplatesPath, "bug.md", makeTemplate("BUG"));
 
-      const result = await service.discoverTemplates();
+      const result = await Effect.runPromise(service.discoverTemplates());
 
       expect(result.merged).toHaveLength(2);
       expect(result.merged.map((t) => t.filename).sort()).toEqual(["bug.md", "feature.md"]);
@@ -143,7 +144,7 @@ describe("TemplateService", () => {
       addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "HIGH"));
       addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
 
-      const result = await service.discoverTemplates();
+      const result = await Effect.runPromise(service.discoverTemplates());
 
       expect(result.merged).toHaveLength(1);
       expect(result.merged[0]?.metadata.priority).toBe("HIGH");
@@ -153,8 +154,8 @@ describe("TemplateService", () => {
     it("should cache results", async () => {
       addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
 
-      await service.discoverTemplates();
-      await service.discoverTemplates();
+      await Effect.runPromise(service.discoverTemplates());
+      await Effect.runPromise(service.discoverTemplates());
 
       // readdirWithFileTypes should only be called twice (once per directory)
       expect(mockFileSystem.readdirWithFileTypes).toHaveBeenCalledTimes(2);
@@ -163,9 +164,9 @@ describe("TemplateService", () => {
     it("should clear cache when clearCache() is called", async () => {
       addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
 
-      await service.discoverTemplates();
+      await Effect.runPromise(service.discoverTemplates());
       service.clearCache();
-      await service.discoverTemplates();
+      await Effect.runPromise(service.discoverTemplates());
 
       // readdirWithFileTypes should be called 4 times (twice per discovery)
       expect(mockFileSystem.readdirWithFileTypes).toHaveBeenCalledTimes(4);
@@ -180,7 +181,7 @@ describe("TemplateService", () => {
         addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
         addTemplate(config.globalIssueTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
 
-        const result = await service.selectTemplate("Add new feature");
+        const result = await Effect.runPromise(service.selectTemplate("Add new feature"));
 
         expect(result.metadata.priority).toBe("HIGH");
         expect(result.isUserDefined).toBe(true);
@@ -192,7 +193,7 @@ describe("TemplateService", () => {
         addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
         addTemplate(config.globalIssueTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
 
-        const result = await service.selectTemplate("Add new feature");
+        const result = await Effect.runPromise(service.selectTemplate("Add new feature"));
 
         expect(result.metadata.priority).toBe("HIGH");
         expect(result.isUserDefined).toBe(true);
@@ -207,7 +208,7 @@ describe("TemplateService", () => {
         );
         addTemplate(config.globalIssueTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
 
-        const result = await service.selectTemplate("Add new feature");
+        const result = await Effect.runPromise(service.selectTemplate("Add new feature"));
 
         expect(result.metadata.priority).toBe("MEDIUM");
         expect(result.isUserDefined).toBe(false);
@@ -217,7 +218,7 @@ describe("TemplateService", () => {
       it("should fall back to global all.md as last resort (priority 4)", async () => {
         addTemplate(config.globalIssueTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
 
-        const result = await service.selectTemplate("Add new feature");
+        const result = await Effect.runPromise(service.selectTemplate("Add new feature"));
 
         expect(result.metadata.priority).toBe("LOW");
         expect(result.isUserDefined).toBe(false);
@@ -225,7 +226,7 @@ describe("TemplateService", () => {
       });
 
       it("should throw when no templates available", async () => {
-        await expect(service.selectTemplate("Add new feature")).rejects.toThrow(
+        await expect(Effect.runPromise(service.selectTemplate("Add new feature"))).rejects.toThrow(
           "No templates available"
         );
       });
@@ -244,7 +245,7 @@ describe("TemplateService", () => {
         const keywords = ["bug", "error", "broken", "failing"];
         for (const keyword of keywords) {
           service.clearCache();
-          const result = await service.selectTemplate(`Fix ${keyword} in login`);
+          const result = await Effect.runPromise(service.selectTemplate(`Fix ${keyword} in login`));
           expect(result.filename).toBe("bug.md");
         }
       });
@@ -253,7 +254,7 @@ describe("TemplateService", () => {
         const keywords = ["enhance", "improve", "optimize", "better"];
         for (const keyword of keywords) {
           service.clearCache();
-          const result = await service.selectTemplate(`${keyword} performance`);
+          const result = await Effect.runPromise(service.selectTemplate(`${keyword} performance`));
           expect(result.filename).toBe("enhancement.md");
         }
       });
@@ -262,13 +263,13 @@ describe("TemplateService", () => {
         const keywords = ["task", "chore", "setup"];
         for (const keyword of keywords) {
           service.clearCache();
-          const result = await service.selectTemplate(`${keyword} CI pipeline`);
+          const result = await Effect.runPromise(service.selectTemplate(`${keyword} CI pipeline`));
           expect(result.filename).toBe("task.md");
         }
       });
 
       it("should default to feature template", async () => {
-        const result = await service.selectTemplate("Add user authentication");
+        const result = await Effect.runPromise(service.selectTemplate("Add user authentication"));
         expect(result.filename).toBe("feature.md");
       });
     });
@@ -276,12 +277,12 @@ describe("TemplateService", () => {
 
   describe("getTaskTemplate - per-type task template resolution", () => {
     it("should return null when no task templates exist", async () => {
-      const result = await service.getTaskTemplate();
+      const result = await Effect.runPromise(service.getTaskTemplate());
       expect(result).toBeNull();
     });
 
     it("should return null when no task templates exist (with type)", async () => {
-      const result = await service.getTaskTemplate("FEATURE");
+      const result = await Effect.runPromise(service.getTaskTemplate("FEATURE"));
       expect(result).toBeNull();
     });
 
@@ -292,7 +293,7 @@ describe("TemplateService", () => {
         addTemplate(config.globalTaskTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
         addTemplate(config.globalTaskTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
 
-        const result = await service.getTaskTemplate("FEATURE");
+        const result = await Effect.runPromise(service.getTaskTemplate("FEATURE"));
 
         expect(result?.metadata.priority).toBe("HIGH");
         expect(result?.isUserDefined).toBe(true);
@@ -304,7 +305,7 @@ describe("TemplateService", () => {
         addTemplate(config.globalTaskTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
         addTemplate(config.globalTaskTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
 
-        const result = await service.getTaskTemplate("FEATURE");
+        const result = await Effect.runPromise(service.getTaskTemplate("FEATURE"));
 
         expect(result?.metadata.priority).toBe("HIGH");
         expect(result?.isUserDefined).toBe(true);
@@ -319,7 +320,7 @@ describe("TemplateService", () => {
         );
         addTemplate(config.globalTaskTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
 
-        const result = await service.getTaskTemplate("FEATURE");
+        const result = await Effect.runPromise(service.getTaskTemplate("FEATURE"));
 
         expect(result?.metadata.priority).toBe("MEDIUM");
         expect(result?.isUserDefined).toBe(false);
@@ -329,7 +330,7 @@ describe("TemplateService", () => {
       it("should fall back to global all.md as last resort (priority 4)", async () => {
         addTemplate(config.globalTaskTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
 
-        const result = await service.getTaskTemplate("FEATURE");
+        const result = await Effect.runPromise(service.getTaskTemplate("FEATURE"));
 
         expect(result?.metadata.priority).toBe("LOW");
         expect(result?.isUserDefined).toBe(false);
@@ -347,27 +348,27 @@ describe("TemplateService", () => {
       });
 
       it("should select FEATURE template for FEATURE type", async () => {
-        const result = await service.getTaskTemplate("FEATURE");
+        const result = await Effect.runPromise(service.getTaskTemplate("FEATURE"));
         expect(result?.filename).toBe("feature.md");
       });
 
       it("should select BUG template for BUG type", async () => {
-        const result = await service.getTaskTemplate("BUG");
+        const result = await Effect.runPromise(service.getTaskTemplate("BUG"));
         expect(result?.filename).toBe("bug.md");
       });
 
       it("should select ENHANCEMENT template for ENHANCEMENT type", async () => {
-        const result = await service.getTaskTemplate("ENHANCEMENT");
+        const result = await Effect.runPromise(service.getTaskTemplate("ENHANCEMENT"));
         expect(result?.filename).toBe("enhancement.md");
       });
 
       it("should select TASK template for TASK type", async () => {
-        const result = await service.getTaskTemplate("TASK");
+        const result = await Effect.runPromise(service.getTaskTemplate("TASK"));
         expect(result?.filename).toBe("task.md");
       });
 
       it("should handle lowercase type names", async () => {
-        const result = await service.getTaskTemplate("feature");
+        const result = await Effect.runPromise(service.getTaskTemplate("feature"));
         expect(result?.filename).toBe("feature.md");
       });
     });
@@ -377,7 +378,7 @@ describe("TemplateService", () => {
         addTemplate(config.localTaskTemplatesPath, "all.md", makeTemplate("TASK", "HIGH"));
         addTemplate(config.globalTaskTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
 
-        const result = await service.getTaskTemplate();
+        const result = await Effect.runPromise(service.getTaskTemplate());
 
         expect(result?.metadata.priority).toBe("HIGH");
         expect(result?.isUserDefined).toBe(true);
@@ -386,7 +387,7 @@ describe("TemplateService", () => {
       it("should fall back to global all.md when no type specified and local not found", async () => {
         addTemplate(config.globalTaskTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
 
-        const result = await service.getTaskTemplate();
+        const result = await Effect.runPromise(service.getTaskTemplate());
 
         expect(result?.metadata.priority).toBe("LOW");
         expect(result?.isUserDefined).toBe(false);
@@ -396,7 +397,7 @@ describe("TemplateService", () => {
         addTemplate(config.localTaskTemplatesPath, "feature.md", makeTemplate("FEATURE", "HIGH"));
         addTemplate(config.globalTaskTemplatesPath, "all.md", makeTemplate("TASK", "LOW"));
 
-        const result = await service.getTaskTemplate();
+        const result = await Effect.runPromise(service.getTaskTemplate());
 
         // Should skip feature.md and use global all.md since no type was provided
         expect(result?.metadata.priority).toBe("LOW");
@@ -409,14 +410,14 @@ describe("TemplateService", () => {
     it("should return template by filename", async () => {
       addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
 
-      const result = await service.getTemplateByFilename("feature.md");
+      const result = await Effect.runPromise(service.getTemplateByFilename("feature.md"));
 
       expect(result).not.toBeNull();
       expect(result?.filename).toBe("feature.md");
     });
 
     it("should return null for non-existent template", async () => {
-      const result = await service.getTemplateByFilename("nonexistent.md");
+      const result = await Effect.runPromise(service.getTemplateByFilename("nonexistent.md"));
       expect(result).toBeNull();
     });
   });
@@ -425,7 +426,7 @@ describe("TemplateService", () => {
     it("should return user source for local template", async () => {
       addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
 
-      const result = await service.getTemplate("feature.md");
+      const result = await Effect.runPromise(service.getTemplate("feature.md"));
 
       expect(result).not.toBeNull();
       expect(result?.source).toBe("user");
@@ -434,7 +435,7 @@ describe("TemplateService", () => {
     it("should return default source for global template", async () => {
       addTemplate(config.globalIssueTemplatesPath, "bug.md", makeTemplate("BUG"));
 
-      const result = await service.getTemplate("bug.md");
+      const result = await Effect.runPromise(service.getTemplate("bug.md"));
 
       expect(result).not.toBeNull();
       expect(result?.source).toBe("default");
@@ -444,7 +445,7 @@ describe("TemplateService", () => {
       addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "HIGH"));
       addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
 
-      const result = await service.getTemplate("feature.md");
+      const result = await Effect.runPromise(service.getTemplate("feature.md"));
 
       expect(result?.source).toBe("user");
       expect(result?.template.metadata.priority).toBe("HIGH");
@@ -455,7 +456,7 @@ describe("TemplateService", () => {
     it("should create a new user template", async () => {
       const content = makeTemplate("FEATURE");
 
-      const result = await service.createTemplate("custom.md", content);
+      const result = await Effect.runPromise(service.createTemplate("custom.md", content));
 
       expect(result.filename).toBe("custom.md");
       expect(result.isUserDefined).toBe(true);
@@ -465,8 +466,8 @@ describe("TemplateService", () => {
       );
     });
 
-    it("should throw if filename does not end with .md", async () => {
-      await expect(service.createTemplate("custom.txt", makeTemplate("FEATURE"))).rejects.toThrow(
+    it("should throw if filename does not end with .md", () => {
+      expect(() => service.createTemplate("custom.txt", makeTemplate("FEATURE"))).toThrow(
         "must end with .md"
       );
     });
@@ -474,16 +475,16 @@ describe("TemplateService", () => {
     it("should throw if user template already exists", async () => {
       addTemplate(config.localIssueTemplatesPath, "existing.md", makeTemplate("FEATURE"));
 
-      await expect(service.createTemplate("existing.md", makeTemplate("FEATURE"))).rejects.toThrow(
-        "already exists"
-      );
+      await expect(
+        Effect.runPromise(service.createTemplate("existing.md", makeTemplate("FEATURE")))
+      ).rejects.toThrow("already exists");
     });
 
     it("should allow creating user template that overrides default", async () => {
       addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
 
       const content = makeTemplate("FEATURE", "HIGH");
-      const result = await service.createTemplate("feature.md", content);
+      const result = await Effect.runPromise(service.createTemplate("feature.md", content));
 
       expect(result.metadata.priority).toBe("HIGH");
     });
@@ -493,7 +494,7 @@ describe("TemplateService", () => {
       directoryContents.delete(config.localIssueTemplatesPath);
 
       const content = makeTemplate("FEATURE");
-      await service.createTemplate("custom.md", content);
+      await Effect.runPromise(service.createTemplate("custom.md", content));
 
       expect(mockFileSystem.mkdir).toHaveBeenCalledWith(config.localIssueTemplatesPath, {
         recursive: true,
@@ -506,7 +507,7 @@ describe("TemplateService", () => {
       addTemplate(config.localIssueTemplatesPath, "custom.md", makeTemplate("FEATURE", "LOW"));
 
       const newContent = makeTemplate("FEATURE", "HIGH");
-      const result = await service.updateTemplate("custom.md", newContent);
+      const result = await Effect.runPromise(service.updateTemplate("custom.md", newContent));
 
       expect(result.metadata.priority).toBe("HIGH");
       expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
@@ -517,7 +518,7 @@ describe("TemplateService", () => {
 
     it("should throw if template does not exist", async () => {
       await expect(
-        service.updateTemplate("nonexistent.md", makeTemplate("FEATURE"))
+        Effect.runPromise(service.updateTemplate("nonexistent.md", makeTemplate("FEATURE")))
       ).rejects.toThrow("not found");
     });
 
@@ -530,13 +531,15 @@ describe("TemplateService", () => {
     it("should delete a user template", async () => {
       addTemplate(config.localIssueTemplatesPath, "custom.md", makeTemplate("FEATURE"));
 
-      await service.deleteTemplate("custom.md");
+      await Effect.runPromise(service.deleteTemplate("custom.md"));
 
       expect(mockFileSystem.unlink).toHaveBeenCalledWith("/repo/.track/templates/issues/custom.md");
     });
 
     it("should throw if template does not exist", async () => {
-      await expect(service.deleteTemplate("nonexistent.md")).rejects.toThrow("not found");
+      await expect(Effect.runPromise(service.deleteTemplate("nonexistent.md"))).rejects.toThrow(
+        "not found"
+      );
     });
 
     // Note: With scope-aware operations, global templates can be deleted by specifying scope="global"
@@ -549,7 +552,7 @@ describe("TemplateService", () => {
       directoryContents.delete(config.localIssueTemplatesPath);
       addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
 
-      const result = await service.discoverTemplates();
+      const result = await Effect.runPromise(service.discoverTemplates());
 
       expect(result.userTemplates).toEqual([]);
       expect(result.defaultTemplates).toHaveLength(1);
@@ -559,7 +562,7 @@ describe("TemplateService", () => {
       directoryContents.delete(config.globalIssueTemplatesPath);
       addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
 
-      const result = await service.discoverTemplates();
+      const result = await Effect.runPromise(service.discoverTemplates());
 
       expect(result.userTemplates).toHaveLength(1);
       expect(result.defaultTemplates).toEqual([]);
@@ -569,7 +572,7 @@ describe("TemplateService", () => {
       addTemplate(config.localIssueTemplatesPath, "valid.md", makeTemplate("FEATURE"));
       addTemplate(config.localIssueTemplatesPath, "invalid.md", "no frontmatter here");
 
-      const result = await service.discoverTemplates();
+      const result = await Effect.runPromise(service.discoverTemplates());
 
       expect(result.userTemplates).toHaveLength(1);
       expect(result.userTemplates[0]?.filename).toBe("valid.md");
@@ -583,7 +586,7 @@ describe("TemplateService", () => {
       files.push("readme.txt");
       directoryContents.set(dir, files);
 
-      const result = await service.discoverTemplates();
+      const result = await Effect.runPromise(service.discoverTemplates());
 
       expect(result.userTemplates).toHaveLength(1);
       expect(result.userTemplates[0]?.filename).toBe("feature.md");
@@ -598,7 +601,7 @@ describe("TemplateService", () => {
         makeTemplate("FEATURE", "MEDIUM", "New functionality that doesn't exist yet")
       );
 
-      const result = await service.discoverTemplates();
+      const result = await Effect.runPromise(service.discoverTemplates());
 
       expect(result.userTemplates).toHaveLength(1);
       expect(result.userTemplates[0]?.metadata.description).toBe(
@@ -609,7 +612,7 @@ describe("TemplateService", () => {
     it("should handle missing description field", async () => {
       addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
 
-      const result = await service.discoverTemplates();
+      const result = await Effect.runPromise(service.discoverTemplates());
 
       expect(result.userTemplates).toHaveLength(1);
       expect(result.userTemplates[0]?.metadata.description).toBeUndefined();
@@ -629,7 +632,7 @@ description:
 `
       );
 
-      const result = await service.discoverTemplates();
+      const result = await Effect.runPromise(service.discoverTemplates());
 
       expect(result.userTemplates).toHaveLength(1);
       expect(result.userTemplates[0]?.metadata.description).toBeUndefined();
@@ -642,7 +645,7 @@ description:
         makeTemplate("BUG", "HIGH", "Defects, crashes, or incorrect behavior")
       );
 
-      const result = await service.getTemplate("bug.md");
+      const result = await Effect.runPromise(service.getTemplate("bug.md"));
 
       expect(result).not.toBeNull();
       expect(result?.template.metadata.description).toBe("Defects, crashes, or incorrect behavior");
@@ -655,7 +658,7 @@ description:
         makeTemplate("FEATURE", "MEDIUM", "Task for implementing new functionality")
       );
 
-      const result = await service.discoverTaskTemplates();
+      const result = await Effect.runPromise(service.discoverTaskTemplates());
 
       expect(result.userTemplates).toHaveLength(1);
       expect(result.userTemplates[0]?.metadata.description).toBe(
@@ -670,7 +673,7 @@ description:
         makeTemplate("BUG", "HIGH", "Task for fixing defects")
       );
 
-      const result = await service.getTaskTemplateInfo("bug.md");
+      const result = await Effect.runPromise(service.getTaskTemplateInfo("bug.md"));
 
       expect(result).not.toBeNull();
       expect(result?.template.metadata.description).toBe("Task for fixing defects");
@@ -683,7 +686,7 @@ description:
         addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "HIGH"));
         addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
 
-        const result = await service.getTemplate("feature.md", "issue", "local");
+        const result = await Effect.runPromise(service.getTemplate("feature.md", "issue", "local"));
 
         expect(result).not.toBeNull();
         expect(result?.source).toBe("user");
@@ -694,7 +697,9 @@ description:
         addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "HIGH"));
         addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
 
-        const result = await service.getTemplate("feature.md", "issue", "global");
+        const result = await Effect.runPromise(
+          service.getTemplate("feature.md", "issue", "global")
+        );
 
         expect(result).not.toBeNull();
         expect(result?.source).toBe("default");
@@ -704,7 +709,7 @@ description:
       it("should return null when template not found in specified scope", async () => {
         addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
 
-        const result = await service.getTemplate("feature.md", "issue", "local");
+        const result = await Effect.runPromise(service.getTemplate("feature.md", "issue", "local"));
 
         expect(result).toBeNull();
       });
@@ -712,7 +717,7 @@ description:
       it("should search both scopes when no scope specified (local first)", async () => {
         addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
 
-        const result = await service.getTemplate("feature.md", "issue");
+        const result = await Effect.runPromise(service.getTemplate("feature.md", "issue"));
 
         expect(result).not.toBeNull();
         expect(result?.source).toBe("default");
@@ -721,7 +726,7 @@ description:
       it("should work with task category", async () => {
         addTemplate(config.localTaskTemplatesPath, "feature.md", makeTemplate("FEATURE", "HIGH"));
 
-        const result = await service.getTemplate("feature.md", "task", "local");
+        const result = await Effect.runPromise(service.getTemplate("feature.md", "task", "local"));
 
         expect(result).not.toBeNull();
         expect(result?.source).toBe("user");
@@ -731,7 +736,7 @@ description:
     describe("createTemplate with scope parameter", () => {
       it("should create template in local scope by default", async () => {
         const content = makeTemplate("FEATURE");
-        const result = await service.createTemplate("custom.md", content);
+        const result = await Effect.runPromise(service.createTemplate("custom.md", content));
 
         expect(result.filename).toBe("custom.md");
         expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
@@ -742,7 +747,9 @@ description:
 
       it("should create template in global scope when specified", async () => {
         const content = makeTemplate("FEATURE");
-        const result = await service.createTemplate("custom.md", content, "issue", "global");
+        const result = await Effect.runPromise(
+          service.createTemplate("custom.md", content, "issue", "global")
+        );
 
         expect(result.filename).toBe("custom.md");
         expect(result.isUserDefined).toBe(false); // global templates are not user-defined
@@ -754,7 +761,7 @@ description:
 
       it("should create task template in specified scope", async () => {
         const content = makeTemplate("TASK");
-        await service.createTemplate("custom.md", content, "task", "local");
+        await Effect.runPromise(service.createTemplate("custom.md", content, "task", "local"));
 
         expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
           "/repo/.track/templates/tasks/custom.md",
@@ -766,18 +773,17 @@ description:
         addTemplate(config.globalIssueTemplatesPath, "existing.md", makeTemplate("FEATURE"));
 
         await expect(
-          service.createTemplate("existing.md", makeTemplate("FEATURE"), "issue", "global")
+          Effect.runPromise(
+            service.createTemplate("existing.md", makeTemplate("FEATURE"), "issue", "global")
+          )
         ).rejects.toThrow("Global issue template 'existing.md' already exists");
       });
 
       it("should allow creating local template that shadows global", async () => {
         addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "LOW"));
 
-        const result = await service.createTemplate(
-          "feature.md",
-          makeTemplate("FEATURE", "HIGH"),
-          "issue",
-          "local"
+        const result = await Effect.runPromise(
+          service.createTemplate("feature.md", makeTemplate("FEATURE", "HIGH"), "issue", "local")
         );
 
         expect(result.metadata.priority).toBe("HIGH");
@@ -789,7 +795,7 @@ description:
         addTemplate(config.localIssueTemplatesPath, "custom.md", makeTemplate("FEATURE", "LOW"));
 
         const newContent = makeTemplate("FEATURE", "HIGH");
-        const result = await service.updateTemplate("custom.md", newContent);
+        const result = await Effect.runPromise(service.updateTemplate("custom.md", newContent));
 
         expect(result.metadata.priority).toBe("HIGH");
         expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
@@ -802,7 +808,9 @@ description:
         addTemplate(config.globalIssueTemplatesPath, "custom.md", makeTemplate("FEATURE", "LOW"));
 
         const newContent = makeTemplate("FEATURE", "HIGH");
-        const result = await service.updateTemplate("custom.md", newContent, "issue", "global");
+        const result = await Effect.runPromise(
+          service.updateTemplate("custom.md", newContent, "issue", "global")
+        );
 
         expect(result.metadata.priority).toBe("HIGH");
         expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
@@ -815,7 +823,9 @@ description:
         addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
 
         await expect(
-          service.updateTemplate("feature.md", makeTemplate("FEATURE"), "issue", "local")
+          Effect.runPromise(
+            service.updateTemplate("feature.md", makeTemplate("FEATURE"), "issue", "local")
+          )
         ).rejects.toThrow("Local issue template 'feature.md' not found");
       });
     });
@@ -824,7 +834,7 @@ description:
       it("should delete local template by default", async () => {
         addTemplate(config.localIssueTemplatesPath, "custom.md", makeTemplate("FEATURE"));
 
-        await service.deleteTemplate("custom.md");
+        await Effect.runPromise(service.deleteTemplate("custom.md"));
 
         expect(mockFileSystem.unlink).toHaveBeenCalledWith(
           "/repo/.track/templates/issues/custom.md"
@@ -834,7 +844,7 @@ description:
       it("should delete global template when scope=global", async () => {
         addTemplate(config.globalIssueTemplatesPath, "custom.md", makeTemplate("FEATURE"));
 
-        await service.deleteTemplate("custom.md", "issue", "global");
+        await Effect.runPromise(service.deleteTemplate("custom.md", "issue", "global"));
 
         expect(mockFileSystem.unlink).toHaveBeenCalledWith(
           "/global/config/templates/issues/custom.md"
@@ -844,9 +854,9 @@ description:
       it("should throw if template not found at specified scope", async () => {
         addTemplate(config.globalIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
 
-        await expect(service.deleteTemplate("feature.md", "issue", "local")).rejects.toThrow(
-          "Local issue template 'feature.md' not found"
-        );
+        await expect(
+          Effect.runPromise(service.deleteTemplate("feature.md", "issue", "local"))
+        ).rejects.toThrow("Local issue template 'feature.md' not found");
       });
     });
 
@@ -855,7 +865,9 @@ description:
         const content = makeTemplate("FEATURE", "MEDIUM");
         addTemplate(config.globalIssueTemplatesPath, "feature.md", content);
 
-        const result = await service.copyTemplate("feature.md", "issue", "global", "local");
+        const result = await Effect.runPromise(
+          service.copyTemplate("feature.md", "issue", "global", "local")
+        );
 
         expect(result.filename).toBe("feature.md");
         expect(result.isUserDefined).toBe(true);
@@ -869,7 +881,9 @@ description:
         const content = makeTemplate("FEATURE", "HIGH");
         addTemplate(config.localIssueTemplatesPath, "custom.md", content);
 
-        const result = await service.copyTemplate("custom.md", "issue", "local", "global");
+        const result = await Effect.runPromise(
+          service.copyTemplate("custom.md", "issue", "local", "global")
+        );
 
         expect(result.filename).toBe("custom.md");
         expect(result.isUserDefined).toBe(false);
@@ -881,7 +895,7 @@ description:
 
       it("should throw if source template not found", async () => {
         await expect(
-          service.copyTemplate("nonexistent.md", "issue", "global", "local")
+          Effect.runPromise(service.copyTemplate("nonexistent.md", "issue", "global", "local"))
         ).rejects.toThrow("Global issue template 'nonexistent.md' not found");
       });
 
@@ -890,14 +904,14 @@ description:
         addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE", "HIGH"));
 
         await expect(
-          service.copyTemplate("feature.md", "issue", "global", "local")
+          Effect.runPromise(service.copyTemplate("feature.md", "issue", "global", "local"))
         ).rejects.toThrow("Local issue template 'feature.md' already exists");
       });
 
-      it("should throw if trying to copy to same scope", async () => {
+      it("should throw if trying to copy to same scope", () => {
         addTemplate(config.localIssueTemplatesPath, "feature.md", makeTemplate("FEATURE"));
 
-        await expect(service.copyTemplate("feature.md", "issue", "local", "local")).rejects.toThrow(
+        expect(() => service.copyTemplate("feature.md", "issue", "local", "local")).toThrow(
           "Cannot copy template to the same scope"
         );
       });
@@ -906,7 +920,9 @@ description:
         const content = makeTemplate("TASK", "LOW");
         addTemplate(config.globalTaskTemplatesPath, "task.md", content);
 
-        const result = await service.copyTemplate("task.md", "task", "global", "local");
+        const result = await Effect.runPromise(
+          service.copyTemplate("task.md", "task", "global", "local")
+        );
 
         expect(result.filename).toBe("task.md");
         expect(mockFileSystem.writeFile).toHaveBeenCalledWith(

@@ -13,7 +13,7 @@ import { z } from "zod";
 import type { Issue } from "../../domain/issues/issue.js";
 import { DomainExecutorFactory } from "../../domain/domain-executor.js";
 import { ProjectManagementService } from "../../project-sync/project-management-service.js";
-import { GitWorktreeServiceTag } from "@dev-workflow/git/worktrees/git-worktree-service.js";
+import { GitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import { WorkerQueueDbTag } from "@dev-workflow/dispatch/worker-queue-db.js";
 import { BusinessRuleError } from "../../domain/errors.js";
 import { validateInput } from "../validation.js";
@@ -72,15 +72,13 @@ export function deleteIssue(input: DeleteIssueInput) {
     const cleanedUpBranches: string[] = [];
 
     // Clean up worktrees and branches for all tasks
-    const gitWorktreeService = yield* GitWorktreeServiceTag;
+    const gitWorktreeService = yield* GitWorktreeService;
     if (plan) {
       for (const task of tasks) {
         if (task.worktreePath) {
           // Remove worktree and delete local + remote branches (abandoned work)
           try {
-            yield* Effect.promise(() =>
-              gitWorktreeService.removeWorktree(task.worktreePath!, true)
-            );
+            yield* gitWorktreeService.removeWorktree(task.worktreePath!, true);
             if (task.branchName) {
               cleanedUpBranches.push(task.branchName);
             }
@@ -92,26 +90,27 @@ export function deleteIssue(input: DeleteIssueInput) {
         } else if (task.branchName) {
           // No worktree but has branch - delete it
           try {
-            yield* Effect.promise(() => gitWorktreeService.run(["branch", "-D", task.branchName!]));
+            yield* gitWorktreeService.run(["branch", "-D", task.branchName!]);
           } catch {
             // Local branch may not exist, ignore
           }
 
           // Delete remote branch if it exists
           try {
-            const checkResult = yield* Effect.promise(() =>
-              gitWorktreeService.run(["ls-remote", "--heads", "origin", task.branchName!])
-            );
+            const checkResult = yield* gitWorktreeService.run([
+              "ls-remote",
+              "--heads",
+              "origin",
+              task.branchName!,
+            ]);
             if (checkResult.success && checkResult.stdout.trim()) {
-              yield* Effect.promise(() =>
-                gitWorktreeService.run([
-                  "push",
-                  "origin",
-                  "--delete",
-                  "--no-verify",
-                  task.branchName!,
-                ])
-              );
+              yield* gitWorktreeService.run([
+                "push",
+                "origin",
+                "--delete",
+                "--no-verify",
+                task.branchName!,
+              ]);
               cleanedUpBranches.push(task.branchName!);
             }
           } catch {

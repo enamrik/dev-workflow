@@ -2,6 +2,7 @@
  * Domain types for Snapshot entity
  */
 
+import type { Effect } from "@dev-workflow/effect";
 import type { IssueType, IssuePriority, IssueStatus } from "../issues/issue.js";
 import type { PlanComplexity } from "../plans/plan.js";
 import type { TaskStatus, TaskSource } from "../tasks/task.js";
@@ -105,7 +106,7 @@ export interface SnapshotRepository {
    * @param snapshot - Snapshot data (without id, projectId, version, createdAt which are generated)
    * @returns The created snapshot with id, projectId, version, and timestamp assigned
    */
-  create(snapshot: Omit<Snapshot, "id" | "projectId" | "version" | "createdAt">): Promise<Snapshot>;
+  create(snapshot: Omit<Snapshot, "id" | "projectId" | "version" | "createdAt">): Effect<Snapshot>;
 
   /**
    * Find a snapshot by its UUID
@@ -113,7 +114,7 @@ export interface SnapshotRepository {
    * @param id - Snapshot UUID
    * @returns The snapshot if found, null otherwise
    */
-  findById(id: string): Promise<Snapshot | null>;
+  findById(id: string): Effect<Snapshot | null>;
 
   /**
    * Find the active snapshot for an issue
@@ -123,7 +124,7 @@ export interface SnapshotRepository {
    * @param issueNumber - Issue number
    * @returns The active snapshot if found, null otherwise
    */
-  findActiveByIssueNumber(issueNumber: number): Promise<Snapshot | null>;
+  findActiveByIssueNumber(issueNumber: number): Effect<Snapshot | null>;
 
   /**
    * Find all snapshots for an issue (all versions)
@@ -133,7 +134,7 @@ export interface SnapshotRepository {
    * @param issueNumber - Issue number
    * @returns Array of all snapshots for the issue
    */
-  findByIssueNumber(issueNumber: number): Promise<Snapshot[]>;
+  findByIssueNumber(issueNumber: number): Effect<Snapshot[]>;
 
   /**
    * Get the next version number for an issue
@@ -143,7 +144,7 @@ export interface SnapshotRepository {
    * @param issueNumber - Issue number
    * @returns The next version number (MAX(version) + 1, or 1 if no snapshots exist)
    */
-  getNextVersion(issueNumber: number): Promise<number>;
+  getNextVersion(issueNumber: number): Effect<number>;
 
   /**
    * Archive the current active snapshot for an issue
@@ -153,7 +154,7 @@ export interface SnapshotRepository {
    *
    * @param issueNumber - Issue number
    */
-  archiveCurrent(issueNumber: number): Promise<void>;
+  archiveCurrent(issueNumber: number): Effect<void>;
 
   /**
    * Find a snapshot by issue number and version
@@ -162,5 +163,5 @@ export interface SnapshotRepository {
    * @param version - Version number
    * @returns The snapshot if found, null otherwise
    */
-  findByVersion(issueNumber: number, version: number): Promise<Snapshot | null>;
+  findByVersion(issueNumber: number, version: number): Effect<Snapshot | null>;
 }

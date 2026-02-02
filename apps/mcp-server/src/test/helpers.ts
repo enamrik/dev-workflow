@@ -122,13 +122,15 @@ export async function createTestPlan(
     generatedBy: string;
   }> = {}
 ): Promise<Plan> {
-  return repo.create({
-    issueId,
-    summary: overrides.summary ?? "Test plan summary",
-    approach: overrides.approach ?? "Test approach",
-    estimatedComplexity: overrides.estimatedComplexity ?? "MEDIUM",
-    generatedBy: overrides.generatedBy ?? "test",
-  });
+  return Effect.runPromise(
+    repo.create({
+      issueId,
+      summary: overrides.summary ?? "Test plan summary",
+      approach: overrides.approach ?? "Test approach",
+      estimatedComplexity: overrides.estimatedComplexity ?? "MEDIUM",
+      generatedBy: overrides.generatedBy ?? "test",
+    })
+  );
 }
 
 /**
@@ -253,51 +255,53 @@ export function createMockProvider(
     getProjectId: () => undefined,
     getLabelFieldMapping: () => undefined,
     // High-level operations
-    moveItemToStatusColumn: async () => {},
-    assignIssueToConfiguredUser: async () => {},
+    moveItemToStatusColumn: () => Effect.succeed(undefined as void),
+    assignIssueToConfiguredUser: () => Effect.succeed(undefined as void),
     // Auth/Validation
-    checkAuth: async () => ({ authenticated: true }),
-    checkRepository: async () => ({ accessible: true }),
+    checkAuth: () => Effect.succeed({ authenticated: true }),
+    checkRepository: () => Effect.succeed({ accessible: true }),
     // Issue operations
-    createIssue: async () => ({
-      id: "mock-1",
-      numericId: 1,
-      url: "https://example.com/1",
-      nodeId: "mock_node_1",
-      title: "Mock Issue",
-      body: "",
-      state: "OPEN",
-      labels: [],
-    }),
-    updateIssue: async () => ({
-      id: "mock-1",
-      numericId: 1,
-      url: "https://example.com/1",
-      nodeId: "mock_node_1",
-      title: "Mock Issue",
-      body: "",
-      state: "OPEN",
-      labels: [],
-    }),
-    closeIssue: async () => {},
-    closeIssueByTask: async () => {},
-    reopenIssue: async () => {},
-    getIssue: async () => null,
-    searchIssues: async () => [],
-    ensureLabelsExist: async () => {},
+    createIssue: () =>
+      Effect.succeed({
+        id: "mock-1",
+        numericId: 1,
+        url: "https://example.com/1",
+        nodeId: "mock_node_1",
+        title: "Mock Issue",
+        body: "",
+        state: "OPEN",
+        labels: [],
+      }),
+    updateIssue: () =>
+      Effect.succeed({
+        id: "mock-1",
+        numericId: 1,
+        url: "https://example.com/1",
+        nodeId: "mock_node_1",
+        title: "Mock Issue",
+        body: "",
+        state: "OPEN",
+        labels: [],
+      }),
+    closeIssue: () => Effect.succeed(undefined as void),
+    closeIssueByTask: () => Effect.succeed(undefined as void),
+    reopenIssue: () => Effect.succeed(undefined as void),
+    getIssue: () => Effect.succeed(null),
+    searchIssues: () => Effect.succeed([]),
+    ensureLabelsExist: () => Effect.succeed(undefined as void),
     // Project operations
-    addToProject: async () => ({ success: true, itemId: "mock_item" }),
-    moveToColumn: async () => {},
-    checkProject: async () => true,
-    getProjectDetails: async () => null,
-    getProjectStatusField: async () => null,
-    getProjectFields: async () => [],
-    setProjectItemField: async () => ({ success: true }),
-    clearProjectItemField: async () => ({ success: true }),
-    getAvailableLabels: async () => ({ supported: false, labels: [] }),
-    linkParentChild: async () => {},
-    addComment: async () => {},
-    assignIssue: async () => {},
+    addToProject: () => Effect.succeed({ success: true, itemId: "mock_item" }),
+    moveToColumn: () => Effect.succeed(undefined as void),
+    checkProject: () => Effect.succeed(true),
+    getProjectDetails: () => Effect.succeed(null),
+    getProjectStatusField: () => Effect.succeed(null),
+    getProjectFields: () => Effect.succeed([]),
+    setProjectItemField: () => Effect.succeed({ success: true }),
+    clearProjectItemField: () => Effect.succeed({ success: true }),
+    getAvailableLabels: () => Effect.succeed({ supported: false, labels: [] }),
+    linkParentChild: () => Effect.succeed(undefined as void),
+    addComment: () => Effect.succeed(undefined as void),
+    assignIssue: () => Effect.succeed(undefined as void),
   };
   return { ...base, ...overrides };
 }

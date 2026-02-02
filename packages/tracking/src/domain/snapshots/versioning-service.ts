@@ -60,39 +60,42 @@ export class VersioningService extends Service<VersioningService>()("versioningS
    * @param notes - Optional notes about this version
    * @returns The created snapshot with captured state
    */
-  async createSnapshot(
+  createSnapshot(
     issueNumber: number,
     snapshotType: SnapshotType,
     createdBy: string,
     notes?: string
-  ): Promise<Snapshot> {
-    // Get current live state
-    const issue = await Effect.runPromise(this.db.issues.findByNumber(issueNumber));
-    if (!issue) {
-      throw new Error(`Issue not found: #${issueNumber}`);
-    }
+  ): Effect<Snapshot> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Get current live state
+      const issue = yield* self.db.issues.findByNumber(issueNumber);
+      if (!issue) {
+        throw new Error(`Issue not found: #${issueNumber}`);
+      }
 
-    const plan = await this.db.plans.findByIssueId(issue.id);
-    const tasks = plan
-      ? await Effect.runPromise(this.db.tasks.findByPlanId(plan.id, true)) // Include deleted
-      : [];
+      const plan = yield* self.db.plans.findByIssueId(issue.id);
+      const tasks = plan
+        ? yield* self.db.tasks.findByPlanId(plan.id, true) // Include deleted
+        : [];
 
-    // Archive current active snapshot (if exists)
-    await this.db.snapshots.archiveCurrent(issueNumber);
+      // Archive current active snapshot (if exists)
+      yield* self.db.snapshots.archiveCurrent(issueNumber);
 
-    // Create snapshot with captured state
-    const snapshot = await this.db.snapshots.create({
-      issueNumber,
-      status: "ACTIVE",
-      snapshotType,
-      issueState: this.captureIssueState(issue),
-      planState: plan ? this.capturePlanState(plan) : null,
-      tasksState: tasks.map((t) => this.captureTaskState(t)),
-      createdBy,
-      notes,
+      // Create snapshot with captured state
+      const snapshot = yield* self.db.snapshots.create({
+        issueNumber,
+        status: "ACTIVE",
+        snapshotType,
+        issueState: self.captureIssueState(issue),
+        planState: plan ? self.capturePlanState(plan) : null,
+        tasksState: tasks.map((t) => self.captureTaskState(t)),
+        createdBy,
+        notes,
+      });
+
+      return snapshot;
     });
-
-    return snapshot;
   }
 
   /**
@@ -108,106 +111,105 @@ export class VersioningService extends Service<VersioningService>()("versioningS
    * @param notes - Optional notes about why reverting
    * @returns The new snapshot created after reverting
    */
-  async revertToSnapshot(
+  revertToSnapshot(
     issueNumber: number,
     version: number,
     createdBy: string,
     notes?: string
-  ): Promise<Snapshot> {
-    // Find the target snapshot
-    const targetSnapshot = await this.db.snapshots.findByVersion(issueNumber, version);
-    if (!targetSnapshot) {
-      throw new Error(`Snapshot not found: issue #${issueNumber} version ${version}`);
-    }
+  ): Effect<Snapshot> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Find the target snapshot
+      const targetSnapshot = yield* self.db.snapshots.findByVersion(issueNumber, version);
+      if (!targetSnapshot) {
+        throw new Error(`Snapshot not found: issue #${issueNumber} version ${version}`);
+      }
 
-    // Create backup snapshot of current state before reverting
-    await this.createSnapshot(
-      issueNumber,
-      "MANUAL",
-      createdBy,
-      `Pre-revert backup (before reverting to v${version})`
-    );
+      // Create backup snapshot of current state before reverting
+      yield* self.createSnapshot(
+        issueNumber,
+        "MANUAL",
+        createdBy,
+        `Pre-revert backup (before reverting to v${version})`
+      );
 
-    // Get current issue
-    const issue = await Effect.runPromise(this.db.issues.findByNumber(issueNumber));
-    if (!issue) {
-      throw new Error(`Issue not found: #${issueNumber}`);
-    }
+      // Get current issue
+      const issue = yield* self.db.issues.findByNumber(issueNumber);
+      if (!issue) {
+        throw new Error(`Issue not found: #${issueNumber}`);
+      }
 
-    // Restore issue state from snapshot
-    await Effect.runPromise(
-      this.db.issues.update(issue.id, {
+      // Restore issue state from snapshot
+      yield* self.db.issues.update(issue.id, {
         title: targetSnapshot.issueState.title,
         description: targetSnapshot.issueState.description,
         type: targetSnapshot.issueState.type,
         priority: targetSnapshot.issueState.priority,
         status: targetSnapshot.issueState.status,
         acceptanceCriteria: targetSnapshot.issueState.acceptanceCriteria,
-      })
-    );
+      });
 
-    // Handle plan restoration
-    const currentPlan = await this.db.plans.findByIssueId(issue.id);
-    if (targetSnapshot.planState) {
-      if (currentPlan) {
-        // Update existing plan
-        await this.db.plans.update(currentPlan.id, {
-          summary: targetSnapshot.planState.summary,
-          approach: targetSnapshot.planState.approach,
-          estimatedComplexity: targetSnapshot.planState.estimatedComplexity,
-          generatedBy: targetSnapshot.planState.generatedBy,
-        });
-      } else {
-        // Create new plan from snapshot
-        await this.db.plans.create({
-          issueId: issue.id,
-          summary: targetSnapshot.planState.summary,
-          approach: targetSnapshot.planState.approach,
-          estimatedComplexity: targetSnapshot.planState.estimatedComplexity,
-          generatedBy: targetSnapshot.planState.generatedBy,
-        });
-      }
-    } else if (currentPlan) {
-      // Target had no plan, delete current plan (cascades to tasks)
-      await this.db.plans.delete(currentPlan.id);
-    }
-
-    // Handle tasks restoration
-    const plan = await this.db.plans.findByIssueId(issue.id);
-    if (plan && targetSnapshot.tasksState.length > 0) {
-      // Soft delete all current tasks that haven't been started
-      const currentTasks = await Effect.runPromise(this.db.tasks.findByPlanId(plan.id, false));
-      for (const task of currentTasks) {
-        if (task.status === "BACKLOG" || task.status === "READY") {
-          await Effect.runPromise(this.db.tasks.softDelete(task.id, createdBy));
-        }
-      }
-
-      // Build mapping from old task IDs to new IDs
-      // We need new IDs because the original tasks might still exist in the database
-      const idMapping = new Map<string, string>();
-      for (const taskState of targetSnapshot.tasksState) {
-        if (!taskState.isDeleted) {
-          idMapping.set(taskState.id, crypto.randomUUID());
-        }
-      }
-
-      // Create new tasks from snapshot state with remapped dependencies
-      for (const taskState of targetSnapshot.tasksState) {
-        // Only restore non-deleted tasks from snapshot
-        if (!taskState.isDeleted) {
-          const newId = idMapping.get(taskState.id)!;
-
-          // Remap dependencies to use new IDs
-          const remappedDependsOn = taskState.dependsOn?.map((depId) => {
-            const newDepId = idMapping.get(depId);
-            // If dependency was in snapshot, use new ID; otherwise keep original
-            // (shouldn't happen in a valid snapshot, but handle gracefully)
-            return newDepId ?? depId;
+      // Handle plan restoration
+      const currentPlan = yield* self.db.plans.findByIssueId(issue.id);
+      if (targetSnapshot.planState) {
+        if (currentPlan) {
+          // Update existing plan
+          yield* self.db.plans.update(currentPlan.id, {
+            summary: targetSnapshot.planState.summary,
+            approach: targetSnapshot.planState.approach,
+            estimatedComplexity: targetSnapshot.planState.estimatedComplexity,
+            generatedBy: targetSnapshot.planState.generatedBy,
           });
+        } else {
+          // Create new plan from snapshot
+          yield* self.db.plans.create({
+            issueId: issue.id,
+            summary: targetSnapshot.planState.summary,
+            approach: targetSnapshot.planState.approach,
+            estimatedComplexity: targetSnapshot.planState.estimatedComplexity,
+            generatedBy: targetSnapshot.planState.generatedBy,
+          });
+        }
+      } else if (currentPlan) {
+        // Target had no plan, delete current plan (cascades to tasks)
+        yield* self.db.plans.delete(currentPlan.id);
+      }
 
-          await Effect.runPromise(
-            this.db.tasks.create({
+      // Handle tasks restoration
+      const plan = yield* self.db.plans.findByIssueId(issue.id);
+      if (plan && targetSnapshot.tasksState.length > 0) {
+        // Soft delete all current tasks that haven't been started
+        const currentTasks = yield* self.db.tasks.findByPlanId(plan.id, false);
+        for (const task of currentTasks) {
+          if (task.status === "BACKLOG" || task.status === "READY") {
+            yield* self.db.tasks.softDelete(task.id, createdBy);
+          }
+        }
+
+        // Build mapping from old task IDs to new IDs
+        // We need new IDs because the original tasks might still exist in the database
+        const idMapping = new Map<string, string>();
+        for (const taskState of targetSnapshot.tasksState) {
+          if (!taskState.isDeleted) {
+            idMapping.set(taskState.id, crypto.randomUUID());
+          }
+        }
+
+        // Create new tasks from snapshot state with remapped dependencies
+        for (const taskState of targetSnapshot.tasksState) {
+          // Only restore non-deleted tasks from snapshot
+          if (!taskState.isDeleted) {
+            const newId = idMapping.get(taskState.id)!;
+
+            // Remap dependencies to use new IDs
+            const remappedDependsOn = taskState.dependsOn?.map((depId) => {
+              const newDepId = idMapping.get(depId);
+              // If dependency was in snapshot, use new ID; otherwise keep original
+              // (shouldn't happen in a valid snapshot, but handle gracefully)
+              return newDepId ?? depId;
+            });
+
+            yield* self.db.tasks.create({
               id: newId,
               planId: plan.id,
               title: taskState.title,
@@ -224,19 +226,19 @@ export class VersioningService extends Service<VersioningService>()("versioningS
               abandonedAt: taskState.abandonedAt,
               matchedFromTaskId: taskState.id, // Track original task this was restored from
               matchConfidence: 1.0, // Perfect match (exact restore)
-            })
-          );
+            });
+          }
         }
       }
-    }
 
-    // Create snapshot recording the revert
-    return await this.createSnapshot(
-      issueNumber,
-      "MANUAL",
-      createdBy,
-      notes || `Reverted to version ${version}`
-    );
+      // Create snapshot recording the revert
+      return yield* self.createSnapshot(
+        issueNumber,
+        "MANUAL",
+        createdBy,
+        notes || `Reverted to version ${version}`
+      );
+    });
   }
 
   /**
@@ -248,18 +250,21 @@ export class VersioningService extends Service<VersioningService>()("versioningS
    * @param version - Version number to view
    * @returns Snapshot data with captured state
    */
-  async viewSnapshot(issueNumber: number, version: number): Promise<SnapshotData> {
-    const snapshot = await this.db.snapshots.findByVersion(issueNumber, version);
-    if (!snapshot) {
-      throw new Error(`Snapshot not found: issue #${issueNumber} version ${version}`);
-    }
+  viewSnapshot(issueNumber: number, version: number): Effect<SnapshotData> {
+    const self = this;
+    return Effect.gen(function* () {
+      const snapshot = yield* self.db.snapshots.findByVersion(issueNumber, version);
+      if (!snapshot) {
+        throw new Error(`Snapshot not found: issue #${issueNumber} version ${version}`);
+      }
 
-    return {
-      snapshot,
-      issue: snapshot.issueState,
-      plan: snapshot.planState,
-      tasks: snapshot.tasksState,
-    };
+      return {
+        snapshot,
+        issue: snapshot.issueState,
+        plan: snapshot.planState,
+        tasks: snapshot.tasksState,
+      };
+    });
   }
 
   /**
@@ -268,8 +273,8 @@ export class VersioningService extends Service<VersioningService>()("versioningS
    * @param issueNumber - Issue number
    * @returns Array of snapshots ordered by version DESC (newest first)
    */
-  async getSnapshotHistory(issueNumber: number): Promise<Snapshot[]> {
-    return await this.db.snapshots.findByIssueNumber(issueNumber);
+  getSnapshotHistory(issueNumber: number): Effect<Snapshot[]> {
+    return this.db.snapshots.findByIssueNumber(issueNumber);
   }
 
   /**

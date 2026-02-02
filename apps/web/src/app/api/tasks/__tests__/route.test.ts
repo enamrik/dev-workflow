@@ -120,7 +120,7 @@ function createMockClient() {
       findMany: () => Effect.succeed([issue]),
     },
     plans: {
-      findByIssueId: async (issueId: string) => (issueId === "issue-1" ? plan : null),
+      findByIssueId: (issueId: string) => Effect.succeed(issueId === "issue-1" ? plan : null),
     },
     tasks: {
       findByPlanId: (planId: string) =>
@@ -145,7 +145,7 @@ function createMockWorkerQueueDb(entries: unknown[] = []) {
 describe("listTasksEndpoint", () => {
   it("returns issues with tasks for board view", async () => {
     const testContainer = createTestContainer({
-      projectsResolver: { getAllProjects: async () => [mockProject] },
+      projectsResolver: { getAllProjects: () => Effect.succeed([mockProject]) },
       sourceProvider: createMockSourceProvider(createMockClient()),
       workerQueueDb: createMockWorkerQueueDb(),
     });
@@ -184,7 +184,7 @@ describe("listTasksEndpoint", () => {
     };
 
     const testContainer = createTestContainer({
-      projectsResolver: { getAllProjects: async () => [mockProject, secondProject] },
+      projectsResolver: { getAllProjects: () => Effect.succeed([mockProject, secondProject]) },
       sourceProvider: createMockSourceProvider(createMockClient()),
       workerQueueDb: createMockWorkerQueueDb(),
     });
@@ -202,13 +202,13 @@ describe("listTasksEndpoint", () => {
   it("returns empty arrays when no data", async () => {
     const emptyClient = {
       issues: { findMany: () => Effect.succeed([]) },
-      plans: { findByIssueId: async () => null },
+      plans: { findByIssueId: () => Effect.succeed(null) },
       tasks: { findByPlanId: () => Effect.succeed([]) },
       milestones: { findById: () => Effect.succeed(null) },
     };
 
     const testContainer = createTestContainer({
-      projectsResolver: { getAllProjects: async () => [mockProject] },
+      projectsResolver: { getAllProjects: () => Effect.succeed([mockProject]) },
       sourceProvider: createMockSourceProvider(emptyClient),
       workerQueueDb: createMockWorkerQueueDb(),
     });

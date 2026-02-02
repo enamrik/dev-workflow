@@ -20,7 +20,7 @@ import {
   type UpdateTypeData,
   DEFAULT_TYPE_DEFINITIONS,
 } from "./type-definition.js";
-import { Service } from "@dev-workflow/effect";
+import { Effect, Service } from "@dev-workflow/effect";
 
 /**
  * Type service error
@@ -54,9 +54,9 @@ export class TypeService extends Service<TypeService>()("typeService") {
    * Falls back to DEFAULT_TYPE_DEFINITIONS if no types are seeded yet.
    * This handles the transition period where database may not have types.
    */
-  async loadTypes(): Promise<TypeDefinitions> {
+  loadTypes(): Effect<TypeDefinitions> {
     if (this.cachedTypes) {
-      return this.cachedTypes;
+      return Effect.succeed(this.cachedTypes);
     }
 
     // Load from database
@@ -67,12 +67,12 @@ export class TypeService extends Service<TypeService>()("typeService") {
         types: dbTypes.map((t) => this.entityToDefinition(t)),
         isUserDefined: true,
       };
-      return this.cachedTypes;
+      return Effect.succeed(this.cachedTypes);
     }
 
     // Fall back to defaults if no types in DB (pre-migration state)
     this.cachedTypes = { types: DEFAULT_TYPE_DEFINITIONS, isUserDefined: false };
-    return this.cachedTypes;
+    return Effect.succeed(this.cachedTypes);
   }
 
   /**
@@ -84,37 +84,40 @@ export class TypeService extends Service<TypeService>()("typeService") {
    * @param description - Issue description to match
    * @returns The best matching IssueType
    */
-  async selectType(description: string): Promise<IssueType> {
-    const { types } = await this.loadTypes();
-    const lower = description.toLowerCase();
+  selectType(description: string): Effect<IssueType> {
+    const self = this;
+    return Effect.gen(function* () {
+      const { types } = yield* self.loadTypes();
+      const lower = description.toLowerCase();
 
-    // Score each type based on keyword matches
-    let bestMatch: { type: IssueType; score: number } = { type: "FEATURE", score: 0 };
+      // Score each type based on keyword matches
+      let bestMatch: { type: IssueType; score: number } = { type: "FEATURE", score: 0 };
 
-    for (const typeDef of types) {
-      let score = 0;
+      for (const typeDef of types) {
+        let score = 0;
 
-      // Check keywords
-      for (const keyword of typeDef.keywords) {
-        if (lower.includes(keyword.toLowerCase())) {
-          score += 1;
+        // Check keywords
+        for (const keyword of typeDef.keywords) {
+          if (lower.includes(keyword.toLowerCase())) {
+            score += 1;
+          }
+        }
+
+        // Also check description words
+        const descWords = typeDef.description.toLowerCase().split(/\s+/);
+        for (const word of descWords) {
+          if (word.length > 3 && lower.includes(word)) {
+            score += 0.5;
+          }
+        }
+
+        if (score > bestMatch.score) {
+          bestMatch = { type: typeDef.name, score };
         }
       }
 
-      // Also check description words
-      const descWords = typeDef.description.toLowerCase().split(/\s+/);
-      for (const word of descWords) {
-        if (word.length > 3 && lower.includes(word)) {
-          score += 0.5;
-        }
-      }
-
-      if (score > bestMatch.score) {
-        bestMatch = { type: typeDef.name, score };
-      }
-    }
-
-    return bestMatch.type;
+      return bestMatch.type;
+    });
   }
 
   /**
@@ -125,9 +128,8 @@ export class TypeService extends Service<TypeService>()("typeService") {
    *
    * @returns Array of TypeDefinition objects
    */
-  async getTypes(): Promise<TypeDefinition[]> {
-    const { types } = await this.loadTypes();
-    return types;
+  getTypes(): Effect<TypeDefinition[]> {
+    return Effect.map(this.loadTypes(), ({ types }) => types);
   }
 
   /**
@@ -138,9 +140,8 @@ export class TypeService extends Service<TypeService>()("typeService") {
    * @param typeName - Type name to validate (e.g., "FEATURE", "BUG")
    * @returns true if the type is valid, false otherwise
    */
-  async isValidType(typeName: string): Promise<boolean> {
-    const types = await this.getTypes();
-    return types.some((t) => t.name === typeName);
+  isValidType(typeName: string): Effect<boolean> {
+    return Effect.map(this.getTypes(), (types) => types.some((t) => t.name === typeName));
   }
 
   /**
@@ -149,9 +150,8 @@ export class TypeService extends Service<TypeService>()("typeService") {
    * @param typeName - Type name to look up
    * @returns The TypeDefinition if found, undefined otherwise
    */
-  async getTypeByName(typeName: string): Promise<TypeDefinition | undefined> {
-    const types = await this.getTypes();
-    return types.find((t) => t.name === typeName);
+  getTypeByName(typeName: string): Effect<TypeDefinition | undefined> {
+    return Effect.map(this.getTypes(), (types) => types.find((t) => t.name === typeName));
   }
 
   /**

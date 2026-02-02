@@ -6,6 +6,7 @@ import {
   snapshots,
   type ProjectRow,
 } from "@dev-workflow/database/schema.js";
+import { Effect } from "@dev-workflow/effect";
 import type {
   Project,
   ProjectRepository,
@@ -42,144 +43,173 @@ function generateSlug(name: string, gitRootHash: string): string {
 export class DrizzleProjectRepository implements ProjectRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  async create(data: CreateProjectData): Promise<Project> {
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const slug = generateSlug(data.name, data.gitRootHash);
+  create(data: CreateProjectData): Effect<Project> {
+    return Effect.promise(async () => {
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const slug = generateSlug(data.name, data.gitRootHash);
 
-    const project: Project = {
-      id,
-      gitRootHash: data.gitRootHash,
-      name: data.name,
-      slug,
-      syncConfig: data.syncConfig ?? null,
-      isArchived: false,
-      archivedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    // Insert into database
-    await this.db.insert(projects).values({
-      id: project.id,
-      gitRootHash: project.gitRootHash,
-      name: project.name,
-      slug: project.slug,
-      syncConfig: project.syncConfig,
-      isArchived: project.isArchived,
-      archivedAt: project.archivedAt,
-      createdAt: project.createdAt,
-      updatedAt: project.updatedAt,
-    });
-
-    return project;
-  }
-
-  async findById(id: string): Promise<Project | null> {
-    const [result] = await this.db.select().from(projects).where(eq(projects.id, id)).limit(1);
-    return result ? this.mapRowToProject(result) : null;
-  }
-
-  async findByGitRootHash(gitRootHash: string): Promise<Project | null> {
-    const [result] = await this.db
-      .select()
-      .from(projects)
-      .where(eq(projects.gitRootHash, gitRootHash))
-      .limit(1);
-    return result ? this.mapRowToProject(result) : null;
-  }
-
-  async findBySlug(slug: string): Promise<Project | null> {
-    const [result] = await this.db.select().from(projects).where(eq(projects.slug, slug)).limit(1);
-    return result ? this.mapRowToProject(result) : null;
-  }
-
-  async findAll(includeArchived: boolean = false): Promise<Project[]> {
-    const results = includeArchived
-      ? await this.db.select().from(projects)
-      : await this.db.select().from(projects).where(eq(projects.isArchived, false));
-    return results.map((row) => this.mapRowToProject(row));
-  }
-
-  async update(id: string, data: UpdateProjectData): Promise<Project> {
-    const now = new Date().toISOString();
-
-    await this.db
-      .update(projects)
-      .set({
-        ...data,
-        updatedAt: now,
-      })
-      .where(eq(projects.id, id));
-
-    const updated = await this.findById(id);
-    if (!updated) {
-      throw new Error(`Failed to update project: ${id}`);
-    }
-
-    return updated;
-  }
-
-  async delete(id: string): Promise<void> {
-    await this.db.delete(projects).where(eq(projects.id, id));
-  }
-
-  async archive(id: string): Promise<Project> {
-    const now = new Date().toISOString();
-
-    await this.db
-      .update(projects)
-      .set({
-        isArchived: true,
-        archivedAt: now,
-        updatedAt: now,
-      })
-      .where(eq(projects.id, id));
-
-    const archived = await this.findById(id);
-    if (!archived) {
-      throw new Error(`Failed to archive project: ${id}`);
-    }
-
-    return archived;
-  }
-
-  async unarchive(id: string): Promise<Project> {
-    const now = new Date().toISOString();
-
-    await this.db
-      .update(projects)
-      .set({
+      const project: Project = {
+        id,
+        gitRootHash: data.gitRootHash,
+        name: data.name,
+        slug,
+        syncConfig: data.syncConfig ?? null,
         isArchived: false,
         archivedAt: null,
+        createdAt: now,
         updatedAt: now,
-      })
-      .where(eq(projects.id, id));
+      };
 
-    const unarchived = await this.findById(id);
-    if (!unarchived) {
-      throw new Error(`Failed to unarchive project: ${id}`);
-    }
+      this.db
+        .insert(projects)
+        .values({
+          id: project.id,
+          gitRootHash: project.gitRootHash,
+          name: project.name,
+          slug: project.slug,
+          syncConfig: project.syncConfig,
+          isArchived: project.isArchived,
+          archivedAt: project.archivedAt,
+          createdAt: project.createdAt,
+          updatedAt: project.updatedAt,
+        })
+        .run();
 
-    return unarchived;
+      return project;
+    });
   }
 
-  async hardDelete(id: string): Promise<void> {
-    // Delete in order to respect foreign key constraints
-    // Note: plans and tasks cascade from issues, task_status_history and
-    // task_execution_logs cascade from tasks
+  findById(id: string): Effect<Project | null> {
+    return Effect.promise(async () => {
+      const result = this.db.select().from(projects).where(eq(projects.id, id)).limit(1).get();
+      return result ? this.mapRowToProject(result) : null;
+    });
+  }
 
-    // 1. Delete snapshots for this project
-    await this.db.delete(snapshots).where(eq(snapshots.projectId, id));
+  findByGitRootHash(gitRootHash: string): Effect<Project | null> {
+    return Effect.promise(async () => {
+      const result = this.db
+        .select()
+        .from(projects)
+        .where(eq(projects.gitRootHash, gitRootHash))
+        .limit(1)
+        .get();
+      return result ? this.mapRowToProject(result) : null;
+    });
+  }
 
-    // 2. Delete milestones for this project
-    await this.db.delete(milestones).where(eq(milestones.projectId, id));
+  findBySlug(slug: string): Effect<Project | null> {
+    return Effect.promise(async () => {
+      const result = this.db.select().from(projects).where(eq(projects.slug, slug)).limit(1).get();
+      return result ? this.mapRowToProject(result) : null;
+    });
+  }
 
-    // 3. Delete issues for this project (cascades to plans, tasks, etc.)
-    await this.db.delete(issues).where(eq(issues.projectId, id));
+  findAll(includeArchived: boolean = false): Effect<Project[]> {
+    return Effect.promise(async () => {
+      const results = includeArchived
+        ? this.db.select().from(projects).all()
+        : this.db.select().from(projects).where(eq(projects.isArchived, false)).all();
+      return results.map((row) => this.mapRowToProject(row));
+    });
+  }
 
-    // 4. Finally delete the project itself
-    await this.db.delete(projects).where(eq(projects.id, id));
+  update(id: string, data: UpdateProjectData): Effect<Project> {
+    const self = this;
+    return Effect.gen(function* () {
+      const now = new Date().toISOString();
+
+      self.db
+        .update(projects)
+        .set({
+          ...data,
+          updatedAt: now,
+        })
+        .where(eq(projects.id, id))
+        .run();
+
+      const updated = yield* self.findById(id);
+      if (!updated) {
+        throw new Error(`Failed to update project: ${id}`);
+      }
+
+      return updated;
+    });
+  }
+
+  delete(id: string): Effect<void> {
+    return Effect.promise(async () => {
+      this.db.delete(projects).where(eq(projects.id, id)).run();
+    });
+  }
+
+  archive(id: string): Effect<Project> {
+    const self = this;
+    return Effect.gen(function* () {
+      const now = new Date().toISOString();
+
+      self.db
+        .update(projects)
+        .set({
+          isArchived: true,
+          archivedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(projects.id, id))
+        .run();
+
+      const archived = yield* self.findById(id);
+      if (!archived) {
+        throw new Error(`Failed to archive project: ${id}`);
+      }
+
+      return archived;
+    });
+  }
+
+  unarchive(id: string): Effect<Project> {
+    const self = this;
+    return Effect.gen(function* () {
+      const now = new Date().toISOString();
+
+      self.db
+        .update(projects)
+        .set({
+          isArchived: false,
+          archivedAt: null,
+          updatedAt: now,
+        })
+        .where(eq(projects.id, id))
+        .run();
+
+      const unarchived = yield* self.findById(id);
+      if (!unarchived) {
+        throw new Error(`Failed to unarchive project: ${id}`);
+      }
+
+      return unarchived;
+    });
+  }
+
+  hardDelete(id: string): Effect<void> {
+    return Effect.promise(async () => {
+      // Delete in order to respect foreign key constraints
+      // Note: plans and tasks cascade from issues, task_status_history and
+      // task_execution_logs cascade from tasks
+
+      // 1. Delete snapshots for this project
+      this.db.delete(snapshots).where(eq(snapshots.projectId, id)).run();
+
+      // 2. Delete milestones for this project
+      this.db.delete(milestones).where(eq(milestones.projectId, id)).run();
+
+      // 3. Delete issues for this project (cascades to plans, tasks, etc.)
+      this.db.delete(issues).where(eq(issues.projectId, id)).run();
+
+      // 4. Finally delete the project itself
+      this.db.delete(projects).where(eq(projects.id, id)).run();
+    });
   }
 
   /**

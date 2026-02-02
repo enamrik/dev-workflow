@@ -61,16 +61,17 @@ describe("listWorkersEndpoint", () => {
     };
 
     const mockProjectsResolver = {
-      getAllSources: async () => [
-        {
-          displayId: "test-db",
-          displayName: "Test DB",
-          sourceInfo: { connectionString: "test://db" },
-          projects: [{ projectId: "proj-1", slug: "test-project" }],
-        },
-      ],
-      getProjectBySlug: async () => mockProject,
-      getAllProjects: async () => [mockProject],
+      getAllSources: () =>
+        Effect.succeed([
+          {
+            displayId: "test-db",
+            displayName: "Test DB",
+            sourceInfo: { connectionString: "test://db" },
+            projects: [{ projectId: "proj-1", slug: "test-project" }],
+          },
+        ]),
+      getProjectBySlug: () => Effect.succeed(mockProject),
+      getAllProjects: () => Effect.succeed([mockProject]),
     };
 
     // Mock DbClient repos for task detail enrichment
@@ -102,10 +103,11 @@ describe("listWorkersEndpoint", () => {
         findByPlanId: () => Effect.succeed([{ id: "task-1" }, { id: "task-2" }, { id: "task-3" }]),
       },
       plans: {
-        findById: async () => ({
-          id: "plan-1",
-          issueId: "issue-1",
-        }),
+        findById: () =>
+          Effect.succeed({
+            id: "plan-1",
+            issueId: "issue-1",
+          }),
       },
       issues: {
         findById: () =>
@@ -156,9 +158,9 @@ describe("listWorkersEndpoint", () => {
     };
 
     const mockProjectsResolver = {
-      getAllSources: async () => [],
-      getProjectBySlug: async () => mockProject,
-      getAllProjects: async () => [],
+      getAllSources: () => Effect.succeed([]),
+      getProjectBySlug: () => Effect.succeed(mockProject),
+      getAllProjects: () => Effect.succeed([]),
     };
 
     const testContainer = createTestContainer({

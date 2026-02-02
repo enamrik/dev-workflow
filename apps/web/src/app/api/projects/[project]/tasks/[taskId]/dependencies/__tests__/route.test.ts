@@ -25,7 +25,7 @@ describe("getTaskDependenciesEndpoint", () => {
   it("returns task dependencies with issue numbers", async () => {
     const testContainer = createTestContainer({
       projectsResolver: {
-        getAllProjects: async () => [mockProject],
+        getAllProjects: () => Effect.succeed([mockProject]),
       },
       sourceProvider: createMockSourceProvider({
         tasks: {
@@ -54,7 +54,7 @@ describe("getTaskDependenciesEndpoint", () => {
             ]),
         },
         plans: {
-          findById: async () => ({ id: "plan-1", issueId: "issue-1" }),
+          findById: () => Effect.succeed({ id: "plan-1", issueId: "issue-1" }),
         },
         issues: {
           findById: () => Effect.succeed({ id: "issue-1", number: 5 }),
@@ -78,7 +78,7 @@ describe("getTaskDependenciesEndpoint", () => {
   it("returns empty array when task has no dependencies", async () => {
     const testContainer = createTestContainer({
       projectsResolver: {
-        getAllProjects: async () => [mockProject],
+        getAllProjects: () => Effect.succeed([mockProject]),
       },
       sourceProvider: createMockSourceProvider({
         tasks: {
@@ -91,7 +91,7 @@ describe("getTaskDependenciesEndpoint", () => {
           findByIds: () => Effect.succeed([]),
         },
         plans: {
-          findById: async () => null,
+          findById: () => Effect.succeed(null),
         },
         issues: {
           findById: () => Effect.succeed(null),
@@ -114,7 +114,7 @@ describe("getTaskDependenciesEndpoint", () => {
   it("returns 404 when task not found", async () => {
     const testContainer = createTestContainer({
       projectsResolver: {
-        getAllProjects: async () => [mockProject],
+        getAllProjects: () => Effect.succeed([mockProject]),
       },
       sourceProvider: createMockSourceProvider({
         tasks: {
@@ -122,7 +122,7 @@ describe("getTaskDependenciesEndpoint", () => {
           findByIds: () => Effect.succeed([]),
         },
         plans: {
-          findById: async () => null,
+          findById: () => Effect.succeed(null),
         },
         issues: {
           findById: () => Effect.succeed(null),

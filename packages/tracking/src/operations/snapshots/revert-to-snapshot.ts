@@ -30,8 +30,6 @@ export function revertToSnapshot(input: RevertToSnapshotInput) {
     const { issueNumber, version, notes } = validateInput(RevertToSnapshotSchema, input);
     const versioningService = yield* VersioningService;
 
-    return yield* Effect.promise(() =>
-      versioningService.revertToSnapshot(issueNumber, version, "claude-agent", notes)
-    );
+    return yield* versioningService.revertToSnapshot(issueNumber, version, "claude-agent", notes);
   });
 }

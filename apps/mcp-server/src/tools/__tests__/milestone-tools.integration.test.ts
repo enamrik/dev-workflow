@@ -70,10 +70,12 @@ describe("Milestone Tools Integration", () => {
     testDb = createTestDatabase();
 
     // Create project first
-    const project = await testDb.source.projects.create({
-      gitRootHash: TEST_PROJECT_ID,
-      name: "Test Project",
-    });
+    const project = await Effect.runPromise(
+      testDb.source.projects.create({
+        gitRootHash: TEST_PROJECT_ID,
+        name: "Test Project",
+      })
+    );
 
     // Create client scoped to project
     client = createClientForProject(testDb, project.id);

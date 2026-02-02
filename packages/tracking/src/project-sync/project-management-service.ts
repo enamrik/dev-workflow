@@ -27,7 +27,19 @@
 
 import { Effect, Service } from "@dev-workflow/effect";
 import type { TaskStatus } from "../domain/tasks/task.js";
-import type { SyncState, CreateIssueParams } from "./project-management-provider.js";
+import type {
+  SyncState,
+  CreateIssueParams,
+  ExternalIssue,
+  AuthResult,
+  RepositoryResult,
+  ProjectDetails,
+  ProjectStatusField,
+  ProjectField,
+  ProjectItemResult,
+  SetFieldResult,
+  AvailableLabelsResult,
+} from "./project-management-provider.js";
 import type { ProjectManagementClient } from "./project-management-client.js";
 
 // =============================================================================
@@ -106,41 +118,44 @@ export class ProjectManagementService extends Service<ProjectManagementService>(
    * @param newStatus - The new task status
    * @returns Updated sync state, or null if nothing to sync
    */
-  async syncTaskStatus(
+  syncTaskStatus(
     syncState: SyncState | undefined,
     newStatus: TaskStatus
-  ): Promise<SyncState | null> {
-    // Nothing to sync if no project item
-    if (!syncState?.remoteProjectId) {
-      return null;
-    }
+  ): Effect<SyncState | null> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Nothing to sync if no project item
+      if (!syncState?.remoteProjectId) {
+        return null;
+      }
 
-    // Get column for this status
-    const columnName = this.client.getColumnForStatus(newStatus);
-    if (!columnName) {
-      return null; // No column mapping for this status
-    }
+      // Get column for this status
+      const columnName = self.client.getColumnForStatus(newStatus);
+      if (!columnName) {
+        return null; // No column mapping for this status
+      }
 
-    const projectId = this.client.getProjectId();
-    if (!projectId) {
-      return null;
-    }
+      const projectId = self.client.getProjectId();
+      if (!projectId) {
+        return null;
+      }
 
-    try {
-      await this.client.moveToColumn(syncState.remoteProjectId, projectId, columnName);
-      return {
-        ...syncState,
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: null,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn(`Failed to sync status to provider: ${errorMessage}`);
-      return {
-        ...syncState,
-        lastSyncError: errorMessage,
-      };
-    }
+      try {
+        yield* self.client.moveToColumn(syncState.remoteProjectId!, projectId, columnName);
+        return {
+          ...syncState,
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn(`Failed to sync status to provider: ${errorMessage}`);
+        return {
+          ...syncState,
+          lastSyncError: errorMessage,
+        };
+      }
+    });
   }
 
   /**
@@ -157,73 +172,76 @@ export class ProjectManagementService extends Service<ProjectManagementService>(
    * @param labels - Task labels to sync (key-value pairs)
    * @returns Updated sync state, or null if nothing to sync
    */
-  async syncTaskLabels(
+  syncTaskLabels(
     syncState: SyncState | undefined,
     labels: Record<string, string> | undefined | null
-  ): Promise<SyncState | null> {
-    if (!syncState?.remoteProjectId) {
-      return null;
-    }
-
-    if (!labels || Object.keys(labels).length === 0) {
-      return null;
-    }
-
-    const projectId = this.client.getProjectId();
-    if (!projectId) {
-      return null;
-    }
-
-    const fieldMapping = this.client.getLabelFieldMapping();
-    if (Object.keys(fieldMapping).length === 0) {
-      return null; // No label field mapping configured
-    }
-
-    let hasError = false;
-    const errors: string[] = [];
-
-    for (const [labelKey, labelValue] of Object.entries(labels)) {
-      const fieldId = fieldMapping[labelKey];
-      if (!fieldId) {
-        continue; // Label not mapped - skip
+  ): Effect<SyncState | null> {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!syncState?.remoteProjectId) {
+        return null;
       }
 
-      try {
-        if (labelValue === "" || labelValue === null || labelValue === undefined) {
-          // Empty value - clear the field
-          const result = await this.client.clearProjectItemField(
-            projectId,
-            syncState.remoteProjectId,
-            fieldId
-          );
-          if (!result.success && result.error) {
-            hasError = true;
-            errors.push(`${labelKey}: ${result.error}`);
-          }
-        } else {
-          // Non-empty value - set the field
-          const result = await this.client.setProjectItemField(
-            projectId,
-            syncState.remoteProjectId,
-            fieldId,
-            labelValue
-          );
-          if (!result.success && result.error) {
-            hasError = true;
-            errors.push(`${labelKey}: ${result.error}`);
-          }
+      if (!labels || Object.keys(labels).length === 0) {
+        return null;
+      }
+
+      const projectId = self.client.getProjectId();
+      if (!projectId) {
+        return null;
+      }
+
+      const fieldMapping = self.client.getLabelFieldMapping();
+      if (Object.keys(fieldMapping).length === 0) {
+        return null; // No label field mapping configured
+      }
+
+      let hasError = false;
+      const errors: string[] = [];
+
+      for (const [labelKey, labelValue] of Object.entries(labels)) {
+        const fieldId = fieldMapping[labelKey];
+        if (!fieldId) {
+          continue; // Label not mapped - skip
         }
-      } catch (error) {
-        hasError = true;
-        errors.push(`${labelKey}: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
 
-    return {
-      ...syncState,
-      lastSyncedAt: new Date().toISOString(),
-      lastSyncError: hasError ? errors.join("; ") : null,
-    };
+        try {
+          if (labelValue === "" || labelValue === null || labelValue === undefined) {
+            // Empty value - clear the field
+            const result = yield* self.client.clearProjectItemField(
+              projectId,
+              syncState.remoteProjectId!,
+              fieldId
+            );
+            if (!result.success && result.error) {
+              hasError = true;
+              errors.push(`${labelKey}: ${result.error}`);
+            }
+          } else {
+            // Non-empty value - set the field
+            const result = yield* self.client.setProjectItemField(
+              projectId,
+              syncState.remoteProjectId!,
+              fieldId,
+              labelValue
+            );
+            if (!result.success && result.error) {
+              hasError = true;
+              errors.push(`${labelKey}: ${result.error}`);
+            }
+          }
+        } catch (error) {
+          hasError = true;
+          errors.push(`${labelKey}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
+      return {
+        ...syncState,
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: hasError ? errors.join("; ") : null,
+      };
+    });
   }
 
   /**
@@ -242,82 +260,85 @@ export class ProjectManagementService extends Service<ProjectManagementService>(
    * @param labels - Optional labels to sync to project fields
    * @returns Complete sync state ready to persist, or null if sync disabled
    */
-  async createProjectItem(
+  createProjectItem(
     params: CreateIssueParams,
     initialStatus: TaskStatus,
     labels?: Record<string, string> | null
-  ): Promise<SyncState | null> {
-    if (!this.client.isEnabled()) {
-      return null;
-    }
+  ): Effect<SyncState | null> {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!self.client.isEnabled()) {
+        return null;
+      }
 
-    const projectId = this.client.getProjectId();
+      const projectId = self.client.getProjectId();
 
-    try {
-      // 1. Create external issue
-      const externalIssue = await this.client.createIssue(params);
+      try {
+        // 1. Create external issue
+        const externalIssue = yield* self.client.createIssue(params);
 
-      // 2. Add to project board if configured
-      let remoteProjectId: string | null = null;
-      if (projectId && externalIssue.nodeId) {
-        const result = await this.client.addToProject(externalIssue.nodeId, projectId);
+        // 2. Add to project board if configured
+        let remoteProjectId: string | null = null;
+        if (projectId && externalIssue.nodeId) {
+          const result = yield* self.client.addToProject(externalIssue.nodeId!, projectId);
 
-        if (!result.success || !result.itemId) {
-          throw new Error(
-            result.error ?? `Project association returned empty item ID for project ${projectId}`
-          );
-        }
+          if (!result.success || !result.itemId) {
+            throw new Error(
+              result.error ?? `Project association returned empty item ID for project ${projectId}`
+            );
+          }
 
-        remoteProjectId = result.itemId;
+          remoteProjectId = result.itemId;
 
-        // 3. Move to initial column
-        const columnName = this.client.getColumnForStatus(initialStatus);
-        if (columnName) {
-          await this.client.moveToColumn(remoteProjectId, projectId, columnName);
-        }
+          // 3. Move to initial column
+          const columnName = self.client.getColumnForStatus(initialStatus);
+          if (columnName) {
+            yield* self.client.moveToColumn(remoteProjectId!, projectId, columnName);
+          }
 
-        // 4. Sync labels to project fields
-        if (labels && Object.keys(labels).length > 0) {
-          const fieldMapping = this.client.getLabelFieldMapping();
-          for (const [labelKey, labelValue] of Object.entries(labels)) {
-            const fieldId = fieldMapping[labelKey];
-            if (!fieldId) continue;
+          // 4. Sync labels to project fields
+          if (labels && Object.keys(labels).length > 0) {
+            const fieldMapping = self.client.getLabelFieldMapping();
+            for (const [labelKey, labelValue] of Object.entries(labels)) {
+              const fieldId = fieldMapping[labelKey];
+              if (!fieldId) continue;
 
-            if (labelValue) {
-              await this.client.setProjectItemField(
-                projectId,
-                remoteProjectId,
-                fieldId,
-                labelValue
-              );
+              if (labelValue) {
+                yield* self.client.setProjectItemField(
+                  projectId,
+                  remoteProjectId!,
+                  fieldId,
+                  labelValue
+                );
+              }
             }
           }
         }
-      }
 
-      // 5. Return complete sync state
-      return {
-        externalId: externalIssue.numericId?.toString() ?? externalIssue.id,
-        externalUrl: externalIssue.url,
-        externalNodeId: externalIssue.nodeId ?? null,
-        syncStatus: "SYNCED",
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: null,
-        remoteProjectId,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn(`Failed to create project item: ${errorMessage}`);
-      return {
-        externalId: null,
-        externalUrl: null,
-        externalNodeId: null,
-        syncStatus: "PUSH_FAILED",
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: errorMessage,
-        remoteProjectId: null,
-      };
-    }
+        // 5. Return complete sync state
+        return {
+          externalId: externalIssue.numericId?.toString() ?? externalIssue.id,
+          externalUrl: externalIssue.url,
+          externalNodeId: externalIssue.nodeId ?? null,
+          syncStatus: "SYNCED" as const,
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          remoteProjectId,
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn(`Failed to create project item: ${errorMessage}`);
+        return {
+          externalId: null,
+          externalUrl: null,
+          externalNodeId: null,
+          syncStatus: "PUSH_FAILED" as const,
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: errorMessage,
+          remoteProjectId: null,
+        };
+      }
+    });
   }
 
   /**
@@ -334,14 +355,14 @@ export class ProjectManagementService extends Service<ProjectManagementService>(
    * @returns Updated sync state, or null if nothing to close
    */
   closeIssue(syncState: SyncState | undefined, comment?: string): Effect<SyncState | null> {
-    const client = this.client;
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       if (!syncState?.externalId) {
         return null;
       }
 
       try {
-        await client.closeIssue(syncState.externalId, comment);
+        yield* self.client.closeIssue(syncState.externalId, comment);
         return {
           ...syncState,
           lastSyncedAt: new Date().toISOString(),
@@ -371,31 +392,34 @@ export class ProjectManagementService extends Service<ProjectManagementService>(
    * @param syncState - Current sync state (may be undefined)
    * @returns Updated sync state, or null if nothing to assign
    */
-  async autoAssign(syncState: SyncState | undefined): Promise<SyncState | null> {
-    if (!syncState?.externalId) {
-      return null;
-    }
+  autoAssign(syncState: SyncState | undefined): Effect<SyncState | null> {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!syncState?.externalId) {
+        return null;
+      }
 
-    const assignee = this.client.getAssignee();
-    if (!assignee) {
-      return null; // No assignee configured
-    }
+      const assignee = self.client.getAssignee();
+      if (!assignee) {
+        return null; // No assignee configured
+      }
 
-    try {
-      await this.client.assignIssue(syncState.externalId, assignee);
-      return {
-        ...syncState,
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: null,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn(`Failed to assign issue: ${errorMessage}`);
-      return {
-        ...syncState,
-        lastSyncError: errorMessage,
-      };
-    }
+      try {
+        yield* self.client.assignIssue(syncState.externalId!, assignee);
+        return {
+          ...syncState,
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn(`Failed to assign issue: ${errorMessage}`);
+        return {
+          ...syncState,
+          lastSyncError: errorMessage,
+        };
+      }
+    });
   }
 
   /**
@@ -405,26 +429,29 @@ export class ProjectManagementService extends Service<ProjectManagementService>(
    * @param body - Comment text
    * @returns Updated sync state, or null if nothing to comment on
    */
-  async addComment(syncState: SyncState | undefined, body: string): Promise<SyncState | null> {
-    if (!syncState?.externalId) {
-      return null;
-    }
+  addComment(syncState: SyncState | undefined, body: string): Effect<SyncState | null> {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!syncState?.externalId) {
+        return null;
+      }
 
-    try {
-      await this.client.addComment(syncState.externalId, body);
-      return {
-        ...syncState,
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: null,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn(`Failed to add comment: ${errorMessage}`);
-      return {
-        ...syncState,
-        lastSyncError: errorMessage,
-      };
-    }
+      try {
+        yield* self.client.addComment(syncState.externalId!, body);
+        return {
+          ...syncState,
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn(`Failed to add comment: ${errorMessage}`);
+        return {
+          ...syncState,
+          lastSyncError: errorMessage,
+        };
+      }
+    });
   }
 
   /**
@@ -433,26 +460,29 @@ export class ProjectManagementService extends Service<ProjectManagementService>(
    * @param syncState - Current sync state (may be undefined)
    * @returns Updated sync state, or null if nothing to reopen
    */
-  async reopenIssue(syncState: SyncState | undefined): Promise<SyncState | null> {
-    if (!syncState?.externalId) {
-      return null;
-    }
+  reopenIssue(syncState: SyncState | undefined): Effect<SyncState | null> {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!syncState?.externalId) {
+        return null;
+      }
 
-    try {
-      await this.client.reopenIssue(syncState.externalId);
-      return {
-        ...syncState,
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: null,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn(`Failed to reopen issue: ${errorMessage}`);
-      return {
-        ...syncState,
-        lastSyncError: errorMessage,
-      };
-    }
+      try {
+        yield* self.client.reopenIssue(syncState.externalId!);
+        return {
+          ...syncState,
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn(`Failed to reopen issue: ${errorMessage}`);
+        return {
+          ...syncState,
+          lastSyncError: errorMessage,
+        };
+      }
+    });
   }
 
   /**
@@ -465,64 +495,72 @@ export class ProjectManagementService extends Service<ProjectManagementService>(
    * @param labels - Optional labels to sync to project fields
    * @returns Updated sync state with remoteProjectId, or null if nothing to link
    */
-  async linkToProject(
+  linkToProject(
     syncState: SyncState | undefined,
     initialStatus: TaskStatus,
     labels?: Record<string, string> | null
-  ): Promise<SyncState | null> {
-    if (!syncState?.externalNodeId) {
-      return null;
-    }
-
-    const projectId = this.client.getProjectId();
-    if (!projectId) {
-      return null;
-    }
-
-    try {
-      const result = await this.client.addToProject(syncState.externalNodeId, projectId);
-
-      if (!result.success || !result.itemId) {
-        throw new Error(
-          result.error ?? `Project association returned empty item ID for project ${projectId}`
-        );
+  ): Effect<SyncState | null> {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!syncState?.externalNodeId) {
+        return null;
       }
 
-      const remoteProjectId = result.itemId;
-
-      // Move to initial column
-      const columnName = this.client.getColumnForStatus(initialStatus);
-      if (columnName) {
-        await this.client.moveToColumn(remoteProjectId, projectId, columnName);
+      const projectId = self.client.getProjectId();
+      if (!projectId) {
+        return null;
       }
 
-      // Sync labels to project fields
-      if (labels && Object.keys(labels).length > 0) {
-        const fieldMapping = this.client.getLabelFieldMapping();
-        for (const [labelKey, labelValue] of Object.entries(labels)) {
-          const fieldId = fieldMapping[labelKey];
-          if (!fieldId) continue;
+      try {
+        const result = yield* self.client.addToProject(syncState.externalNodeId!, projectId);
 
-          if (labelValue) {
-            await this.client.setProjectItemField(projectId, remoteProjectId, fieldId, labelValue);
+        if (!result.success || !result.itemId) {
+          throw new Error(
+            result.error ?? `Project association returned empty item ID for project ${projectId}`
+          );
+        }
+
+        const remoteProjectId = result.itemId;
+
+        // Move to initial column
+        const columnName = self.client.getColumnForStatus(initialStatus);
+        if (columnName) {
+          yield* self.client.moveToColumn(remoteProjectId, projectId, columnName);
+        }
+
+        // Sync labels to project fields
+        if (labels && Object.keys(labels).length > 0) {
+          const fieldMapping = self.client.getLabelFieldMapping();
+          for (const [labelKey, labelValue] of Object.entries(labels)) {
+            const fieldId = fieldMapping[labelKey];
+            if (!fieldId) continue;
+
+            if (labelValue) {
+              yield* self.client.setProjectItemField(
+                projectId,
+                remoteProjectId,
+                fieldId,
+                labelValue
+              );
+            }
           }
         }
-      }
 
-      return {
-        ...syncState,
-        remoteProjectId,
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: null,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn(`Failed to link to project: ${errorMessage}`);
-      return {
-        ...syncState,
-        lastSyncError: errorMessage,
-      };
-    }
+        return {
+          ...syncState,
+          remoteProjectId,
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn(`Failed to link to project: ${errorMessage}`);
+        return {
+          ...syncState,
+          lastSyncError: errorMessage,
+        };
+      }
+    });
   }
 
   /**
@@ -532,29 +570,32 @@ export class ProjectManagementService extends Service<ProjectManagementService>(
    * @param childSyncState - Child's sync state (must have externalId)
    * @returns Updated sync state, or null if nothing to link
    */
-  async linkParentChild(
+  linkParentChild(
     parentExternalId: string,
     childSyncState: SyncState | undefined
-  ): Promise<SyncState | null> {
-    if (!childSyncState?.externalId) {
-      return null;
-    }
+  ): Effect<SyncState | null> {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!childSyncState?.externalId) {
+        return null;
+      }
 
-    try {
-      await this.client.linkParentChild(parentExternalId, childSyncState.externalId);
-      return {
-        ...childSyncState,
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: null,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn(`Failed to link parent-child: ${errorMessage}`);
-      return {
-        ...childSyncState,
-        lastSyncError: errorMessage,
-      };
-    }
+      try {
+        yield* self.client.linkParentChild(parentExternalId, childSyncState.externalId!);
+        return {
+          ...childSyncState,
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn(`Failed to link parent-child: ${errorMessage}`);
+        return {
+          ...childSyncState,
+          lastSyncError: errorMessage,
+        };
+      }
+    });
   }
 
   // ===========================================================================
@@ -564,70 +605,74 @@ export class ProjectManagementService extends Service<ProjectManagementService>(
   /**
    * Get issue details from external system
    */
-  async getIssue(externalId: string) {
+  getIssue(externalId: string): Effect<ExternalIssue | null> {
     return this.client.getIssue(externalId);
   }
 
   /**
    * Search for issues in external system
    */
-  async searchIssues(query: string, state?: "open" | "closed" | "all", limit?: number) {
+  searchIssues(
+    query: string,
+    state?: "open" | "closed" | "all",
+    limit?: number
+  ): Effect<ExternalIssue[]> {
     return this.client.searchIssues(query, state, limit);
   }
 
   /**
    * Check authentication status
    */
-  async checkAuth() {
+  checkAuth(): Effect<AuthResult> {
     return this.client.checkAuth();
   }
 
   /**
    * Check repository accessibility
    */
-  async checkRepository() {
+  checkRepository(): Effect<RepositoryResult> {
     return this.client.checkRepository();
   }
 
   /**
    * Get project details
    */
-  async getProjectDetails(projectId: string) {
+  getProjectDetails(projectId: string): Effect<ProjectDetails | null> {
     return this.client.getProjectDetails(projectId);
   }
 
   /**
    * Get project status field
    */
-  async getProjectStatusField(projectId: string) {
+  getProjectStatusField(projectId: string): Effect<ProjectStatusField | null> {
     return this.client.getProjectStatusField(projectId);
   }
 
   /**
    * Get project fields
    */
-  async getProjectFields(projectId: string) {
+  getProjectFields(projectId: string): Effect<ProjectField[]> {
     return this.client.getProjectFields(projectId);
   }
 
   /**
    * Get available labels
    */
-  async getAvailableLabels() {
+  getAvailableLabels(): Effect<AvailableLabelsResult> {
     return this.client.getAvailableLabels();
   }
 
   /**
    * Check if a project exists
    */
-  async checkProject(projectId: string) {
+  checkProject(projectId: string): Effect<boolean> {
     return this.client.checkProject(projectId);
   }
 
   /**
    * Ensure labels exist in external system
    */
-  async ensureLabelsExist(labels: string[]) {
+  ensureLabelsExist(labels: string[]): Effect<void> {
     return this.client.ensureLabelsExist(labels);
   }
 
@@ -660,49 +705,58 @@ export class ProjectManagementService extends Service<ProjectManagementService>(
    * Create an issue in the external system (low-level)
    * For most cases, use createProjectItem() instead which handles full setup.
    */
-  async createIssue(params: CreateIssueParams) {
+  createIssue(params: CreateIssueParams): Effect<ExternalIssue> {
     return this.client.createIssue(params);
   }
 
   /**
    * Add an issue to a project board (low-level)
    */
-  async addToProject(nodeId: string, projectId: string) {
+  addToProject(nodeId: string, projectId: string): Effect<ProjectItemResult> {
     return this.client.addToProject(nodeId, projectId);
   }
 
   /**
    * Move an item to a column on a project board (low-level)
    */
-  async moveToColumn(itemId: string, projectId: string, columnName: string) {
+  moveToColumn(itemId: string, projectId: string, columnName: string): Effect<void> {
     return this.client.moveToColumn(itemId, projectId, columnName);
   }
 
   /**
    * Set a field value on a project item (low-level)
    */
-  async setProjectItemField(projectId: string, itemId: string, fieldId: string, value: string) {
+  setProjectItemField(
+    projectId: string,
+    itemId: string,
+    fieldId: string,
+    value: string
+  ): Effect<SetFieldResult> {
     return this.client.setProjectItemField(projectId, itemId, fieldId, value);
   }
 
   /**
    * Clear a field value on a project item (low-level)
    */
-  async clearProjectItemField(projectId: string, itemId: string, fieldId: string) {
+  clearProjectItemField(
+    projectId: string,
+    itemId: string,
+    fieldId: string
+  ): Effect<SetFieldResult> {
     return this.client.clearProjectItemField(projectId, itemId, fieldId);
   }
 
   /**
    * Assign an issue to a user (low-level)
    */
-  async assignIssue(externalId: string, assignee: string) {
+  assignIssue(externalId: string, assignee: string): Effect<void> {
     return this.client.assignIssue(externalId, assignee);
   }
 
   /**
    * Link issues as parent/child (low-level)
    */
-  async linkIssues(parentRef: string, childRef: string) {
+  linkIssues(parentRef: string, childRef: string): Effect<void> {
     return this.client.linkParentChild(parentRef, childRef);
   }
 }

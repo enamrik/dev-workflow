@@ -20,6 +20,7 @@
  * ```
  */
 
+import type { Effect } from "@dev-workflow/effect";
 import type { TaskStatus } from "../domain/tasks/task.js";
 import type {
   CreateIssueParams,
@@ -113,12 +114,12 @@ export interface ProjectManagementClient {
   /**
    * Check if the provider is authenticated and ready to use
    */
-  checkAuth(): Promise<AuthResult>;
+  checkAuth(): Effect<AuthResult>;
 
   /**
    * Check if the current repository/workspace is accessible
    */
-  checkRepository(): Promise<RepositoryResult>;
+  checkRepository(): Effect<RepositoryResult>;
 
   // ===========================================================================
   // Issue Operations (Low-Level API Calls)
@@ -129,7 +130,7 @@ export interface ProjectManagementClient {
    *
    * @throws ProjectManagementClientError on API failure
    */
-  createIssue(params: CreateIssueParams): Promise<ExternalIssue>;
+  createIssue(params: CreateIssueParams): Effect<ExternalIssue>;
 
   /**
    * Close an issue in the external system
@@ -138,7 +139,7 @@ export interface ProjectManagementClient {
    * @param comment - Optional comment to add when closing
    * @throws ProjectManagementClientError on API failure
    */
-  closeIssue(externalId: string, comment?: string): Promise<void>;
+  closeIssue(externalId: string, comment?: string): Effect<void>;
 
   /**
    * Reopen a closed issue
@@ -146,7 +147,7 @@ export interface ProjectManagementClient {
    * @param externalId - The external issue ID
    * @throws ProjectManagementClientError on API failure
    */
-  reopenIssue(externalId: string): Promise<void>;
+  reopenIssue(externalId: string): Effect<void>;
 
   /**
    * Get issue details
@@ -154,7 +155,7 @@ export interface ProjectManagementClient {
    * @param externalId - The external issue ID
    * @returns Issue data or null if not found
    */
-  getIssue(externalId: string): Promise<ExternalIssue | null>;
+  getIssue(externalId: string): Effect<ExternalIssue | null>;
 
   /**
    * Search for issues matching a query
@@ -167,7 +168,7 @@ export interface ProjectManagementClient {
     query: string,
     state?: "open" | "closed" | "all",
     limit?: number
-  ): Promise<ExternalIssue[]>;
+  ): Effect<ExternalIssue[]>;
 
   // ===========================================================================
   // Project/Board Operations (Low-Level API Calls)
@@ -180,7 +181,7 @@ export interface ProjectManagementClient {
    * @param projectId - Project/board identifier
    * @throws ProjectManagementClientError on API failure
    */
-  addToProject(nodeId: string, projectId: string): Promise<ProjectItemResult>;
+  addToProject(nodeId: string, projectId: string): Effect<ProjectItemResult>;
 
   /**
    * Move an issue to a specific column/status on a project board
@@ -190,7 +191,7 @@ export interface ProjectManagementClient {
    * @param columnName - Name of the column to move to
    * @throws ProjectManagementClientError on API failure
    */
-  moveToColumn(itemId: string, projectId: string, columnName: string): Promise<void>;
+  moveToColumn(itemId: string, projectId: string, columnName: string): Effect<void>;
 
   /**
    * Set a field value on a project item
@@ -206,7 +207,7 @@ export interface ProjectManagementClient {
     itemId: string,
     fieldId: string,
     value: string
-  ): Promise<SetFieldResult>;
+  ): Effect<SetFieldResult>;
 
   /**
    * Clear a field value on a project item
@@ -216,11 +217,7 @@ export interface ProjectManagementClient {
    * @param fieldId - Field identifier
    * @throws ProjectManagementClientError on API failure
    */
-  clearProjectItemField(
-    projectId: string,
-    itemId: string,
-    fieldId: string
-  ): Promise<SetFieldResult>;
+  clearProjectItemField(projectId: string, itemId: string, fieldId: string): Effect<SetFieldResult>;
 
   // ===========================================================================
   // Project Metadata Operations
@@ -229,27 +226,27 @@ export interface ProjectManagementClient {
   /**
    * Check if a project/board exists and is accessible
    */
-  checkProject(projectId: string): Promise<boolean>;
+  checkProject(projectId: string): Effect<boolean>;
 
   /**
    * Get project/board details
    */
-  getProjectDetails(projectId: string): Promise<ProjectDetails | null>;
+  getProjectDetails(projectId: string): Effect<ProjectDetails | null>;
 
   /**
    * Get the status field information for a project
    */
-  getProjectStatusField(projectId: string): Promise<ProjectStatusField | null>;
+  getProjectStatusField(projectId: string): Effect<ProjectStatusField | null>;
 
   /**
    * Get all fields for a project
    */
-  getProjectFields(projectId: string): Promise<ProjectField[]>;
+  getProjectFields(projectId: string): Effect<ProjectField[]>;
 
   /**
    * Get available labels for issues and tasks
    */
-  getAvailableLabels(): Promise<AvailableLabelsResult>;
+  getAvailableLabels(): Effect<AvailableLabelsResult>;
 
   // ===========================================================================
   // Label Operations
@@ -258,7 +255,7 @@ export interface ProjectManagementClient {
   /**
    * Ensure labels/tags exist in the external system
    */
-  ensureLabelsExist(labels: string[]): Promise<void>;
+  ensureLabelsExist(labels: string[]): Effect<void>;
 
   // ===========================================================================
   // Assignment
@@ -271,7 +268,7 @@ export interface ProjectManagementClient {
    * @param assignee - Username to assign
    * @throws ProjectManagementClientError on API failure
    */
-  assignIssue(externalId: string, assignee: string): Promise<void>;
+  assignIssue(externalId: string, assignee: string): Effect<void>;
 
   // ===========================================================================
   // Comments
@@ -284,7 +281,7 @@ export interface ProjectManagementClient {
    * @param body - Comment text (supports markdown)
    * @throws ProjectManagementClientError on API failure
    */
-  addComment(externalId: string, body: string): Promise<void>;
+  addComment(externalId: string, body: string): Effect<void>;
 
   // ===========================================================================
   // Hierarchical Issues
@@ -297,7 +294,7 @@ export interface ProjectManagementClient {
    * @param childRef - External ID of the child issue
    * @throws ProjectManagementClientError on API failure
    */
-  linkParentChild(parentRef: string, childRef: string): Promise<void>;
+  linkParentChild(parentRef: string, childRef: string): Effect<void>;
 }
 
 // =============================================================================
