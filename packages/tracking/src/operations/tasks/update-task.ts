@@ -50,66 +50,68 @@ export interface UpdateTaskResult {
 // Helpers
 // =============================================================================
 
-async function validateLabels(
+function validateLabels(
   labels: Record<string, string | null>,
   providerRegistry: ProjectManagementRegistry | null,
   project: Project | null,
   dbSource: DbSource | null,
   githubCLI: GitHubCLI | null
-): Promise<string | null> {
-  // Skip validation if provider context is not available
-  if (!providerRegistry || !project || !dbSource || !githubCLI) {
-    return null; // Graceful degradation - no validation
-  }
-
-  // Re-fetch project to get latest config
-  const latestProject = await dbSource.projects.findById(project.id);
-  if (!latestProject) {
-    return null; // Project not found - graceful degradation
-  }
-
-  // Get available labels from provider
-  const provider = providerRegistry.createProvider(latestProject, {
-    githubCLI,
-  });
-
-  const result = await provider.getAvailableLabels();
-
-  if (!result.supported || result.error) {
-    return null; // Provider doesn't support labels or errored - no validation
-  }
-
-  // Build lookup map for efficient validation
-  const availableLabelsMap = new Map<string, AvailableLabel>();
-  for (const label of result.labels) {
-    availableLabelsMap.set(label.name.toLowerCase(), label);
-  }
-
-  // Validate each label being set (ignore null values - those are removals)
-  const errors: string[] = [];
-  for (const [name, value] of Object.entries(labels)) {
-    if (value === null) continue; // Removal - no validation needed
-
-    const availableLabel = availableLabelsMap.get(name.toLowerCase());
-
-    if (!availableLabel) {
-      const availableNames = result.labels.map((l) => l.name).join(", ");
-      errors.push(`Unknown label "${name}". Available labels: ${availableNames}`);
-      continue;
+): Effect<string | null> {
+  return Effect.gen(function* () {
+    // Skip validation if provider context is not available
+    if (!providerRegistry || !project || !dbSource || !githubCLI) {
+      return null; // Graceful degradation - no validation
     }
 
-    // Check if value is valid (if label has constrained values)
-    if (availableLabel.validValues !== null && value !== "") {
-      const validValuesLower = availableLabel.validValues.map((v) => v.toLowerCase());
-      if (!validValuesLower.includes(value.toLowerCase())) {
-        errors.push(
-          `Invalid value "${value}" for label "${name}". Valid values: ${availableLabel.validValues.join(", ")}`
-        );
+    // Re-fetch project to get latest config
+    const latestProject = yield* dbSource.projects.findById(project.id);
+    if (!latestProject) {
+      return null; // Project not found - graceful degradation
+    }
+
+    // Get available labels from provider
+    const provider = providerRegistry.createProvider(latestProject, {
+      githubCLI,
+    });
+
+    const result = yield* provider.getAvailableLabels();
+
+    if (!result.supported || result.error) {
+      return null; // Provider doesn't support labels or errored - no validation
+    }
+
+    // Build lookup map for efficient validation
+    const availableLabelsMap = new Map<string, AvailableLabel>();
+    for (const label of result.labels) {
+      availableLabelsMap.set(label.name.toLowerCase(), label);
+    }
+
+    // Validate each label being set (ignore null values - those are removals)
+    const errors: string[] = [];
+    for (const [name, value] of Object.entries(labels)) {
+      if (value === null) continue; // Removal - no validation needed
+
+      const availableLabel = availableLabelsMap.get(name.toLowerCase());
+
+      if (!availableLabel) {
+        const availableNames = result.labels.map((l) => l.name).join(", ");
+        errors.push(`Unknown label "${name}". Available labels: ${availableNames}`);
+        continue;
+      }
+
+      // Check if value is valid (if label has constrained values)
+      if (availableLabel.validValues !== null && value !== "") {
+        const validValuesLower = availableLabel.validValues.map((v) => v.toLowerCase());
+        if (!validValuesLower.includes(value.toLowerCase())) {
+          errors.push(
+            `Invalid value "${value}" for label "${name}". Valid values: ${availableLabel.validValues.join(", ")}`
+          );
+        }
       }
     }
-  }
 
-  return errors.length > 0 ? errors.join("; ") : null;
+    return errors.length > 0 ? errors.join("; ") : null;
+  });
 }
 
 // =============================================================================
@@ -157,7 +159,7 @@ export function updateTask(input: UpdateTaskInput) {
       // Optional dependency
     }
 
-    const task = yield* Effect.promise(() => taskService.findById(taskId));
+    const task = yield* taskService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
@@ -173,8 +175,12 @@ export function updateTask(input: UpdateTaskInput) {
     // Handle labels - validate and merge with existing, null values remove labels
     if (labels !== undefined) {
       // Validate labels against available labels from provider
-      const validationError = yield* Effect.promise(() =>
-        validateLabels(labels, providerRegistry, project, dbSource, githubCLI)
+      const validationError = yield* validateLabels(
+        labels,
+        providerRegistry,
+        project,
+        dbSource,
+        githubCLI
       );
       if (validationError) {
         throw new Error(`Label validation failed: ${validationError}`);
@@ -197,7 +203,7 @@ export function updateTask(input: UpdateTaskInput) {
       updates.labels = Object.keys(mergedLabels).length > 0 ? mergedLabels : null;
     }
 
-    const updatedTask = yield* Effect.promise(() => taskService.update(taskId, updates));
+    const updatedTask = yield* taskService.update(taskId, updates);
 
     return {
       success: true,

@@ -50,9 +50,7 @@ export function updateTemplate(input: UpdateTemplateInput) {
     } = validateInput(UpdateTemplateSchema, input);
     const templateService = yield* TemplateService;
 
-    const template = yield* Effect.promise(() =>
-      templateService.updateTemplate(filename, content, category, scope)
-    );
+    const template = yield* templateService.updateTemplate(filename, content, category, scope);
 
     return {
       success: true,

@@ -50,9 +50,7 @@ export function createTemplate(input: CreateTemplateInput) {
     } = validateInput(CreateTemplateSchema, input);
     const templateService = yield* TemplateService;
 
-    const template = yield* Effect.promise(() =>
-      templateService.createTemplate(filename, content, category, scope)
-    );
+    const template = yield* templateService.createTemplate(filename, content, category, scope);
 
     return {
       success: true,

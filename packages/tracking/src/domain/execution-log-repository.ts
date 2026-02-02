@@ -5,6 +5,7 @@
 import { eq, inArray, asc } from "drizzle-orm";
 import { taskExecutionLogs } from "@dev-workflow/database/schema.js";
 import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
+import { Effect } from "@dev-workflow/effect";
 import type {
   ExecutionLog,
   ExecutionLogRepository,
@@ -17,66 +18,74 @@ import type {
 export class DrizzleExecutionLogRepository implements ExecutionLogRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  async create(data: CreateExecutionLogData): Promise<ExecutionLog> {
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
+  create(data: CreateExecutionLogData): Effect<ExecutionLog> {
+    return Effect.promise(async () => {
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
 
-    const row = {
-      id,
-      taskId: data.taskId,
-      sessionId: data.sessionId,
-      message: data.message,
-      filesModified: data.filesModified ?? null,
-      createdAt: now,
-    };
+      const row = {
+        id,
+        taskId: data.taskId,
+        sessionId: data.sessionId,
+        message: data.message,
+        filesModified: data.filesModified ?? null,
+        createdAt: now,
+      };
 
-    this.db.insert(taskExecutionLogs).values(row).run();
+      this.db.insert(taskExecutionLogs).values(row).run();
 
-    return this.mapRowToExecutionLog(row);
+      return this.mapRowToExecutionLog(row);
+    });
   }
 
-  async findByTaskId(taskId: string): Promise<ExecutionLog[]> {
-    const rows = this.db
-      .select()
-      .from(taskExecutionLogs)
-      .where(eq(taskExecutionLogs.taskId, taskId))
-      .orderBy(asc(taskExecutionLogs.createdAt))
-      .all();
+  findByTaskId(taskId: string): Effect<ExecutionLog[]> {
+    return Effect.promise(async () => {
+      const rows = this.db
+        .select()
+        .from(taskExecutionLogs)
+        .where(eq(taskExecutionLogs.taskId, taskId))
+        .orderBy(asc(taskExecutionLogs.createdAt))
+        .all();
 
-    return rows.map((row) => this.mapRowToExecutionLog(row));
+      return rows.map((row) => this.mapRowToExecutionLog(row));
+    });
   }
 
-  async findByTaskIds(taskIds: string[]): Promise<ExecutionLog[]> {
-    if (taskIds.length === 0) {
-      return [];
-    }
+  findByTaskIds(taskIds: string[]): Effect<ExecutionLog[]> {
+    return Effect.promise(async () => {
+      if (taskIds.length === 0) {
+        return [];
+      }
 
-    const rows = this.db
-      .select()
-      .from(taskExecutionLogs)
-      .where(inArray(taskExecutionLogs.taskId, taskIds))
-      .orderBy(asc(taskExecutionLogs.createdAt))
-      .all();
+      const rows = this.db
+        .select()
+        .from(taskExecutionLogs)
+        .where(inArray(taskExecutionLogs.taskId, taskIds))
+        .orderBy(asc(taskExecutionLogs.createdAt))
+        .all();
 
-    return rows.map((row) => this.mapRowToExecutionLog(row));
+      return rows.map((row) => this.mapRowToExecutionLog(row));
+    });
   }
 
-  async findWithFileModifications(taskIds: string[]): Promise<ExecutionLog[]> {
-    if (taskIds.length === 0) {
-      return [];
-    }
+  findWithFileModifications(taskIds: string[]): Effect<ExecutionLog[]> {
+    return Effect.promise(async () => {
+      if (taskIds.length === 0) {
+        return [];
+      }
 
-    const rows = this.db
-      .select()
-      .from(taskExecutionLogs)
-      .where(inArray(taskExecutionLogs.taskId, taskIds))
-      .orderBy(asc(taskExecutionLogs.createdAt))
-      .all();
+      const rows = this.db
+        .select()
+        .from(taskExecutionLogs)
+        .where(inArray(taskExecutionLogs.taskId, taskIds))
+        .orderBy(asc(taskExecutionLogs.createdAt))
+        .all();
 
-    // Filter to only logs with file modifications
-    return rows
-      .filter((row) => row.filesModified && row.filesModified.length > 0)
-      .map((row) => this.mapRowToExecutionLog(row));
+      // Filter to only logs with file modifications
+      return rows
+        .filter((row) => row.filesModified && row.filesModified.length > 0)
+        .map((row) => this.mapRowToExecutionLog(row));
+    });
   }
 
   private mapRowToExecutionLog(row: {

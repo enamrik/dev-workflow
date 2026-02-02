@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { Effect } from "@dev-workflow/effect";
 import { EntityNotFoundError } from "@dev-workflow/tracking";
 import { createTestContainer, createTestRequest, runTestEndpoint } from "@/lib/di/test-utils";
 
@@ -20,9 +21,9 @@ describe("getProjectEndpoint", () => {
   it("returns project info by slug", async () => {
     const testContainer = createTestContainer({
       projectsResolver: {
-        getProjectBySlug: async (slug: string) => {
-          if (slug === "project-one") return mockProject;
-          throw new EntityNotFoundError("Project", slug);
+        getProjectBySlug: (slug: string) => {
+          if (slug === "project-one") return Effect.succeed(mockProject);
+          return Effect.fail(new EntityNotFoundError("Project", slug));
         },
       },
     });
@@ -42,9 +43,7 @@ describe("getProjectEndpoint", () => {
   it("returns 404 when project not found", async () => {
     const testContainer = createTestContainer({
       projectsResolver: {
-        getProjectBySlug: async (slug: string) => {
-          throw new EntityNotFoundError("Project", slug);
-        },
+        getProjectBySlug: (slug: string) => Effect.fail(new EntityNotFoundError("Project", slug)),
       },
     });
 

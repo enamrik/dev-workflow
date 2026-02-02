@@ -1,3 +1,4 @@
+import { Effect } from "@dev-workflow/effect";
 import * as path from "node:path";
 import { execSync, spawnSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
@@ -88,7 +89,9 @@ export class InstallService {
     const source = this.sourceProvider.getOrCreate({ connectionString });
     const projectService = new ProjectService(source, this.gitOps);
 
-    this.project = await projectService.getOrCreateProject(this.workingDirectory);
+    this.project = await Effect.runPromise(
+      projectService.getOrCreateProject(this.workingDirectory)
+    );
     return this.project;
   }
 
@@ -449,7 +452,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
     const gitRootHash = this.gitOps.getInitialCommitHash(this.workingDirectory);
 
     // Look up by gitRootHash
-    return await source.projects.findByGitRootHash(gitRootHash);
+    return await Effect.runPromise(source.projects.findByGitRootHash(gitRootHash));
   }
 
   /**

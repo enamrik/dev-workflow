@@ -43,6 +43,6 @@ export function getSnapshotHistory(input: GetSnapshotHistoryInput) {
       throw new Error("Either issueId or issueNumber is required");
     }
 
-    return yield* Effect.promise(() => versioningService.getSnapshotHistory(resolvedIssueNumber));
+    return yield* versioningService.getSnapshotHistory(resolvedIssueNumber);
   });
 }

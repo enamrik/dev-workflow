@@ -5,6 +5,7 @@
  * This eliminates null checks at call sites - just call the provider.
  */
 
+import { Effect } from "@dev-workflow/effect";
 import type {
   ProjectManagementProvider,
   AuthResult,
@@ -68,122 +69,123 @@ export class NoOpProjectManagementProvider implements ProjectManagementProvider 
   // High-Level Operations - no-op
   // ===========================================================================
 
-  async moveItemToStatusColumn(
-    _itemId: string | null | undefined,
-    _status: TaskStatus
-  ): Promise<void> {
-    // No-op
+  moveItemToStatusColumn(_itemId: string | null | undefined, _status: TaskStatus): Effect<void> {
+    return Effect.succeed(undefined);
   }
 
-  async assignIssueToConfiguredUser(_issueRef: string): Promise<void> {
-    // No-op
+  assignIssueToConfiguredUser(_issueRef: string): Effect<void> {
+    return Effect.succeed(undefined);
   }
 
   // Auth/Validation - always "works" (nothing to check)
-  async checkAuth(): Promise<AuthResult> {
-    return { authenticated: true };
+  checkAuth(): Effect<AuthResult> {
+    return Effect.succeed({ authenticated: true });
   }
 
-  async checkRepository(): Promise<RepositoryResult> {
-    return { accessible: true };
+  checkRepository(): Effect<RepositoryResult> {
+    return Effect.succeed({ accessible: true });
   }
 
   // Issue Operations - no-op, throw for create (can't create without provider)
-  async createIssue(_params: CreateIssueParams): Promise<ExternalIssue> {
-    throw new Error("Cannot create external issue: no provider configured");
+  createIssue(_params: CreateIssueParams): Effect<ExternalIssue> {
+    return Effect.promise(() => {
+      throw new Error("Cannot create external issue: no provider configured");
+    });
   }
 
-  async updateIssue(_params: UpdateIssueParams): Promise<ExternalIssue> {
-    throw new Error("Cannot update external issue: no provider configured");
+  updateIssue(_params: UpdateIssueParams): Effect<ExternalIssue> {
+    return Effect.promise(() => {
+      throw new Error("Cannot update external issue: no provider configured");
+    });
   }
 
-  async closeIssue(_issue: Issue, _comment?: string): Promise<void> {
-    // No-op - nothing to close
+  closeIssue(_issue: Issue, _comment?: string): Effect<void> {
+    return Effect.succeed(undefined);
   }
 
-  async closeIssueByTask(_task: Task, _comment?: string): Promise<void> {
-    // No-op - nothing to close
+  closeIssueByTask(_task: Task, _comment?: string): Effect<void> {
+    return Effect.succeed(undefined);
   }
 
-  async reopenIssue(_issueRef: string): Promise<void> {
-    // No-op
+  reopenIssue(_issueRef: string): Effect<void> {
+    return Effect.succeed(undefined);
   }
 
-  async getIssue(_issueRef: string): Promise<ExternalIssue | null> {
-    return null;
+  getIssue(_issueRef: string): Effect<ExternalIssue | null> {
+    return Effect.succeed(null);
   }
 
-  async searchIssues(
+  searchIssues(
     _query: string,
     _state?: "open" | "closed" | "all",
     _limit?: number
-  ): Promise<ExternalIssue[]> {
-    return [];
+  ): Effect<ExternalIssue[]> {
+    return Effect.succeed([]);
   }
 
   // Labels - no-op
-  async ensureLabelsExist(_labels: string[]): Promise<void> {
-    // No-op
+  ensureLabelsExist(_labels: string[]): Effect<void> {
+    return Effect.succeed(undefined);
   }
 
   // Project Operations - no-op/not supported
-  async addToProject(_issueNodeId: string, _projectId: string): Promise<ProjectItemResult> {
-    return { success: false, error: "No provider configured" };
+  addToProject(_issueNodeId: string, _projectId: string): Effect<ProjectItemResult> {
+    return Effect.succeed({ success: false, error: "No provider configured" });
   }
 
-  async moveToColumn(_itemId: string, _projectId: string, _columnName: string): Promise<void> {
-    // No-op
+  moveToColumn(_itemId: string, _projectId: string, _columnName: string): Effect<void> {
+    return Effect.succeed(undefined);
   }
 
-  async checkProject(_projectId: string): Promise<boolean> {
-    return false;
+  checkProject(_projectId: string): Effect<boolean> {
+    return Effect.succeed(false);
   }
 
-  async getProjectDetails(_projectId: string): Promise<ProjectDetails | null> {
-    return null;
+  getProjectDetails(_projectId: string): Effect<ProjectDetails | null> {
+    return Effect.succeed(null);
   }
 
-  async getProjectStatusField(_projectId: string): Promise<ProjectStatusField | null> {
-    return null;
+  getProjectStatusField(_projectId: string): Effect<ProjectStatusField | null> {
+    return Effect.succeed(null);
   }
 
-  async getProjectFields(_projectId: string): Promise<ProjectField[]> {
-    return [];
+  getProjectFields(_projectId: string): Effect<ProjectField[]> {
+    return Effect.succeed([]);
   }
 
-  async setProjectItemField(
+  setProjectItemField(
     _projectId: string,
     _itemId: string,
     _fieldId: string,
     _value: string
-  ): Promise<SetFieldResult> {
-    return { success: false, error: "No provider configured" };
+  ): Effect<SetFieldResult> {
+    return Effect.succeed({ success: false, error: "No provider configured" });
   }
 
-  async clearProjectItemField(
+  clearProjectItemField(
     _projectId: string,
     _itemId: string,
     _fieldId: string
-  ): Promise<SetFieldResult> {
-    return { success: false, error: "No provider configured" };
+  ): Effect<SetFieldResult> {
+    return Effect.succeed({ success: false, error: "No provider configured" });
   }
 
-  async getAvailableLabels(): Promise<AvailableLabelsResult> {
-    return { supported: false, labels: [] };
+  getAvailableLabels(): Effect<AvailableLabelsResult> {
+    return Effect.succeed({ supported: false, labels: [] });
   }
 
   // Hierarchical - no-op
-  async linkParentChild(_parentRef: string, _childRef: string): Promise<void> {
-    // No-op
+  linkParentChild(_parentRef: string, _childRef: string): Effect<void> {
+    return Effect.succeed(undefined);
   }
 
   // Comments - no-op
-  async addComment(_issueRef: string, _body: string): Promise<void> {
-    // No-op
+  addComment(_issueRef: string, _body: string): Effect<void> {
+    return Effect.succeed(undefined);
   }
 
   // Assignment - no-op
-  async assignIssue(_issueRef: string, _assignee: string): Promise<void> {
-    // No-op
+  assignIssue(_issueRef: string, _assignee: string): Effect<void> {
+    return Effect.succeed(undefined);
   }
 }

@@ -5,6 +5,7 @@
  * This eliminates null checks at call sites - just call the client.
  */
 
+import { Effect } from "@dev-workflow/effect";
 import type {
   AuthResult,
   RepositoryResult,
@@ -62,124 +63,126 @@ export class NoOpProjectManagementClient implements ProjectManagementClient {
   // Authentication & Validation - always "works"
   // ===========================================================================
 
-  async checkAuth(): Promise<AuthResult> {
-    return { authenticated: true };
+  checkAuth(): Effect<AuthResult> {
+    return Effect.succeed({ authenticated: true });
   }
 
-  async checkRepository(): Promise<RepositoryResult> {
-    return { accessible: true };
+  checkRepository(): Effect<RepositoryResult> {
+    return Effect.succeed({ accessible: true });
   }
 
   // ===========================================================================
   // Issue Operations - no-op or throw
   // ===========================================================================
 
-  async createIssue(_params: CreateIssueParams): Promise<ExternalIssue> {
-    throw new Error("Cannot create external issue: no provider configured");
+  createIssue(_params: CreateIssueParams): Effect<ExternalIssue> {
+    return Effect.promise(() => {
+      throw new Error("Cannot create external issue: no provider configured");
+    });
   }
 
-  async closeIssue(_externalId: string, _comment?: string): Promise<void> {
-    // No-op - nothing to close
+  closeIssue(_externalId: string, _comment?: string): Effect<void> {
+    return Effect.succeed(undefined);
   }
 
-  async reopenIssue(_externalId: string): Promise<void> {
-    // No-op
+  reopenIssue(_externalId: string): Effect<void> {
+    return Effect.succeed(undefined);
   }
 
-  async getIssue(_externalId: string): Promise<ExternalIssue | null> {
-    return null;
+  getIssue(_externalId: string): Effect<ExternalIssue | null> {
+    return Effect.succeed(null);
   }
 
-  async searchIssues(
+  searchIssues(
     _query: string,
     _state?: "open" | "closed" | "all",
     _limit?: number
-  ): Promise<ExternalIssue[]> {
-    return [];
+  ): Effect<ExternalIssue[]> {
+    return Effect.succeed([]);
   }
 
   // ===========================================================================
   // Project/Board Operations - no-op
   // ===========================================================================
 
-  async addToProject(_nodeId: string, _projectId: string): Promise<ProjectItemResult> {
-    return { success: false, error: "No provider configured" };
+  addToProject(_nodeId: string, _projectId: string): Effect<ProjectItemResult> {
+    return Effect.succeed({ success: false, error: "No provider configured" });
   }
 
-  async moveToColumn(_itemId: string, _projectId: string, _columnName: string): Promise<void> {
-    // No-op
+  moveToColumn(_itemId: string, _projectId: string, _columnName: string): Effect<void> {
+    return Effect.succeed(undefined);
   }
 
-  async setProjectItemField(
+  setProjectItemField(
     _projectId: string,
     _itemId: string,
     _fieldId: string,
     _value: string
-  ): Promise<SetFieldResult> {
-    return { success: false, error: "No provider configured" };
+  ): Effect<SetFieldResult> {
+    return Effect.succeed({ success: false, error: "No provider configured" });
   }
 
-  async clearProjectItemField(
+  clearProjectItemField(
     _projectId: string,
     _itemId: string,
     _fieldId: string
-  ): Promise<SetFieldResult> {
-    return { success: false, error: "No provider configured" };
+  ): Effect<SetFieldResult> {
+    return Effect.succeed({ success: false, error: "No provider configured" });
   }
 
   // ===========================================================================
   // Project Metadata Operations - no-op
   // ===========================================================================
 
-  async checkProject(_projectId: string): Promise<boolean> {
-    return false;
+  checkProject(_projectId: string): Effect<boolean> {
+    return Effect.succeed(false);
   }
 
-  async getProjectDetails(_projectId: string): Promise<ProjectDetails | null> {
-    return null;
+  getProjectDetails(_projectId: string): Effect<ProjectDetails | null> {
+    return Effect.succeed(null);
   }
 
-  async getProjectStatusField(_projectId: string): Promise<ProjectStatusField | null> {
-    return null;
+  getProjectStatusField(_projectId: string): Effect<ProjectStatusField | null> {
+    return Effect.succeed(null);
   }
 
-  async getProjectFields(_projectId: string): Promise<ProjectField[]> {
-    return [];
+  getProjectFields(_projectId: string): Effect<ProjectField[]> {
+    return Effect.succeed([]);
   }
 
-  async getAvailableLabels(): Promise<AvailableLabelsResult> {
-    return { supported: false, labels: [] };
+  getAvailableLabels(): Effect<AvailableLabelsResult> {
+    return Effect.succeed({ supported: false, labels: [] });
   }
 
   // ===========================================================================
   // Labels - no-op
   // ===========================================================================
 
-  async ensureLabelsExist(_labels: string[]): Promise<void> {
-    // No-op
+  ensureLabelsExist(_labels: string[]): Effect<void> {
+    return Effect.succeed(undefined);
   }
 
   // ===========================================================================
   // Assignment - no-op
   // ===========================================================================
 
-  async assignIssue(_externalId: string, _assignee: string): Promise<void> {
-    // No-op
+  assignIssue(_externalId: string, _assignee: string): Effect<void> {
+    return Effect.succeed(undefined);
   }
 
   // ===========================================================================
   // Comments - no-op
   // ===========================================================================
 
-  async addComment(_externalId: string, _body: string): Promise<void> {
-    // No-op
+  addComment(_externalId: string, _body: string): Effect<void> {
+    return Effect.succeed(undefined);
   }
 
   // ===========================================================================
   // Hierarchical Issues - no-op
   // ===========================================================================
 
-  async linkParentChild(_parentRef: string, _childRef: string): Promise<void> {
-    // No-op
+  linkParentChild(_parentRef: string, _childRef: string): Effect<void> {
+    return Effect.succeed(undefined);
   }
 }

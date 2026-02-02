@@ -50,6 +50,8 @@ export default tseslint.config(
       "@typescript-eslint/no-explicit-any": "warn",
       // Allow require imports for Node.js compatibility
       "@typescript-eslint/no-require-imports": "off",
+      // Allow `const self = this;` — required for Effect.gen(function*() { }) pattern
+      "@typescript-eslint/no-this-alias": "off",
     },
   },
 

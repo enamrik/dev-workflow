@@ -28,6 +28,6 @@ export function viewSnapshot(input: ViewSnapshotInput) {
     const { issueNumber, version } = validateInput(ViewSnapshotSchema, input);
     const versioningService = yield* VersioningService;
 
-    return yield* Effect.promise(() => versioningService.viewSnapshot(issueNumber, version));
+    return yield* versioningService.viewSnapshot(issueNumber, version);
   });
 }

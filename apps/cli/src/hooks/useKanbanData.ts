@@ -13,6 +13,7 @@ import {
   type ProjectInfo,
   type IssueStatus,
 } from "@dev-workflow/tracking";
+import { Effect } from "@dev-workflow/effect";
 
 /**
  * Task with additional context for Kanban display
@@ -96,7 +97,7 @@ async function fetchKanbanData(dbPath: string, projectId: string): Promise<Kanba
 
   try {
     // Get project first (projects is a global repo on source)
-    const project = await source.projects.findById(projectId);
+    const project = await Effect.runPromise(source.projects.findById(projectId));
     if (!project) {
       return null;
     }
@@ -104,7 +105,7 @@ async function fetchKanbanData(dbPath: string, projectId: string): Promise<Kanba
     // Create BoardQueryService with DbClient and worker queue
     const boardService = new BoardQueryService(client, workerQueueDb);
 
-    const boardData = await boardService.getBoardData();
+    const boardData = await Effect.runPromise(boardService.getBoardData());
 
     // Map BoardTask to KanbanTask for backward compatibility
     const columns = boardData.columns.map((col) => ({
@@ -136,7 +137,7 @@ async function fetchKanbanData(dbPath: string, projectId: string): Promise<Kanba
     }));
 
     // Get active issues for the ribbon
-    const issuesWithTasks = await boardService.getActiveIssuesWithTasks();
+    const issuesWithTasks = await Effect.runPromise(boardService.getActiveIssuesWithTasks());
     const issues: KanbanIssue[] = issuesWithTasks.map(
       ({ issue, plan, tasks, milestone }): KanbanIssue => ({
         id: issue.id,
@@ -364,7 +365,7 @@ export function useKanbanActions(
         if (!services) {
           return { success: false, message: "Services not initialized" };
         }
-        await services.taskService.moveToBacklog(taskId);
+        await Effect.runPromise(services.taskService.moveToBacklog(taskId));
         onActionComplete?.();
         return { success: true, message: "Task moved to backlog" };
       } catch (error) {
@@ -384,7 +385,7 @@ export function useKanbanActions(
         if (!services) {
           return { success: false, message: "Services not initialized" };
         }
-        await services.taskService.moveToReady(taskId);
+        await Effect.runPromise(services.taskService.moveToReady(taskId));
         onActionComplete?.();
         return { success: true, message: "Task moved to ready" };
       } catch (error) {
@@ -404,7 +405,7 @@ export function useKanbanActions(
         if (!services) {
           return { success: false, message: "Services not initialized" };
         }
-        await services.taskService.start(taskId);
+        await Effect.runPromise(services.taskService.start(taskId));
         onActionComplete?.();
         return { success: true, message: "Task started" };
       } catch (error) {
@@ -424,7 +425,7 @@ export function useKanbanActions(
         if (!services) {
           return { success: false, message: "Services not initialized" };
         }
-        await services.taskService.submitForReview(taskId);
+        await Effect.runPromise(services.taskService.submitForReview(taskId));
         onActionComplete?.();
         return { success: true, message: "Task submitted for review" };
       } catch (error) {
@@ -444,7 +445,7 @@ export function useKanbanActions(
         if (!services) {
           return { success: false, message: "Services not initialized" };
         }
-        await services.taskService.complete(taskId);
+        await Effect.runPromise(services.taskService.complete(taskId));
         onActionComplete?.();
         return { success: true, message: "Task completed" };
       } catch (error) {
@@ -464,7 +465,7 @@ export function useKanbanActions(
         if (!services) {
           return { success: false, message: "Services not initialized" };
         }
-        await services.taskService.abandonTask(taskId);
+        await Effect.runPromise(services.taskService.abandonTask(taskId));
         onActionComplete?.();
         return { success: true, message: "Task abandoned" };
       } catch (error) {
@@ -484,7 +485,7 @@ export function useKanbanActions(
         if (!services) {
           return { success: false, message: "Services not initialized" };
         }
-        await services.issueService.updateStatus(issueId, status);
+        await Effect.runPromise(services.issueService.updateStatus(issueId, status));
         onActionComplete?.();
         return { success: true, message: `Issue status updated to ${status}` };
       } catch (error) {
@@ -504,7 +505,7 @@ export function useKanbanActions(
         if (!services) {
           return { success: false, message: "Services not initialized" };
         }
-        await services.issueService.closeIssue(issueId, true); // force=true to abandon incomplete tasks
+        await Effect.runPromise(services.issueService.closeIssue(issueId, true)); // force=true to abandon incomplete tasks
         onActionComplete?.();
         return { success: true, message: "Issue closed" };
       } catch (error) {
@@ -526,11 +527,13 @@ export function useKanbanActions(
         }
 
         // Get all tasks for the issue and move BACKLOG ones to READY
-        const tasks = await services.taskService.getIncompleteTasksForIssue(issueId);
+        const tasks = await Effect.runPromise(
+          services.taskService.getIncompleteTasksForIssue(issueId)
+        );
         let activated = 0;
         for (const task of tasks) {
           if (task.status === "BACKLOG") {
-            await services.taskService.moveToReady(task.id);
+            await Effect.runPromise(services.taskService.moveToReady(task.id));
             activated++;
           }
         }

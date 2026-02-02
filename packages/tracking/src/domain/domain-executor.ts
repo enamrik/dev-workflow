@@ -101,6 +101,8 @@ export class DomainExecutorFactory extends Service<DomainExecutorFactory>()("dom
       transaction: <T, E>(fn: (tx: DomainServices) => Effect<T, E, never>): Effect<T, E, never> => {
         return Effect.tryPromise({
           try: () =>
+            // db.transaction requires a Promise callback - Effect.runPromise is the
+            // correct boundary between Effect and the Promise-based transaction API
             db.transaction(async (txClient) => {
               const txServices = this.buildServices(txClient);
               return Effect.runPromise(fn(txServices));

@@ -48,13 +48,13 @@ export function getTaskExecutionLog(input: GetTaskExecutionLogInput) {
     const dbClient = yield* DbClientTag;
 
     // Verify task exists
-    const task = yield* Effect.promise(() => taskService.findById(taskId));
+    const task = yield* taskService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
 
     // Get all execution log entries for this task
-    const logs = yield* Effect.promise(() => dbClient.executionLogs.findByTaskId(taskId));
+    const logs = yield* dbClient.executionLogs.findByTaskId(taskId);
 
     const entries = logs.map((log) => ({
       id: log.id,

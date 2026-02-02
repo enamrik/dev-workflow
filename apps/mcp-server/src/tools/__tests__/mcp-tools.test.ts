@@ -134,14 +134,16 @@ async function generatePlanTool(
     resolvedIssueId = issue.id;
   }
 
-  const result = await planningService.generatePlan({
-    issueId: resolvedIssueId!,
-    summary: params.summary,
-    approach: params.approach,
-    tasks: params.tasks,
-    estimatedComplexity: params.estimatedComplexity,
-    generatedBy: "test",
-  });
+  const result = await Effect.runPromise(
+    planningService.generatePlan({
+      issueId: resolvedIssueId!,
+      summary: params.summary,
+      approach: params.approach,
+      tasks: params.tasks,
+      estimatedComplexity: params.estimatedComplexity,
+      generatedBy: "test",
+    })
+  );
 
   return { success: true, ...result };
 }
@@ -174,7 +176,7 @@ async function deleteTaskTool(
   params: { taskId: string }
 ): Promise<ToolResult> {
   try {
-    const task = await taskManagementService.deleteTask(params.taskId, "test");
+    const task = await Effect.runPromise(taskManagementService.deleteTask(params.taskId, "test"));
     return { success: true, task };
   } catch (error) {
     return {
@@ -192,7 +194,9 @@ async function viewSnapshotTool(
   params: { issueNumber: number; version: number }
 ): Promise<ToolResult> {
   try {
-    const snapshotData = await versioningService.viewSnapshot(params.issueNumber, params.version);
+    const snapshotData = await Effect.runPromise(
+      versioningService.viewSnapshot(params.issueNumber, params.version)
+    );
     return { success: true, ...snapshotData };
   } catch (error) {
     return {
@@ -210,11 +214,8 @@ async function revertToSnapshotTool(
   params: { issueNumber: number; version: number; notes?: string }
 ): Promise<ToolResult> {
   try {
-    const result = await versioningService.revertToSnapshot(
-      params.issueNumber,
-      params.version,
-      "test",
-      params.notes
+    const result = await Effect.runPromise(
+      versioningService.revertToSnapshot(params.issueNumber, params.version, "test", params.notes)
     );
     return { success: true, ...result };
   } catch (error) {
@@ -375,7 +376,7 @@ describe("MCP Tool: generate_plan", () => {
 
     // Verify plan in database
     const issue = await Effect.runPromise(testDb.client.issues.findByNumber(1));
-    const plan = await testDb.client.plans.findByIssueId(issue!.id);
+    const plan = await Effect.runPromise(testDb.client.plans.findByIssueId(issue!.id));
     expect(plan).toBeDefined();
     expect(plan?.summary).toBe("Test plan summary");
 
@@ -433,7 +434,7 @@ describe("MCP Tool: update_task_status", () => {
     });
 
     const issue = await Effect.runPromise(testDb.client.issues.findByNumber(1));
-    const plan = await testDb.client.plans.findByIssueId(issue!.id);
+    const plan = await Effect.runPromise(testDb.client.plans.findByIssueId(issue!.id));
     const tasks = await Effect.runPromise(testDb.client.tasks.findByPlanId(plan!.id));
     const taskId = tasks[0]!.id;
 
@@ -471,7 +472,7 @@ describe("MCP Tool: update_task_status", () => {
     });
 
     const issue = await Effect.runPromise(testDb.client.issues.findByNumber(1));
-    const plan = await testDb.client.plans.findByIssueId(issue!.id);
+    const plan = await Effect.runPromise(testDb.client.plans.findByIssueId(issue!.id));
     const tasks = await Effect.runPromise(testDb.client.tasks.findByPlanId(plan!.id));
     const taskId = tasks[0]!.id;
 
@@ -530,7 +531,7 @@ describe("MCP Tool: delete_task", () => {
     });
 
     const issue = await Effect.runPromise(testDb.client.issues.findByNumber(1));
-    const plan = await testDb.client.plans.findByIssueId(issue!.id);
+    const plan = await Effect.runPromise(testDb.client.plans.findByIssueId(issue!.id));
     const tasks = await Effect.runPromise(testDb.client.tasks.findByPlanId(plan!.id));
     const taskId = tasks[0]!.id;
 
@@ -574,7 +575,7 @@ describe("MCP Tool: delete_task", () => {
     });
 
     const issue = await Effect.runPromise(testDb.client.issues.findByNumber(1));
-    const plan = await testDb.client.plans.findByIssueId(issue!.id);
+    const plan = await Effect.runPromise(testDb.client.plans.findByIssueId(issue!.id));
     const tasks = await Effect.runPromise(testDb.client.tasks.findByPlanId(plan!.id));
     const taskId = tasks[0]!.id;
 
@@ -611,7 +612,7 @@ describe("MCP Tool: delete_task", () => {
     });
 
     const issue = await Effect.runPromise(testDb.client.issues.findByNumber(1));
-    const plan = await testDb.client.plans.findByIssueId(issue!.id);
+    const plan = await Effect.runPromise(testDb.client.plans.findByIssueId(issue!.id));
     const tasks = await Effect.runPromise(testDb.client.tasks.findByPlanId(plan!.id));
     const taskId = tasks[0]!.id;
 
@@ -653,14 +654,16 @@ describe("MCP Tool: view_snapshot", () => {
 
     // Create a snapshot (version 1) with original state
     const snapshotType: SnapshotType = "PLAN_REGENERATION";
-    await versioningService.createSnapshot(issue!.number, snapshotType, "test");
+    await Effect.runPromise(versioningService.createSnapshot(issue!.number, snapshotType, "test"));
 
     // Update the issue
     await Effect.runPromise(testDb.client.issues.update(issue!.id, { title: "Updated Title" }));
 
     // Create another snapshot (version 2)
     const updateSnapshotType: SnapshotType = "ISSUE_UPDATE";
-    await versioningService.createSnapshot(issue!.number, updateSnapshotType, "test");
+    await Effect.runPromise(
+      versioningService.createSnapshot(issue!.number, updateSnapshotType, "test")
+    );
 
     // View version 1
     const result = await viewSnapshotTool(versioningService, {
@@ -714,7 +717,7 @@ describe("MCP Tool: revert_to_snapshot", () => {
 
     // Create snapshot v1
     const snapshotType: SnapshotType = "PLAN_REGENERATION";
-    await versioningService.createSnapshot(issue!.number, snapshotType, "test");
+    await Effect.runPromise(versioningService.createSnapshot(issue!.number, snapshotType, "test"));
 
     // Update issue
     await Effect.runPromise(testDb.client.issues.update(issue!.id, { title: "Changed Title" }));
@@ -832,7 +835,7 @@ describe("MCP Tool: list_available_tasks", () => {
     });
 
     const issue = await Effect.runPromise(testDb.client.issues.findByNumber(1));
-    const plan = await testDb.client.plans.findByIssueId(issue!.id);
+    const plan = await Effect.runPromise(testDb.client.plans.findByIssueId(issue!.id));
     const tasks = await Effect.runPromise(testDb.client.tasks.findByPlanId(plan!.id));
     const task = tasks[0]!;
 
@@ -840,7 +843,7 @@ describe("MCP Tool: list_available_tasks", () => {
     await Effect.runPromise(testDb.client.tasks.updateStatus(task.id, "BACKLOG"));
 
     // Check task availability
-    const isAvailable = await taskSessionService.isTaskAvailable(task.id);
+    const isAvailable = await Effect.runPromise(taskSessionService.isTaskAvailable(task.id));
 
     expect(isAvailable).toBe(true);
   });
@@ -862,7 +865,7 @@ describe("MCP Tool: list_available_tasks", () => {
     });
 
     const issue = await Effect.runPromise(testDb.client.issues.findByNumber(1));
-    const plan = await testDb.client.plans.findByIssueId(issue!.id);
+    const plan = await Effect.runPromise(testDb.client.plans.findByIssueId(issue!.id));
     const tasks = await Effect.runPromise(testDb.client.tasks.findByPlanId(plan!.id));
     const task = tasks[0]!;
 
@@ -873,7 +876,7 @@ describe("MCP Tool: list_available_tasks", () => {
     await Effect.runPromise(testDb.client.issues.update(issue!.id, { status: "CLOSED" }));
 
     // Check task availability - should be false because issue is closed
-    const isAvailable = await taskSessionService.isTaskAvailable(task.id);
+    const isAvailable = await Effect.runPromise(taskSessionService.isTaskAvailable(task.id));
 
     expect(isAvailable).toBe(false);
   });
@@ -895,7 +898,7 @@ describe("MCP Tool: list_available_tasks", () => {
     });
 
     const issue = await Effect.runPromise(testDb.client.issues.findByNumber(1));
-    const plan = await testDb.client.plans.findByIssueId(issue!.id);
+    const plan = await Effect.runPromise(testDb.client.plans.findByIssueId(issue!.id));
     const tasks = await Effect.runPromise(testDb.client.tasks.findByPlanId(plan!.id));
     const task = tasks[0]!;
 
@@ -904,11 +907,11 @@ describe("MCP Tool: list_available_tasks", () => {
 
     // Close the issue
     await Effect.runPromise(testDb.client.issues.update(issue!.id, { status: "CLOSED" }));
-    expect(await taskSessionService.isTaskAvailable(task.id)).toBe(false);
+    expect(await Effect.runPromise(taskSessionService.isTaskAvailable(task.id))).toBe(false);
 
     // Reopen the issue
     await Effect.runPromise(testDb.client.issues.update(issue!.id, { status: "OPEN" }));
-    expect(await taskSessionService.isTaskAvailable(task.id)).toBe(true);
+    expect(await Effect.runPromise(taskSessionService.isTaskAvailable(task.id))).toBe(true);
   });
 });
 

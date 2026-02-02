@@ -90,23 +90,26 @@ export class TaskSessionService extends Service<TaskSessionService>()("taskSessi
   /**
    * Get the issue number for a task by looking up its plan and issue
    */
-  private async getIssueNumberForTask(taskId: string): Promise<number> {
-    const task = await Effect.runPromise(this.db.tasks.findById(taskId));
-    if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
+  private getIssueNumberForTask(taskId: string): Effect<number> {
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.db.tasks.findById(taskId);
+      if (!task) {
+        throw new Error(`Task not found: ${taskId}`);
+      }
 
-    const plan = await this.db.plans.findById(task.planId);
-    if (!plan) {
-      throw new Error(`Plan not found for task: ${taskId}`);
-    }
+      const plan = yield* self.db.plans.findById(task.planId);
+      if (!plan) {
+        throw new Error(`Plan not found for task: ${taskId}`);
+      }
 
-    const issue = await Effect.runPromise(this.db.issues.findById(plan.issueId));
-    if (!issue) {
-      throw new Error(`Issue not found for task: ${taskId}`);
-    }
+      const issue = yield* self.db.issues.findById(plan.issueId);
+      if (!issue) {
+        throw new Error(`Issue not found for task: ${taskId}`);
+      }
 
-    return issue.number;
+      return issue.number;
+    });
   }
 
   /**
@@ -121,183 +124,188 @@ export class TaskSessionService extends Service<TaskSessionService>()("taskSessi
    *
    * @returns TaskSession with `resumed: true` if task was already started, `false` if fresh start
    */
-  async startTaskSession(request: StartTaskSessionRequest): Promise<TaskSession> {
-    const { taskId, sessionId, mode = "isolated" } = request;
+  startTaskSession(request: StartTaskSessionRequest): Effect<TaskSession> {
+    const self = this;
+    return Effect.gen(function* () {
+      const { taskId, sessionId, mode = "isolated" } = request;
 
-    // Get task and validate
-    const task = await Effect.runPromise(this.db.tasks.findById(taskId));
-    if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
+      // Get task and validate
+      const task = yield* self.db.tasks.findById(taskId);
+      if (!task) {
+        throw new Error(`Task not found: ${taskId}`);
+      }
 
-    // Terminal states - reject (caller should handle these gracefully)
-    if (task.isTerminal) {
-      throw new Error(
-        `Cannot start session for task in terminal state: ${task.status}. ` +
-          "Task is already done."
-      );
-    }
+      // Terminal states - reject (caller should handle these gracefully)
+      if (task.isTerminal) {
+        throw new Error(
+          `Cannot start session for task in terminal state: ${task.status}. ` +
+            "Task is already done."
+        );
+      }
 
-    // Determine if this is a fresh start or resume
-    // Resume if: startedAt is set, OR task is already active (IN_PROGRESS/PR_REVIEW)
-    // (handles inconsistent states where task was created directly without proper flow)
-    const isResume = (task.startedAt !== undefined && task.startedAt !== null) || task.isActive;
+      // Determine if this is a fresh start or resume
+      // Resume if: startedAt is set, OR task is already active (IN_PROGRESS/PR_REVIEW)
+      // (handles inconsistent states where task was created directly without proper flow)
+      const isResume = (task.startedAt !== undefined && task.startedAt !== null) || task.isActive;
 
-    const now = new Date().toISOString();
-    const issueNumber = await this.getIssueNumberForTask(taskId);
+      const now = new Date().toISOString();
+      const issueNumber = yield* self.getIssueNumberForTask(taskId);
 
-    // For fresh starts only: validate dependencies and run conflict detection
-    let conflictWarnings: ConflictWarning[] | undefined;
-    if (!isResume) {
-      // Check if dependencies are satisfied
-      if (!(await this.dependencyService.areDependenciesSatisfied(task))) {
-        const blockingTasks = await this.dependencyService.getBlockingDependencies(task);
-        const blockingDetails = await Promise.all(
-          blockingTasks.map(async (t: Task) => {
-            // Resolve issue number for each blocking task
-            const blockingPlan = await this.db.plans.findById(t.planId);
+      // For fresh starts only: validate dependencies and run conflict detection
+      let conflictWarnings: ConflictWarning[] | undefined;
+      if (!isResume) {
+        // Check if dependencies are satisfied
+        const depsSatisfied = yield* self.dependencyService.areDependenciesSatisfied(task);
+        if (!depsSatisfied) {
+          const blockingTasks = yield* self.dependencyService.getBlockingDependencies(task);
+          const blockingDetails: {
+            id: string;
+            number: number;
+            title: string;
+            status: string;
+            issueNumber: number | null;
+          }[] = [];
+          for (const t of blockingTasks) {
+            const blockingPlan = yield* self.db.plans.findById(t.planId);
             const blockingIssue = blockingPlan
-              ? await Effect.runPromise(this.db.issues.findById(blockingPlan.issueId))
+              ? yield* self.db.issues.findById(blockingPlan.issueId)
               : null;
-            return {
+            blockingDetails.push({
               id: t.id,
               number: t.number,
               title: t.title,
               status: t.status,
               issueNumber: blockingIssue?.number ?? null,
-            };
-          })
-        );
-        throw new DependencyNotSatisfiedError(taskId, task.title, blockingDetails);
-      }
-
-      // Run conflict detection if service available (non-blocking)
-      if (this.conflictDetectionService) {
-        try {
-          const result = await this.conflictDetectionService.detectConflicts(taskId);
-          if (result.hasConflicts) {
-            conflictWarnings = result.warnings;
+            });
           }
-        } catch {
-          // Conflict detection failures should not block task start
-          console.warn(`Conflict detection failed for task ${taskId}`);
+          throw new DependencyNotSatisfiedError(taskId, task.title, blockingDetails);
+        }
+
+        // Run conflict detection if service available (non-blocking)
+        if (self.conflictDetectionService) {
+          try {
+            const result = yield* self.conflictDetectionService.detectConflicts(taskId);
+            if (result.hasConflicts) {
+              conflictWarnings = result.warnings;
+            }
+          } catch {
+            // Conflict detection failures should not block task start
+            console.warn(`Conflict detection failed for task ${taskId}`);
+          }
         }
       }
-    }
 
-    // Setup worktree/branch based on execution mode (only if doesn't exist)
-    let worktreePath: string | undefined = task.worktreePath;
-    let branchName: string | undefined = task.branchName;
+      // Setup worktree/branch based on execution mode (only if doesn't exist)
+      let worktreePath: string | undefined = task.worktreePath;
+      let branchName: string | undefined = task.branchName;
 
-    if (mode === "isolated" && !worktreePath) {
-      // Isolated mode: create worktree + branch (only if not already created)
-      if (!this.gitWorktreeService) {
-        throw new Error(
-          "GitWorktreeService is required for 'isolated' mode. " +
-            "Use 'branch' or 'main' mode if git worktrees are not available."
+      if (mode === "isolated" && !worktreePath) {
+        // Isolated mode: create worktree + branch (only if not already created)
+        if (!self.gitWorktreeService) {
+          throw new Error(
+            "GitWorktreeService is required for 'isolated' mode. " +
+              "Use 'branch' or 'main' mode if git worktrees are not available."
+          );
+        }
+
+        const names = generateWorktreeNames(
+          issueNumber,
+          task.number,
+          task.title,
+          self.trackDirectory
         );
-      }
-
-      const names = generateWorktreeNames(
-        issueNumber,
-        task.number,
-        task.title,
-        this.trackDirectory
-      );
-      branchName = names.branchName;
-      worktreePath = await this.gitWorktreeService.createWorktree(names.worktreePath, branchName);
-
-      // Update task with worktree info
-      await Effect.runPromise(this.db.tasks.updateWorktreeInfo(taskId, worktreePath, branchName));
-    } else if (mode === "branch" && !branchName) {
-      // Branch mode: create branch only, checkout in main repo (only if not already created)
-      if (!this.gitWorktreeService) {
-        throw new Error(
-          "GitWorktreeService is required for 'branch' mode. " +
-            "Use 'main' mode if git operations are not available."
+        branchName = names.branchName;
+        worktreePath = yield* Effect.catchAll(
+          self.gitWorktreeService.createWorktree(names.worktreePath, branchName!),
+          (err) => Effect.promise(() => Promise.reject<string>(err))
         );
+
+        // Update task with worktree info
+        yield* self.db.tasks.updateWorktreeInfo(taskId, worktreePath, branchName);
+      } else if (mode === "branch" && !branchName) {
+        // Branch mode: create branch only, checkout in main repo (only if not already created)
+        if (!self.gitWorktreeService) {
+          throw new Error(
+            "GitWorktreeService is required for 'branch' mode. " +
+              "Use 'main' mode if git operations are not available."
+          );
+        }
+
+        const names = generateWorktreeNames(
+          issueNumber,
+          task.number,
+          task.title,
+          self.trackDirectory
+        );
+        branchName = names.branchName;
+
+        // Create and checkout the branch (no worktree)
+        yield* self.gitWorktreeService.run(["checkout", "-b", branchName!]);
+
+        // Update task with branch info only (no worktree path)
+        yield* self.db.tasks.update(taskId, { branchName });
       }
+      // mode === "main": no branch, no worktree - work directly on main
 
-      const names = generateWorktreeNames(
-        issueNumber,
-        task.number,
-        task.title,
-        this.trackDirectory
-      );
-      branchName = names.branchName;
-
-      // Create and checkout the branch (no worktree)
-      await this.gitWorktreeService.run(["checkout", "-b", branchName]);
-
-      // Update task with branch info only (no worktree path)
-      await Effect.runPromise(this.db.tasks.update(taskId, { branchName }));
-    }
-    // mode === "main": no branch, no worktree - work directly on main
-
-    // Only for fresh starts: transition status and activate plan
-    if (!isResume) {
-      // Transition all BACKLOG tasks in this plan to READY
-      // This happens when any task in the plan is first started
-      const allPlanTasks = await Effect.runPromise(this.db.tasks.findByPlanId(task.planId));
-      for (const planTask of allPlanTasks) {
-        if (planTask.status === "BACKLOG" && planTask.id !== taskId) {
-          await Effect.runPromise(
-            this.db.tasks.updateStatus(
+      // Only for fresh starts: transition status and activate plan
+      if (!isResume) {
+        // Transition all BACKLOG tasks in this plan to READY
+        // This happens when any task in the plan is first started
+        const allPlanTasks = yield* self.db.tasks.findByPlanId(task.planId);
+        for (const planTask of allPlanTasks) {
+          if (planTask.status === "BACKLOG" && planTask.id !== taskId) {
+            yield* self.db.tasks.updateStatus(
               planTask.id,
               "READY",
               sessionId,
               "Plan activated - task moved from BACKLOG to READY"
-            )
-          );
+            );
+          }
         }
+
+        // Update task status to IN_PROGRESS
+        yield* self.db.tasks.updateStatus(taskId, "IN_PROGRESS", sessionId, "Started session");
       }
 
-      // Update task status to IN_PROGRESS
-      await Effect.runPromise(
-        this.db.tasks.updateStatus(taskId, "IN_PROGRESS", sessionId, "Started session")
-      );
-    }
-
-    // Always update session tracking (idempotent)
-    await Effect.runPromise(
-      this.db.tasks.updateSessionInfo(
+      // Always update session tracking (idempotent)
+      yield* self.db.tasks.updateSessionInfo(
         taskId,
         sessionId,
         isResume ? undefined : now, // Only set sessionStartedAt on fresh start
         now // Always update lastSessionActivityAt
-      )
-    );
+      );
 
-    // Get final task state
-    const finalTask = await Effect.runPromise(this.db.tasks.findById(taskId));
-    if (!finalTask) {
-      throw new Error(`Failed to retrieve updated task: ${taskId}`);
-    }
+      // Get final task state
+      const finalTask = yield* self.db.tasks.findById(taskId);
+      if (!finalTask) {
+        throw new Error(`Failed to retrieve updated task: ${taskId}`);
+      }
 
-    // Emit appropriate event for real-time UI updates
-    if (isResume) {
-      this.eventBus.emit("task:session_resumed", {
-        taskId,
+      // Emit appropriate event for real-time UI updates
+      if (isResume) {
+        self.eventBus.emit("task:session_resumed", {
+          taskId,
+          sessionId,
+          issueNumber,
+        });
+      } else {
+        self.eventBus.emit("task:session_started", {
+          taskId,
+          sessionId,
+          issueNumber,
+        });
+      }
+
+      return {
+        task: finalTask,
         sessionId,
-        issueNumber,
-      });
-    } else {
-      this.eventBus.emit("task:session_started", {
-        taskId,
-        sessionId,
-        issueNumber,
-      });
-    }
-
-    return {
-      task: finalTask,
-      sessionId,
-      startedAt: finalTask.startedAt ?? now,
-      resumed: isResume,
-      worktreePath,
-      branchName,
-      conflictWarnings,
-    };
+        startedAt: finalTask.startedAt ?? now,
+        resumed: isResume,
+        worktreePath,
+        branchName,
+        conflictWarnings,
+      };
+    });
   }
 
   /**
@@ -309,63 +317,71 @@ export class TaskSessionService extends Service<TaskSessionService>()("taskSessi
    * 3. Cleanup worktree if present
    * 4. Clear session association
    */
-  async completeTaskSession(request: CompleteTaskSessionRequest): Promise<Task> {
-    const { taskId, sessionId, notes } = request;
+  completeTaskSession(request: CompleteTaskSessionRequest): Effect<Task> {
+    const self = this;
+    return Effect.gen(function* () {
+      const { taskId, sessionId, notes } = request;
 
-    // Get task and validate
-    const task = await Effect.runPromise(this.db.tasks.findById(taskId));
-    if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
-
-    // Validate session ownership
-    if (task.sessionId !== sessionId) {
-      throw new Error(
-        `Task is not associated with session ${sessionId}. Current session: ${task.sessionId}`
-      );
-    }
-
-    // Only IN_PROGRESS tasks can be completed
-    if (task.status !== "IN_PROGRESS") {
-      throw new Error(`Task must be IN_PROGRESS to complete. Current status: ${task.status}`);
-    }
-
-    // Cleanup worktree if present
-    if (task.worktreePath && this.gitWorktreeService) {
-      try {
-        // Remove worktree but keep the branch (it has the commits)
-        await this.gitWorktreeService.removeWorktree(task.worktreePath, false);
-      } catch {
-        // Log but don't fail completion if worktree cleanup fails
-        console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
+      // Get task and validate
+      const task = yield* self.db.tasks.findById(taskId);
+      if (!task) {
+        throw new Error(`Task not found: ${taskId}`);
       }
-      // Clear worktree info from task
-      await Effect.runPromise(this.db.tasks.clearWorktreeInfo(taskId));
-    }
 
-    // Update task status to COMPLETED
-    await Effect.runPromise(
-      this.db.tasks.updateStatus(taskId, "COMPLETED", sessionId, notes ?? "Completed session")
-    );
+      // Validate session ownership
+      if (task.sessionId !== sessionId) {
+        throw new Error(
+          `Task is not associated with session ${sessionId}. Current session: ${task.sessionId}`
+        );
+      }
 
-    // Clear session association
-    await Effect.runPromise(this.db.tasks.clearSession(taskId));
+      // Only IN_PROGRESS tasks can be completed
+      if (task.status !== "IN_PROGRESS") {
+        throw new Error(`Task must be IN_PROGRESS to complete. Current status: ${task.status}`);
+      }
 
-    // Get final task state
-    const finalTask = await Effect.runPromise(this.db.tasks.findById(taskId));
-    if (!finalTask) {
-      throw new Error(`Failed to retrieve completed task: ${taskId}`);
-    }
+      // Cleanup worktree if present
+      if (task.worktreePath && self.gitWorktreeService) {
+        // Remove worktree but keep the branch (it has the commits)
+        // Log but don't fail completion if worktree cleanup fails
+        yield* Effect.catchAll(
+          self.gitWorktreeService.removeWorktree(task.worktreePath, false),
+          () => {
+            console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
+            return Effect.succeed(undefined as void);
+          }
+        );
+        // Clear worktree info from task
+        yield* self.db.tasks.clearWorktreeInfo(taskId);
+      }
 
-    // Emit session completed event for real-time UI updates
-    const issueNumber = await this.getIssueNumberForTask(taskId);
-    this.eventBus.emit("task:session_completed", {
-      taskId,
-      sessionId,
-      issueNumber,
+      // Update task status to COMPLETED
+      yield* self.db.tasks.updateStatus(
+        taskId,
+        "COMPLETED",
+        sessionId,
+        notes ?? "Completed session"
+      );
+
+      // Clear session association
+      yield* self.db.tasks.clearSession(taskId);
+
+      // Get final task state
+      const finalTask = yield* self.db.tasks.findById(taskId);
+      if (!finalTask) {
+        throw new Error(`Failed to retrieve completed task: ${taskId}`);
+      }
+
+      // Emit session completed event for real-time UI updates
+      const issueNumber = yield* self.getIssueNumberForTask(taskId);
+      self.eventBus.emit("task:session_completed", {
+        taskId,
+        sessionId,
+        issueNumber,
+      });
+
+      return finalTask;
     });
-
-    return finalTask;
   }
 
   /**
@@ -379,62 +395,70 @@ export class TaskSessionService extends Service<TaskSessionService>()("taskSessi
    *
    * @param force - Bypass session ownership validation when state has drifted
    */
-  async abandonTask(
+  abandonTask(
     taskId: string,
     sessionId: string,
     reason?: string,
     force: boolean = false
-  ): Promise<Task> {
-    // Get task and validate
-    const task = await Effect.runPromise(this.db.tasks.findById(taskId));
-    if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
-
-    // Validate session ownership (allow abandoning if no session, matching session, or force=true)
-    if (task.sessionId && task.sessionId !== sessionId && !force) {
-      throw new Error(
-        `Task is not associated with session ${sessionId}. Current session: ${task.sessionId}. ` +
-          "Use force=true to bypass this check if the session has drifted."
-      );
-    }
-
-    // Cleanup worktree if present (delete branch too since task is abandoned)
-    if (task.worktreePath && this.gitWorktreeService) {
-      try {
-        // Remove worktree and delete the branch (abandoned work)
-        await this.gitWorktreeService.removeWorktree(task.worktreePath, true);
-      } catch {
-        // Log but don't fail abandonment if worktree cleanup fails
-        console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
+  ): Effect<Task> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Get task and validate
+      const task = yield* self.db.tasks.findById(taskId);
+      if (!task) {
+        throw new Error(`Task not found: ${taskId}`);
       }
-      // Clear worktree info from task
-      await Effect.runPromise(this.db.tasks.clearWorktreeInfo(taskId));
-    }
 
-    // Update task status to ABANDONED
-    await Effect.runPromise(
-      this.db.tasks.updateStatus(taskId, "ABANDONED", sessionId, reason ?? "Abandoned session")
-    );
+      // Validate session ownership (allow abandoning if no session, matching session, or force=true)
+      if (task.sessionId && task.sessionId !== sessionId && !force) {
+        throw new Error(
+          `Task is not associated with session ${sessionId}. Current session: ${task.sessionId}. ` +
+            "Use force=true to bypass this check if the session has drifted."
+        );
+      }
 
-    // Clear session association
-    await Effect.runPromise(this.db.tasks.clearSession(taskId));
+      // Cleanup worktree if present (delete branch too since task is abandoned)
+      if (task.worktreePath && self.gitWorktreeService) {
+        // Remove worktree and delete the branch (abandoned work)
+        // Log but don't fail abandonment if worktree cleanup fails
+        yield* Effect.catchAll(
+          self.gitWorktreeService.removeWorktree(task.worktreePath, true),
+          () => {
+            console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
+            return Effect.succeed(undefined as void);
+          }
+        );
+        // Clear worktree info from task
+        yield* self.db.tasks.clearWorktreeInfo(taskId);
+      }
 
-    // Get final task state
-    const finalTask = await Effect.runPromise(this.db.tasks.findById(taskId));
-    if (!finalTask) {
-      throw new Error(`Failed to retrieve abandoned task: ${taskId}`);
-    }
+      // Update task status to ABANDONED
+      yield* self.db.tasks.updateStatus(
+        taskId,
+        "ABANDONED",
+        sessionId,
+        reason ?? "Abandoned session"
+      );
 
-    // Emit session abandoned event for real-time UI updates
-    const issueNumber = await this.getIssueNumberForTask(taskId);
-    this.eventBus.emit("task:session_abandoned", {
-      taskId,
-      sessionId,
-      issueNumber,
+      // Clear session association
+      yield* self.db.tasks.clearSession(taskId);
+
+      // Get final task state
+      const finalTask = yield* self.db.tasks.findById(taskId);
+      if (!finalTask) {
+        throw new Error(`Failed to retrieve abandoned task: ${taskId}`);
+      }
+
+      // Emit session abandoned event for real-time UI updates
+      const issueNumber = yield* self.getIssueNumberForTask(taskId);
+      self.eventBus.emit("task:session_abandoned", {
+        taskId,
+        sessionId,
+        issueNumber,
+      });
+
+      return finalTask;
     });
-
-    return finalTask;
   }
 
   /**
@@ -442,27 +466,28 @@ export class TaskSessionService extends Service<TaskSessionService>()("taskSessi
    *
    * Used to prevent session timeouts for active sessions.
    */
-  async updateSessionActivity(taskId: string, sessionId: string): Promise<void> {
-    const task = await Effect.runPromise(this.db.tasks.findById(taskId));
-    if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
+  updateSessionActivity(taskId: string, sessionId: string): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.db.tasks.findById(taskId);
+      if (!task) {
+        throw new Error(`Task not found: ${taskId}`);
+      }
 
-    if (task.sessionId !== sessionId) {
-      throw new Error(
-        `Task is not associated with session ${sessionId}. Current session: ${task.sessionId}`
-      );
-    }
+      if (task.sessionId !== sessionId) {
+        throw new Error(
+          `Task is not associated with session ${sessionId}. Current session: ${task.sessionId}`
+        );
+      }
 
-    const now = new Date().toISOString();
-    await Effect.runPromise(
-      this.db.tasks.updateSessionInfo(
+      const now = new Date().toISOString();
+      yield* self.db.tasks.updateSessionInfo(
         taskId,
         sessionId,
         undefined, // Don't update sessionStartedAt
         now // Update lastSessionActivityAt
-      )
-    );
+      );
+    });
   }
 
   /**
@@ -473,30 +498,36 @@ export class TaskSessionService extends Service<TaskSessionService>()("taskSessi
    * - Dependencies are satisfied
    * - Parent issue is not CLOSED
    */
-  async isTaskAvailable(taskId: string): Promise<boolean> {
-    const task = await Effect.runPromise(this.db.tasks.findById(taskId));
-    if (!task) {
-      return false;
-    }
+  isTaskAvailable(taskId: string): Effect<boolean> {
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.db.tasks.findById(taskId);
+      if (!task) {
+        return false;
+      }
 
-    return await this.checkTaskAvailability(task);
+      return yield* self.checkTaskAvailability(task);
+    });
   }
 
   /**
    * Get active session for task (if any)
    */
-  async getActiveSession(taskId: string): Promise<TaskSession | null> {
-    const task = await Effect.runPromise(this.db.tasks.findById(taskId));
-    if (!task || !task.sessionId || !task.sessionStartedAt) {
-      return null;
-    }
+  getActiveSession(taskId: string): Effect<TaskSession | null> {
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.db.tasks.findById(taskId);
+      if (!task || !task.sessionId || !task.sessionStartedAt) {
+        return null;
+      }
 
-    return {
-      task,
-      sessionId: task.sessionId,
-      startedAt: task.sessionStartedAt,
-      resumed: true, // If there's an active session, it's by definition a resumed state
-    };
+      return {
+        task,
+        sessionId: task.sessionId,
+        startedAt: task.sessionStartedAt,
+        resumed: true, // If there's an active session, it's by definition a resumed state
+      };
+    });
   }
 
   /**
@@ -509,21 +540,24 @@ export class TaskSessionService extends Service<TaskSessionService>()("taskSessi
    * Note: IN_PROGRESS/PR_REVIEW tasks are not "available" for fresh starts,
    * but can be resumed via load_task_session. COMPLETED/ABANDONED are terminal.
    */
-  private async checkTaskAvailability(task: Task): Promise<boolean> {
-    // Check if parent issue is closed - use trait function
-    const plan = await this.db.plans.findById(task.planId);
-    if (plan) {
-      const issue = await Effect.runPromise(this.db.issues.findById(plan.issueId));
-      if (issue && issue.isClosed) {
-        return false;
+  private checkTaskAvailability(task: Task): Effect<boolean> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Check if parent issue is closed - use trait function
+      const plan = yield* self.db.plans.findById(task.planId);
+      if (plan) {
+        const issue = yield* self.db.issues.findById(plan.issueId);
+        if (issue && issue.isClosed) {
+          return false;
+        }
       }
-    }
 
-    // Only BACKLOG and READY tasks are available for fresh starts
-    if (task.status === "BACKLOG" || task.status === "READY") {
-      return this.dependencyService.areDependenciesSatisfied(task);
-    }
+      // Only BACKLOG and READY tasks are available for fresh starts
+      if (task.status === "BACKLOG" || task.status === "READY") {
+        return yield* self.dependencyService.areDependenciesSatisfied(task);
+      }
 
-    return false;
+      return false;
+    });
   }
 }

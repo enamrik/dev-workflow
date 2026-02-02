@@ -27,14 +27,15 @@ export class DrizzleMilestoneRepository implements MilestoneRepository {
   ) {}
 
   create(data: CreateMilestoneParams): Effect<Milestone> {
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       const id = crypto.randomUUID();
-      const number = await Effect.runPromise(this.getNextMilestoneNumber());
+      const number = yield* self.getNextMilestoneNumber();
       const now = new Date().toISOString();
 
       const milestone = Milestone.from({
         id,
-        projectId: this.projectId,
+        projectId: self.projectId,
         number,
         ...data,
         createdAt: now,
@@ -42,7 +43,7 @@ export class DrizzleMilestoneRepository implements MilestoneRepository {
       });
 
       // Insert into database
-      this.db
+      self.db
         .insert(milestones)
         .values({
           id: milestone.id,
@@ -120,19 +121,20 @@ export class DrizzleMilestoneRepository implements MilestoneRepository {
   }
 
   update(id: string, data: UpdateMilestoneParams): Effect<Milestone> {
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       const now = new Date().toISOString();
 
-      this.db
+      self.db
         .update(milestones)
         .set({
           ...data,
           updatedAt: now,
         })
-        .where(and(eq(milestones.projectId, this.projectId), eq(milestones.id, id)))
+        .where(and(eq(milestones.projectId, self.projectId), eq(milestones.id, id)))
         .run();
 
-      const updated = await Effect.runPromise(this.findById(id));
+      const updated = yield* self.findById(id);
       if (!updated) {
         throw new Error(`Failed to update milestone: ${id}`);
       }

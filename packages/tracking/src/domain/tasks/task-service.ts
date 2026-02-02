@@ -145,8 +145,8 @@ export class TaskService extends Service<TaskService>()("taskService") {
    *
    * @returns Task or null if not found
    */
-  async findById(taskId: string): Promise<Task | null> {
-    return await Effect.runPromise(this.db.tasks.findById(taskId));
+  findById(taskId: string): Effect<Task | null> {
+    return this.db.tasks.findById(taskId);
   }
 
   /**
@@ -154,12 +154,15 @@ export class TaskService extends Service<TaskService>()("taskService") {
    *
    * @throws TaskServiceError if task not found
    */
-  async getTask(taskId: string): Promise<Task> {
-    const task = await Effect.runPromise(this.db.tasks.findById(taskId));
-    if (!task) {
-      throw new TaskServiceError(`Task not found: ${taskId}`, "NOT_FOUND");
-    }
-    return task;
+  getTask(taskId: string): Effect<Task> {
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.db.tasks.findById(taskId);
+      if (!task) {
+        throw new TaskServiceError(`Task not found: ${taskId}`, "NOT_FOUND");
+      }
+      return task;
+    });
   }
 
   // ============================================================================
@@ -180,28 +183,29 @@ export class TaskService extends Service<TaskService>()("taskService") {
    * @returns The updated task
    * @throws TaskServiceError if task is not in PLANNED or READY status
    */
-  async moveToBacklog(taskId: string, changedBy?: string): Promise<Task> {
-    const task = await this.getTask(taskId);
+  moveToBacklog(taskId: string, changedBy?: string): Effect<Task> {
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.getTask(taskId);
 
-    const check = task.checkTransition("BACKLOG");
-    if (!check.allowed) {
-      throw new TaskServiceError(check.reason!, "INVALID_TRANSITION");
-    }
+      const check = task.checkTransition("BACKLOG");
+      if (!check.allowed) {
+        throw new TaskServiceError(check.reason!, "INVALID_TRANSITION");
+      }
 
-    // Update local status
-    const updatedTask = await Effect.runPromise(
-      this.db.tasks.updateStatus(
+      // Update local status
+      const updatedTask = yield* self.db.tasks.updateStatus(
         taskId,
         "BACKLOG",
         changedBy,
         `Moved to backlog from ${task.status}`
-      )
-    );
+      );
 
-    // Sync to external provider - move to Backlog column
-    await this.syncStatusToProvider(task, "BACKLOG");
+      // Sync to external provider - move to Backlog column
+      yield* self.syncStatusToProvider(task, "BACKLOG");
 
-    return updatedTask;
+      return updatedTask;
+    });
   }
 
   /**
@@ -219,23 +223,29 @@ export class TaskService extends Service<TaskService>()("taskService") {
    * @returns The updated task
    * @throws TaskServiceError if task is not in BACKLOG status
    */
-  async moveToReady(taskId: string, changedBy?: string): Promise<Task> {
-    const task = await this.getTask(taskId);
+  moveToReady(taskId: string, changedBy?: string): Effect<Task> {
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.getTask(taskId);
 
-    const check = task.checkTransition("READY");
-    if (!check.allowed) {
-      throw new TaskServiceError(check.reason!, "NOT_IN_BACKLOG");
-    }
+      const check = task.checkTransition("READY");
+      if (!check.allowed) {
+        throw new TaskServiceError(check.reason!, "NOT_IN_BACKLOG");
+      }
 
-    // Update local status
-    const updatedTask = await Effect.runPromise(
-      this.db.tasks.updateStatus(taskId, "READY", changedBy, "Moved to ready")
-    );
+      // Update local status
+      const updatedTask = yield* self.db.tasks.updateStatus(
+        taskId,
+        "READY",
+        changedBy,
+        "Moved to ready"
+      );
 
-    // Sync to external provider - move to Ready column
-    await this.syncStatusToProvider(task, "READY");
+      // Sync to external provider - move to Ready column
+      yield* self.syncStatusToProvider(task, "READY");
 
-    return updatedTask;
+      return updatedTask;
+    });
   }
 
   /**
@@ -251,26 +261,32 @@ export class TaskService extends Service<TaskService>()("taskService") {
    * @returns The updated task
    * @throws TaskServiceError if task is not in BACKLOG or READY status
    */
-  async start(taskId: string, changedBy?: string): Promise<Task> {
-    const task = await this.getTask(taskId);
+  start(taskId: string, changedBy?: string): Effect<Task> {
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.getTask(taskId);
 
-    const check = task.checkTransition("IN_PROGRESS");
-    if (!check.allowed) {
-      throw new TaskServiceError(check.reason!, "INVALID_TRANSITION");
-    }
+      const check = task.checkTransition("IN_PROGRESS");
+      if (!check.allowed) {
+        throw new TaskServiceError(check.reason!, "INVALID_TRANSITION");
+      }
 
-    // Update local status
-    const updatedTask = await Effect.runPromise(
-      this.db.tasks.updateStatus(taskId, "IN_PROGRESS", changedBy, "Task started")
-    );
+      // Update local status
+      const updatedTask = yield* self.db.tasks.updateStatus(
+        taskId,
+        "IN_PROGRESS",
+        changedBy,
+        "Task started"
+      );
 
-    // Sync to external provider - move to In Progress column
-    await this.syncStatusToProvider(task, "IN_PROGRESS");
+      // Sync to external provider - move to In Progress column
+      yield* self.syncStatusToProvider(task, "IN_PROGRESS");
 
-    // Assign GitHub issue to configured user (best-effort)
-    await this.assignExternalIssue(task);
+      // Assign GitHub issue to configured user (best-effort)
+      yield* self.assignExternalIssue(task);
 
-    return updatedTask;
+      return updatedTask;
+    });
   }
 
   /**
@@ -288,29 +304,32 @@ export class TaskService extends Service<TaskService>()("taskService") {
    * @returns The updated task
    * @throws TaskServiceError if task is not in IN_PROGRESS status (unless force=true)
    */
-  async submitForReview(
-    taskId: string,
-    options?: { changedBy?: string; force?: boolean }
-  ): Promise<Task> {
-    const { changedBy, force = false } = options ?? {};
-    const task = await this.getTask(taskId);
+  submitForReview(taskId: string, options?: { changedBy?: string; force?: boolean }): Effect<Task> {
+    const self = this;
+    return Effect.gen(function* () {
+      const { changedBy, force = false } = options ?? {};
+      const task = yield* self.getTask(taskId);
 
-    if (!force) {
-      const check = task.checkTransition("PR_REVIEW");
-      if (!check.allowed) {
-        throw new TaskServiceError(check.reason!, "NOT_IN_PROGRESS");
+      if (!force) {
+        const check = task.checkTransition("PR_REVIEW");
+        if (!check.allowed) {
+          throw new TaskServiceError(check.reason!, "NOT_IN_PROGRESS");
+        }
       }
-    }
 
-    // Update local status
-    const updatedTask = await Effect.runPromise(
-      this.db.tasks.updateStatus(taskId, "PR_REVIEW", changedBy, "Submitted for review")
-    );
+      // Update local status
+      const updatedTask = yield* self.db.tasks.updateStatus(
+        taskId,
+        "PR_REVIEW",
+        changedBy,
+        "Submitted for review"
+      );
 
-    // Sync to external provider - move to PR Review column
-    await this.syncStatusToProvider(task, "PR_REVIEW");
+      // Sync to external provider - move to PR Review column
+      yield* self.syncStatusToProvider(task, "PR_REVIEW");
 
-    return updatedTask;
+      return updatedTask;
+    });
   }
 
   /**
@@ -329,35 +348,34 @@ export class TaskService extends Service<TaskService>()("taskService") {
    * @returns The updated task
    * @throws TaskServiceError if task is not in IN_PROGRESS or PR_REVIEW status (unless force=true)
    */
-  async complete(
+  complete(
     taskId: string,
     options?: { changedBy?: string; notes?: string; force?: boolean }
-  ): Promise<Task> {
-    const { changedBy, notes = "Task completed", force = false } = options ?? {};
-    const task = await this.getTask(taskId);
+  ): Effect<Task> {
+    const self = this;
+    return Effect.gen(function* () {
+      const { changedBy, notes = "Task completed", force = false } = options ?? {};
+      const task = yield* self.getTask(taskId);
 
-    if (!force) {
-      const check = task.checkTransition("COMPLETED");
-      if (!check.allowed) {
-        throw new TaskServiceError(check.reason!, "NOT_STARTED");
+      if (!force) {
+        const check = task.checkTransition("COMPLETED");
+        if (!check.allowed) {
+          throw new TaskServiceError(check.reason!, "NOT_STARTED");
+        }
       }
-    }
 
-    // Update local status
-    const updatedTask = await Effect.runPromise(
-      this.db.tasks.updateStatus(taskId, "COMPLETED", changedBy, notes)
-    );
+      // Update local status
+      const updatedTask = yield* self.db.tasks.updateStatus(taskId, "COMPLETED", changedBy, notes);
 
-    // Sync to external provider - close issue and move to Done column
-    const closeSyncState = await Effect.runPromise(
-      this.projectManagement.closeIssue(task.syncState)
-    );
-    if (closeSyncState) {
-      await Effect.runPromise(this.db.tasks.updateSyncState(task.id, closeSyncState));
-    }
-    await this.syncStatusToProvider(task, "COMPLETED");
+      // Sync to external provider - close issue and move to Done column
+      const closeSyncState = yield* self.projectManagement.closeIssue(task.syncState);
+      if (closeSyncState) {
+        yield* self.db.tasks.updateSyncState(task.id, closeSyncState);
+      }
+      yield* self.syncStatusToProvider(task, "COMPLETED");
 
-    return updatedTask;
+      return updatedTask;
+    });
   }
 
   // ============================================================================
@@ -376,11 +394,17 @@ export class TaskService extends Service<TaskService>()("taskService") {
    * @param task - The task being updated
    * @param newStatus - The new status
    */
-  private async syncStatusToProvider(task: Task, newStatus: TaskStatus): Promise<void> {
-    const updatedSyncState = await this.projectManagement.syncTaskStatus(task.syncState, newStatus);
-    if (updatedSyncState) {
-      await Effect.runPromise(this.db.tasks.updateSyncState(task.id, updatedSyncState));
-    }
+  private syncStatusToProvider(task: Task, newStatus: TaskStatus): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      const updatedSyncState = yield* self.projectManagement.syncTaskStatus(
+        task.syncState,
+        newStatus
+      );
+      if (updatedSyncState) {
+        yield* self.db.tasks.updateSyncState(task.id, updatedSyncState);
+      }
+    });
   }
 
   /**
@@ -391,11 +415,14 @@ export class TaskService extends Service<TaskService>()("taskService") {
    *
    * @param task - The task being started
    */
-  private async assignExternalIssue(task: Task): Promise<void> {
-    const updatedSyncState = await this.projectManagement.autoAssign(task.syncState);
-    if (updatedSyncState) {
-      await Effect.runPromise(this.db.tasks.updateSyncState(task.id, updatedSyncState));
-    }
+  private assignExternalIssue(task: Task): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      const updatedSyncState = yield* self.projectManagement.autoAssign(task.syncState);
+      if (updatedSyncState) {
+        yield* self.db.tasks.updateSyncState(task.id, updatedSyncState);
+      }
+    });
   }
 
   /**
@@ -413,115 +440,114 @@ export class TaskService extends Service<TaskService>()("taskService") {
    * @returns Result including cleanup status
    * @throws TaskServiceError if task not found or already terminal
    */
-  async abandonTask(
-    taskId: string,
-    reason?: string,
-    changedBy?: string
-  ): Promise<AbandonTaskResult> {
-    const task = await this.getTask(taskId);
+  abandonTask(taskId: string, reason?: string, changedBy?: string): Effect<AbandonTaskResult> {
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.getTask(taskId);
 
-    // Check if already terminal
-    if (task.isTerminal) {
-      throw new TaskServiceError(
-        `Task ${taskId} is already in terminal state: ${task.status}`,
-        "ALREADY_TERMINAL"
-      );
-    }
-
-    const result: AbandonTaskResult = {
-      task,
-      externalIssueClosed: false,
-      worktreeCleaned: false,
-      branchDeleted: false,
-      removedFromQueue: false,
-    };
-
-    // 1. Remove from dispatch queue if present
-    if (this.workerQueueDb) {
-      try {
-        this.workerQueueDb.remove(taskId);
-        result.removedFromQueue = true;
-      } catch {
-        // Queue removal is best-effort
+      // Check if already terminal
+      if (task.isTerminal) {
+        throw new TaskServiceError(
+          `Task ${taskId} is already in terminal state: ${task.status}`,
+          "ALREADY_TERMINAL"
+        );
       }
-    }
 
-    // 2. Clean up worktree and branch
-    if (this.gitWorktreeService && task.worktreePath) {
-      try {
-        await this.gitWorktreeService.removeWorktree(task.worktreePath, true);
-        result.worktreeCleaned = true;
-        if (task.branchName) {
-          result.branchDeleted = true;
+      const result: AbandonTaskResult = {
+        task,
+        externalIssueClosed: false,
+        worktreeCleaned: false,
+        branchDeleted: false,
+        removedFromQueue: false,
+      };
+
+      // 1. Remove from dispatch queue if present
+      if (self.workerQueueDb) {
+        try {
+          self.workerQueueDb.remove(taskId);
+          result.removedFromQueue = true;
+        } catch {
+          // Queue removal is best-effort
         }
-      } catch {
-        console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
-      }
-      await Effect.runPromise(this.db.tasks.clearWorktreeInfo(taskId));
-    } else if (this.gitWorktreeService && task.branchName) {
-      try {
-        await this.gitWorktreeService.run(["branch", "-D", task.branchName]);
-      } catch {
-        // Local branch may not exist
       }
 
-      try {
-        const checkResult = await this.gitWorktreeService.run([
-          "ls-remote",
-          "--heads",
-          "origin",
-          task.branchName,
-        ]);
-        if (checkResult.success && checkResult.stdout.trim()) {
-          await this.gitWorktreeService.run([
-            "push",
+      // 2. Clean up worktree and branch
+      if (self.gitWorktreeService && task.worktreePath) {
+        const removeResult = yield* Effect.catchAll(
+          Effect.map(self.gitWorktreeService.removeWorktree(task.worktreePath, true), () => true),
+          () => {
+            console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
+            return Effect.succeed(false);
+          }
+        );
+        if (removeResult) {
+          result.worktreeCleaned = true;
+          if (task.branchName) {
+            result.branchDeleted = true;
+          }
+        }
+        yield* self.db.tasks.clearWorktreeInfo(taskId);
+      } else if (self.gitWorktreeService && task.branchName) {
+        try {
+          yield* self.gitWorktreeService.run(["branch", "-D", task.branchName]);
+        } catch {
+          // Local branch may not exist
+        }
+
+        try {
+          const checkResult = yield* self.gitWorktreeService.run([
+            "ls-remote",
+            "--heads",
             "origin",
-            "--delete",
-            "--no-verify",
             task.branchName,
           ]);
-          result.branchDeleted = true;
+          if (checkResult.success && checkResult.stdout.trim()) {
+            yield* self.gitWorktreeService.run([
+              "push",
+              "origin",
+              "--delete",
+              "--no-verify",
+              task.branchName,
+            ]);
+            result.branchDeleted = true;
+          }
+        } catch {
+          console.warn(`Failed to delete remote branch: ${task.branchName}`);
         }
-      } catch {
-        console.warn(`Failed to delete remote branch: ${task.branchName}`);
+
+        yield* self.db.tasks.update(taskId, { branchName: undefined });
       }
 
-      await Effect.runPromise(this.db.tasks.update(taskId, { branchName: undefined }));
-    }
+      // 3. Close external issue
+      const closeSyncState = yield* self.projectManagement.closeIssue(task.syncState);
+      if (closeSyncState) {
+        yield* self.db.tasks.updateSyncState(task.id, closeSyncState);
+      }
+      result.externalIssueClosed = !!task.syncState?.externalId;
 
-    // 3. Close external issue
-    const closeSyncState = await Effect.runPromise(
-      this.projectManagement.closeIssue(task.syncState)
-    );
-    if (closeSyncState) {
-      await Effect.runPromise(this.db.tasks.updateSyncState(task.id, closeSyncState));
-    }
-    result.externalIssueClosed = !!task.syncState?.externalId;
-
-    // 4. Update task status to ABANDONED
-    const updatedTask = await Effect.runPromise(
-      this.db.tasks.updateStatus(
+      // 4. Update task status to ABANDONED
+      const updatedTask = yield* self.db.tasks.updateStatus(
         taskId,
         "ABANDONED",
         changedBy ?? "system",
         reason ?? "Task abandoned"
-      )
-    );
+      );
 
-    // Clear session if present
-    if (task.sessionId) {
-      await Effect.runPromise(this.db.tasks.clearSession(taskId));
-    }
+      // Clear session if present
+      if (task.sessionId) {
+        yield* self.db.tasks.clearSession(taskId);
+      }
 
-    result.task = updatedTask;
-    return result;
+      result.task = updatedTask;
+      return result;
+    });
   }
 
   /**
    * Get all tasks for a plan
    */
-  async getTasksForPlan(planId: string, includeDeleted = false): Promise<Task[]> {
-    return await Effect.runPromise(this.db.tasks.findByPlanId(planId, includeDeleted));
+  getTasksForPlan(planId: string, includeDeleted = false): Effect<Task[]> {
+    return this.db.tasks.findByPlanId(planId, includeDeleted);
   }
 
   /**
@@ -529,28 +555,34 @@ export class TaskService extends Service<TaskService>()("taskService") {
    *
    * Returns tasks that are not in terminal state (COMPLETED or ABANDONED)
    */
-  async getIncompleteTasksForIssue(issueId: string): Promise<Task[]> {
-    const plan = await this.db.plans.findByIssueId(issueId);
-    if (!plan) {
-      return [];
-    }
+  getIncompleteTasksForIssue(issueId: string): Effect<Task[]> {
+    const self = this;
+    return Effect.gen(function* () {
+      const plan = yield* self.db.plans.findByIssueId(issueId);
+      if (!plan) {
+        return [];
+      }
 
-    const tasks = await Effect.runPromise(this.db.tasks.findByPlanId(plan.id));
-    return tasks.filter((t) => !t.isDeleted && !t.isTerminal);
+      const tasks = yield* self.db.tasks.findByPlanId(plan.id);
+      return tasks.filter((t) => !t.isDeleted && !t.isTerminal);
+    });
   }
 
   /**
    * Check if all tasks for an issue are complete
    */
-  async areAllTasksComplete(issueId: string): Promise<boolean> {
-    const plan = await this.db.plans.findByIssueId(issueId);
-    if (!plan) {
-      return true;
-    }
+  areAllTasksComplete(issueId: string): Effect<boolean> {
+    const self = this;
+    return Effect.gen(function* () {
+      const plan = yield* self.db.plans.findByIssueId(issueId);
+      if (!plan) {
+        return true;
+      }
 
-    const allTasks = await Effect.runPromise(this.db.tasks.findByPlanId(plan.id));
-    const tasks = allTasks.filter((t) => !t.isDeleted);
-    return tasks.every((t) => t.isTerminal);
+      const allTasks = yield* self.db.tasks.findByPlanId(plan.id);
+      const tasks = allTasks.filter((t) => !t.isDeleted);
+      return tasks.every((t) => t.isTerminal);
+    });
   }
 
   // ============================================================================
@@ -560,22 +592,22 @@ export class TaskService extends Service<TaskService>()("taskService") {
   /**
    * Find tasks by plan ID
    */
-  async findByPlanId(planId: string, includeDeleted = false): Promise<Task[]> {
-    return await Effect.runPromise(this.db.tasks.findByPlanId(planId, includeDeleted));
+  findByPlanId(planId: string, includeDeleted = false): Effect<Task[]> {
+    return this.db.tasks.findByPlanId(planId, includeDeleted);
   }
 
   /**
    * Find tasks by multiple IDs
    */
-  async findByIds(taskIds: string[]): Promise<Task[]> {
-    return await Effect.runPromise(this.db.tasks.findByIds(taskIds));
+  findByIds(taskIds: string[]): Effect<Task[]> {
+    return this.db.tasks.findByIds(taskIds);
   }
 
   /**
    * Find many tasks with optional filtering
    */
-  async findMany(options: Parameters<TaskRepository["findMany"]>[0]): Promise<Task[]> {
-    return await Effect.runPromise(this.db.tasks.findMany(options));
+  findMany(options: Parameters<TaskRepository["findMany"]>[0]): Effect<Task[]> {
+    return this.db.tasks.findMany(options);
   }
 
   // ============================================================================
@@ -585,55 +617,53 @@ export class TaskService extends Service<TaskService>()("taskService") {
   /**
    * Update a task
    */
-  async update(taskId: string, updates: Parameters<TaskRepository["update"]>[1]): Promise<Task> {
-    return await Effect.runPromise(this.db.tasks.update(taskId, updates));
+  update(taskId: string, updates: Parameters<TaskRepository["update"]>[1]): Effect<Task> {
+    return this.db.tasks.update(taskId, updates);
   }
 
   /**
    * Soft delete a task
    */
-  async softDelete(taskId: string, deletedBy?: string): Promise<Task> {
-    return await Effect.runPromise(this.db.tasks.softDelete(taskId, deletedBy));
+  softDelete(taskId: string, deletedBy?: string): Effect<Task> {
+    return this.db.tasks.softDelete(taskId, deletedBy);
   }
 
   /**
    * Clear session from a task
    */
-  async clearSession(taskId: string): Promise<void> {
-    await Effect.runPromise(this.db.tasks.clearSession(taskId));
+  clearSession(taskId: string): Effect<void> {
+    return Effect.map(this.db.tasks.clearSession(taskId), () => undefined);
   }
 
   /**
    * Clear worktree info from a task
    */
-  async clearWorktreeInfo(taskId: string): Promise<void> {
-    await Effect.runPromise(this.db.tasks.clearWorktreeInfo(taskId));
+  clearWorktreeInfo(taskId: string): Effect<void> {
+    return Effect.map(this.db.tasks.clearWorktreeInfo(taskId), () => undefined);
   }
 
   /**
    * Update PR status
    */
-  async updatePRStatus(taskId: string, prStatus: PRStatus): Promise<void> {
-    await Effect.runPromise(this.db.tasks.updatePRStatus(taskId, prStatus));
+  updatePRStatus(taskId: string, prStatus: PRStatus): Effect<void> {
+    return Effect.map(this.db.tasks.updatePRStatus(taskId, prStatus), () => undefined);
   }
 
   /**
    * Update PR info
    */
-  async updatePRInfo(
-    taskId: string,
-    prUrl: string,
-    prNumber: number,
-    prStatus: PRStatus
-  ): Promise<void> {
-    await Effect.runPromise(this.db.tasks.updatePRInfo(taskId, prUrl, prNumber, prStatus));
+  updatePRInfo(taskId: string, prUrl: string, prNumber: number, prStatus: PRStatus): Effect<void> {
+    return Effect.map(
+      this.db.tasks.updatePRInfo(taskId, prUrl, prNumber, prStatus),
+      () => undefined
+    );
   }
 
   /**
    * Get count of tasks by status
    */
-  async getStatusCounts(): Promise<Record<string, number>> {
-    return await Effect.runPromise(this.db.tasks.getStatusCounts());
+  getStatusCounts(): Effect<Record<string, number>> {
+    return this.db.tasks.getStatusCounts();
   }
 
   // ============================================================================
@@ -661,27 +691,31 @@ export class TaskService extends Service<TaskService>()("taskService") {
    * @param taskId - The task UUID
    * @param newStatus - The new status that was just set
    */
-  async syncTaskStatus(taskId: string, newStatus: TaskStatus): Promise<void> {
-    const task = await Effect.runPromise(this.db.tasks.findById(taskId));
-    if (!task?.syncState?.externalId) {
-      return;
-    }
-
-    // Handle terminal states - close the external issue
-    if (newStatus === "COMPLETED" || newStatus === "ABANDONED") {
-      const closeSyncState = await Effect.runPromise(
-        this.projectManagement.closeIssue(task.syncState)
-      );
-      if (closeSyncState) {
-        await Effect.runPromise(this.db.tasks.updateSyncState(taskId, closeSyncState));
+  syncTaskStatus(taskId: string, newStatus: TaskStatus): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.db.tasks.findById(taskId);
+      if (!task?.syncState?.externalId) {
+        return;
       }
-    }
 
-    // Move in project kanban
-    const statusSyncState = await this.projectManagement.syncTaskStatus(task.syncState, newStatus);
-    if (statusSyncState) {
-      await Effect.runPromise(this.db.tasks.updateSyncState(taskId, statusSyncState));
-    }
+      // Handle terminal states - close the external issue
+      if (newStatus === "COMPLETED" || newStatus === "ABANDONED") {
+        const closeSyncState = yield* self.projectManagement.closeIssue(task.syncState);
+        if (closeSyncState) {
+          yield* self.db.tasks.updateSyncState(taskId, closeSyncState);
+        }
+      }
+
+      // Move in project kanban
+      const statusSyncState = yield* self.projectManagement.syncTaskStatus(
+        task.syncState,
+        newStatus
+      );
+      if (statusSyncState) {
+        yield* self.db.tasks.updateSyncState(taskId, statusSyncState);
+      }
+    });
   }
 
   /**
@@ -694,16 +728,19 @@ export class TaskService extends Service<TaskService>()("taskService") {
    *
    * @param taskId - The task UUID
    */
-  async assignIssue(taskId: string): Promise<void> {
-    const task = await Effect.runPromise(this.db.tasks.findById(taskId));
-    if (!task?.syncState?.externalId) {
-      return;
-    }
+  assignIssue(taskId: string): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.db.tasks.findById(taskId);
+      if (!task?.syncState?.externalId) {
+        return;
+      }
 
-    const updatedSyncState = await this.projectManagement.autoAssign(task.syncState);
-    if (updatedSyncState) {
-      await Effect.runPromise(this.db.tasks.updateSyncState(taskId, updatedSyncState));
-    }
+      const updatedSyncState = yield* self.projectManagement.autoAssign(task.syncState);
+      if (updatedSyncState) {
+        yield* self.db.tasks.updateSyncState(taskId, updatedSyncState);
+      }
+    });
   }
 
   /**
@@ -726,110 +763,111 @@ export class TaskService extends Service<TaskService>()("taskService") {
    * @param issueId - The dev-workflow issue ID
    * @returns Activation result with details for each task
    */
-  async activatePlannedTasks(issueId: string): Promise<ActivationResult> {
-    const issue = await Effect.runPromise(this.db.issues.findById(issueId));
-    if (!issue) {
-      return {
-        success: false,
-        tasksActivated: [],
-        issueTransitioned: false,
-        error: `Issue not found: ${issueId}`,
-      };
-    }
-
-    const plan = await this.db.plans.findByIssueId(issueId);
-    if (!plan) {
-      return {
-        success: false,
-        tasksActivated: [],
-        issueTransitioned: false,
-        error: `No plan found for issue: ${issueId}`,
-      };
-    }
-
-    const allTasks = await Effect.runPromise(this.db.tasks.findByPlanId(plan.id));
-    const plannedTasks = allTasks.filter((t) => t.status === "PLANNED");
-
-    if (plannedTasks.length === 0) {
-      // No PLANNED tasks - just ensure issue is OPEN
-      const issueTransitioned = issue.isInPlanning;
-      if (issueTransitioned) {
-        await Effect.runPromise(this.db.issues.update(issue.id, { status: "OPEN" }));
+  activatePlannedTasks(issueId: string): Effect<ActivationResult> {
+    const self = this;
+    return Effect.gen(function* () {
+      const issue = yield* self.db.issues.findById(issueId);
+      if (!issue) {
+        return {
+          success: false,
+          tasksActivated: [],
+          issueTransitioned: false,
+          error: `Issue not found: ${issueId}`,
+        };
       }
-      return {
-        success: true,
-        tasksActivated: [],
-        issueTransitioned,
-      };
-    }
 
-    const results: TaskActivationResult[] = [];
-    const syncEnabled = this.projectManagement.isEnabled();
+      const plan = yield* self.db.plans.findByIssueId(issueId);
+      if (!plan) {
+        return {
+          success: false,
+          tasksActivated: [],
+          issueTransitioned: false,
+          error: `No plan found for issue: ${issueId}`,
+        };
+      }
 
-    // Check if this is an imported issue
-    const isImportedIssue = issue.sourceExternalId !== undefined;
+      const allTasks = yield* self.db.tasks.findByPlanId(plan.id);
+      const plannedTasks = allTasks.filter((t) => t.status === "PLANNED");
 
-    // Process each PLANNED task
-    for (const task of plannedTasks) {
-      try {
-        if (syncEnabled) {
-          let syncState: SyncState;
+      if (plannedTasks.length === 0) {
+        // No PLANNED tasks - just ensure issue is OPEN
+        const issueTransitioned = issue.isInPlanning;
+        if (issueTransitioned) {
+          yield* self.db.issues.update(issue.id, { status: "OPEN" });
+        }
+        return {
+          success: true,
+          tasksActivated: [],
+          issueTransitioned,
+        };
+      }
 
-          if (isImportedIssue) {
-            // Imported issue - use special handling
-            syncState = await this.handleImportedIssueTask(issue, task, plannedTasks.length);
-          } else {
-            // Normal issue - create new GitHub issue
-            syncState = await this.createGitHubIssueForTask(issue, task);
+      const results: TaskActivationResult[] = [];
+      const syncEnabled = self.projectManagement.isEnabled();
+
+      // Check if this is an imported issue
+      const isImportedIssue = issue.sourceExternalId !== undefined;
+
+      // Process each PLANNED task
+      for (const task of plannedTasks) {
+        try {
+          if (syncEnabled) {
+            let syncState: SyncState;
+
+            if (isImportedIssue) {
+              // Imported issue - use special handling
+              syncState = yield* self.handleImportedIssueTask(issue, task, plannedTasks.length);
+            } else {
+              // Normal issue - create new GitHub issue
+              syncState = yield* self.createGitHubIssueForTask(issue, task);
+            }
+
+            // Update task with GitHub sync state
+            yield* self.db.tasks.updateSyncState(task.id, syncState);
           }
 
-          // Update task with GitHub sync state
-          await Effect.runPromise(this.db.tasks.updateSyncState(task.id, syncState));
-        }
-
-        // Transition task from PLANNED → BACKLOG
-        await Effect.runPromise(
-          this.db.tasks.updateStatus(
+          // Transition task from PLANNED → BACKLOG
+          yield* self.db.tasks.updateStatus(
             task.id,
             "BACKLOG",
             "system",
             "Activated via move_issue_to_backlog"
-          )
-        );
+          );
 
-        const updatedTask = await Effect.runPromise(this.db.tasks.findById(task.id));
-        const externalIdNum = updatedTask?.syncState?.externalId
-          ? parseInt(updatedTask.syncState.externalId, 10)
-          : undefined;
-        results.push({
-          taskId: task.id,
-          taskNumber: task.number,
-          success: true,
-          githubIssueNumber: syncEnabled ? externalIdNum : undefined,
-          githubUrl: syncEnabled ? (updatedTask?.syncState?.externalUrl ?? undefined) : undefined,
-        });
-      } catch (error) {
-        // Fail fast - if any task fails, entire operation fails
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        throw new TaskServiceError(
-          `Failed to activate task ${task.number}: ${errorMessage}`,
-          "SYNC_FAILED",
-          error
-        );
+          const updatedTask = yield* self.db.tasks.findById(task.id);
+          const externalIdNum = updatedTask?.syncState?.externalId
+            ? parseInt(updatedTask.syncState.externalId, 10)
+            : undefined;
+          results.push({
+            taskId: task.id,
+            taskNumber: task.number,
+            success: true,
+            githubIssueNumber: syncEnabled ? externalIdNum : undefined,
+            githubUrl: syncEnabled ? (updatedTask?.syncState?.externalUrl ?? undefined) : undefined,
+          });
+        } catch (error) {
+          // Fail fast - if any task fails, entire operation fails
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          throw new TaskServiceError(
+            `Failed to activate task ${task.number}: ${errorMessage}`,
+            "SYNC_FAILED",
+            error
+          );
+        }
       }
-    }
 
-    // Transition issue from PLANNED → OPEN
-    const issueTransitioned = issue.isInPlanning;
-    if (issueTransitioned) {
-      await Effect.runPromise(this.db.issues.update(issue.id, { status: "OPEN" }));
-    }
+      // Transition issue from PLANNED → OPEN
+      const issueTransitioned = issue.isInPlanning;
+      if (issueTransitioned) {
+        yield* self.db.issues.update(issue.id, { status: "OPEN" });
+      }
 
-    return {
-      success: true,
-      tasksActivated: results,
-      issueTransitioned,
-    };
+      return {
+        success: true,
+        tasksActivated: results,
+        issueTransitioned,
+      };
+    });
   }
 
   /**
@@ -839,23 +877,24 @@ export class TaskService extends Service<TaskService>()("taskService") {
    *
    * @param taskIds - Array of task UUIDs that were abandoned
    */
-  async closeAbandonedTaskIssues(taskIds: string[]): Promise<void> {
-    for (const taskId of taskIds) {
-      const task = await Effect.runPromise(this.db.tasks.findById(taskId));
-      if (task?.syncState?.externalId) {
-        try {
-          const updatedSyncState = await Effect.runPromise(
-            this.projectManagement.closeIssue(task.syncState)
-          );
-          if (updatedSyncState) {
-            await Effect.runPromise(this.db.tasks.updateSyncState(taskId, updatedSyncState));
+  closeAbandonedTaskIssues(taskIds: string[]): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      for (const taskId of taskIds) {
+        const task = yield* self.db.tasks.findById(taskId);
+        if (task?.syncState?.externalId) {
+          try {
+            const updatedSyncState = yield* self.projectManagement.closeIssue(task.syncState);
+            if (updatedSyncState) {
+              yield* self.db.tasks.updateSyncState(taskId, updatedSyncState);
+            }
+          } catch (error) {
+            // Log but don't fail - best effort to close abandoned issues
+            console.warn(`Failed to close external issue for abandoned task ${taskId}:`, error);
           }
-        } catch (error) {
-          // Log but don't fail - best effort to close abandoned issues
-          console.warn(`Failed to close external issue for abandoned task ${taskId}:`, error);
         }
       }
-    }
+    });
   }
 
   /**
@@ -873,116 +912,124 @@ export class TaskService extends Service<TaskService>()("taskService") {
    * @param issueNumber - The dev-workflow issue number
    * @returns Sync result with details for each task
    */
-  async repairIssue(issueNumber: number): Promise<IssueRepairResult> {
-    const issue = await Effect.runPromise(this.db.issues.findByNumber(issueNumber));
-    if (!issue) {
-      return {
-        success: false,
-        issueNumber,
-        tasksProcessed: 0,
-        created: [],
-        linked: [],
-        verified: [],
-        skipped: [],
-        errors: [
-          {
-            taskId: "",
-            taskNumber: 0,
-            action: "skipped",
-            error: `Issue #${issueNumber} not found`,
-          },
-        ],
-      };
-    }
-
-    const plan = await this.db.plans.findByIssueId(issue.id);
-    if (!plan) {
-      return {
-        success: false,
-        issueNumber,
-        tasksProcessed: 0,
-        created: [],
-        linked: [],
-        verified: [],
-        skipped: [],
-        errors: [
-          {
-            taskId: "",
-            taskNumber: 0,
-            action: "skipped",
-            error: `No plan found for issue #${issueNumber}`,
-          },
-        ],
-      };
-    }
-
-    const allTasks = await Effect.runPromise(this.db.tasks.findByPlanId(plan.id));
-
-    // Only sync non-terminal tasks (exclude PLANNED, COMPLETED, ABANDONED)
-    // Workable OR active covers: BACKLOG, READY, IN_PROGRESS, PR_REVIEW
-    const tasksToSync = allTasks.filter((t) => t.isWorkable || t.isActive);
-
-    if (tasksToSync.length === 0) {
-      return {
-        success: true,
-        issueNumber,
-        tasksProcessed: 0,
-        created: [],
-        linked: [],
-        verified: [],
-        skipped: [],
-        errors: [],
-      };
-    }
-
-    const created: TaskRepairResult[] = [];
-    const linked: TaskRepairResult[] = [];
-    const verified: TaskRepairResult[] = [];
-    const skipped: TaskRepairResult[] = [];
-    const errors: TaskRepairResult[] = [];
-
-    // Check if this is an imported issue
-    const isImportedIssue = issue.sourceExternalId !== undefined;
-
-    for (const task of tasksToSync) {
-      try {
-        const result = await this.repairTask(issue, task, tasksToSync.length, isImportedIssue);
-
-        switch (result.action) {
-          case "created":
-            created.push(result);
-            break;
-          case "linked":
-            linked.push(result);
-            break;
-          case "verified":
-            verified.push(result);
-            break;
-          case "skipped":
-            skipped.push(result);
-            break;
-        }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        errors.push({
-          taskId: task.id,
-          taskNumber: task.number,
-          action: "skipped",
-          error: errorMessage,
-        });
+  repairIssue(issueNumber: number): Effect<IssueRepairResult> {
+    const self = this;
+    return Effect.gen(function* () {
+      const issue = yield* self.db.issues.findByNumber(issueNumber);
+      if (!issue) {
+        return {
+          success: false,
+          issueNumber,
+          tasksProcessed: 0,
+          created: [],
+          linked: [],
+          verified: [],
+          skipped: [],
+          errors: [
+            {
+              taskId: "",
+              taskNumber: 0,
+              action: "skipped" as const,
+              error: `Issue #${issueNumber} not found`,
+            },
+          ],
+        };
       }
-    }
 
-    return {
-      success: errors.length === 0,
-      issueNumber,
-      tasksProcessed: tasksToSync.length,
-      created,
-      linked,
-      verified,
-      skipped,
-      errors,
-    };
+      const plan = yield* self.db.plans.findByIssueId(issue.id);
+      if (!plan) {
+        return {
+          success: false,
+          issueNumber,
+          tasksProcessed: 0,
+          created: [],
+          linked: [],
+          verified: [],
+          skipped: [],
+          errors: [
+            {
+              taskId: "",
+              taskNumber: 0,
+              action: "skipped" as const,
+              error: `No plan found for issue #${issueNumber}`,
+            },
+          ],
+        };
+      }
+
+      const allTasks = yield* self.db.tasks.findByPlanId(plan.id);
+
+      // Only sync non-terminal tasks (exclude PLANNED, COMPLETED, ABANDONED)
+      // Workable OR active covers: BACKLOG, READY, IN_PROGRESS, PR_REVIEW
+      const tasksToSync = allTasks.filter((t) => t.isWorkable || t.isActive);
+
+      if (tasksToSync.length === 0) {
+        return {
+          success: true,
+          issueNumber,
+          tasksProcessed: 0,
+          created: [],
+          linked: [],
+          verified: [],
+          skipped: [],
+          errors: [],
+        };
+      }
+
+      const created: TaskRepairResult[] = [];
+      const linked: TaskRepairResult[] = [];
+      const verified: TaskRepairResult[] = [];
+      const skipped: TaskRepairResult[] = [];
+      const errors: TaskRepairResult[] = [];
+
+      // Check if this is an imported issue
+      const isImportedIssue = issue.sourceExternalId !== undefined;
+
+      for (const task of tasksToSync) {
+        try {
+          const repairResult = yield* self.repairTask(
+            issue,
+            task,
+            tasksToSync.length,
+            isImportedIssue
+          );
+
+          switch (repairResult.action) {
+            case "created":
+              created.push(repairResult);
+              break;
+            case "linked":
+              linked.push(repairResult);
+              break;
+            case "verified":
+              verified.push(repairResult);
+              break;
+            case "skipped":
+              skipped.push(repairResult);
+              break;
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          errors.push({
+            taskId: task.id,
+            taskNumber: task.number,
+            action: "skipped",
+            error: errorMessage,
+          });
+        }
+      }
+
+      return {
+        success: errors.length === 0,
+        issueNumber,
+        tasksProcessed: tasksToSync.length,
+        created,
+        linked,
+        verified,
+        skipped,
+        errors,
+      };
+    });
   }
 
   /**
@@ -992,79 +1039,85 @@ export class TaskService extends Service<TaskService>()("taskService") {
    * @param task - The task to create a GitHub issue for
    * @returns The GitHub sync state for the task
    */
-  async createGitHubIssueForTask(issue: Issue, task: Task): Promise<SyncState> {
-    if (!this.projectManagement.isEnabled()) {
-      throw new TaskServiceError("GitHub sync is not enabled", "SYNC_FAILED");
-    }
-
-    // Use plain task title (no prefix) to avoid confusing teammates not using dev-workflow
-    const title = task.title;
-
-    // Build body with task description and dev-workflow reference as footer
-    // Uses task template if available (based on task type)
-    const body = await this.buildTaskBody(issue, task);
-
-    // Build labels using task type (for GitHub label mapping)
-    const labels = await this.buildLabels(task.type);
-
-    // Ensure labels exist on the repo
-    await this.projectManagement.ensureLabelsExist(labels);
-
-    // Create on GitHub via provider
-    const externalIssue = await this.projectManagement.createIssue({ title, body, labels });
-
-    // Add to project if configured
-    const projectId = this.projectManagement.getProjectId();
-    let remoteProjectId: string | null = null;
-    if (projectId && externalIssue.nodeId) {
-      try {
-        const result = await this.projectManagement.addToProject(externalIssue.nodeId, projectId);
-
-        if (!result.success || !result.itemId) {
-          throw new TaskServiceError(
-            result.error ?? `Project association returned empty item ID for project ${projectId}`,
-            "SYNC_FAILED"
-          );
-        }
-
-        remoteProjectId = result.itemId;
-
-        // Move to Backlog column (initial status for activated tasks)
-        await this.projectManagement.moveToColumn(remoteProjectId, projectId, "Backlog");
-
-        // Sync task labels to project custom fields (if mapping configured)
-        const labelFieldMapping = this.projectManagement.getLabelFieldMapping();
-        if (labelFieldMapping && task.labels) {
-          await this.syncLabelsToProjectFields(
-            remoteProjectId,
-            projectId,
-            task.labels,
-            labelFieldMapping
-          );
-        }
-      } catch (error) {
-        if (error instanceof TaskServiceError) {
-          throw error;
-        }
-        throw new TaskServiceError(
-          `Failed to add task to GitHub Project ${projectId}`,
-          "SYNC_FAILED",
-          error
-        );
+  createGitHubIssueForTask(issue: Issue, task: Task): Effect<SyncState> {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!self.projectManagement.isEnabled()) {
+        throw new TaskServiceError("GitHub sync is not enabled", "SYNC_FAILED");
       }
-    }
 
-    const syncState: SyncState = {
-      externalId: externalIssue.numericId?.toString() ?? externalIssue.id,
-      externalUrl: externalIssue.url,
-      externalNodeId: externalIssue.nodeId ?? null,
-      syncStatus: "SYNCED",
-      lastSyncedAt: new Date().toISOString(),
-      lastSyncError: null,
-      remoteProjectId,
-    };
+      // Use plain task title (no prefix) to avoid confusing teammates not using dev-workflow
+      const title = task.title;
 
-    return syncState;
+      // Build body with task description and dev-workflow reference as footer
+      // Uses task template if available (based on task type)
+      const body = yield* self.buildTaskBody(issue, task);
+
+      // Build labels using task type (for GitHub label mapping)
+      const labels = yield* self.buildLabels(task.type);
+
+      // Ensure labels exist on the repo
+      yield* self.projectManagement.ensureLabelsExist(labels);
+
+      // Create on GitHub via provider
+      const externalIssue = yield* self.projectManagement.createIssue({ title, body, labels });
+
+      // Add to project if configured
+      const projectId = self.projectManagement.getProjectId();
+      let remoteProjectId: string | null = null;
+      if (projectId && externalIssue.nodeId) {
+        try {
+          const result = yield* self.projectManagement.addToProject(
+            externalIssue.nodeId!,
+            projectId
+          );
+
+          if (!result.success || !result.itemId) {
+            throw new TaskServiceError(
+              result.error ?? `Project association returned empty item ID for project ${projectId}`,
+              "SYNC_FAILED"
+            );
+          }
+
+          remoteProjectId = result.itemId;
+
+          // Move to Backlog column (initial status for activated tasks)
+          yield* self.projectManagement.moveToColumn(remoteProjectId!, projectId, "Backlog");
+
+          // Sync task labels to project custom fields (if mapping configured)
+          const labelFieldMapping = self.projectManagement.getLabelFieldMapping();
+          if (labelFieldMapping && task.labels) {
+            yield* self.syncLabelsToProjectFields(
+              remoteProjectId,
+              projectId,
+              task.labels,
+              labelFieldMapping
+            );
+          }
+        } catch (error) {
+          if (error instanceof TaskServiceError) {
+            throw error;
+          }
+          throw new TaskServiceError(
+            `Failed to add task to GitHub Project ${projectId}`,
+            "SYNC_FAILED",
+            error
+          );
+        }
+      }
+
+      const syncState: SyncState = {
+        externalId: externalIssue.numericId?.toString() ?? externalIssue.id,
+        externalUrl: externalIssue.url,
+        externalNodeId: externalIssue.nodeId ?? null,
+        syncStatus: "SYNCED",
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: null,
+        remoteProjectId,
+      };
+
+      return syncState;
+    });
   }
 
   // ============================================================================
@@ -1074,140 +1127,150 @@ export class TaskService extends Service<TaskService>()("taskService") {
   /**
    * Handle task activation for imported issues
    */
-  private async handleImportedIssueTask(
+  private handleImportedIssueTask(
     issue: Issue,
     task: Task,
     totalTaskCount: number
-  ): Promise<SyncState> {
-    const parentIssueNumber = issue.sourceExternalId!;
+  ): Effect<SyncState> {
+    const self = this;
+    return Effect.gen(function* () {
+      const parentIssueNumber = issue.sourceExternalId!;
 
-    if (totalTaskCount === 1) {
-      // 1 task case: Link directly to the parent GitHub issue
-      return await this.linkTaskToParentIssue(parentIssueNumber, issue, task);
-    } else {
-      // N tasks case: Create a sub-issue under the parent
-      return await this.createSubIssueForTask(parentIssueNumber, issue, task);
-    }
+      if (totalTaskCount === 1) {
+        // 1 task case: Link directly to the parent GitHub issue
+        return yield* self.linkTaskToParentIssue(parentIssueNumber, issue, task);
+      } else {
+        // N tasks case: Create a sub-issue under the parent
+        return yield* self.createSubIssueForTask(parentIssueNumber, issue, task);
+      }
+    });
   }
 
   /**
    * Link a task directly to an existing GitHub issue (for 1-task imported issues)
    */
-  private async linkTaskToParentIssue(
+  private linkTaskToParentIssue(
     parentExternalId: string,
     _issue: Issue,
     task: Task
-  ): Promise<SyncState> {
-    // Fetch the parent GitHub issue to get its nodeId and URL
-    const parentIssue = await this.projectManagement.getIssue(parentExternalId);
-    if (!parentIssue) {
-      throw new TaskServiceError(
-        `Parent GitHub issue #${parentExternalId} not found`,
-        "SYNC_FAILED"
-      );
-    }
-
-    const projectId = this.projectManagement.getProjectId();
-
-    // Add to project if configured
-    let remoteProjectId: string | null = null;
-    if (projectId && parentIssue.nodeId) {
-      try {
-        const result = await this.projectManagement.addToProject(parentIssue.nodeId, projectId);
-
-        if (!result.success || !result.itemId) {
-          throw new TaskServiceError(
-            result.error ?? `Project association returned empty item ID for project ${projectId}`,
-            "SYNC_FAILED"
-          );
-        }
-
-        remoteProjectId = result.itemId;
-
-        // Move to Backlog column
-        await this.projectManagement.moveToColumn(remoteProjectId, projectId, "Backlog");
-
-        // Sync task labels to project custom fields (if mapping configured)
-        const labelFieldMapping = this.projectManagement.getLabelFieldMapping();
-        if (labelFieldMapping && task.labels) {
-          await this.syncLabelsToProjectFields(
-            remoteProjectId,
-            projectId,
-            task.labels,
-            labelFieldMapping
-          );
-        }
-      } catch (error) {
-        if (error instanceof TaskServiceError) {
-          throw error;
-        }
+  ): Effect<SyncState> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Fetch the parent GitHub issue to get its nodeId and URL
+      const parentIssue = yield* self.projectManagement.getIssue(parentExternalId);
+      if (!parentIssue) {
         throw new TaskServiceError(
-          `Failed to add parent issue to GitHub Project ${projectId}`,
-          "SYNC_FAILED",
-          error
+          `Parent GitHub issue #${parentExternalId} not found`,
+          "SYNC_FAILED"
         );
       }
-    }
 
-    return {
-      externalId: parentIssue.numericId?.toString() ?? parentIssue.id,
-      externalUrl: parentIssue.url,
-      externalNodeId: parentIssue.nodeId ?? null,
-      syncStatus: "SYNCED",
-      lastSyncedAt: new Date().toISOString(),
-      lastSyncError: null,
-      remoteProjectId,
-    };
+      const projectId = self.projectManagement.getProjectId();
+
+      // Add to project if configured
+      let remoteProjectId: string | null = null;
+      if (projectId && parentIssue.nodeId) {
+        try {
+          const result = yield* self.projectManagement.addToProject(parentIssue.nodeId!, projectId);
+
+          if (!result.success || !result.itemId) {
+            throw new TaskServiceError(
+              result.error ?? `Project association returned empty item ID for project ${projectId}`,
+              "SYNC_FAILED"
+            );
+          }
+
+          remoteProjectId = result.itemId;
+
+          // Move to Backlog column
+          yield* self.projectManagement.moveToColumn(remoteProjectId!, projectId, "Backlog");
+
+          // Sync task labels to project custom fields (if mapping configured)
+          const labelFieldMapping = self.projectManagement.getLabelFieldMapping();
+          if (labelFieldMapping && task.labels) {
+            yield* self.syncLabelsToProjectFields(
+              remoteProjectId,
+              projectId,
+              task.labels,
+              labelFieldMapping
+            );
+          }
+        } catch (error) {
+          if (error instanceof TaskServiceError) {
+            throw error;
+          }
+          throw new TaskServiceError(
+            `Failed to add parent issue to GitHub Project ${projectId}`,
+            "SYNC_FAILED",
+            error
+          );
+        }
+      }
+
+      return {
+        externalId: parentIssue.numericId?.toString() ?? parentIssue.id,
+        externalUrl: parentIssue.url,
+        externalNodeId: parentIssue.nodeId ?? null,
+        syncStatus: "SYNCED" as const,
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: null,
+        remoteProjectId,
+      };
+    });
   }
 
   /**
    * Create a GitHub sub-issue for a task (for N-tasks imported issues)
    */
-  private async createSubIssueForTask(
+  private createSubIssueForTask(
     parentExternalId: string,
     issue: Issue,
     task: Task
-  ): Promise<SyncState> {
-    // Create a new GitHub issue for this task
-    const syncState = await this.createGitHubIssueForTask(issue, task);
+  ): Effect<SyncState> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Create a new GitHub issue for this task
+      const syncState = yield* self.createGitHubIssueForTask(issue, task);
 
-    // Link as sub-issue of the parent using the provider
-    await this.projectManagement.linkIssues(parentExternalId, syncState.externalId!);
+      // Link as sub-issue of the parent using the provider
+      yield* self.projectManagement.linkIssues(parentExternalId, syncState.externalId!);
 
-    return syncState;
+      return syncState;
+    });
   }
 
   /**
    * Sync a single task's GitHub issue state
    */
-  private async repairTask(
+  private repairTask(
     issue: Issue,
     task: Task,
     totalTaskCount: number,
     isImportedIssue: boolean
-  ): Promise<TaskRepairResult> {
-    // Case 1: Task already has GitHub sync - verify it exists
-    if (task.syncState?.externalId) {
-      const existingIssue = await this.projectManagement.getIssue(
-        String(task.syncState.externalId)
-      );
+  ): Effect<TaskRepairResult> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Case 1: Task already has GitHub sync - verify it exists
+      if (task.syncState?.externalId) {
+        const existingIssue = yield* self.projectManagement.getIssue(
+          String(task.syncState!.externalId)
+        );
 
-      if (existingIssue) {
-        // Issue exists - verify project state and return verified
-        await this.ensureProjectState(task);
+        if (existingIssue) {
+          // Issue exists - verify project state and return verified
+          yield* self.ensureProjectState(task);
 
-        return {
-          taskId: task.id,
-          taskNumber: task.number,
-          action: "verified",
-          githubIssueNumber: existingIssue.numericId ?? parseInt(existingIssue.id, 10),
-          githubUrl: existingIssue.url,
-        };
-      }
+          return {
+            taskId: task.id,
+            taskNumber: task.number,
+            action: "verified" as const,
+            githubIssueNumber: existingIssue.numericId ?? parseInt(existingIssue.id, 10),
+            githubUrl: existingIssue.url,
+          };
+        }
 
-      // Issue was deleted - clear sync state and proceed to create/link
-      await Effect.runPromise(
-        this.db.tasks.updateSyncState(task.id, {
+        // Issue was deleted - clear sync state and proceed to create/link
+        yield* self.db.tasks.updateSyncState(task.id, {
           externalId: null,
           externalUrl: null,
           externalNodeId: null,
@@ -1215,204 +1278,219 @@ export class TaskService extends Service<TaskService>()("taskService") {
           lastSyncedAt: new Date().toISOString(),
           lastSyncError: "GitHub issue was deleted, re-syncing",
           remoteProjectId: null,
-        })
+        });
+      }
+
+      // Case 2: No GitHub sync - search for existing issue by title pattern
+      const searchPattern = `Task ${issue.number}.${task.number}:`;
+      const searchResults = yield* self.projectManagement.searchIssues(searchPattern, "all", 5);
+
+      // Look for an exact match in the body (footer pattern)
+      const matchingIssue = searchResults.find((gh) =>
+        gh.body.includes(`Task ${issue.number}.${task.number}: ${task.title}`)
       );
-    }
 
-    // Case 2: No GitHub sync - search for existing issue by title pattern
-    const searchPattern = `Task ${issue.number}.${task.number}:`;
-    const searchResults = await this.projectManagement.searchIssues(searchPattern, "all", 5);
+      if (matchingIssue) {
+        // Found existing issue - link it
+        const syncState = yield* self.linkExistingGitHubIssue(matchingIssue, task);
+        yield* self.db.tasks.updateSyncState(task.id, syncState);
 
-    // Look for an exact match in the body (footer pattern)
-    const matchingIssue = searchResults.find((gh) =>
-      gh.body.includes(`Task ${issue.number}.${task.number}: ${task.title}`)
-    );
+        return {
+          taskId: task.id,
+          taskNumber: task.number,
+          action: "linked" as const,
+          githubIssueNumber: matchingIssue.numericId ?? parseInt(matchingIssue.id, 10),
+          githubUrl: matchingIssue.url,
+        };
+      }
 
-    if (matchingIssue) {
-      // Found existing issue - link it
-      const syncState = await this.linkExistingGitHubIssue(matchingIssue, task);
-      await Effect.runPromise(this.db.tasks.updateSyncState(task.id, syncState));
+      // Case 3: No existing issue found - create new one
+      let syncState: SyncState;
+
+      if (isImportedIssue) {
+        syncState = yield* self.handleImportedIssueTask(issue, task, totalTaskCount);
+      } else {
+        syncState = yield* self.createGitHubIssueForTask(issue, task);
+      }
+
+      yield* self.db.tasks.updateSyncState(task.id, syncState);
+
+      // Sync to correct column based on current task status
+      const updatedState = yield* self.projectManagement.syncTaskStatus(syncState, task.status);
+      if (updatedState) {
+        yield* self.db.tasks.updateSyncState(task.id, updatedState);
+      }
 
       return {
         taskId: task.id,
         taskNumber: task.number,
-        action: "linked",
-        githubIssueNumber: matchingIssue.numericId ?? parseInt(matchingIssue.id, 10),
-        githubUrl: matchingIssue.url,
+        action: "created" as const,
+        githubIssueNumber: syncState.externalId ? parseInt(syncState.externalId, 10) : undefined,
+        githubUrl: syncState.externalUrl ?? undefined,
       };
-    }
-
-    // Case 3: No existing issue found - create new one
-    let syncState: SyncState;
-
-    if (isImportedIssue) {
-      syncState = await this.handleImportedIssueTask(issue, task, totalTaskCount);
-    } else {
-      syncState = await this.createGitHubIssueForTask(issue, task);
-    }
-
-    await Effect.runPromise(this.db.tasks.updateSyncState(task.id, syncState));
-
-    // Sync to correct column based on current task status
-    const updatedState = await this.projectManagement.syncTaskStatus(syncState, task.status);
-    if (updatedState) {
-      await Effect.runPromise(this.db.tasks.updateSyncState(task.id, updatedState));
-    }
-
-    return {
-      taskId: task.id,
-      taskNumber: task.number,
-      action: "created",
-      githubIssueNumber: syncState.externalId ? parseInt(syncState.externalId, 10) : undefined,
-      githubUrl: syncState.externalUrl ?? undefined,
-    };
+    });
   }
 
   /**
    * Link an existing GitHub issue to a task
    */
-  private async linkExistingGitHubIssue(
+  private linkExistingGitHubIssue(
     externalIssue: { id: string; numericId?: number; url: string; nodeId?: string },
     task: Task
-  ): Promise<SyncState> {
-    // Add to project if configured
-    const projectId = this.projectManagement.getProjectId();
-    let remoteProjectId: string | null = null;
-    if (projectId && externalIssue.nodeId) {
-      try {
-        const result = await this.projectManagement.addToProject(externalIssue.nodeId, projectId);
+  ): Effect<SyncState> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Add to project if configured
+      const projectId = self.projectManagement.getProjectId();
+      let remoteProjectId: string | null = null;
+      if (projectId && externalIssue.nodeId) {
+        try {
+          const result = yield* self.projectManagement.addToProject(
+            externalIssue.nodeId!,
+            projectId
+          );
 
-        // Move to correct column based on task status
-        if (result.success && result.itemId) {
-          remoteProjectId = result.itemId;
-          const columnName = this.projectManagement.getColumnForStatus(task.status);
-          if (columnName) {
-            await this.projectManagement.moveToColumn(remoteProjectId, projectId, columnName);
-          }
+          // Move to correct column based on task status
+          if (result.success && result.itemId) {
+            remoteProjectId = result.itemId;
+            const columnName = self.projectManagement.getColumnForStatus(task.status);
+            if (columnName) {
+              yield* self.projectManagement.moveToColumn(remoteProjectId!, projectId, columnName);
+            }
 
-          // Sync task labels to project custom fields (if mapping configured)
-          const labelFieldMapping = this.projectManagement.getLabelFieldMapping();
-          if (labelFieldMapping && task.labels) {
-            await this.syncLabelsToProjectFields(
-              remoteProjectId,
-              projectId,
-              task.labels,
-              labelFieldMapping
-            );
+            // Sync task labels to project custom fields (if mapping configured)
+            const labelFieldMapping = self.projectManagement.getLabelFieldMapping();
+            if (labelFieldMapping && task.labels) {
+              yield* self.syncLabelsToProjectFields(
+                remoteProjectId,
+                projectId,
+                task.labels,
+                labelFieldMapping
+              );
+            }
           }
+        } catch (error) {
+          // Log but don't fail - project linking is not critical
+          console.warn(
+            `Failed to add issue to project: ${error instanceof Error ? error.message : String(error)}`
+          );
         }
-      } catch (error) {
-        // Log but don't fail - project linking is not critical
-        console.warn(
-          `Failed to add issue to project: ${error instanceof Error ? error.message : String(error)}`
-        );
       }
-    }
 
-    return {
-      externalId: externalIssue.numericId?.toString() ?? externalIssue.id,
-      externalUrl: externalIssue.url,
-      externalNodeId: externalIssue.nodeId ?? null,
-      syncStatus: "SYNCED",
-      lastSyncedAt: new Date().toISOString(),
-      lastSyncError: null,
-      remoteProjectId,
-    };
+      return {
+        externalId: externalIssue.numericId?.toString() ?? externalIssue.id,
+        externalUrl: externalIssue.url,
+        externalNodeId: externalIssue.nodeId ?? null,
+        syncStatus: "SYNCED" as const,
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: null,
+        remoteProjectId,
+      };
+    });
   }
 
   /**
    * Ensure a task's GitHub issue is in the correct project state
    */
-  private async ensureProjectState(task: Task): Promise<void> {
-    const projectId = this.projectManagement.getProjectId();
-    if (!projectId || !task.syncState) {
-      return;
-    }
+  private ensureProjectState(task: Task): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      const projectId = self.projectManagement.getProjectId();
+      if (!projectId || !task.syncState) {
+        return;
+      }
 
-    // If no project item ID, try to add to project
-    if (!task.syncState.remoteProjectId && task.syncState.externalNodeId) {
-      try {
-        const result = await this.projectManagement.addToProject(
-          task.syncState.externalNodeId,
-          projectId
-        );
-
-        if (result.success && result.itemId) {
-          // Update task with project item ID
-          const newSyncState = {
-            ...task.syncState,
-            remoteProjectId: result.itemId,
-            lastSyncedAt: new Date().toISOString(),
-          };
-          await Effect.runPromise(this.db.tasks.updateSyncState(task.id, newSyncState));
-
-          // Move to correct column
-          const updatedState = await this.projectManagement.syncTaskStatus(
-            newSyncState,
-            task.status
+      // If no project item ID, try to add to project
+      if (!task.syncState.remoteProjectId && task.syncState.externalNodeId) {
+        try {
+          const result = yield* self.projectManagement.addToProject(
+            task.syncState!.externalNodeId!,
+            projectId
           );
-          if (updatedState) {
-            await Effect.runPromise(this.db.tasks.updateSyncState(task.id, updatedState));
-          }
 
-          // Sync task labels to project custom fields (if mapping configured)
-          const labelFieldMapping = this.projectManagement.getLabelFieldMapping();
-          if (labelFieldMapping && task.labels) {
-            await this.syncLabelsToProjectFields(
-              result.itemId,
-              projectId,
-              task.labels,
-              labelFieldMapping
+          if (result.success && result.itemId) {
+            // Update task with project item ID
+            const newSyncState = {
+              ...task.syncState,
+              remoteProjectId: result.itemId,
+              lastSyncedAt: new Date().toISOString(),
+            };
+            yield* self.db.tasks.updateSyncState(task.id, newSyncState);
+
+            // Move to correct column
+            const updatedState = yield* self.projectManagement.syncTaskStatus(
+              newSyncState,
+              task.status
             );
-          }
-        }
-      } catch (error) {
-        console.warn(
-          `Failed to add to project: ${error instanceof Error ? error.message : String(error)}`
-        );
-      }
-    } else if (task.syncState.remoteProjectId) {
-      // Already has project item - ensure correct column and labels
-      const updatedState = await this.projectManagement.syncTaskStatus(task.syncState, task.status);
-      if (updatedState) {
-        await Effect.runPromise(this.db.tasks.updateSyncState(task.id, updatedState));
-      }
+            if (updatedState) {
+              yield* self.db.tasks.updateSyncState(task.id, updatedState);
+            }
 
-      // Sync task labels to project custom fields (if mapping configured)
-      const labelFieldMapping = this.projectManagement.getLabelFieldMapping();
-      if (labelFieldMapping && task.labels) {
-        await this.syncLabelsToProjectFields(
-          task.syncState.remoteProjectId,
-          projectId,
-          task.labels,
-          labelFieldMapping
+            // Sync task labels to project custom fields (if mapping configured)
+            const labelFieldMapping = self.projectManagement.getLabelFieldMapping();
+            if (labelFieldMapping && task.labels) {
+              yield* self.syncLabelsToProjectFields(
+                result.itemId,
+                projectId,
+                task.labels,
+                labelFieldMapping
+              );
+            }
+          }
+        } catch (error) {
+          console.warn(
+            `Failed to add to project: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+      } else if (task.syncState.remoteProjectId) {
+        // Already has project item - ensure correct column and labels
+        const updatedState = yield* self.projectManagement.syncTaskStatus(
+          task.syncState,
+          task.status
         );
+        if (updatedState) {
+          yield* self.db.tasks.updateSyncState(task.id, updatedState);
+        }
+
+        // Sync task labels to project custom fields (if mapping configured)
+        const labelFieldMapping = self.projectManagement.getLabelFieldMapping();
+        if (labelFieldMapping && task.labels) {
+          yield* self.syncLabelsToProjectFields(
+            task.syncState.remoteProjectId,
+            projectId,
+            task.labels,
+            labelFieldMapping
+          );
+        }
       }
-    }
+    });
   }
 
   /**
    * Build the GitHub issue body for a task
    */
-  private async buildTaskBody(issue: Issue, task: Task): Promise<string> {
-    // Try to use task template if template service is available
-    if (this.templateService) {
-      try {
-        const template = await this.templateService.getTaskTemplate(task.type);
-        if (template) {
-          const body = this.applyTaskPlaceholders(template.content, issue, task);
-          return this.appendFooter(body, issue, task);
+  private buildTaskBody(issue: Issue, task: Task): Effect<string> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Try to use task template if template service is available
+      if (self.templateService) {
+        try {
+          const template = yield* self.templateService!.getTaskTemplate(task.type);
+          if (template) {
+            const body = self.applyTaskPlaceholders(template.content, issue, task);
+            return self.appendFooter(body, issue, task);
+          }
+        } catch {
+          // Log but don't fail - fall back to default behavior
+          console.warn(
+            `Failed to load task template for type ${task.type}, falling back to default format`
+          );
         }
-      } catch {
-        // Log but don't fail - fall back to default behavior
-        console.warn(
-          `Failed to load task template for type ${task.type}, falling back to default format`
-        );
       }
-    }
 
-    // Fall back to hardcoded format
-    return this.buildDefaultTaskBody(issue, task);
+      // Fall back to hardcoded format
+      return self.buildDefaultTaskBody(issue, task);
+    });
   }
 
   /**
@@ -1469,91 +1547,97 @@ export class TaskService extends Service<TaskService>()("taskService") {
   /**
    * Build labels array from task type
    */
-  private async buildLabels(taskType: string): Promise<string[]> {
-    const labels: string[] = [];
+  private buildLabels(taskType: string): Effect<string[]> {
+    const self = this;
+    return Effect.gen(function* () {
+      const labels: string[] = [];
 
-    // Look up the remote label for this task type via TypeService
-    let typeLabel: string | undefined;
+      // Look up the remote label for this task type via TypeService
+      let typeLabel: string | undefined;
 
-    if (this.typeService) {
-      try {
-        const typeDef = await this.typeService.getTypeByName(taskType);
-        if (typeDef) {
-          typeLabel = typeDef.remoteLabel;
+      if (self.typeService) {
+        try {
+          const typeDef = yield* self.typeService!.getTypeByName(taskType);
+          if (typeDef) {
+            typeLabel = typeDef.remoteLabel;
+          }
+        } catch {
+          // Log but don't fail - fall back to lowercase
+          console.warn(`Failed to look up type ${taskType}, falling back to lowercase`);
         }
-      } catch {
-        // Log but don't fail - fall back to lowercase
-        console.warn(`Failed to look up type ${taskType}, falling back to lowercase`);
       }
-    }
 
-    // Fallback to lowercase type name if no TypeService or no explicit label
-    if (!typeLabel) {
-      typeLabel = taskType.toLowerCase();
-    }
+      // Fallback to lowercase type name if no TypeService or no explicit label
+      if (!typeLabel) {
+        typeLabel = taskType.toLowerCase();
+      }
 
-    labels.push(typeLabel);
+      labels.push(typeLabel);
 
-    // Add custom labels from provider config
-    const customLabels = this.projectManagement.getCustomLabels();
-    labels.push(...customLabels);
+      // Add custom labels from provider config
+      const customLabels = self.projectManagement.getCustomLabels();
+      labels.push(...customLabels);
 
-    // Add a "task" label to distinguish task issues from regular issues
-    labels.push("task");
+      // Add a "task" label to distinguish task issues from regular issues
+      labels.push("task");
 
-    return labels;
+      return labels;
+    });
   }
 
   /**
    * Sync task labels to GitHub Project custom fields
    */
-  private async syncLabelsToProjectFields(
+  private syncLabelsToProjectFields(
     remoteProjectId: string,
     projectId: string,
     labels: Record<string, string> | undefined | null,
     labelFieldMapping: Record<string, string>
-  ): Promise<void> {
-    if (!labels || Object.keys(labels).length === 0) {
-      return;
-    }
-
-    // Sync each mapped label
-    for (const [labelKey, labelValue] of Object.entries(labels)) {
-      const fieldId = labelFieldMapping[labelKey];
-      if (!fieldId) {
-        // Label not mapped - skip
-        continue;
+  ): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!labels || Object.keys(labels).length === 0) {
+        return;
       }
 
-      try {
-        if (labelValue === "" || labelValue === null || labelValue === undefined) {
-          // Empty value - clear the field
-          const result = await this.projectManagement.clearProjectItemField(
-            projectId,
-            remoteProjectId,
-            fieldId
-          );
-          if (!result.success) {
-            console.warn(`Failed to clear field ${labelKey}: ${result.error}`);
-          }
-        } else {
-          // Non-empty value - set the field
-          const result = await this.projectManagement.setProjectItemField(
-            projectId,
-            remoteProjectId,
-            fieldId,
-            labelValue
-          );
-          if (!result.success) {
-            console.warn(`Failed to set field ${labelKey}=${labelValue}: ${result.error}`);
-          }
+      // Sync each mapped label
+      for (const [labelKey, labelValue] of Object.entries(labels)) {
+        const fieldId = labelFieldMapping[labelKey];
+        if (!fieldId) {
+          // Label not mapped - skip
+          continue;
         }
-      } catch (error) {
-        // Log but don't fail - best effort sync
-        console.warn(
-          `Error syncing label ${labelKey} to project field: ${error instanceof Error ? error.message : String(error)}`
-        );
+
+        try {
+          if (labelValue === "" || labelValue === null || labelValue === undefined) {
+            // Empty value - clear the field
+            const result = yield* self.projectManagement.clearProjectItemField(
+              projectId,
+              remoteProjectId,
+              fieldId
+            );
+            if (!result.success) {
+              console.warn(`Failed to clear field ${labelKey}: ${result.error}`);
+            }
+          } else {
+            // Non-empty value - set the field
+            const result = yield* self.projectManagement.setProjectItemField(
+              projectId,
+              remoteProjectId,
+              fieldId,
+              labelValue
+            );
+            if (!result.success) {
+              console.warn(`Failed to set field ${labelKey}=${labelValue}: ${result.error}`);
+            }
+          }
+        } catch (error) {
+          // Log but don't fail - best effort sync
+          console.warn(
+            `Error syncing label ${labelKey} to project field: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
       }
-    }
+    });
   }
 }

@@ -38,14 +38,6 @@ export interface WorkerDataResult {
   };
 }
 
-interface TaskDetails {
-  taskNumber: number;
-  issueNumber: number;
-  taskTitle: string;
-  taskStartedAt: string | null;
-  totalTasks: number;
-}
-
 // =============================================================================
 // Operation
 // =============================================================================
@@ -56,57 +48,55 @@ export function getWorkerData() {
     const sourceProvider = yield* DbSourceProvider;
     const workerQueueDb = yield* WorkerQueueDbTag;
 
-    return yield* Effect.promise(async (): Promise<WorkerDataResult> => {
-      const workers = workerQueueDb.findAllWorkersWithHealth();
-      const queueEntries = workerQueueDb.findAllEntriesWithHealth();
-      const stats = workerQueueDb.getQueueStats();
+    const workers = workerQueueDb.findAllWorkersWithHealth();
+    const queueEntries = workerQueueDb.findAllEntriesWithHealth();
+    const stats = workerQueueDb.getQueueStats();
 
-      let projects: { projectId: string; slug: string }[] = [];
-      try {
-        const sources = await projectsResolver.getAllSources();
-        projects = sources.flatMap((s) => s.projects);
-      } catch {
-        // Projects unavailable, continue without enrichment
-      }
+    let projects: { projectId: string; slug: string }[] = [];
+    try {
+      const sources = yield* projectsResolver.getAllSources();
+      projects = sources.flatMap((s) => s.projects);
+    } catch {
+      // Projects unavailable, continue without enrichment
+    }
 
-      const enrichedQueue: DispatchQueueEntryWithDetails[] = [];
-      for (const entry of queueEntries) {
-        const details =
-          projects.length > 0
-            ? await lookupTaskDetails(entry.taskId, projects, projectsResolver, sourceProvider)
-            : null;
-        enrichedQueue.push({
-          ...entry,
+    const enrichedQueue: DispatchQueueEntryWithDetails[] = [];
+    for (const entry of queueEntries) {
+      const details =
+        projects.length > 0
+          ? yield* lookupTaskDetails(entry.taskId, projects, projectsResolver, sourceProvider)
+          : null;
+      enrichedQueue.push({
+        ...entry,
+        taskNumber: details?.taskNumber,
+        issueNumber: details?.issueNumber,
+        taskTitle: details?.taskTitle,
+        totalTasks: details?.totalTasks,
+      });
+    }
+
+    const enrichedWorkers: WorkerWithTaskDetails[] = [];
+    for (const worker of workers) {
+      if (worker.currentTaskId && projects.length > 0) {
+        const details = yield* lookupTaskDetails(
+          worker.currentTaskId,
+          projects,
+          projectsResolver,
+          sourceProvider
+        );
+        enrichedWorkers.push({
+          ...worker,
           taskNumber: details?.taskNumber,
           issueNumber: details?.issueNumber,
-          taskTitle: details?.taskTitle,
+          taskStartedAt: details?.taskStartedAt ?? undefined,
           totalTasks: details?.totalTasks,
         });
+      } else {
+        enrichedWorkers.push(worker);
       }
+    }
 
-      const enrichedWorkers: WorkerWithTaskDetails[] = [];
-      for (const worker of workers) {
-        if (worker.currentTaskId && projects.length > 0) {
-          const details = await lookupTaskDetails(
-            worker.currentTaskId,
-            projects,
-            projectsResolver,
-            sourceProvider
-          );
-          enrichedWorkers.push({
-            ...worker,
-            taskNumber: details?.taskNumber,
-            issueNumber: details?.issueNumber,
-            taskStartedAt: details?.taskStartedAt ?? undefined,
-            totalTasks: details?.totalTasks,
-          });
-        } else {
-          enrichedWorkers.push(worker);
-        }
-      }
-
-      return { workers: enrichedWorkers, queue: enrichedQueue, stats };
-    });
+    return { workers: enrichedWorkers, queue: enrichedQueue, stats } satisfies WorkerDataResult;
   });
 }
 
@@ -114,37 +104,39 @@ export function getWorkerData() {
 // Helpers
 // =============================================================================
 
-async function lookupTaskDetails(
+function lookupTaskDetails(
   taskId: string,
   projects: { projectId: string; slug: string }[],
   projectsResolver: ProjectsResolver,
   sourceProvider: DbSourceProvider
-): Promise<TaskDetails | null> {
-  for (const project of projects) {
-    try {
-      const projectInfo = await projectsResolver.getProjectBySlug(project.slug);
-      const db = await getDbClient(projectInfo, sourceProvider);
-      const task = await Effect.runPromise(db.tasks.findById(taskId));
+) {
+  return Effect.gen(function* () {
+    for (const project of projects) {
+      try {
+        const projectInfo = yield* projectsResolver.getProjectBySlug(project.slug);
+        const db = yield* Effect.promise(() => getDbClient(projectInfo, sourceProvider));
+        const task = yield* db.tasks.findById(taskId);
 
-      if (task) {
-        const plan = await db.plans.findById(task.planId);
-        if (plan) {
-          const issue = await Effect.runPromise(db.issues.findById(plan.issueId));
-          if (issue) {
-            const allTasks = await Effect.runPromise(db.tasks.findByPlanId(plan.id));
-            return {
-              taskNumber: task.number,
-              issueNumber: issue.number,
-              taskTitle: task.title,
-              taskStartedAt: task.startedAt ?? null,
-              totalTasks: allTasks.length,
-            };
+        if (task) {
+          const plan = yield* db.plans.findById(task.planId);
+          if (plan) {
+            const issue = yield* db.issues.findById(plan.issueId);
+            if (issue) {
+              const allTasks = yield* db.tasks.findByPlanId(plan.id);
+              return {
+                taskNumber: task.number,
+                issueNumber: issue.number,
+                taskTitle: task.title,
+                taskStartedAt: task.startedAt ?? null,
+                totalTasks: allTasks.length,
+              };
+            }
           }
         }
+      } catch {
+        // Continue searching
       }
-    } catch {
-      // Continue searching
     }
-  }
-  return null;
+    return null;
+  });
 }

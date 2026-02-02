@@ -100,7 +100,7 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
     const workerQueueDb = yield* WorkerQueueDbTag;
 
     // Check if task exists
-    const task = yield* Effect.promise(() => taskService.findById(taskId));
+    const task = yield* taskService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
@@ -132,19 +132,15 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
 
     // Terminal states - return gracefully with context (not an error)
     if (task.isTerminal) {
-      return yield* Effect.promise(() =>
-        buildTerminalStateResponse(task, taskService, planService, issueService)
-      );
+      return yield* buildTerminalStateResponse(task, taskService, planService, issueService);
     }
 
     // Delegate to idempotent startTaskSession (handles both fresh start and resume)
-    const result = yield* Effect.promise(() =>
-      taskSessionService.startTaskSession({
-        taskId,
-        sessionId,
-        mode,
-      })
-    );
+    const result = yield* taskSessionService.startTaskSession({
+      taskId,
+      sessionId,
+      mode,
+    });
 
     // Build response
     const response: LoadTaskSessionResult = {
@@ -164,7 +160,7 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
     // Include conflict warnings if any were detected (only on fresh start)
     if (result.conflictWarnings && result.conflictWarnings.length > 0) {
       response.conflictWarnings = result.conflictWarnings;
-      const taskPlan = yield* Effect.promise(() => planService.findById(result.task.planId));
+      const taskPlan = yield* planService.findById(result.task.planId);
       const taskIssue = taskPlan ? yield* issueService.findById(taskPlan.issueId) : null;
       response.conflictWarningMessage = formatConflictWarnings(
         result.conflictWarnings,
@@ -173,27 +169,23 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
     }
 
     // Sync to external project management provider
-    yield* Effect.promise(() => taskService.syncTaskStatus(taskId, result.task.status));
+    yield* taskService.syncTaskStatus(taskId, result.task.status);
 
     // On fresh start only: auto-assign and sync siblings
     if (!result.resumed) {
-      yield* Effect.promise(() => taskService.assignIssue(taskId));
+      yield* taskService.assignIssue(taskId);
 
       // Sync sibling tasks that transitioned from BACKLOG to READY
-      const siblingTasks = yield* Effect.promise(() =>
-        taskService.findByPlanId(result.task.planId)
-      );
+      const siblingTasks = yield* taskService.findByPlanId(result.task.planId);
       for (const sibling of siblingTasks) {
         if (sibling.id !== taskId && sibling.status === "READY") {
-          yield* Effect.promise(() => taskService.syncTaskStatus(sibling.id, "READY"));
+          yield* taskService.syncTaskStatus(sibling.id, "READY");
         }
       }
     }
 
     // Load full context
-    return yield* Effect.promise(() =>
-      addTaskContext(response, result.task, taskService, planService, issueService)
-    );
+    return yield* addTaskContext(response, result.task, taskService, planService, issueService);
   });
 }
 
@@ -204,140 +196,139 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
 /**
  * Find the next available task in a plan (READY or BACKLOG).
  */
-async function findNextAvailableTaskInPlan(
-  planId: string,
-  taskService: TaskService
-): Promise<{ id: string; number: number; title: string; status: string } | null> {
-  const tasks = await taskService.findByPlanId(planId);
+function findNextAvailableTaskInPlan(planId: string, taskService: TaskService) {
+  return Effect.gen(function* () {
+    const tasks = yield* taskService.findByPlanId(planId);
 
-  // Prefer READY tasks, then BACKLOG
-  const readyTask = tasks.find((t) => t.status === "READY" && !t.isDeleted);
-  if (readyTask) {
-    return {
-      id: readyTask.id,
-      number: readyTask.number,
-      title: readyTask.title,
-      status: readyTask.status,
-    };
-  }
+    // Prefer READY tasks, then BACKLOG
+    const readyTask = tasks.find((t) => t.status === "READY" && !t.isDeleted);
+    if (readyTask) {
+      return {
+        id: readyTask.id,
+        number: readyTask.number,
+        title: readyTask.title,
+        status: readyTask.status,
+      };
+    }
 
-  const backlogTask = tasks.find((t) => t.status === "BACKLOG" && !t.isDeleted);
-  if (backlogTask) {
-    return {
-      id: backlogTask.id,
-      number: backlogTask.number,
-      title: backlogTask.title,
-      status: backlogTask.status,
-    };
-  }
+    const backlogTask = tasks.find((t) => t.status === "BACKLOG" && !t.isDeleted);
+    if (backlogTask) {
+      return {
+        id: backlogTask.id,
+        number: backlogTask.number,
+        title: backlogTask.title,
+        status: backlogTask.status,
+      };
+    }
 
-  return null;
+    return null;
+  });
 }
 
 /**
  * Build response for terminal state tasks (COMPLETED/ABANDONED).
  */
-async function buildTerminalStateResponse(
+function buildTerminalStateResponse(
   task: Task,
   taskService: TaskService,
   planService: PlanService,
   issueService: IssueService
-): Promise<LoadTaskSessionResult> {
-  // Get issue status
-  const plan = await planService.findById(task.planId);
-  const issue = plan ? await Effect.runPromise(issueService.findById(plan.issueId)) : null;
+) {
+  return Effect.gen(function* () {
+    // Get issue status
+    const plan = yield* planService.findById(task.planId);
+    const issue = plan ? yield* issueService.findById(plan.issueId) : null;
 
-  // Check if all tasks are complete
-  const allTasks = await taskService.findByPlanId(task.planId);
-  const activeTasks = allTasks.filter((t) => !t.isDeleted);
-  const terminalStatuses = ["COMPLETED", "ABANDONED"];
-  const allTasksComplete = activeTasks.every((t) => terminalStatuses.includes(t.status));
+    // Check if all tasks are complete
+    const allTasks = yield* taskService.findByPlanId(task.planId);
+    const activeTasks = allTasks.filter((t) => !t.isDeleted);
+    const terminalStatuses = ["COMPLETED", "ABANDONED"];
+    const allTasksComplete = activeTasks.every((t) => terminalStatuses.includes(t.status));
 
-  // Find next available task in the plan
-  const nextTask = await findNextAvailableTaskInPlan(task.planId, taskService);
+    // Find next available task in the plan
+    const nextTask = yield* findNextAvailableTaskInPlan(task.planId, taskService);
 
-  return {
-    success: true,
-    sessionId: "",
-    task,
-    resumed: false,
-    startedAt: task.startedAt ?? "",
-    issue,
-    plan,
-    // Key fields that signal "no work needed"
-    nextTask,
-    allTasksComplete,
-    issueNumber: issue?.number ?? null,
-    issueStatus: issue?.status ?? null,
-    message: `Task is already ${task.status}. No work needed.`,
-  };
+    return {
+      success: true,
+      sessionId: "",
+      task,
+      resumed: false,
+      startedAt: task.startedAt ?? "",
+      issue,
+      plan,
+      // Key fields that signal "no work needed"
+      nextTask,
+      allTasksComplete,
+      issueNumber: issue?.number ?? null,
+      issueStatus: issue?.status ?? null,
+      message: `Task is already ${task.status}. No work needed.`,
+    } satisfies LoadTaskSessionResult;
+  });
 }
 
 /**
  * Add full task context to response (issue, plan, dependencies).
  */
-async function addTaskContext(
+function addTaskContext(
   response: LoadTaskSessionResult,
   task: Task,
   taskService: TaskService,
   planService: PlanService,
   issueService: IssueService
-): Promise<LoadTaskSessionResult> {
-  // Get plan and issue
-  const plan = await planService.findById(task.planId);
-  if (plan) {
-    response.plan = plan;
-    const issue = await Effect.runPromise(issueService.findById(plan.issueId));
-    if (issue) {
-      response.issue = issue;
+) {
+  return Effect.gen(function* () {
+    // Get plan and issue
+    const plan = yield* planService.findById(task.planId);
+    if (plan) {
+      response.plan = plan;
+      const issue = yield* issueService.findById(plan.issueId);
+      if (issue) {
+        response.issue = issue;
+      }
     }
-  }
 
-  // Load dependency information with issue numbers
-  if (task.dependsOn?.length) {
-    const dependencies = await taskService.findByIds(task.dependsOn);
-    const depResults = [];
-    for (const d of dependencies) {
-      const depPlan = await planService.findById(d.planId);
-      const depIssue = depPlan
-        ? await Effect.runPromise(issueService.findById(depPlan.issueId))
-        : null;
-      depResults.push({
-        id: d.id,
-        number: d.number,
-        title: d.title,
-        status: d.status,
-        issueNumber: depIssue?.number ?? null,
-      });
+    // Load dependency information with issue numbers
+    if (task.dependsOn?.length) {
+      const dependencies = yield* taskService.findByIds(task.dependsOn);
+      const depResults = [];
+      for (const d of dependencies) {
+        const depPlan = yield* planService.findById(d.planId);
+        const depIssue = depPlan ? yield* issueService.findById(depPlan.issueId) : null;
+        depResults.push({
+          id: d.id,
+          number: d.number,
+          title: d.title,
+          status: d.status,
+          issueNumber: depIssue?.number ?? null,
+        });
+      }
+      response.dependencies = depResults;
     }
-    response.dependencies = depResults;
-  }
 
-  // Find tasks that depend on this one
-  const allPlanTasks = await taskService.findByPlanId(task.planId);
-  const dependents = allPlanTasks.filter((t) => t.dependsOn?.includes(task.id));
-  if (dependents.length > 0) {
-    const depResults = [];
-    for (const d of dependents) {
-      const depPlan = await planService.findById(d.planId);
-      const depIssue = depPlan
-        ? await Effect.runPromise(issueService.findById(depPlan.issueId))
-        : null;
-      depResults.push({
-        id: d.id,
-        number: d.number,
-        title: d.title,
-        status: d.status,
-        issueNumber: depIssue?.number ?? null,
-      });
+    // Find tasks that depend on this one
+    const allPlanTasks = yield* taskService.findByPlanId(task.planId);
+    const dependents = allPlanTasks.filter((t) => t.dependsOn?.includes(task.id));
+    if (dependents.length > 0) {
+      const depResults = [];
+      for (const d of dependents) {
+        const depPlan = yield* planService.findById(d.planId);
+        const depIssue = depPlan ? yield* issueService.findById(depPlan.issueId) : null;
+        depResults.push({
+          id: d.id,
+          number: d.number,
+          title: d.title,
+          status: d.status,
+          issueNumber: depIssue?.number ?? null,
+        });
+      }
+      response.dependents = depResults;
     }
-    response.dependents = depResults;
-  }
 
-  // Format task requirements prominently
-  if (task.implementationPlan) {
-    response.taskRequirements = formatTaskRequirements(task.implementationPlan);
-  }
+    // Format task requirements prominently
+    if (task.implementationPlan) {
+      response.taskRequirements = formatTaskRequirements(task.implementationPlan);
+    }
 
-  return response;
+    return response;
+  });
 }

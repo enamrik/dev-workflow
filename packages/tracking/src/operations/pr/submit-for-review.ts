@@ -54,7 +54,7 @@ export function submitForReview(input: SubmitForReviewInput) {
     const { taskId, force } = validateInput(SubmitForReviewSchema, input);
     const taskService = yield* TaskService;
 
-    const task = yield* Effect.promise(() => taskService.findById(taskId));
+    const task = yield* taskService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
@@ -74,7 +74,7 @@ export function submitForReview(input: SubmitForReviewInput) {
     }
 
     // Update task status to PR_REVIEW (includes GitHub sync)
-    yield* Effect.promise(() => taskService.submitForReview(taskId, { force }));
+    yield* taskService.submitForReview(taskId, { force });
 
     return {
       success: true,

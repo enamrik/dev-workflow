@@ -7,6 +7,7 @@
  */
 
 import * as path from "node:path";
+import { Effect } from "@dev-workflow/effect";
 import { createContainer, asFunction, asValue, InjectionMode } from "awilix";
 import type { AwilixContainer } from "awilix";
 import {
@@ -132,7 +133,7 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
   const dbSource = sourceProvider.getOrCreate({ connectionString });
 
   // Look up project by slug
-  const project = await dbSource.projects.findBySlug(projectSlug);
+  const project = await Effect.runPromise(dbSource.projects.findBySlug(projectSlug));
 
   if (!project) {
     throw new Error(

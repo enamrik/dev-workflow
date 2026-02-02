@@ -53,11 +53,9 @@ export function listTemplates(input: ListTemplatesInput) {
     const typeFilter = validated.type?.toUpperCase();
 
     // Get templates based on category
-    const discovery = yield* Effect.promise(() =>
-      category === "task"
-        ? templateService.discoverTaskTemplates()
-        : templateService.discoverTemplates()
-    );
+    const discovery = yield* category === "task"
+      ? templateService.discoverTaskTemplates()
+      : templateService.discoverTemplates();
 
     // Select templates based on scope
     let templates;

@@ -60,7 +60,7 @@ export class TaskDomainService {
   getIncompleteTasksForIssue(issueId: string): Effect<Task[]> {
     const { repo, planRepo } = this;
     return Effect.gen(function* () {
-      const plan = yield* Effect.promise(() => planRepo.findByIssueId(issueId));
+      const plan = yield* planRepo.findByIssueId(issueId);
       if (!plan) return [];
       const tasks = yield* repo.findByPlanId(plan.id);
       return tasks.filter((t) => !t.isDeleted && !t.isTerminal);
@@ -73,7 +73,7 @@ export class TaskDomainService {
   areAllTasksComplete(issueId: string): Effect<boolean> {
     const { repo, planRepo } = this;
     return Effect.gen(function* () {
-      const plan = yield* Effect.promise(() => planRepo.findByIssueId(issueId));
+      const plan = yield* planRepo.findByIssueId(issueId);
       if (!plan) return true;
       const tasks = yield* repo.findByPlanId(plan.id);
       return tasks.filter((t) => !t.isDeleted).every((t) => t.isTerminal);

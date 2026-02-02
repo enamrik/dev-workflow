@@ -10,7 +10,7 @@
  * SourceInfo to connect via DbSourceProvider.
  */
 
-import { Service } from "@dev-workflow/effect";
+import { Service, Effect } from "@dev-workflow/effect";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { resolveGlobalTrackDir } from "@dev-workflow/git/track-directory-resolver.js";
@@ -577,21 +577,24 @@ export class ProjectsResolver extends Service<ProjectsResolver>()("projectsResol
    * @returns ProjectInfo with sourceInfo
    * @throws Error if project not found
    */
-  async getProjectBySlug(slug: string): Promise<ProjectInfo> {
-    await this.ensureScanned();
+  getProjectBySlug(slug: string): Effect<ProjectInfo> {
+    const self = this;
+    return Effect.gen(function* () {
+      yield* self.ensureScannedEffect();
 
-    let config = this.configBySlug.get(slug);
+      let config = self.configBySlug.get(slug);
 
-    if (!config) {
-      try {
-        config = await resolveConfig(slug);
-        this.configBySlug.set(slug, config);
-      } catch {
-        throw new Error(`Project not found: ${slug}`);
+      if (!config) {
+        try {
+          config = yield* Effect.promise(() => resolveConfig(slug));
+          self.configBySlug.set(slug, config);
+        } catch {
+          throw new Error(`Project not found: ${slug}`);
+        }
       }
-    }
 
-    return configToProjectInfo(config);
+      return configToProjectInfo(config);
+    });
   }
 
   /**
@@ -616,12 +619,15 @@ export class ProjectsResolver extends Service<ProjectsResolver>()("projectsResol
    *
    * @returns Array of all projects with their sourceInfo
    */
-  async getAllProjects(): Promise<ProjectInfo[]> {
-    await this.ensureScanned();
+  getAllProjects(): Effect<ProjectInfo[]> {
+    const self = this;
+    return Effect.gen(function* () {
+      yield* self.ensureScannedEffect();
 
-    return Array.from(this.configBySlug.values())
-      .map(configToProjectInfo)
-      .sort((a, b) => a.slug.localeCompare(b.slug));
+      return Array.from(self.configBySlug.values())
+        .map(configToProjectInfo)
+        .sort((a, b) => a.slug.localeCompare(b.slug));
+    });
   }
 
   /**
@@ -629,49 +635,52 @@ export class ProjectsResolver extends Service<ProjectsResolver>()("projectsResol
    *
    * @returns Array of sources, each containing their projects
    */
-  async getAllSources(): Promise<Source[]> {
-    await this.ensureScanned();
+  getAllSources(): Effect<Source[]> {
+    const self = this;
+    return Effect.gen(function* () {
+      yield* self.ensureScannedEffect();
 
-    // Group configs by connection string
-    const sourceMap = new Map<
-      string,
-      { displayId: string; displayName: string; sourceInfo: SourceInfo; projects: ProjectInfo[] }
-    >();
+      // Group configs by connection string
+      const sourceMap = new Map<
+        string,
+        { displayId: string; displayName: string; sourceInfo: SourceInfo; projects: ProjectInfo[] }
+      >();
 
-    for (const config of this.configBySlug.values()) {
-      const connectionString = config.database;
-      const displayId = createDisplayId(config.database, config.slug);
+      for (const config of self.configBySlug.values()) {
+        const connectionString = config.database;
+        const displayId = createDisplayId(config.database, config.slug);
 
-      let source = sourceMap.get(connectionString);
-      if (!source) {
-        source = {
-          displayId,
-          displayName: getDisplayName(displayId),
-          sourceInfo: { connectionString },
-          projects: [],
-        };
-        sourceMap.set(connectionString, source);
+        let source = sourceMap.get(connectionString);
+        if (!source) {
+          source = {
+            displayId,
+            displayName: getDisplayName(displayId),
+            sourceInfo: { connectionString },
+            projects: [],
+          };
+          sourceMap.set(connectionString, source);
+        }
+
+        source.projects.push(configToProjectInfo(config));
       }
 
-      source.projects.push(configToProjectInfo(config));
-    }
+      // Convert to array and sort
+      const sources: Source[] = Array.from(sourceMap.values()).map((s) => ({
+        id: s.displayId,
+        displayName: s.displayName,
+        sourceInfo: s.sourceInfo,
+        projects: s.projects.sort((a, b) => a.slug.localeCompare(b.slug)),
+      }));
 
-    // Convert to array and sort
-    const sources: Source[] = Array.from(sourceMap.values()).map((s) => ({
-      id: s.displayId,
-      displayName: s.displayName,
-      sourceInfo: s.sourceInfo,
-      projects: s.projects.sort((a, b) => a.slug.localeCompare(b.slug)),
-    }));
-
-    // Sort: global first, then local, then remote
-    return sources.sort((a, b) => {
-      const order = (id: string): number => {
-        if (id === "global") return 0;
-        if (id.startsWith("local:")) return 1;
-        return 2;
-      };
-      return order(a.id) - order(b.id);
+      // Sort: global first, then local, then remote
+      return sources.sort((a, b) => {
+        const order = (id: string): number => {
+          if (id === "global") return 0;
+          if (id.startsWith("local:")) return 1;
+          return 2;
+        };
+        return order(a.id) - order(b.id);
+      });
     });
   }
 
@@ -693,51 +702,53 @@ export class ProjectsResolver extends Service<ProjectsResolver>()("projectsResol
    * @param getDbSource - Function to get DbSource for a project's sourceInfo
    * @returns Enriched ProjectInfo array with syncConfig populated
    */
-  async enrichWithDbData(
+  enrichWithDbData(
     projects: ProjectInfo[],
     getDbSource: (sourceInfo: SourceInfo) => Promise<{
       projects: {
-        findAll(): Promise<Array<{ id: string; syncConfig: ProjectManagementConfig | null }>>;
+        findAll(): Effect<Array<{ id: string; syncConfig: ProjectManagementConfig | null }>>;
       };
     }>
-  ): Promise<ProjectInfo[]> {
-    // Group projects by connection string to minimize DB connections
-    const byConnection = new Map<string, ProjectInfo[]>();
-    for (const project of projects) {
-      const key = project.sourceInfo.connectionString;
-      const list = byConnection.get(key) ?? [];
-      list.push(project);
-      byConnection.set(key, list);
-    }
-
-    const enriched: ProjectInfo[] = [];
-
-    for (const [, projectGroup] of byConnection) {
-      const firstProject = projectGroup[0];
-      if (!firstProject) continue;
-
-      try {
-        const dbSource = await getDbSource(firstProject.sourceInfo);
-
-        // Fetch all projects from this database in one query
-        const dbProjects = await dbSource.projects.findAll();
-        const dbProjectMap = new Map(dbProjects.map((p) => [p.id, p]));
-
-        for (const project of projectGroup) {
-          const dbProject = dbProjectMap.get(project.projectId);
-          enriched.push({
-            ...project,
-            syncConfig: dbProject?.syncConfig ?? null,
-          });
-        }
-      } catch (e) {
-        console.log("ERR", e);
-        // If we can't connect to this source, keep all projects without syncConfig
-        enriched.push(...projectGroup);
+  ): Effect<ProjectInfo[]> {
+    return Effect.gen(function* () {
+      // Group projects by connection string to minimize DB connections
+      const byConnection = new Map<string, ProjectInfo[]>();
+      for (const project of projects) {
+        const key = project.sourceInfo.connectionString;
+        const list = byConnection.get(key) ?? [];
+        list.push(project);
+        byConnection.set(key, list);
       }
-    }
 
-    return enriched;
+      const enriched: ProjectInfo[] = [];
+
+      for (const [, projectGroup] of byConnection) {
+        const firstProject = projectGroup[0];
+        if (!firstProject) continue;
+
+        try {
+          const dbSource = yield* Effect.promise(() => getDbSource(firstProject.sourceInfo));
+
+          // Fetch all projects from this database in one query
+          const dbProjects = yield* dbSource.projects.findAll();
+          const dbProjectMap = new Map(dbProjects.map((p) => [p.id, p]));
+
+          for (const project of projectGroup) {
+            const dbProject = dbProjectMap.get(project.projectId);
+            enriched.push({
+              ...project,
+              syncConfig: dbProject?.syncConfig ?? null,
+            });
+          }
+        } catch (e) {
+          console.log("ERR", e);
+          // If we can't connect to this source, keep all projects without syncConfig
+          enriched.push(...projectGroup);
+        }
+      }
+
+      return enriched;
+    });
   }
 
   // ===========================================================================
@@ -745,17 +756,20 @@ export class ProjectsResolver extends Service<ProjectsResolver>()("projectsResol
   // ===========================================================================
 
   /**
-   * Ensure configs have been scanned
+   * Ensure configs have been scanned (Effect version)
    */
-  private async ensureScanned(): Promise<void> {
-    if (this.scanned) return;
+  private ensureScannedEffect(): Effect<void> {
+    const self = this;
+    return Effect.promise(async () => {
+      if (self.scanned) return;
 
-    const configs = await loadAllConfigs();
+      const configs = await loadAllConfigs();
 
-    for (const config of configs) {
-      this.configBySlug.set(config.slug, config);
-    }
+      for (const config of configs) {
+        self.configBySlug.set(config.slug, config);
+      }
 
-    this.scanned = true;
+      self.scanned = true;
+    });
   }
 }

@@ -86,7 +86,7 @@ export function generatePlan(input: GeneratePlanInput) {
     }
 
     // 2. Validate task types
-    const validTypes = yield* Effect.promise(() => typeService.getTypes());
+    const validTypes = yield* typeService.getTypes();
     const validTypeNames = validTypes.map((t) => t.name);
 
     for (const task of tasks) {
@@ -98,7 +98,7 @@ export function generatePlan(input: GeneratePlanInput) {
         );
       }
 
-      const isValid = yield* Effect.promise(() => typeService.isValidType(task.type));
+      const isValid = yield* typeService.isValidType(task.type);
       if (!isValid) {
         throw new Error(
           `Task '${task.id}' has invalid type '${task.type}'. ` +
@@ -136,16 +136,14 @@ export function generatePlan(input: GeneratePlanInput) {
     }));
 
     // 5. Generate plan
-    const result = yield* Effect.promise(() =>
-      planningService.generatePlan({
-        issueId: issue.id,
-        summary,
-        approach,
-        tasks: normalizedTasks,
-        estimatedComplexity,
-        generatedBy: "claude-agent",
-      })
-    );
+    const result = yield* planningService.generatePlan({
+      issueId: issue.id,
+      summary,
+      approach,
+      tasks: normalizedTasks,
+      estimatedComplexity,
+      generatedBy: "claude-agent",
+    });
 
     return {
       ...result,

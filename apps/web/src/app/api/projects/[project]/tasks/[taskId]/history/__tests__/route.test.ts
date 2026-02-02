@@ -40,7 +40,7 @@ describe("getTaskStatusHistoryEndpoint", () => {
 
     const testContainer = createTestContainer({
       projectsResolver: {
-        getAllProjects: async () => [mockProject],
+        getAllProjects: () => Effect.succeed([mockProject]),
       },
       sourceProvider: createMockSourceProvider({
         tasks: {
@@ -66,7 +66,7 @@ describe("getTaskStatusHistoryEndpoint", () => {
   it("returns empty array when task has no status history", async () => {
     const testContainer = createTestContainer({
       projectsResolver: {
-        getAllProjects: async () => [mockProject],
+        getAllProjects: () => Effect.succeed([mockProject]),
       },
       sourceProvider: createMockSourceProvider({
         tasks: {
@@ -91,7 +91,7 @@ describe("getTaskStatusHistoryEndpoint", () => {
   it("returns 404 when task not found", async () => {
     const testContainer = createTestContainer({
       projectsResolver: {
-        getAllProjects: async () => [mockProject],
+        getAllProjects: () => Effect.succeed([mockProject]),
       },
       sourceProvider: createMockSourceProvider({
         tasks: {

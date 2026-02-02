@@ -6,6 +6,8 @@
  */
 
 import type { GitWorktreeService, GitCommandResult, WorktreeInfo } from "./git-worktree-service.js";
+import { GitWorktreeError } from "./git-worktree-service.js";
+import { Effect } from "@dev-workflow/effect";
 
 /**
  * Recorded call to the mock git worktree service
@@ -149,164 +151,190 @@ export class MockGitWorktreeService implements GitWorktreeService {
     }
   }
 
-  async checkGitAvailable(): Promise<boolean> {
-    this.recordCall("checkGitAvailable", []);
-    this.checkError("checkGitAvailable");
-    return this.config.gitAvailable;
+  checkGitAvailable(): Effect<boolean> {
+    return Effect.promise(async () => {
+      this.recordCall("checkGitAvailable", []);
+      this.checkError("checkGitAvailable");
+      return this.config.gitAvailable;
+    });
   }
 
-  async createWorktree(
+  createWorktree(
     worktreePath: string,
     branchName: string,
     _baseBranch?: string
-  ): Promise<string> {
-    this.recordCall("createWorktree", [worktreePath, branchName, _baseBranch]);
-    this.checkError("createWorktree");
+  ): Effect<string, GitWorktreeError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("createWorktree", [worktreePath, branchName, _baseBranch]);
+        this.checkError("createWorktree");
 
-    if (!this.config.gitAvailable) {
-      throw new Error("git not available");
-    }
+        if (!this.config.gitAvailable) {
+          throw new GitWorktreeError("git not available");
+        }
 
-    // Check if worktree already exists
-    if (this.worktrees.has(worktreePath)) {
-      throw new Error(`Worktree at ${worktreePath} already exists`);
-    }
+        // Check if worktree already exists
+        if (this.worktrees.has(worktreePath)) {
+          throw new GitWorktreeError(`Worktree at ${worktreePath} already exists`);
+        }
 
-    // Check if branch already exists
-    for (const wt of this.worktrees.values()) {
-      if (wt.branch === branchName) {
-        throw new Error(`Branch ${branchName} is already checked out`);
+        // Check if branch already exists
+        for (const wt of this.worktrees.values()) {
+          if (wt.branch === branchName) {
+            throw new GitWorktreeError(`Branch ${branchName} is already checked out`);
+          }
+        }
+
+        // Create the worktree
+        const worktree: MockWorktree = {
+          path: worktreePath,
+          branch: branchName,
+          head: this.headCommit,
+          isMain: false,
+          diskUsageBytes: this.config.defaultDiskUsage,
+        };
+
+        this.worktrees.set(worktreePath, worktree);
+        return worktreePath;
+      },
+      catch: (e) => (e instanceof GitWorktreeError ? e : new GitWorktreeError(String(e))),
+    });
+  }
+
+  removeWorktree(worktreePath: string, _deleteBranch = false): Effect<void, GitWorktreeError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("removeWorktree", [worktreePath, _deleteBranch]);
+        this.checkError("removeWorktree");
+
+        const worktree = this.worktrees.get(worktreePath);
+        if (!worktree) {
+          // Silently succeed if worktree doesn't exist (like real git)
+          return;
+        }
+
+        if (worktree.isMain) {
+          throw new GitWorktreeError("Cannot remove main worktree");
+        }
+
+        this.worktrees.delete(worktreePath);
+      },
+      catch: (e) => (e instanceof GitWorktreeError ? e : new GitWorktreeError(String(e))),
+    });
+  }
+
+  listWorktrees(): Effect<WorktreeInfo[], GitWorktreeError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("listWorktrees", []);
+        this.checkError("listWorktrees");
+
+        return Array.from(this.worktrees.values()).map((wt) => ({
+          path: wt.path,
+          branch: wt.branch,
+          head: wt.head,
+          isMain: wt.isMain,
+          diskUsageBytes: wt.isMain ? undefined : wt.diskUsageBytes,
+        }));
+      },
+      catch: (e) => (e instanceof GitWorktreeError ? e : new GitWorktreeError(String(e))),
+    });
+  }
+
+  pruneWorktrees(): Effect<void, GitWorktreeError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("pruneWorktrees", []);
+        this.checkError("pruneWorktrees");
+        // No-op in mock - nothing to prune
+      },
+      catch: (e) => (e instanceof GitWorktreeError ? e : new GitWorktreeError(String(e))),
+    });
+  }
+
+  getDiskUsage(dirPath: string): Effect<number> {
+    return Effect.promise(async () => {
+      this.recordCall("getDiskUsage", [dirPath]);
+      this.checkError("getDiskUsage");
+
+      const worktree = this.worktrees.get(dirPath);
+      if (worktree) {
+        return worktree.diskUsageBytes;
       }
-    }
 
-    // Create the worktree
-    const worktree: MockWorktree = {
-      path: worktreePath,
-      branch: branchName,
-      head: this.headCommit,
-      isMain: false,
-      diskUsageBytes: this.config.defaultDiskUsage,
-    };
-
-    this.worktrees.set(worktreePath, worktree);
-    return worktreePath;
+      return this.config.defaultDiskUsage;
+    });
   }
 
-  async removeWorktree(worktreePath: string, _deleteBranch = false): Promise<void> {
-    this.recordCall("removeWorktree", [worktreePath, _deleteBranch]);
-    this.checkError("removeWorktree");
+  run(args: string[], cwd?: string): Effect<GitCommandResult> {
+    return Effect.promise(async () => {
+      this.recordCall("run", [args, cwd]);
+      this.checkError("run");
 
-    const worktree = this.worktrees.get(worktreePath);
-    if (!worktree) {
-      // Silently succeed if worktree doesn't exist (like real git)
-      return;
-    }
+      if (!this.config.gitAvailable) {
+        return {
+          success: false,
+          stdout: "",
+          stderr: "git not found",
+          exitCode: 127,
+        };
+      }
 
-    if (worktree.isMain) {
-      throw new Error("Cannot remove main worktree");
-    }
+      // Simulate common git commands
+      const command = args[0];
 
-    this.worktrees.delete(worktreePath);
-  }
+      if (command === "rev-parse" && args.includes("--git-dir")) {
+        return {
+          success: true,
+          stdout: ".git\n",
+          stderr: "",
+          exitCode: 0,
+        };
+      }
 
-  async listWorktrees(): Promise<WorktreeInfo[]> {
-    this.recordCall("listWorktrees", []);
-    this.checkError("listWorktrees");
+      if (command === "branch" && args.includes("-D")) {
+        return {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        };
+      }
 
-    return Array.from(this.worktrees.values()).map((wt) => ({
-      path: wt.path,
-      branch: wt.branch,
-      head: wt.head,
-      isMain: wt.isMain,
-      diskUsageBytes: wt.isMain ? undefined : wt.diskUsageBytes,
-    }));
-  }
+      if (command === "push") {
+        return {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        };
+      }
 
-  async pruneWorktrees(): Promise<void> {
-    this.recordCall("pruneWorktrees", []);
-    this.checkError("pruneWorktrees");
-    // No-op in mock - nothing to prune
-  }
+      if (command === "pull") {
+        return {
+          success: true,
+          stdout: "Already up to date.\n",
+          stderr: "",
+          exitCode: 0,
+        };
+      }
 
-  async getDiskUsage(dirPath: string): Promise<number> {
-    this.recordCall("getDiskUsage", [dirPath]);
-    this.checkError("getDiskUsage");
+      if (command === "checkout") {
+        return {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        };
+      }
 
-    const worktree = this.worktrees.get(dirPath);
-    if (worktree) {
-      return worktree.diskUsageBytes;
-    }
-
-    return this.config.defaultDiskUsage;
-  }
-
-  async run(args: string[], cwd?: string): Promise<GitCommandResult> {
-    this.recordCall("run", [args, cwd]);
-    this.checkError("run");
-
-    if (!this.config.gitAvailable) {
-      return {
-        success: false,
-        stdout: "",
-        stderr: "git not found",
-        exitCode: 127,
-      };
-    }
-
-    // Simulate common git commands
-    const command = args[0];
-
-    if (command === "rev-parse" && args.includes("--git-dir")) {
-      return {
-        success: true,
-        stdout: ".git\n",
-        stderr: "",
-        exitCode: 0,
-      };
-    }
-
-    if (command === "branch" && args.includes("-D")) {
+      // Default success response
       return {
         success: true,
         stdout: "",
         stderr: "",
         exitCode: 0,
       };
-    }
-
-    if (command === "push") {
-      return {
-        success: true,
-        stdout: "",
-        stderr: "",
-        exitCode: 0,
-      };
-    }
-
-    if (command === "pull") {
-      return {
-        success: true,
-        stdout: "Already up to date.\n",
-        stderr: "",
-        exitCode: 0,
-      };
-    }
-
-    if (command === "checkout") {
-      return {
-        success: true,
-        stdout: "",
-        stderr: "",
-        exitCode: 0,
-      };
-    }
-
-    // Default success response
-    return {
-      success: true,
-      stdout: "",
-      stderr: "",
-      exitCode: 0,
-    };
+    });
   }
 }

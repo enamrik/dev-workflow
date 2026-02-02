@@ -8,7 +8,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { Service } from "@dev-workflow/effect";
+import { Effect, Service } from "@dev-workflow/effect";
 import type { GitHubPRData, GitHubMergeStrategy } from "./github.js";
 export type { GitHubPRData, GitHubMergeStrategy } from "./github.js";
 
@@ -59,189 +59,65 @@ export class GitHubCLIError extends Error {
  * Note: Methods no longer require owner/repo parameters - the gh CLI
  * auto-detects the repository from git remotes. This simplifies the API
  * and works correctly in git worktrees.
+ *
+ * Methods that handle errors internally use Effect<T> (never fail in E channel).
+ * Methods that can throw use Effect<T, GitHubCLIError>.
  */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export interface GitHubCLI {
-  /**
-   * Check if gh CLI is installed and authenticated
-   */
-  checkAuth(): Promise<boolean>;
-
-  /**
-   * Check if we're in a git repo with a GitHub remote
-   */
-  checkCurrentRepository(): Promise<boolean>;
-
-  /**
-   * Get the GitHub repository URL for the current directory
-   * @returns The repo URL (e.g., "https://github.com/owner/repo") or null if not in a GitHub repo
-   */
-  getRepoUrl(): Promise<string | null>;
-
-  /**
-   * Create a new GitHub issue
-   */
-  createIssue(title: string, body: string, labels: string[]): Promise<GitHubIssueData>;
-
-  /**
-   * Update an existing GitHub issue
-   */
+  checkAuth(): Effect<boolean>;
+  checkCurrentRepository(): Effect<boolean>;
+  getRepoUrl(): Effect<string | null>;
+  createIssue(
+    title: string,
+    body: string,
+    labels: string[]
+  ): Effect<GitHubIssueData, GitHubCLIError>;
   updateIssue(
     issueNumber: number,
     title: string,
     body: string,
     labels: string[]
-  ): Promise<GitHubIssueData>;
-
-  /**
-   * Close a GitHub issue
-   */
-  closeIssue(issueNumber: number): Promise<void>;
-
-  /**
-   * Reopen a GitHub issue
-   */
-  reopenIssue(issueNumber: number): Promise<void>;
-
-  /**
-   * Get issue details
-   */
-  getIssue(issueNumber: number): Promise<GitHubIssueData | null>;
-
-  /**
-   * List labels on the repository
-   */
-  listLabels(): Promise<string[]>;
-
-  /**
-   * Create a label on the repository
-   */
-  createLabel(name: string, color?: string, description?: string): Promise<void>;
-
-  /**
-   * Add issue to a GitHub Project (GraphQL mutation via gh api)
-   */
-  addToProject(projectId: string, issueNodeId: string): Promise<string>;
-
-  /**
-   * Check if a GitHub Project exists and is accessible
-   */
-  checkProject(projectId: string): Promise<boolean>;
-
-  /**
-   * Get GitHub Project details including URL
-   *
-   * @param projectId - GitHub Project ID (PVT_...)
-   * @returns Project info with URL, or null if not found
-   */
-  getProjectDetails(projectId: string): Promise<{ id: string; title: string; url: string } | null>;
-
-  /**
-   * Create a new pull request
-   *
-   * @param headBranch - Source branch for the PR
-   * @param baseBranch - Target branch for the PR
-   * @param title - PR title
-   * @param body - PR body/description
-   * @param draft - Whether to create as draft PR
-   * @returns PR data including number and URL
-   */
+  ): Effect<GitHubIssueData, GitHubCLIError>;
+  closeIssue(issueNumber: number): Effect<void, GitHubCLIError>;
+  reopenIssue(issueNumber: number): Effect<void, GitHubCLIError>;
+  getIssue(issueNumber: number): Effect<GitHubIssueData | null, GitHubCLIError>;
+  listLabels(): Effect<string[], GitHubCLIError>;
+  createLabel(name: string, color?: string, description?: string): Effect<void, GitHubCLIError>;
+  addToProject(projectId: string, issueNodeId: string): Effect<string, GitHubCLIError>;
+  checkProject(projectId: string): Effect<boolean>;
+  getProjectDetails(projectId: string): Effect<{ id: string; title: string; url: string } | null>;
   createPR(
     headBranch: string,
     baseBranch: string,
     title: string,
     body: string,
     draft?: boolean
-  ): Promise<GitHubPRData>;
-
-  /**
-   * Merge a pull request
-   *
-   * @param prNumber - PR number to merge
-   * @param strategy - Merge strategy (merge, squash, rebase)
-   * @param commitTitle - Optional custom commit title for squash/merge
-   * @returns Updated PR data
-   */
+  ): Effect<GitHubPRData, GitHubCLIError>;
   mergePR(
     prNumber: number,
     strategy?: GitHubMergeStrategy,
     commitTitle?: string
-  ): Promise<GitHubPRData>;
-
-  /**
-   * Get pull request details
-   *
-   * @param prNumber - PR number
-   * @returns PR data or null if not found
-   */
-  getPR(prNumber: number): Promise<GitHubPRData | null>;
-
-  /**
-   * Find a pull request by head branch name
-   *
-   * @param headBranch - The source branch name
-   * @returns PR data or null if no PR exists for this branch
-   */
-  findPRByBranch(headBranch: string): Promise<GitHubPRData | null>;
-
-  /**
-   * Link an existing issue as a sub-issue of a parent issue
-   *
-   * Uses GitHub's sub-issues REST API:
-   * POST /repos/{owner}/{repo}/issues/{parent}/sub_issues
-   *
-   * @param parentIssueNumber - The parent issue number
-   * @param childIssueId - The numeric ID (not issue number) of the child issue
-   */
-  linkSubIssue(parentIssueNumber: number, childIssueId: number): Promise<void>;
-
-  /**
-   * Search for issues by query string
-   *
-   * Uses `gh issue list --search` to find issues matching a query.
-   * Useful for finding existing GitHub issues that may need to be linked.
-   *
-   * @param query - Search query (matches title and body)
-   * @param state - Filter by state: "open", "closed", or "all" (default: "all")
-   * @param limit - Maximum number of results (default: 10)
-   * @returns Array of matching issues
-   */
+  ): Effect<GitHubPRData, GitHubCLIError>;
+  getPR(prNumber: number): Effect<GitHubPRData | null, GitHubCLIError>;
+  findPRByBranch(headBranch: string): Effect<GitHubPRData | null, GitHubCLIError>;
+  linkSubIssue(parentIssueNumber: number, childIssueId: number): Effect<void, GitHubCLIError>;
   searchIssues(
     query: string,
     state?: "open" | "closed" | "all",
     limit?: number
-  ): Promise<GitHubIssueData[]>;
-
-  /**
-   * Add a comment to an existing GitHub issue
-   *
-   * @param issueNumber - The issue number to comment on
-   * @param comment - The comment text (supports markdown)
-   */
-  commentOnIssue(issueNumber: number, comment: string): Promise<void>;
-
-  /**
-   * Close a GitHub issue with an optional comment
-   *
-   * @param issueNumber - The issue number to close
-   * @param comment - Optional comment to add when closing
-   */
-  closeIssueWithComment(issueNumber: number, comment?: string): Promise<void>;
-
-  /**
-   * Assign a GitHub issue to a user
-   *
-   * @param issueNumber - The issue number to assign
-   * @param assignee - The GitHub username to assign (without @ prefix)
-   */
-  assignIssue(issueNumber: number, assignee: string): Promise<void>;
-
-  /**
-   * Run arbitrary gh CLI command
-   */
-  run(args: string[]): Promise<GitHubCLIResult>;
+  ): Effect<GitHubIssueData[], GitHubCLIError>;
+  commentOnIssue(issueNumber: number, comment: string): Effect<void, GitHubCLIError>;
+  closeIssueWithComment(issueNumber: number, comment?: string): Effect<void, GitHubCLIError>;
+  assignIssue(issueNumber: number, assignee: string): Effect<void, GitHubCLIError>;
+  run(args: string[]): Effect<GitHubCLIResult>;
 }
 
-export class GitHubCLITag extends Service<GitHubCLI>()("githubCLI") {}
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
+export class GitHubCLI extends Service<GitHubCLI>()("githubCLI") {}
+
+/** @deprecated Use GitHubCLI directly (it is now both interface and service tag via declaration merging) */
+export const GitHubCLITag = GitHubCLI;
 
 /**
  * Node.js implementation of GitHubCLI using the gh CLI
@@ -250,24 +126,195 @@ export class GitHubCLITag extends Service<GitHubCLI>()("githubCLI") {}
  * Auto-detects repository from git remotes - no need to specify owner/repo.
  */
 export class NodeGitHubCLI implements GitHubCLI {
-  async checkAuth(): Promise<boolean> {
-    const result = await this.run(["auth", "status", "-h", "github.com"]);
+  // ===========================================================================
+  // Public Effect-returning methods
+  // ===========================================================================
+
+  checkAuth(): Effect<boolean> {
+    return Effect.promise(() => this._checkAuth());
+  }
+
+  checkCurrentRepository(): Effect<boolean> {
+    return Effect.promise(() => this._checkCurrentRepository());
+  }
+
+  getRepoUrl(): Effect<string | null> {
+    return Effect.promise(() => this._getRepoUrl());
+  }
+
+  createIssue(
+    title: string,
+    body: string,
+    labels: string[]
+  ): Effect<GitHubIssueData, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._createIssue(title, body, labels),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  updateIssue(
+    issueNumber: number,
+    title: string,
+    body: string,
+    labels: string[]
+  ): Effect<GitHubIssueData, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._updateIssue(issueNumber, title, body, labels),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  closeIssue(issueNumber: number): Effect<void, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._closeIssue(issueNumber),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  reopenIssue(issueNumber: number): Effect<void, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._reopenIssue(issueNumber),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  getIssue(issueNumber: number): Effect<GitHubIssueData | null, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._getIssue(issueNumber),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  listLabels(): Effect<string[], GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._listLabels(),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  createLabel(name: string, color?: string, description?: string): Effect<void, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._createLabel(name, color, description),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  addToProject(projectId: string, issueNodeId: string): Effect<string, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._addToProject(projectId, issueNodeId),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  checkProject(projectId: string): Effect<boolean> {
+    return Effect.promise(() => this._checkProject(projectId));
+  }
+
+  getProjectDetails(projectId: string): Effect<{ id: string; title: string; url: string } | null> {
+    return Effect.promise(() => this._getProjectDetails(projectId));
+  }
+
+  createPR(
+    headBranch: string,
+    baseBranch: string,
+    title: string,
+    body: string,
+    draft?: boolean
+  ): Effect<GitHubPRData, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._createPR(headBranch, baseBranch, title, body, draft),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  mergePR(
+    prNumber: number,
+    strategy?: GitHubMergeStrategy,
+    commitTitle?: string
+  ): Effect<GitHubPRData, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._mergePR(prNumber, strategy, commitTitle),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  getPR(prNumber: number): Effect<GitHubPRData | null, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._getPR(prNumber),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  findPRByBranch(headBranch: string): Effect<GitHubPRData | null, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._findPRByBranch(headBranch),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  linkSubIssue(parentIssueNumber: number, childIssueId: number): Effect<void, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._linkSubIssue(parentIssueNumber, childIssueId),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  searchIssues(
+    query: string,
+    state?: "open" | "closed" | "all",
+    limit?: number
+  ): Effect<GitHubIssueData[], GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._searchIssues(query, state, limit),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  commentOnIssue(issueNumber: number, comment: string): Effect<void, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._commentOnIssue(issueNumber, comment),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  closeIssueWithComment(issueNumber: number, comment?: string): Effect<void, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._closeIssueWithComment(issueNumber, comment),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  assignIssue(issueNumber: number, assignee: string): Effect<void, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: () => this._assignIssue(issueNumber, assignee),
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
+  }
+
+  run(args: string[]): Effect<GitHubCLIResult> {
+    return Effect.promise(() => this._run(args));
+  }
+
+  // ===========================================================================
+  // Private async implementations
+  // ===========================================================================
+
+  private async _checkAuth(): Promise<boolean> {
+    const result = await this._run(["auth", "status", "-h", "github.com"]);
     return result.success;
   }
 
-  async checkCurrentRepository(): Promise<boolean> {
-    // gh repo view without -R will use the current repo from git remotes
-    const result = await this.run(["repo", "view", "--json", "name"]);
+  private async _checkCurrentRepository(): Promise<boolean> {
+    const result = await this._run(["repo", "view", "--json", "name"]);
     return result.success;
   }
 
-  async getRepoUrl(): Promise<string | null> {
-    // gh repo view --json url returns { "url": "https://github.com/owner/repo" }
-    const result = await this.run(["repo", "view", "--json", "url"]);
+  private async _getRepoUrl(): Promise<string | null> {
+    const result = await this._run(["repo", "view", "--json", "url"]);
     if (!result.success) {
       return null;
     }
-
     try {
       const data = JSON.parse(result.stdout) as { url?: string };
       return data.url ?? null;
@@ -276,15 +323,16 @@ export class NodeGitHubCLI implements GitHubCLI {
     }
   }
 
-  async createIssue(title: string, body: string, labels: string[]): Promise<GitHubIssueData> {
+  private async _createIssue(
+    title: string,
+    body: string,
+    labels: string[]
+  ): Promise<GitHubIssueData> {
     const args = ["issue", "create", "--title", title, "--body", body];
-
     for (const label of labels) {
       args.push("--label", label);
     }
-
-    // gh issue create outputs the URL of the created issue
-    const result = await this.run(args);
+    const result = await this._run(args);
     if (!result.success) {
       throw new GitHubCLIError(
         `Failed to create issue: ${result.stderr}`,
@@ -292,35 +340,27 @@ export class NodeGitHubCLI implements GitHubCLI {
         result.stderr
       );
     }
-
-    // Parse issue number from the URL (e.g., https://github.com/owner/repo/issues/123)
     const url = result.stdout.trim();
     const match = url.match(/\/issues\/(\d+)$/);
     if (!match) {
       throw new GitHubCLIError(`Failed to parse issue number from URL: ${url}`, 0, "");
     }
-
     const issueNumber = parseInt(match[1], 10);
-
-    // Fetch full issue data
-    const issue = await this.getIssue(issueNumber);
+    const issue = await this._getIssue(issueNumber);
     if (!issue) {
       throw new GitHubCLIError(`Failed to fetch created issue: ${issueNumber}`, 0, "");
     }
-
     return issue;
   }
 
-  async updateIssue(
+  private async _updateIssue(
     issueNumber: number,
     title: string,
     body: string,
     labels: string[]
   ): Promise<GitHubIssueData> {
-    // Update title and body
     const editArgs = ["issue", "edit", String(issueNumber), "--title", title, "--body", body];
-
-    const editResult = await this.run(editArgs);
+    const editResult = await this._run(editArgs);
     if (!editResult.success) {
       throw new GitHubCLIError(
         `Failed to update issue: ${editResult.stderr}`,
@@ -328,38 +368,29 @@ export class NodeGitHubCLI implements GitHubCLI {
         editResult.stderr
       );
     }
-
-    // Update labels - first get current labels, then update
     if (labels.length > 0) {
-      // Get current issue to find existing labels
-      const current = await this.getIssue(issueNumber);
+      const current = await this._getIssue(issueNumber);
       const currentLabels = current?.labels ?? [];
-
-      // Remove labels that are not in the new list
       for (const label of currentLabels) {
         if (!labels.includes(label)) {
-          await this.run(["issue", "edit", String(issueNumber), "--remove-label", label]);
+          await this._run(["issue", "edit", String(issueNumber), "--remove-label", label]);
         }
       }
-
-      // Add labels that are not in current
       for (const label of labels) {
         if (!currentLabels.includes(label)) {
-          await this.run(["issue", "edit", String(issueNumber), "--add-label", label]);
+          await this._run(["issue", "edit", String(issueNumber), "--add-label", label]);
         }
       }
     }
-
-    // Fetch and return updated issue
-    const issue = await this.getIssue(issueNumber);
+    const issue = await this._getIssue(issueNumber);
     if (!issue) {
       throw new GitHubCLIError("Issue not found after update");
     }
     return issue;
   }
 
-  async closeIssue(issueNumber: number): Promise<void> {
-    const result = await this.run(["issue", "close", String(issueNumber)]);
+  private async _closeIssue(issueNumber: number): Promise<void> {
+    const result = await this._run(["issue", "close", String(issueNumber)]);
     if (!result.success) {
       throw new GitHubCLIError(
         `Failed to close issue: ${result.stderr}`,
@@ -369,8 +400,8 @@ export class NodeGitHubCLI implements GitHubCLI {
     }
   }
 
-  async reopenIssue(issueNumber: number): Promise<void> {
-    const result = await this.run(["issue", "reopen", String(issueNumber)]);
+  private async _reopenIssue(issueNumber: number): Promise<void> {
+    const result = await this._run(["issue", "reopen", String(issueNumber)]);
     if (!result.success) {
       throw new GitHubCLIError(
         `Failed to reopen issue: ${result.stderr}`,
@@ -380,15 +411,14 @@ export class NodeGitHubCLI implements GitHubCLI {
     }
   }
 
-  async getIssue(issueNumber: number): Promise<GitHubIssueData | null> {
-    const result = await this.run([
+  private async _getIssue(issueNumber: number): Promise<GitHubIssueData | null> {
+    const result = await this._run([
       "issue",
       "view",
       String(issueNumber),
       "--json",
       "number,url,id,title,body,state,labels",
     ]);
-
     if (!result.success) {
       if (result.stderr.includes("not found")) {
         return null;
@@ -399,14 +429,12 @@ export class NodeGitHubCLI implements GitHubCLI {
         result.stderr
       );
     }
-
     const data = JSON.parse(result.stdout) as Record<string, unknown>;
     return this.mapIssueData(data);
   }
 
-  async listLabels(): Promise<string[]> {
-    const result = await this.run(["label", "list", "--json", "name"]);
-
+  private async _listLabels(): Promise<string[]> {
+    const result = await this._run(["label", "list", "--json", "name"]);
     if (!result.success) {
       throw new GitHubCLIError(
         `Failed to list labels: ${result.stderr}`,
@@ -414,23 +442,19 @@ export class NodeGitHubCLI implements GitHubCLI {
         result.stderr
       );
     }
-
     const labels = JSON.parse(result.stdout) as Array<{ name: string }>;
     return labels.map((l) => l.name);
   }
 
-  async createLabel(name: string, color?: string, description?: string): Promise<void> {
+  private async _createLabel(name: string, color?: string, description?: string): Promise<void> {
     const args = ["label", "create", name];
-
     if (color) {
       args.push("--color", color);
     }
     if (description) {
       args.push("--description", description);
     }
-
-    const result = await this.run(args);
-    // Label might already exist, which is fine
+    const result = await this._run(args);
     if (!result.success && !result.stderr.includes("already exists")) {
       throw new GitHubCLIError(
         `Failed to create label: ${result.stderr}`,
@@ -440,8 +464,7 @@ export class NodeGitHubCLI implements GitHubCLI {
     }
   }
 
-  async addToProject(projectId: string, issueNodeId: string): Promise<string> {
-    // GraphQL mutation via gh api
+  private async _addToProject(projectId: string, issueNodeId: string): Promise<string> {
     const mutation = `
       mutation($projectId: ID!, $contentId: ID!) {
         addProjectV2ItemById(input: {
@@ -454,8 +477,7 @@ export class NodeGitHubCLI implements GitHubCLI {
         }
       }
     `;
-
-    const result = await this.run([
+    const result = await this._run([
       "api",
       "graphql",
       "-f",
@@ -465,7 +487,6 @@ export class NodeGitHubCLI implements GitHubCLI {
       "-f",
       `contentId=${issueNodeId}`,
     ]);
-
     if (!result.success) {
       throw new GitHubCLIError(
         `Failed to add to project: ${result.stderr}`,
@@ -473,19 +494,18 @@ export class NodeGitHubCLI implements GitHubCLI {
         result.stderr
       );
     }
-
     const data = JSON.parse(result.stdout) as {
       data: { addProjectV2ItemById: { item: { id: string } } };
     };
     return data.data.addProjectV2ItemById.item.id;
   }
 
-  async checkProject(projectId: string): Promise<boolean> {
-    const details = await this.getProjectDetails(projectId);
+  private async _checkProject(projectId: string): Promise<boolean> {
+    const details = await this._getProjectDetails(projectId);
     return details !== null;
   }
 
-  async getProjectDetails(
+  private async _getProjectDetails(
     projectId: string
   ): Promise<{ id: string; title: string; url: string } | null> {
     const query = `
@@ -499,8 +519,7 @@ export class NodeGitHubCLI implements GitHubCLI {
         }
       }
     `;
-
-    const result = await this.run([
+    const result = await this._run([
       "api",
       "graphql",
       "-f",
@@ -508,22 +527,16 @@ export class NodeGitHubCLI implements GitHubCLI {
       "-f",
       `projectId=${projectId}`,
     ]);
-
     if (!result.success) {
       return null;
     }
-
     try {
       const data = JSON.parse(result.stdout) as {
         data?: { node?: { id?: string; title?: string; url?: string } };
       };
       const node = data.data?.node;
       if (node?.id && node?.title && node?.url) {
-        return {
-          id: node.id,
-          title: node.title,
-          url: node.url,
-        };
+        return { id: node.id, title: node.title, url: node.url };
       }
       return null;
     } catch {
@@ -531,7 +544,7 @@ export class NodeGitHubCLI implements GitHubCLI {
     }
   }
 
-  async createPR(
+  private async _createPR(
     headBranch: string,
     baseBranch: string,
     title: string,
@@ -550,14 +563,10 @@ export class NodeGitHubCLI implements GitHubCLI {
       "--body",
       body,
     ];
-
     if (draft) {
       args.push("--draft");
     }
-
-    // Note: gh pr create doesn't support --json, so we create the PR first
-    // then fetch its data using gh pr view
-    const result = await this.run(args);
+    const result = await this._run(args);
     if (!result.success) {
       throw new GitHubCLIError(
         `Failed to create PR: ${result.stderr}`,
@@ -565,36 +574,28 @@ export class NodeGitHubCLI implements GitHubCLI {
         result.stderr
       );
     }
-
-    // The output contains the PR URL, extract the PR number from it
-    // Format: https://github.com/owner/repo/pull/123
     const urlMatch = result.stdout.trim().match(/\/pull\/(\d+)/);
     if (!urlMatch) {
       throw new GitHubCLIError(`Failed to parse PR URL from output: ${result.stdout}`);
     }
-
     const prNumber = parseInt(urlMatch[1], 10);
-
-    // Fetch full PR data
-    const pr = await this.getPR(prNumber);
+    const pr = await this._getPR(prNumber);
     if (!pr) {
       throw new GitHubCLIError("PR not found after creation");
     }
     return pr;
   }
 
-  async mergePR(
+  private async _mergePR(
     prNumber: number,
     strategy: GitHubMergeStrategy = "squash",
     commitTitle?: string
   ): Promise<GitHubPRData> {
     const args = ["pr", "merge", String(prNumber), `--${strategy}`];
-
     if (commitTitle) {
       args.push("--subject", commitTitle);
     }
-
-    const result = await this.run(args);
+    const result = await this._run(args);
     if (!result.success) {
       throw new GitHubCLIError(
         `Failed to merge PR: ${result.stderr}`,
@@ -602,24 +603,21 @@ export class NodeGitHubCLI implements GitHubCLI {
         result.stderr
       );
     }
-
-    // Fetch updated PR data after merge
-    const pr = await this.getPR(prNumber);
+    const pr = await this._getPR(prNumber);
     if (!pr) {
       throw new GitHubCLIError("PR not found after merge");
     }
     return pr;
   }
 
-  async getPR(prNumber: number): Promise<GitHubPRData | null> {
-    const result = await this.run([
+  private async _getPR(prNumber: number): Promise<GitHubPRData | null> {
+    const result = await this._run([
       "pr",
       "view",
       String(prNumber),
       "--json",
       "number,url,id,title,body,state,isDraft,headRefName,baseRefName,mergedAt,mergeable",
     ]);
-
     if (!result.success) {
       if (result.stderr.includes("not found") || result.stderr.includes("Could not resolve")) {
         return null;
@@ -630,13 +628,12 @@ export class NodeGitHubCLI implements GitHubCLI {
         result.stderr
       );
     }
-
     const data = JSON.parse(result.stdout) as Record<string, unknown>;
     return this.mapPRData(data);
   }
 
-  async findPRByBranch(headBranch: string): Promise<GitHubPRData | null> {
-    const result = await this.run([
+  private async _findPRByBranch(headBranch: string): Promise<GitHubPRData | null> {
+    const result = await this._run([
       "pr",
       "list",
       "--head",
@@ -648,7 +645,6 @@ export class NodeGitHubCLI implements GitHubCLI {
       "--limit",
       "1",
     ]);
-
     if (!result.success) {
       throw new GitHubCLIError(
         `Failed to find PR by branch: ${result.stderr}`,
@@ -656,20 +652,15 @@ export class NodeGitHubCLI implements GitHubCLI {
         result.stderr
       );
     }
-
     const prs = JSON.parse(result.stdout) as Array<Record<string, unknown>>;
     if (prs.length === 0) {
       return null;
     }
-
     return this.mapPRData(prs[0]);
   }
 
-  async linkSubIssue(parentIssueNumber: number, childIssueId: number): Promise<void> {
-    // Use gh api to call the sub-issues REST endpoint
-    // POST /repos/{owner}/{repo}/issues/{issue_number}/sub_issues
-    // Body: {"sub_issue_id": <numeric_id>}
-    const result = await this.run([
+  private async _linkSubIssue(parentIssueNumber: number, childIssueId: number): Promise<void> {
+    const result = await this._run([
       "api",
       `repos/{owner}/{repo}/issues/${parentIssueNumber}/sub_issues`,
       "-X",
@@ -677,7 +668,6 @@ export class NodeGitHubCLI implements GitHubCLI {
       "-f",
       `sub_issue_id=${childIssueId}`,
     ]);
-
     if (!result.success) {
       throw new GitHubCLIError(
         `Failed to link sub-issue: ${result.stderr}`,
@@ -687,7 +677,7 @@ export class NodeGitHubCLI implements GitHubCLI {
     }
   }
 
-  async searchIssues(
+  private async _searchIssues(
     query: string,
     state: "open" | "closed" | "all" = "all",
     limit = 10
@@ -704,8 +694,7 @@ export class NodeGitHubCLI implements GitHubCLI {
       "--limit",
       String(limit),
     ];
-
-    const result = await this.run(args);
+    const result = await this._run(args);
     if (!result.success) {
       throw new GitHubCLIError(
         `Failed to search issues: ${result.stderr}`,
@@ -713,14 +702,12 @@ export class NodeGitHubCLI implements GitHubCLI {
         result.stderr
       );
     }
-
     const issues = JSON.parse(result.stdout) as Array<Record<string, unknown>>;
     return issues.map((data) => this.mapIssueData(data));
   }
 
-  async commentOnIssue(issueNumber: number, comment: string): Promise<void> {
-    const result = await this.run(["issue", "comment", String(issueNumber), "-b", comment]);
-
+  private async _commentOnIssue(issueNumber: number, comment: string): Promise<void> {
+    const result = await this._run(["issue", "comment", String(issueNumber), "-b", comment]);
     if (!result.success) {
       throw new GitHubCLIError(
         `Failed to comment on issue: ${result.stderr}`,
@@ -730,25 +717,21 @@ export class NodeGitHubCLI implements GitHubCLI {
     }
   }
 
-  async closeIssueWithComment(issueNumber: number, comment?: string): Promise<void> {
-    // If a comment is provided, add it first
+  private async _closeIssueWithComment(issueNumber: number, comment?: string): Promise<void> {
     if (comment) {
-      await this.commentOnIssue(issueNumber, comment);
+      await this._commentOnIssue(issueNumber, comment);
     }
-
-    // Then close the issue
-    await this.closeIssue(issueNumber);
+    await this._closeIssue(issueNumber);
   }
 
-  async assignIssue(issueNumber: number, assignee: string): Promise<void> {
-    const result = await this.run([
+  private async _assignIssue(issueNumber: number, assignee: string): Promise<void> {
+    const result = await this._run([
       "issue",
       "edit",
       String(issueNumber),
       "--add-assignee",
       assignee,
     ]);
-
     if (!result.success) {
       throw new GitHubCLIError(
         `Failed to assign issue: ${result.stderr}`,
@@ -758,7 +741,7 @@ export class NodeGitHubCLI implements GitHubCLI {
     }
   }
 
-  async run(args: string[]): Promise<GitHubCLIResult> {
+  private async _run(args: string[]): Promise<GitHubCLIResult> {
     return new Promise((resolve) => {
       const process = spawn("gh", args, {
         stdio: ["pipe", "pipe", "pipe"],
@@ -776,7 +759,6 @@ export class NodeGitHubCLI implements GitHubCLI {
       });
 
       process.on("error", (err) => {
-        // gh CLI not installed
         resolve({
           success: false,
           stdout: "",
@@ -796,6 +778,10 @@ export class NodeGitHubCLI implements GitHubCLI {
     });
   }
 
+  // ===========================================================================
+  // Private mapping helpers
+  // ===========================================================================
+
   private mapIssueData(data: Record<string, unknown>): GitHubIssueData {
     const labels = data["labels"] as Array<{ name: string }> | undefined;
     return {
@@ -810,11 +796,9 @@ export class NodeGitHubCLI implements GitHubCLI {
   }
 
   private mapPRData(data: Record<string, unknown>): GitHubPRData {
-    // Derive merged status from mergedAt (gh CLI doesn't have a 'merged' field)
     const mergedAt = data["mergedAt"] as string | null;
     const isMerged = mergedAt !== null && mergedAt !== undefined;
 
-    // Determine the state based on merged status and state fields
     let state: GitHubPRData["state"];
     if (isMerged) {
       state = "MERGED";

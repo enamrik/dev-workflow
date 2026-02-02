@@ -34,9 +34,10 @@ export class DrizzleTaskRepository implements TaskRepository {
   constructor(private readonly db: DrizzleDb) {}
 
   create(data: CreateTaskParams): Effect<Task> {
-    return Effect.promise(async () => {
-      const number = await Effect.runPromise(this.getNextTaskNumber(data.planId));
-      const order = await Effect.runPromise(this.getNextOrder(data.planId));
+    const self = this;
+    return Effect.gen(function* () {
+      const number = yield* self.getNextTaskNumber(data.planId);
+      const order = yield* self.getNextOrder(data.planId);
       const now = new Date().toISOString();
 
       const task = Task.from({
@@ -48,7 +49,7 @@ export class DrizzleTaskRepository implements TaskRepository {
       });
 
       // Insert into database
-      this.db
+      self.db
         .insert(tasks)
         .values({
           id: task.id,
@@ -85,7 +86,8 @@ export class DrizzleTaskRepository implements TaskRepository {
   }
 
   createMany(tasksData: CreateTaskParams[]): Effect<Task[]> {
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       if (tasksData.length === 0) {
         return [];
       }
@@ -99,8 +101,8 @@ export class DrizzleTaskRepository implements TaskRepository {
         throw new Error("Cannot create tasks without planId");
       }
 
-      let nextNumber = await Effect.runPromise(this.getNextTaskNumber(planId));
-      let nextOrder = await Effect.runPromise(this.getNextOrder(planId));
+      let nextNumber = yield* self.getNextTaskNumber(planId);
+      let nextOrder = yield* self.getNextOrder(planId);
 
       for (const data of tasksData) {
         const task = Task.from({
@@ -111,7 +113,7 @@ export class DrizzleTaskRepository implements TaskRepository {
           updatedAt: now,
         });
 
-        this.db
+        self.db
           .insert(tasks)
           .values({
             id: task.id,
@@ -237,9 +239,10 @@ export class DrizzleTaskRepository implements TaskRepository {
   }
 
   updateStatus(id: string, status: TaskStatus, changedBy?: string, notes?: string): Effect<Task> {
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       // Get current task
-      const currentTask = await Effect.runPromise(this.findById(id));
+      const currentTask = yield* self.findById(id);
       if (!currentTask) {
         throw new Error(`Task not found: ${id}`);
       }
@@ -291,7 +294,7 @@ export class DrizzleTaskRepository implements TaskRepository {
       }
 
       // Update task status and timestamps
-      this.db
+      self.db
         .update(tasks)
         .set({
           status,
@@ -302,7 +305,7 @@ export class DrizzleTaskRepository implements TaskRepository {
         .run();
 
       // Record status change in history
-      this.db
+      self.db
         .insert(taskStatusHistory)
         .values({
           id: crypto.randomUUID(),
@@ -316,7 +319,7 @@ export class DrizzleTaskRepository implements TaskRepository {
         .run();
 
       // Return updated task
-      const updatedTask = await Effect.runPromise(this.findById(id));
+      const updatedTask = yield* self.findById(id);
       if (!updatedTask) {
         throw new Error(`Failed to update task: ${id}`);
       }
@@ -358,7 +361,8 @@ export class DrizzleTaskRepository implements TaskRepository {
     sessionStartedAt?: string,
     lastSessionActivityAt?: string
   ): Effect<Task> {
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       const now = new Date().toISOString();
 
       // Build update object dynamically
@@ -379,9 +383,9 @@ export class DrizzleTaskRepository implements TaskRepository {
         updates.lastSessionActivityAt = lastSessionActivityAt;
       }
 
-      this.db.update(tasks).set(updates).where(eq(tasks.id, taskId)).run();
+      self.db.update(tasks).set(updates).where(eq(tasks.id, taskId)).run();
 
-      const updatedTask = await Effect.runPromise(this.findById(taskId));
+      const updatedTask = yield* self.findById(taskId);
       if (!updatedTask) {
         throw new Error(`Failed to update task session info: ${taskId}`);
       }
@@ -391,10 +395,11 @@ export class DrizzleTaskRepository implements TaskRepository {
   }
 
   clearSession(taskId: string): Effect<Task> {
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       const now = new Date().toISOString();
 
-      this.db
+      self.db
         .update(tasks)
         .set({
           sessionId: null,
@@ -405,7 +410,7 @@ export class DrizzleTaskRepository implements TaskRepository {
         .where(eq(tasks.id, taskId))
         .run();
 
-      const updatedTask = await Effect.runPromise(this.findById(taskId));
+      const updatedTask = yield* self.findById(taskId);
       if (!updatedTask) {
         throw new Error(`Failed to clear task session: ${taskId}`);
       }
@@ -415,10 +420,11 @@ export class DrizzleTaskRepository implements TaskRepository {
   }
 
   updateWorktreeInfo(taskId: string, worktreePath: string, branchName: string): Effect<Task> {
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       const now = new Date().toISOString();
 
-      this.db
+      self.db
         .update(tasks)
         .set({
           worktreePath,
@@ -428,7 +434,7 @@ export class DrizzleTaskRepository implements TaskRepository {
         .where(eq(tasks.id, taskId))
         .run();
 
-      const updatedTask = await Effect.runPromise(this.findById(taskId));
+      const updatedTask = yield* self.findById(taskId);
       if (!updatedTask) {
         throw new Error(`Failed to update task worktree info: ${taskId}`);
       }
@@ -438,10 +444,11 @@ export class DrizzleTaskRepository implements TaskRepository {
   }
 
   clearWorktreeInfo(taskId: string): Effect<Task> {
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       const now = new Date().toISOString();
 
-      this.db
+      self.db
         .update(tasks)
         .set({
           worktreePath: null,
@@ -451,7 +458,7 @@ export class DrizzleTaskRepository implements TaskRepository {
         .where(eq(tasks.id, taskId))
         .run();
 
-      const updatedTask = await Effect.runPromise(this.findById(taskId));
+      const updatedTask = yield* self.findById(taskId);
       if (!updatedTask) {
         throw new Error(`Failed to clear task worktree info: ${taskId}`);
       }
@@ -466,10 +473,11 @@ export class DrizzleTaskRepository implements TaskRepository {
     prNumber: number,
     prStatus: Task["prStatus"]
   ): Effect<Task> {
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       const now = new Date().toISOString();
 
-      this.db
+      self.db
         .update(tasks)
         .set({
           prUrl,
@@ -480,7 +488,7 @@ export class DrizzleTaskRepository implements TaskRepository {
         .where(eq(tasks.id, taskId))
         .run();
 
-      const updatedTask = await Effect.runPromise(this.findById(taskId));
+      const updatedTask = yield* self.findById(taskId);
       if (!updatedTask) {
         throw new Error(`Failed to update task PR info: ${taskId}`);
       }
@@ -490,10 +498,11 @@ export class DrizzleTaskRepository implements TaskRepository {
   }
 
   updatePRStatus(taskId: string, prStatus: Task["prStatus"]): Effect<Task> {
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       const now = new Date().toISOString();
 
-      this.db
+      self.db
         .update(tasks)
         .set({
           prStatus,
@@ -502,7 +511,7 @@ export class DrizzleTaskRepository implements TaskRepository {
         .where(eq(tasks.id, taskId))
         .run();
 
-      const updatedTask = await Effect.runPromise(this.findById(taskId));
+      const updatedTask = yield* self.findById(taskId);
       if (!updatedTask) {
         throw new Error(`Failed to update task PR status: ${taskId}`);
       }
@@ -512,10 +521,11 @@ export class DrizzleTaskRepository implements TaskRepository {
   }
 
   clearPRInfo(taskId: string): Effect<Task> {
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       const now = new Date().toISOString();
 
-      this.db
+      self.db
         .update(tasks)
         .set({
           prUrl: null,
@@ -526,7 +536,7 @@ export class DrizzleTaskRepository implements TaskRepository {
         .where(eq(tasks.id, taskId))
         .run();
 
-      const updatedTask = await Effect.runPromise(this.findById(taskId));
+      const updatedTask = yield* self.findById(taskId);
       if (!updatedTask) {
         throw new Error(`Failed to clear task PR info: ${taskId}`);
       }
@@ -536,10 +546,11 @@ export class DrizzleTaskRepository implements TaskRepository {
   }
 
   update(id: string, data: UpdateTaskParams): Effect<Task> {
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       const now = new Date().toISOString();
 
-      this.db
+      self.db
         .update(tasks)
         .set({
           ...data,
@@ -548,7 +559,7 @@ export class DrizzleTaskRepository implements TaskRepository {
         .where(eq(tasks.id, id))
         .run();
 
-      const updatedTask = await Effect.runPromise(this.findById(id));
+      const updatedTask = yield* self.findById(id);
       if (!updatedTask) {
         throw new Error(`Failed to update task: ${id}`);
       }
@@ -558,10 +569,11 @@ export class DrizzleTaskRepository implements TaskRepository {
   }
 
   updateNumber(id: string, newNumber: number): Effect<Task> {
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       const now = new Date().toISOString();
 
-      this.db
+      self.db
         .update(tasks)
         .set({
           number: newNumber,
@@ -570,7 +582,7 @@ export class DrizzleTaskRepository implements TaskRepository {
         .where(eq(tasks.id, id))
         .run();
 
-      const updatedTask = await Effect.runPromise(this.findById(id));
+      const updatedTask = yield* self.findById(id);
       if (!updatedTask) {
         throw new Error(`Failed to update task number: ${id}`);
       }
@@ -580,8 +592,9 @@ export class DrizzleTaskRepository implements TaskRepository {
   }
 
   softDelete(id: string, deletedBy?: string): Effect<Task> {
-    return Effect.promise(async () => {
-      const task = await Effect.runPromise(this.findById(id));
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.findById(id);
       if (!task) {
         throw new Error(`Task not found: ${id}`);
       }
@@ -594,7 +607,7 @@ export class DrizzleTaskRepository implements TaskRepository {
 
       const now = new Date().toISOString();
 
-      this.db
+      self.db
         .update(tasks)
         .set({
           isDeleted: true,
@@ -606,7 +619,7 @@ export class DrizzleTaskRepository implements TaskRepository {
         .run();
 
       // Use includeDeleted=true since we just marked the task as deleted
-      const updatedTask = await Effect.runPromise(this.findById(id, true));
+      const updatedTask = yield* self.findById(id, true);
       if (!updatedTask) {
         throw new Error(`Failed to soft delete task: ${id}`);
       }
@@ -616,10 +629,11 @@ export class DrizzleTaskRepository implements TaskRepository {
   }
 
   restore(id: string): Effect<Task> {
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       const now = new Date().toISOString();
 
-      this.db
+      self.db
         .update(tasks)
         .set({
           isDeleted: false,
@@ -630,7 +644,7 @@ export class DrizzleTaskRepository implements TaskRepository {
         .where(eq(tasks.id, id))
         .run();
 
-      const updatedTask = await Effect.runPromise(this.findById(id));
+      const updatedTask = yield* self.findById(id);
       if (!updatedTask) {
         throw new Error(`Failed to restore task: ${id}`);
       }
@@ -640,10 +654,11 @@ export class DrizzleTaskRepository implements TaskRepository {
   }
 
   updateSyncState(taskId: string, syncState: SyncState): Effect<Task> {
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       const now = new Date().toISOString();
 
-      this.db
+      self.db
         .update(tasks)
         .set({
           externalId: syncState.externalId,
@@ -658,7 +673,7 @@ export class DrizzleTaskRepository implements TaskRepository {
         .where(eq(tasks.id, taskId))
         .run();
 
-      const updatedTask = await Effect.runPromise(this.findById(taskId));
+      const updatedTask = yield* self.findById(taskId);
       if (!updatedTask) {
         throw new Error(`Failed to update task sync state: ${taskId}`);
       }
@@ -668,10 +683,11 @@ export class DrizzleTaskRepository implements TaskRepository {
   }
 
   clearSyncState(taskId: string): Effect<Task> {
-    return Effect.promise(async () => {
+    const self = this;
+    return Effect.gen(function* () {
       const now = new Date().toISOString();
 
-      this.db
+      self.db
         .update(tasks)
         .set({
           externalId: null,
@@ -686,7 +702,7 @@ export class DrizzleTaskRepository implements TaskRepository {
         .where(eq(tasks.id, taskId))
         .run();
 
-      const updatedTask = await Effect.runPromise(this.findById(taskId));
+      const updatedTask = yield* self.findById(taskId);
       if (!updatedTask) {
         throw new Error(`Failed to clear task sync state: ${taskId}`);
       }

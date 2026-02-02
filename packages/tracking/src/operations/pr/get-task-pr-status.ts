@@ -71,7 +71,7 @@ export function getTaskPRStatus(input: GetTaskPRStatusInput) {
     const taskService = yield* TaskService;
     const githubCLI = yield* GitHubCLITag;
 
-    const task = yield* Effect.promise(() => taskService.findById(taskId));
+    const task = yield* taskService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
@@ -84,7 +84,7 @@ export function getTaskPRStatus(input: GetTaskPRStatusInput) {
     }
 
     try {
-      const pr = yield* Effect.promise(() => githubCLI.getPR(task.prNumber!));
+      const pr = yield* githubCLI.getPR(task.prNumber!);
 
       if (!pr) {
         return {
@@ -102,7 +102,7 @@ export function getTaskPRStatus(input: GetTaskPRStatusInput) {
       // Update cached status if changed
       const prStatus = mapGitHubStateToPRStatus(pr.state, pr.isDraft);
       if (prStatus !== task.prStatus) {
-        yield* Effect.promise(() => taskService.updatePRStatus(taskId, prStatus));
+        yield* taskService.updatePRStatus(taskId, prStatus);
       }
 
       return {

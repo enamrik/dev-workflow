@@ -45,9 +45,7 @@ export function copyTemplate(input: CopyTemplateInput) {
     const { filename, category, fromScope, toScope } = validateInput(CopyTemplateSchema, input);
     const templateService = yield* TemplateService;
 
-    const template = yield* Effect.promise(() =>
-      templateService.copyTemplate(filename, category, fromScope, toScope)
-    );
+    const template = yield* templateService.copyTemplate(filename, category, fromScope, toScope);
 
     return {
       success: true,

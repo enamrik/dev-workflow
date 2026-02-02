@@ -44,11 +44,11 @@ export function moveIssueToReady(input: MoveIssueToReadyInput) {
     const planningService = yield* PlanningService;
     const taskService = yield* TaskService;
 
-    const result = yield* Effect.promise(() => planningService.readyIssue(issueNumber));
+    const result = yield* planningService.readyIssue(issueNumber);
 
     // Sync each task's READY status to GitHub
     for (const task of result.tasks) {
-      yield* Effect.promise(() => taskService.syncTaskStatus(task.id, "READY"));
+      yield* taskService.syncTaskStatus(task.id, "READY");
     }
 
     return {

@@ -9,7 +9,6 @@ import {
   ProjectsResolver,
   DbSourceProvider,
   EntityNotFoundError,
-  type TaskStatusHistory,
 } from "@dev-workflow/tracking";
 import { getDbClient } from "./helpers";
 
@@ -31,24 +30,22 @@ export function getTaskStatusHistory(input: GetTaskStatusHistoryInput) {
     const projectsResolver = yield* ProjectsResolver;
     const sourceProvider = yield* DbSourceProvider;
 
-    return yield* Effect.promise(async (): Promise<TaskStatusHistory[]> => {
-      const validated = validateInput(GetTaskStatusHistorySchema, input);
-      const projects = await projectsResolver.getAllProjects();
+    const validated = validateInput(GetTaskStatusHistorySchema, input);
+    const projects = yield* projectsResolver.getAllProjects();
 
-      for (const project of projects) {
-        try {
-          const db = await getDbClient(project, sourceProvider);
-          const task = await Effect.runPromise(db.tasks.findById(validated.taskId));
+    for (const project of projects) {
+      try {
+        const db = yield* Effect.promise(() => getDbClient(project, sourceProvider));
+        const task = yield* db.tasks.findById(validated.taskId);
 
-          if (task) {
-            return await Effect.runPromise(db.tasks.getStatusHistory(validated.taskId));
-          }
-        } catch {
-          // Continue searching
+        if (task) {
+          return yield* db.tasks.getStatusHistory(validated.taskId);
         }
+      } catch {
+        // Continue searching
       }
+    }
 
-      throw new EntityNotFoundError("Task", validated.taskId);
-    });
+    throw new EntityNotFoundError("Task", validated.taskId);
   });
 }

@@ -8,7 +8,7 @@
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { Service } from "@dev-workflow/effect";
+import { Effect, Service } from "@dev-workflow/effect";
 
 /**
  * Result from a git command
@@ -50,11 +50,12 @@ export class GitWorktreeError extends Error {
  *
  * Abstracts git worktree commands for testability and follows DIP.
  */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export interface GitWorktreeService {
   /**
    * Check if git is available and we're in a git repository
    */
-  checkGitAvailable(): Promise<boolean>;
+  checkGitAvailable(): Effect<boolean>;
 
   /**
    * Create a new worktree with a new branch
@@ -64,7 +65,11 @@ export interface GitWorktreeService {
    * @param baseBranch - Branch to base the new branch on (default: current HEAD)
    * @returns Path to created worktree
    */
-  createWorktree(worktreePath: string, branchName: string, baseBranch?: string): Promise<string>;
+  createWorktree(
+    worktreePath: string,
+    branchName: string,
+    baseBranch?: string
+  ): Effect<string, GitWorktreeError>;
 
   /**
    * Remove a worktree and optionally its branch
@@ -72,30 +77,31 @@ export interface GitWorktreeService {
    * @param worktreePath - Path to worktree to remove
    * @param deleteBranch - Whether to delete the associated branch (default: false)
    */
-  removeWorktree(worktreePath: string, deleteBranch?: boolean): Promise<void>;
+  removeWorktree(worktreePath: string, deleteBranch?: boolean): Effect<void, GitWorktreeError>;
 
   /**
    * List all worktrees
    */
-  listWorktrees(): Promise<WorktreeInfo[]>;
+  listWorktrees(): Effect<WorktreeInfo[], GitWorktreeError>;
 
   /**
    * Prune stale worktrees (worktrees that no longer exist on disk)
    */
-  pruneWorktrees(): Promise<void>;
+  pruneWorktrees(): Effect<void, GitWorktreeError>;
 
   /**
    * Get disk usage for a directory
    */
-  getDiskUsage(dirPath: string): Promise<number>;
+  getDiskUsage(dirPath: string): Effect<number>;
 
   /**
    * Run arbitrary git command
    */
-  run(args: string[], cwd?: string): Promise<GitCommandResult>;
+  run(args: string[], cwd?: string): Effect<GitCommandResult>;
 }
 
-export class GitWorktreeServiceTag extends Service<GitWorktreeService>()("gitWorktreeService") {}
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
+export class GitWorktreeService extends Service<GitWorktreeService>()("gitWorktreeService") {}
 
 /**
  * Generates branch and worktree names for a task
@@ -140,12 +146,58 @@ export function generateWorktreeNames(
 export class NodeGitWorktreeService implements GitWorktreeService {
   constructor(private readonly projectRoot: string) {}
 
-  async checkGitAvailable(): Promise<boolean> {
-    const result = await this.run(["rev-parse", "--git-dir"]);
-    return result.success;
+  checkGitAvailable(): Effect<boolean> {
+    return Effect.promise(async () => {
+      const result = await this._run(["rev-parse", "--git-dir"]);
+      return result.success;
+    });
   }
 
-  async createWorktree(
+  createWorktree(
+    worktreePath: string,
+    branchName: string,
+    baseBranch?: string
+  ): Effect<string, GitWorktreeError> {
+    return Effect.tryPromise({
+      try: () => this._createWorktree(worktreePath, branchName, baseBranch),
+      catch: (e) => (e instanceof GitWorktreeError ? e : new GitWorktreeError(String(e))),
+    });
+  }
+
+  removeWorktree(worktreePath: string, deleteBranch = false): Effect<void, GitWorktreeError> {
+    return Effect.tryPromise({
+      try: () => this._removeWorktree(worktreePath, deleteBranch),
+      catch: (e) => (e instanceof GitWorktreeError ? e : new GitWorktreeError(String(e))),
+    });
+  }
+
+  listWorktrees(): Effect<WorktreeInfo[], GitWorktreeError> {
+    return Effect.tryPromise({
+      try: () => this._listWorktrees(),
+      catch: (e) => (e instanceof GitWorktreeError ? e : new GitWorktreeError(String(e))),
+    });
+  }
+
+  pruneWorktrees(): Effect<void, GitWorktreeError> {
+    return Effect.tryPromise({
+      try: () => this._pruneWorktrees(),
+      catch: (e) => (e instanceof GitWorktreeError ? e : new GitWorktreeError(String(e))),
+    });
+  }
+
+  getDiskUsage(dirPath: string): Effect<number> {
+    return Effect.promise(() => this._getDiskUsage(dirPath));
+  }
+
+  run(args: string[], cwd?: string): Effect<GitCommandResult> {
+    return Effect.promise(() => this._run(args, cwd));
+  }
+
+  // ===========================================================================
+  // Private async implementations
+  // ===========================================================================
+
+  private async _createWorktree(
     worktreePath: string,
     branchName: string,
     baseBranch?: string
@@ -162,7 +214,7 @@ export class NodeGitWorktreeService implements GitWorktreeService {
       args.push(baseBranch);
     }
 
-    const result = await this.run(args);
+    const result = await this._run(args);
     if (!result.success) {
       throw new GitWorktreeError(
         `Failed to create worktree: ${result.stderr}`,
@@ -174,13 +226,13 @@ export class NodeGitWorktreeService implements GitWorktreeService {
     return fullPath;
   }
 
-  async removeWorktree(worktreePath: string, deleteBranch = false): Promise<void> {
+  private async _removeWorktree(worktreePath: string, deleteBranch = false): Promise<void> {
     const fullPath = path.resolve(this.projectRoot, worktreePath);
 
     // Get branch name before removing worktree (if we need to delete it)
     let branchToDelete: string | undefined;
     if (deleteBranch) {
-      const worktrees = await this.listWorktrees();
+      const worktrees = await this._listWorktrees();
       // Compare using realpath to handle symlinks (e.g., /tmp -> /private/tmp on macOS)
       let resolvedFullPath: string;
       try {
@@ -201,7 +253,7 @@ export class NodeGitWorktreeService implements GitWorktreeService {
     }
 
     // Remove the worktree (force to handle uncommitted changes)
-    const result = await this.run(["worktree", "remove", "--force", fullPath]);
+    const result = await this._run(["worktree", "remove", "--force", fullPath]);
     if (!result.success) {
       // If worktree doesn't exist, that's fine
       if (!result.stderr.includes("is not a working tree")) {
@@ -216,14 +268,14 @@ export class NodeGitWorktreeService implements GitWorktreeService {
     // Delete branch if requested
     if (branchToDelete) {
       // Use -D to force delete even if not fully merged
-      await this.run(["branch", "-D", branchToDelete]);
+      await this._run(["branch", "-D", branchToDelete]);
 
       // Also delete the remote branch if it exists
       // First check if the remote branch exists (it may have been auto-deleted by GitHub)
-      const checkResult = await this.run(["ls-remote", "--heads", "origin", branchToDelete]);
+      const checkResult = await this._run(["ls-remote", "--heads", "origin", branchToDelete]);
       if (checkResult.success && checkResult.stdout.trim()) {
         // Remote branch exists, delete it
-        const remoteResult = await this.run([
+        const remoteResult = await this._run([
           "push",
           "origin",
           "--delete",
@@ -237,8 +289,8 @@ export class NodeGitWorktreeService implements GitWorktreeService {
     }
   }
 
-  async listWorktrees(): Promise<WorktreeInfo[]> {
-    const result = await this.run(["worktree", "list", "--porcelain"]);
+  private async _listWorktrees(): Promise<WorktreeInfo[]> {
+    const result = await this._run(["worktree", "list", "--porcelain"]);
     if (!result.success) {
       throw new GitWorktreeError(
         `Failed to list worktrees: ${result.stderr}`,
@@ -290,7 +342,7 @@ export class NodeGitWorktreeService implements GitWorktreeService {
     for (const worktree of worktrees) {
       if (!worktree.isMain) {
         try {
-          worktree.diskUsageBytes = await this.getDiskUsage(worktree.path);
+          worktree.diskUsageBytes = await this._getDiskUsage(worktree.path);
         } catch {
           // If we can't get disk usage, just skip it
         }
@@ -300,8 +352,8 @@ export class NodeGitWorktreeService implements GitWorktreeService {
     return worktrees;
   }
 
-  async pruneWorktrees(): Promise<void> {
-    const result = await this.run(["worktree", "prune"]);
+  private async _pruneWorktrees(): Promise<void> {
+    const result = await this._run(["worktree", "prune"]);
     if (!result.success) {
       throw new GitWorktreeError(
         `Failed to prune worktrees: ${result.stderr}`,
@@ -311,7 +363,7 @@ export class NodeGitWorktreeService implements GitWorktreeService {
     }
   }
 
-  async getDiskUsage(dirPath: string): Promise<number> {
+  private async _getDiskUsage(dirPath: string): Promise<number> {
     return new Promise((resolve, reject) => {
       const process = spawn("du", ["-sk", dirPath], {
         stdio: ["pipe", "pipe", "pipe"],
@@ -349,7 +401,7 @@ export class NodeGitWorktreeService implements GitWorktreeService {
     });
   }
 
-  async run(args: string[], cwd?: string): Promise<GitCommandResult> {
+  private async _run(args: string[], cwd?: string): Promise<GitCommandResult> {
     return new Promise((resolve) => {
       const process = spawn("git", args, {
         cwd: cwd ?? this.projectRoot,

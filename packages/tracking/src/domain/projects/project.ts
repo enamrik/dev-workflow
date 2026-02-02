@@ -9,7 +9,7 @@
  */
 
 import type { ProjectManagementConfig } from "../../project-sync/project-management-config.js";
-import { Service } from "@dev-workflow/effect";
+import { type Effect, Service } from "@dev-workflow/effect";
 
 /**
  * Project entity
@@ -68,7 +68,7 @@ export interface ProjectRepository {
    * @param data - Project data
    * @returns The created project with id and timestamps assigned
    */
-  create(data: CreateProjectData): Promise<Project>;
+  create(data: CreateProjectData): Effect<Project>;
 
   /**
    * Find a project by its UUID
@@ -76,7 +76,7 @@ export interface ProjectRepository {
    * @param id - Project UUID
    * @returns The project if found, null otherwise
    */
-  findById(id: string): Promise<Project | null>;
+  findById(id: string): Effect<Project | null>;
 
   /**
    * Find a project by its git root hash (initial commit SHA)
@@ -86,7 +86,7 @@ export interface ProjectRepository {
    * @param gitRootHash - SHA of the initial commit
    * @returns The project if found, null otherwise
    */
-  findByGitRootHash(gitRootHash: string): Promise<Project | null>;
+  findByGitRootHash(gitRootHash: string): Effect<Project | null>;
 
   /**
    * Find a project by its URL slug
@@ -96,7 +96,7 @@ export interface ProjectRepository {
    * @param slug - The project's URL slug ({name}-{hash})
    * @returns The project if found, null otherwise
    */
-  findBySlug(slug: string): Promise<Project | null>;
+  findBySlug(slug: string): Effect<Project | null>;
 
   /**
    * Find all projects
@@ -104,7 +104,7 @@ export interface ProjectRepository {
    * @param includeArchived - If true, include archived projects (default: false)
    * @returns Array of projects
    */
-  findAll(includeArchived?: boolean): Promise<Project[]>;
+  findAll(includeArchived?: boolean): Effect<Project[]>;
 
   /**
    * Update a project's properties
@@ -113,7 +113,7 @@ export interface ProjectRepository {
    * @param data - Partial project data to update
    * @returns The updated project
    */
-  update(id: string, data: UpdateProjectData): Promise<Project>;
+  update(id: string, data: UpdateProjectData): Effect<Project>;
 
   /**
    * Archive a project (soft delete - hides from UI but preserves data)
@@ -121,7 +121,7 @@ export interface ProjectRepository {
    * @param id - Project UUID
    * @returns The archived project
    */
-  archive(id: string): Promise<Project>;
+  archive(id: string): Effect<Project>;
 
   /**
    * Unarchive a project (restore from archived state)
@@ -129,7 +129,7 @@ export interface ProjectRepository {
    * @param id - Project UUID
    * @returns The unarchived project
    */
-  unarchive(id: string): Promise<Project>;
+  unarchive(id: string): Effect<Project>;
 
   /**
    * Hard delete a project and ALL associated data
@@ -146,7 +146,7 @@ export interface ProjectRepository {
    *
    * @param id - Project UUID
    */
-  hardDelete(id: string): Promise<void>;
+  hardDelete(id: string): Effect<void>;
 
   /**
    * Delete a project (soft delete via archive is preferred)
@@ -157,5 +157,5 @@ export interface ProjectRepository {
    * @param id - Project UUID
    * @deprecated Use archive() or hardDelete() instead
    */
-  delete(id: string): Promise<void>;
+  delete(id: string): Effect<void>;
 }

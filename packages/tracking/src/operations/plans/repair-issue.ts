@@ -61,7 +61,7 @@ export function repairIssue(input: RepairIssueInput) {
     }
 
     // 2. Repair issue
-    const result = yield* Effect.promise(() => taskService.repairIssue(issueNumber));
+    const result = yield* taskService.repairIssue(issueNumber);
 
     if (!result.success && result.errors.length > 0) {
       const errorMessages = result.errors.map((e) => e.error).join("; ");

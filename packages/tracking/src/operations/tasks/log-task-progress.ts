@@ -49,20 +49,18 @@ export function logTaskProgress(input: LogTaskProgressInput) {
     const dbClient = yield* DbClientTag;
 
     // Verify task exists
-    const task = yield* Effect.promise(() => taskService.findById(taskId));
+    const task = yield* taskService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
 
     // Insert execution log entry
-    const log = yield* Effect.promise(() =>
-      dbClient.executionLogs.create({
-        taskId,
-        sessionId,
-        message,
-        filesModified: filesModified || undefined,
-      })
-    );
+    const log = yield* dbClient.executionLogs.create({
+      taskId,
+      sessionId,
+      message,
+      filesModified: filesModified || undefined,
+    });
 
     return {
       success: true,

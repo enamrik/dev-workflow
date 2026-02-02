@@ -39,9 +39,7 @@ export function deleteTask(input: DeleteTaskInput) {
     const { taskId } = validateInput(deleteTaskSchema, input);
     const taskManagementService = yield* TaskManagementService;
 
-    const task = yield* Effect.promise(() =>
-      taskManagementService.deleteTask(taskId, "claude-agent")
-    );
+    const task = yield* taskManagementService.deleteTask(taskId, "claude-agent");
 
     return {
       success: true,

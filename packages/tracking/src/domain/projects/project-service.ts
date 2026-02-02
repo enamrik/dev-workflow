@@ -6,6 +6,7 @@
  */
 
 import * as path from "node:path";
+import { Effect } from "@dev-workflow/effect";
 import type { Project, UpdateProjectData } from "./project.js";
 import type { DbSource } from "../../data-access/db-source.js";
 import type { ProjectManagementConfig } from "../../project-sync/project-management-config.js";
@@ -54,28 +55,31 @@ export class ProjectService {
    * @returns The project (existing or newly created)
    * @throws ProjectError if not a git repository or git operations fail
    */
-  async getOrCreateProject(gitRoot: string): Promise<Project> {
-    // Verify it's a git repository
-    if (!this.gitOperations.isGitRepository(gitRoot)) {
-      throw new ProjectError(`Not a git repository: ${gitRoot}`);
-    }
+  getOrCreateProject(gitRoot: string): Effect<Project> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Verify it's a git repository
+      if (!self.gitOperations.isGitRepository(gitRoot)) {
+        throw new ProjectError(`Not a git repository: ${gitRoot}`);
+      }
 
-    // Get the stable identifier
-    const gitRootHash = this.gitOperations.getInitialCommitHash(gitRoot);
+      // Get the stable identifier
+      const gitRootHash = self.gitOperations.getInitialCommitHash(gitRoot);
 
-    // Look up existing project
-    const existing = await this.source.projects.findByGitRootHash(gitRootHash);
+      // Look up existing project
+      const existing = yield* self.source.projects.findByGitRootHash(gitRootHash);
 
-    if (existing) {
-      return existing;
-    }
+      if (existing) {
+        return existing;
+      }
 
-    // Create new project
-    const name = path.basename(gitRoot);
-    return await this.source.projects.create({
-      gitRootHash,
-      name,
-      syncConfig: null,
+      // Create new project
+      const name = path.basename(gitRoot);
+      return yield* self.source.projects.create({
+        gitRootHash,
+        name,
+        syncConfig: null,
+      });
     });
   }
 
@@ -85,7 +89,7 @@ export class ProjectService {
    * @param id - Project UUID
    * @returns The project if found, null otherwise
    */
-  async findById(id: string): Promise<Project | null> {
+  findById(id: string): Effect<Project | null> {
     return this.source.projects.findById(id);
   }
 
@@ -95,7 +99,7 @@ export class ProjectService {
    * @param gitRootHash - SHA of the initial commit
    * @returns The project if found, null otherwise
    */
-  async findByGitRootHash(gitRootHash: string): Promise<Project | null> {
+  findByGitRootHash(gitRootHash: string): Effect<Project | null> {
     return this.source.projects.findByGitRootHash(gitRootHash);
   }
 
@@ -104,7 +108,7 @@ export class ProjectService {
    *
    * @returns Array of all projects
    */
-  async findAll(): Promise<Project[]> {
+  findAll(): Effect<Project[]> {
     return this.source.projects.findAll();
   }
 
@@ -116,16 +120,16 @@ export class ProjectService {
    * @returns The updated project
    * @throws ProjectError if project not found
    */
-  async updateGitHubSync(
-    projectId: string,
-    config: ProjectManagementConfig | null
-  ): Promise<Project> {
-    const project = await this.source.projects.findById(projectId);
-    if (!project) {
-      throw new ProjectError(`Project not found: ${projectId}`);
-    }
+  updateGitHubSync(projectId: string, config: ProjectManagementConfig | null): Effect<Project> {
+    const self = this;
+    return Effect.gen(function* () {
+      const project = yield* self.source.projects.findById(projectId);
+      if (!project) {
+        throw new ProjectError(`Project not found: ${projectId}`);
+      }
 
-    return this.source.projects.update(projectId, { syncConfig: config });
+      return yield* self.source.projects.update(projectId, { syncConfig: config });
+    });
   }
 
   /**
@@ -135,13 +139,16 @@ export class ProjectService {
    * @returns GitHub sync config, or null if not configured
    * @throws ProjectError if project not found
    */
-  async getGitHubSync(projectId: string): Promise<ProjectManagementConfig | null> {
-    const project = await this.source.projects.findById(projectId);
-    if (!project) {
-      throw new ProjectError(`Project not found: ${projectId}`);
-    }
+  getGitHubSync(projectId: string): Effect<ProjectManagementConfig | null> {
+    const self = this;
+    return Effect.gen(function* () {
+      const project = yield* self.source.projects.findById(projectId);
+      if (!project) {
+        throw new ProjectError(`Project not found: ${projectId}`);
+      }
 
-    return project.syncConfig;
+      return project.syncConfig;
+    });
   }
 
   /**
@@ -150,9 +157,8 @@ export class ProjectService {
    * @param projectId - Project UUID
    * @returns true if GitHub sync is enabled
    */
-  async isGitHubSyncEnabled(projectId: string): Promise<boolean> {
-    const config = await this.getGitHubSync(projectId);
-    return config?.enabled === true;
+  isGitHubSyncEnabled(projectId: string): Effect<boolean> {
+    return Effect.map(this.getGitHubSync(projectId), (config) => config?.enabled === true);
   }
 
   /**
@@ -163,12 +169,15 @@ export class ProjectService {
    * @returns The updated project
    * @throws ProjectError if project not found
    */
-  async update(projectId: string, data: UpdateProjectData): Promise<Project> {
-    const project = await this.source.projects.findById(projectId);
-    if (!project) {
-      throw new ProjectError(`Project not found: ${projectId}`);
-    }
+  update(projectId: string, data: UpdateProjectData): Effect<Project> {
+    const self = this;
+    return Effect.gen(function* () {
+      const project = yield* self.source.projects.findById(projectId);
+      if (!project) {
+        throw new ProjectError(`Project not found: ${projectId}`);
+      }
 
-    return this.source.projects.update(projectId, data);
+      return yield* self.source.projects.update(projectId, data);
+    });
   }
 }

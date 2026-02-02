@@ -41,7 +41,7 @@ export function pauseIssue(input: PauseIssueInput) {
     const { issueNumber } = validateInput(PauseIssueSchema, input);
     const planningService = yield* PlanningService;
 
-    const result = yield* Effect.promise(() => planningService.pauseIssue(issueNumber));
+    const result = yield* planningService.pauseIssue(issueNumber);
 
     return {
       message:

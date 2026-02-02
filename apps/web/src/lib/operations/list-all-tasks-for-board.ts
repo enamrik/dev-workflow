@@ -71,83 +71,81 @@ export function listAllTasksForBoard(input: ListAllTasksForBoardInput) {
     const sourceProvider = yield* DbSourceProvider;
     const workerQueueDb = yield* WorkerQueueDbTag;
 
-    return yield* Effect.promise(async () => {
-      const validated = validateInput(ListAllTasksForBoardSchema, input);
-      const projects = filterProjects(
-        await projectsResolver.getAllProjects(),
-        validated.projectFilter
-      );
+    const validated = validateInput(ListAllTasksForBoardSchema, input);
+    const projects = filterProjects(
+      yield* projectsResolver.getAllProjects(),
+      validated.projectFilter
+    );
 
-      const workerAssignments = getWorkerAssignments(workerQueueDb);
-      const issuesWithTasks: IssueWithTasks[] = [];
-      const completedTasks: CompletedTaskWithContext[] = [];
+    const workerAssignments = getWorkerAssignments(workerQueueDb);
+    const issuesWithTasks: IssueWithTasks[] = [];
+    const completedTasks: CompletedTaskWithContext[] = [];
 
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - 7);
-      const cutoffDateStr = cutoffDate.toISOString();
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - 7);
+    const cutoffDateStr = cutoffDate.toISOString();
 
-      for (const project of projects) {
-        try {
-          const db = await getDbClient(project, sourceProvider);
-          const boardService = new BoardQueryService(db);
-          const boardData = await boardService.getActiveIssuesWithTasks();
+    for (const project of projects) {
+      try {
+        const db = yield* Effect.promise(() => getDbClient(project, sourceProvider));
+        const boardService = new BoardQueryService(db);
+        const boardData = yield* boardService.getActiveIssuesWithTasks();
 
-          for (const { issue, plan, tasks, milestone } of boardData) {
-            const tasksWithWorker: TaskWithWorker[] = tasks.map((task) => {
-              const workerInfo = workerAssignments.get(task.id);
-              if (workerInfo) {
-                return Object.assign(Task.from(task), {
-                  workerId: workerInfo.workerId,
-                  workerName: workerInfo.workerName ?? undefined,
-                });
-              }
-              return task;
-            });
-
-            issuesWithTasks.push({
-              issue,
-              plan,
-              tasks: tasksWithWorker,
-              milestoneNumber: milestone?.number,
-              milestoneTitle: milestone?.title,
-              projectName: project.name,
-              projectSlug: project.slug,
-            });
-
-            for (const task of tasks) {
-              if (task.status !== "COMPLETED" && task.status !== "ABANDONED") continue;
-              const completionDate = task.completedAt ?? task.abandonedAt;
-              if (!completionDate || completionDate < cutoffDateStr) continue;
-
-              completedTasks.push(
-                Object.assign(Task.from(task), {
-                  projectId: issue.projectId,
-                  projectName: project.name,
-                  projectSlug: project.slug,
-                  issueNumber: issue.number,
-                  issueTitle: issue.title,
-                  issueType: issue.type,
-                  issueStatus: issue.status,
-                })
-              );
+        for (const { issue, plan, tasks, milestone } of boardData) {
+          const tasksWithWorker: TaskWithWorker[] = tasks.map((task) => {
+            const workerInfo = workerAssignments.get(task.id);
+            if (workerInfo) {
+              return Object.assign(Task.from(task), {
+                workerId: workerInfo.workerId,
+                workerName: workerInfo.workerName ?? undefined,
+              });
             }
+            return task;
+          });
+
+          issuesWithTasks.push({
+            issue,
+            plan,
+            tasks: tasksWithWorker,
+            milestoneNumber: milestone?.number,
+            milestoneTitle: milestone?.title,
+            projectName: project.name,
+            projectSlug: project.slug,
+          });
+
+          for (const task of tasks) {
+            if (task.status !== "COMPLETED" && task.status !== "ABANDONED") continue;
+            const completionDate = task.completedAt ?? task.abandonedAt;
+            if (!completionDate || completionDate < cutoffDateStr) continue;
+
+            completedTasks.push(
+              Object.assign(Task.from(task), {
+                projectId: issue.projectId,
+                projectName: project.name,
+                projectSlug: project.slug,
+                issueNumber: issue.number,
+                issueTitle: issue.title,
+                issueType: issue.type,
+                issueStatus: issue.status,
+              })
+            );
           }
-        } catch {
-          // Skip inaccessible projects
         }
+      } catch {
+        // Skip inaccessible projects
       }
+    }
 
-      completedTasks.sort((a, b) => {
-        const dateA = a.completedAt ?? a.abandonedAt ?? "";
-        const dateB = b.completedAt ?? b.abandonedAt ?? "";
-        return dateB.localeCompare(dateA);
-      });
-
-      return {
-        issuesWithTasks,
-        completedTasks: completedTasks.slice(0, 20),
-      };
+    completedTasks.sort((a, b) => {
+      const dateA = a.completedAt ?? a.abandonedAt ?? "";
+      const dateB = b.completedAt ?? b.abandonedAt ?? "";
+      return dateB.localeCompare(dateA);
     });
+
+    return {
+      issuesWithTasks,
+      completedTasks: completedTasks.slice(0, 20),
+    };
   });
 }
 

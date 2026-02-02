@@ -40,7 +40,7 @@ export function deleteTemplate(input: DeleteTemplateInput) {
     } = validateInput(DeleteTemplateSchema, input);
     const templateService = yield* TemplateService;
 
-    yield* Effect.promise(() => templateService.deleteTemplate(filename, category, scope));
+    yield* templateService.deleteTemplate(filename, category, scope);
 
     return {
       success: true,

@@ -103,7 +103,7 @@ export function closeIssue(input: CloseIssueInput) {
     let parentGitHubIssueClosed: string | undefined;
     if (result.issue.sourceExternalId) {
       const githubCLI = yield* GitHubCLITag;
-      yield* Effect.promise(() => githubCLI.closeIssue(Number(result.issue.sourceExternalId)));
+      yield* githubCLI.closeIssue(Number(result.issue.sourceExternalId));
       parentGitHubIssueClosed = result.issue.sourceExternalId;
     }
 

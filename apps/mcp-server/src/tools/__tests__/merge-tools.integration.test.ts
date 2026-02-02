@@ -35,10 +35,12 @@ async function createMergeToolContext(testDb: TestDatabase): Promise<{
   client: DbClient;
 }> {
   // Create project first to get the generated ID
-  const project = await testDb.source.projects.create({
-    gitRootHash: TEST_PROJECT_ID,
-    name: "Test Project",
-  });
+  const project = await Effect.runPromise(
+    testDb.source.projects.create({
+      gitRootHash: TEST_PROJECT_ID,
+      name: "Test Project",
+    })
+  );
 
   // Create client scoped to this project
   const client = createClientForProject(testDb, project.id);

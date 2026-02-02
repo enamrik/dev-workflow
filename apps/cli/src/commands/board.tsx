@@ -9,6 +9,7 @@ import React, { useState, useEffect } from "react";
 import { render } from "ink";
 import { asValue } from "awilix";
 import { type ProjectInfo } from "@dev-workflow/tracking";
+import { Effect } from "@dev-workflow/effect";
 import { KanbanBoard } from "../components/KanbanBoard.js";
 import { useMultiProjectKanbanData, useKanbanActions } from "../hooks/useKanbanData.js";
 import { createCliContainer, DIContainerProvider, useDeps, handleCliError } from "../di/index.js";
@@ -44,7 +45,7 @@ function BoardAppInternal({
 
     async function loadProjects(): Promise<void> {
       try {
-        let loadedProjects = await projectsResolver.getAllProjects();
+        let loadedProjects = await Effect.runPromise(projectsResolver.getAllProjects());
 
         if (loadedProjects.length === 0) {
           setLoadError(

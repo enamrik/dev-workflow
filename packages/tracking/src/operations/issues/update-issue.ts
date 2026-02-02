@@ -77,9 +77,7 @@ export function updateIssue(input: UpdateIssueInput) {
       type: updates.type as IssueType | undefined,
       priority: updates.priority as IssuePriority | undefined,
     };
-    const result = yield* Effect.promise(() =>
-      planningService.updateIssue(issue.id, typedUpdates, regeneratePlan)
-    );
+    const result = yield* planningService.updateIssue(issue.id, typedUpdates, regeneratePlan);
 
     return {
       issue: result.issue,

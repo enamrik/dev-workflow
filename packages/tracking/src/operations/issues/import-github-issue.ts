@@ -193,13 +193,13 @@ export function importGitHubIssue(input: ImportGitHubIssueInput) {
     }
 
     // Fetch GitHub issue
-    const githubIssue = yield* Effect.tryPromise({
-      try: () => githubCLI.getIssue(resolvedIssueNumber),
-      catch: (error) =>
+    const githubIssue = yield* Effect.catchAll(githubCLI.getIssue(resolvedIssueNumber), (error) =>
+      Effect.fail(
         new BusinessRuleError(
-          `Failed to fetch GitHub issue #${resolvedIssueNumber}: ${error instanceof Error ? error.message : String(error)}`
-        ),
-    });
+          `Failed to fetch GitHub issue #${resolvedIssueNumber}: ${error.message}`
+        )
+      )
+    );
 
     if (!githubIssue) {
       return yield* Effect.fail(

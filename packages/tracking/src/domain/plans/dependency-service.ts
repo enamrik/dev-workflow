@@ -37,30 +37,33 @@ export class DependencyService {
    * @param task - Task to check dependencies for
    * @returns true if all dependencies satisfied, false otherwise
    */
-  async areDependenciesSatisfied(task: Task): Promise<boolean> {
+  areDependenciesSatisfied(task: Task): Effect<boolean> {
     // No dependencies = always satisfied
     if (!task.dependsOn || task.dependsOn.length === 0) {
-      return true;
+      return Effect.succeed(true);
     }
 
-    // Fetch all dependency tasks
-    const dependencyTasks = await Effect.runPromise(this.db.tasks.findByIds(task.dependsOn));
+    const self = this;
+    return Effect.gen(function* () {
+      // Fetch all dependency tasks
+      const dependencyTasks = yield* self.db.tasks.findByIds(task.dependsOn!);
 
-    // Check each dependency
-    for (const depTask of dependencyTasks) {
-      if (!SATISFIED_STATUSES.has(depTask.status)) {
+      // Check each dependency
+      for (const depTask of dependencyTasks) {
+        if (!SATISFIED_STATUSES.has(depTask.status)) {
+          return false;
+        }
+      }
+
+      // All found dependencies are satisfied
+      // Note: If some dependency IDs weren't found, that's a data integrity issue
+      // but we treat it as "not satisfied" to be safe
+      if (dependencyTasks.length !== task.dependsOn!.length) {
         return false;
       }
-    }
 
-    // All found dependencies are satisfied
-    // Note: If some dependency IDs weren't found, that's a data integrity issue
-    // but we treat it as "not satisfied" to be safe
-    if (dependencyTasks.length !== task.dependsOn.length) {
-      return false;
-    }
-
-    return true;
+      return true;
+    });
   }
 
   /**
@@ -69,16 +72,19 @@ export class DependencyService {
    * @param task - Task to check
    * @returns Array of tasks that are blocking this task
    */
-  async getBlockingDependencies(task: Task): Promise<Task[]> {
+  getBlockingDependencies(task: Task): Effect<Task[]> {
     // No dependencies = no blocking
     if (!task.dependsOn || task.dependsOn.length === 0) {
-      return [];
+      return Effect.succeed([]);
     }
 
-    // Fetch all dependency tasks
-    const dependencyTasks = await Effect.runPromise(this.db.tasks.findByIds(task.dependsOn));
+    const self = this;
+    return Effect.gen(function* () {
+      // Fetch all dependency tasks
+      const dependencyTasks = yield* self.db.tasks.findByIds(task.dependsOn!);
 
-    // Filter to only blocking (unsatisfied) dependencies
-    return dependencyTasks.filter((depTask) => !SATISFIED_STATUSES.has(depTask.status));
+      // Filter to only blocking (unsatisfied) dependencies
+      return dependencyTasks.filter((depTask) => !SATISFIED_STATUSES.has(depTask.status));
+    });
   }
 }

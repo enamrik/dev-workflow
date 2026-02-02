@@ -72,13 +72,13 @@ export function moveIssueToBacklog(input: MoveIssueToBacklogInput) {
     }
 
     // 3. Get the plan
-    const plan = yield* Effect.promise(() => planService.findByIssueId(issue.id));
+    const plan = yield* planService.findByIssueId(issue.id);
     if (!plan) {
       throw new Error(`No plan found for issue #${issueNumber}`);
     }
 
     // 4. Get PLANNED tasks
-    const allTasks = yield* Effect.promise(() => taskService.findByPlanId(plan.id));
+    const allTasks = yield* taskService.findByPlanId(plan.id);
     const plannedTasks = allTasks.filter((t) => t.status === "PLANNED");
 
     // If no PLANNED tasks and issue is already active, nothing to do
@@ -95,7 +95,7 @@ export function moveIssueToBacklog(input: MoveIssueToBacklogInput) {
 
     // 5. Use TaskService unless user explicitly skipped GitHub sync
     if (!skipGitHubSync) {
-      const result = yield* Effect.promise(() => taskService.activatePlannedTasks(issue.id));
+      const result = yield* taskService.activatePlannedTasks(issue.id);
 
       if (!result.success) {
         throw new Error(result.error ?? "Failed to activate tasks");
@@ -120,7 +120,7 @@ export function moveIssueToBacklog(input: MoveIssueToBacklogInput) {
     // 6. No GitHub sync - just move tasks to BACKLOG
     const activatedTasks = [];
     for (const task of plannedTasks) {
-      yield* Effect.promise(() => taskService.moveToBacklog(task.id, "system"));
+      yield* taskService.moveToBacklog(task.id, "system");
       activatedTasks.push({
         taskId: task.id,
         taskNumber: task.number,

@@ -30,6 +30,7 @@ import {
   ProjectManagementService,
   NoOpProjectManagementClient,
 } from "@dev-workflow/tracking";
+import { Effect } from "@dev-workflow/effect";
 
 // =============================================================================
 // WebDIContext
@@ -126,7 +127,7 @@ export class WebDIContext {
     const provider = sourceProvider ?? new DbSourceProvider();
 
     // Get project config (no database access)
-    const projectInfo = await res.getProjectBySlug(projectSlug);
+    const projectInfo = await Effect.runPromise(res.getProjectBySlug(projectSlug));
 
     // Connect to database
     const source = provider.getOrCreate(projectInfo.sourceInfo);

@@ -131,7 +131,7 @@ function createMockClient() {
       findMany: () => Effect.succeed([issueWithPlan, issueWithoutPlan]),
     },
     plans: {
-      findByIssueId: async (issueId: string) => (issueId === "issue-1" ? plan : null),
+      findByIssueId: (issueId: string) => Effect.succeed(issueId === "issue-1" ? plan : null),
     },
     tasks: {
       findByPlanId: (planId: string) => Effect.succeed(planId === "plan-1" ? tasks : []),
@@ -149,7 +149,7 @@ function createMockClient() {
 describe("listIssuesEndpoint", () => {
   it("returns issues with plan info and computed status", async () => {
     const testContainer = createTestContainer({
-      projectsResolver: { getAllProjects: async () => [mockProject] },
+      projectsResolver: { getAllProjects: () => Effect.succeed([mockProject]) },
       sourceProvider: createMockSourceProvider(createMockClient()),
     });
 
@@ -193,7 +193,7 @@ describe("listIssuesEndpoint", () => {
     };
 
     const testContainer = createTestContainer({
-      projectsResolver: { getAllProjects: async () => [mockProject, secondProject] },
+      projectsResolver: { getAllProjects: () => Effect.succeed([mockProject, secondProject]) },
       sourceProvider: createMockSourceProvider(createMockClient()),
     });
 
@@ -215,7 +215,7 @@ describe("listIssuesEndpoint", () => {
     };
 
     const testContainer = createTestContainer({
-      projectsResolver: { getAllProjects: async () => [mockProject] },
+      projectsResolver: { getAllProjects: () => Effect.succeed([mockProject]) },
       sourceProvider: createMockSourceProvider(emptyClient),
     });
 

@@ -6,7 +6,7 @@
  *
  * Design:
  * - Composition over inheritance: wraps GitHubCLI, doesn't extend it
- * - Type mapping: converts GitHubIssueData → ExternalIssue
+ * - Type mapping: converts GitHubIssueData \u2192 ExternalIssue
  * - PR operations are NOT included (Git-hosting specific, not project management)
  * - GitHub Projects V2 operations for board management
  */
@@ -31,6 +31,7 @@ import type {
 import type { Issue } from "../../domain/issues/issue.js";
 import type { Task, TaskStatus } from "../../domain/tasks/task.js";
 import { ProjectManagementProviderError } from "../project-management-provider.js";
+import { Effect } from "@dev-workflow/effect";
 import type { GitHubCLI, GitHubIssueData } from "./github-cli.js";
 import type { ProjectManagementConfig } from "../project-management-config.js";
 import { DEFAULT_COLUMN_MAPPING } from "@dev-workflow/database/schema.js";
@@ -92,725 +93,816 @@ export class GitHubProjectManagementProvider implements ProjectManagementProvide
     return this.config?.labelFieldMapping;
   }
 
+  /**
+   * Convert a GitHubCLI Effect (which may fail with GitHubCLIError) into an Effect
+   * that throws on error. This preserves the original behavior where
+   * Effect.runPromise would convert Left values to thrown exceptions.
+   */
+  private rethrow<T>(effect: Effect<T, unknown>): Effect<T> {
+    return Effect.catchAll(effect, (e: unknown) =>
+      Effect.promise(() => {
+        throw e instanceof Error ? e : new Error(String(e));
+      })
+    ) as Effect<T>;
+  }
+
   // ===========================================================================
   // High-Level Operations (use internal config)
   // ===========================================================================
 
-  async moveItemToStatusColumn(
-    itemId: string | null | undefined,
-    status: TaskStatus
-  ): Promise<void> {
-    if (!this.isEnabled()) {
-      return;
-    }
+  moveItemToStatusColumn(itemId: string | null | undefined, status: TaskStatus): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!self.isEnabled()) {
+        return;
+      }
 
-    if (!itemId) {
-      return;
-    }
+      if (!itemId) {
+        return;
+      }
 
-    const projectId = this.config?.projectId;
-    if (!projectId) {
-      return;
-    }
+      const projectId = self.config?.projectId;
+      if (!projectId) {
+        return;
+      }
 
-    const columnName = this.getColumnForStatus(status);
-    try {
-      await this.moveToColumn(itemId, projectId, columnName);
-    } catch (error) {
-      // Log but don't throw - column move is best-effort
-      console.warn(
-        `Failed to move to column: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
+      const columnName = self.getColumnForStatus(status);
+      try {
+        yield* self.moveToColumn(itemId, projectId, columnName);
+      } catch (error) {
+        // Log but don't throw - column move is best-effort
+        console.warn(
+          `Failed to move to column: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    });
   }
 
-  async assignIssueToConfiguredUser(issueRef: string): Promise<void> {
-    if (!this.isEnabled()) {
-      return;
-    }
+  assignIssueToConfiguredUser(issueRef: string): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!self.isEnabled()) {
+        return;
+      }
 
-    const assignee = this.config?.assignee;
-    if (!assignee) {
-      return;
-    }
+      const assignee = self.config?.assignee;
+      if (!assignee) {
+        return;
+      }
 
-    await this.assignIssue(issueRef, assignee);
+      yield* self.assignIssue(issueRef, assignee);
+    });
   }
 
   // ===========================================================================
   // Authentication & Validation
   // ===========================================================================
 
-  async checkAuth(): Promise<AuthResult> {
-    try {
-      const authenticated = await this.githubCLI.checkAuth();
-      if (authenticated) {
-        return { authenticated: true };
+  checkAuth(): Effect<AuthResult> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        const authenticated = yield* self.rethrow(self.githubCLI.checkAuth());
+        if (authenticated) {
+          return { authenticated: true } as AuthResult;
+        }
+        return {
+          authenticated: false,
+          error: "GitHub CLI is not authenticated. Run 'gh auth login' to authenticate.",
+        } as AuthResult;
+      } catch (error) {
+        return {
+          authenticated: false,
+          error: `Authentication check failed: ${error instanceof Error ? error.message : String(error)}`,
+        } as AuthResult;
       }
-      return {
-        authenticated: false,
-        error: "GitHub CLI is not authenticated. Run 'gh auth login' to authenticate.",
-      };
-    } catch (error) {
-      return {
-        authenticated: false,
-        error: `Authentication check failed: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
+    });
   }
 
-  async checkRepository(): Promise<RepositoryResult> {
-    try {
-      const accessible = await this.githubCLI.checkCurrentRepository();
-      if (accessible) {
-        return { accessible: true };
+  checkRepository(): Effect<RepositoryResult> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        const accessible = yield* self.rethrow(self.githubCLI.checkCurrentRepository());
+        if (accessible) {
+          return { accessible: true } as RepositoryResult;
+        }
+        return {
+          accessible: false,
+          error: "Not in a Git repository with a GitHub remote.",
+        } as RepositoryResult;
+      } catch (error) {
+        return {
+          accessible: false,
+          error: `Repository check failed: ${error instanceof Error ? error.message : String(error)}`,
+        } as RepositoryResult;
       }
-      return {
-        accessible: false,
-        error: "Not in a Git repository with a GitHub remote.",
-      };
-    } catch (error) {
-      return {
-        accessible: false,
-        error: `Repository check failed: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
+    });
   }
 
   // ===========================================================================
   // Issue Operations
   // ===========================================================================
 
-  async createIssue(params: CreateIssueParams): Promise<ExternalIssue> {
-    try {
-      const githubIssue = await this.githubCLI.createIssue(
-        params.title,
-        params.body,
-        params.labels
-      );
-      return this.mapGitHubIssueToExternalIssue(githubIssue);
-    } catch (error) {
-      throw new ProjectManagementProviderError(
-        error instanceof Error ? error.message : String(error),
-        this.providerId,
-        "createIssue",
-        error instanceof Error ? error : undefined
-      );
-    }
-  }
-
-  async updateIssue(params: UpdateIssueParams): Promise<ExternalIssue> {
-    try {
-      const issueNumber = this.parseIssueNumber(params.issueRef);
-
-      // Get current issue to fill in missing fields
-      const current = await this.githubCLI.getIssue(issueNumber);
-      if (!current) {
-        throw new Error(`Issue ${params.issueRef} not found`);
+  createIssue(params: CreateIssueParams): Effect<ExternalIssue> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        const githubIssue = yield* self.rethrow(
+          self.githubCLI.createIssue(params.title, params.body, params.labels)
+        );
+        return self.mapGitHubIssueToExternalIssue(githubIssue);
+      } catch (error) {
+        throw new ProjectManagementProviderError(
+          error instanceof Error ? error.message : String(error),
+          self.providerId,
+          "createIssue",
+          error instanceof Error ? error : undefined
+        );
       }
-
-      const githubIssue = await this.githubCLI.updateIssue(
-        issueNumber,
-        params.title ?? current.title,
-        params.body ?? current.body,
-        params.labels ?? current.labels
-      );
-      return this.mapGitHubIssueToExternalIssue(githubIssue);
-    } catch (error) {
-      throw new ProjectManagementProviderError(
-        error instanceof Error ? error.message : String(error),
-        this.providerId,
-        "updateIssue",
-        error instanceof Error ? error : undefined
-      );
-    }
+    });
   }
 
-  async closeIssue(issue: Issue, comment?: string): Promise<void> {
-    if (!this.isEnabled()) {
-      return;
-    }
-    const externalId = issue.syncState?.externalId;
-    if (!externalId) {
-      return;
-    }
-    const issueNumber = parseInt(externalId, 10);
-    if (isNaN(issueNumber)) {
-      return;
-    }
-    await this.closeExternalIssue(issueNumber, comment);
-  }
+  updateIssue(params: UpdateIssueParams): Effect<ExternalIssue> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        const issueNumber = self.parseIssueNumber(params.issueRef);
 
-  async closeIssueByTask(task: Task, comment?: string): Promise<void> {
-    if (!this.isEnabled()) {
-      return;
-    }
-    const externalId = task.syncState?.externalId;
-    if (!externalId) {
-      return;
-    }
-    const issueNumber = parseInt(externalId, 10);
-    if (isNaN(issueNumber)) {
-      return;
-    }
-    await this.closeExternalIssue(issueNumber, comment);
-  }
+        // Get current issue to fill in missing fields
+        const current = yield* self.rethrow(self.githubCLI.getIssue(issueNumber));
+        if (!current) {
+          throw new Error(`Issue ${params.issueRef} not found`);
+        }
 
-  private async closeExternalIssue(issueNumber: number, comment?: string): Promise<void> {
-    try {
-      if (comment) {
-        await this.githubCLI.closeIssueWithComment(issueNumber, comment);
-      } else {
-        await this.githubCLI.closeIssue(issueNumber);
+        const githubIssue = yield* self.rethrow(
+          self.githubCLI.updateIssue(
+            issueNumber,
+            params.title ?? current.title,
+            params.body ?? current.body,
+            params.labels ?? current.labels
+          )
+        );
+        return self.mapGitHubIssueToExternalIssue(githubIssue);
+      } catch (error) {
+        throw new ProjectManagementProviderError(
+          error instanceof Error ? error.message : String(error),
+          self.providerId,
+          "updateIssue",
+          error instanceof Error ? error : undefined
+        );
       }
-    } catch (error) {
-      throw new ProjectManagementProviderError(
-        error instanceof Error ? error.message : String(error),
-        this.providerId,
-        "closeIssue",
-        error instanceof Error ? error : undefined
-      );
-    }
+    });
   }
 
-  async reopenIssue(issueRef: string): Promise<void> {
-    try {
-      const issueNumber = this.parseIssueNumber(issueRef);
-      await this.githubCLI.reopenIssue(issueNumber);
-    } catch (error) {
-      throw new ProjectManagementProviderError(
-        error instanceof Error ? error.message : String(error),
-        this.providerId,
-        "reopenIssue",
-        error instanceof Error ? error : undefined
-      );
-    }
-  }
-
-  async getIssue(issueRef: string): Promise<ExternalIssue | null> {
-    try {
-      const issueNumber = this.parseIssueNumber(issueRef);
-      const githubIssue = await this.githubCLI.getIssue(issueNumber);
-      if (!githubIssue) {
-        return null;
+  closeIssue(issue: Issue, comment?: string): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!self.isEnabled()) {
+        return;
       }
-      return this.mapGitHubIssueToExternalIssue(githubIssue);
-    } catch (error) {
-      throw new ProjectManagementProviderError(
-        error instanceof Error ? error.message : String(error),
-        this.providerId,
-        "getIssue",
-        error instanceof Error ? error : undefined
-      );
-    }
+      const externalId = issue.syncState?.externalId;
+      if (!externalId) {
+        return;
+      }
+      const issueNumber = parseInt(externalId, 10);
+      if (isNaN(issueNumber)) {
+        return;
+      }
+      yield* self.closeExternalIssue(issueNumber, comment);
+    });
   }
 
-  async searchIssues(
+  closeIssueByTask(task: Task, comment?: string): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!self.isEnabled()) {
+        return;
+      }
+      const externalId = task.syncState?.externalId;
+      if (!externalId) {
+        return;
+      }
+      const issueNumber = parseInt(externalId, 10);
+      if (isNaN(issueNumber)) {
+        return;
+      }
+      yield* self.closeExternalIssue(issueNumber, comment);
+    });
+  }
+
+  private closeExternalIssue(issueNumber: number, comment?: string): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        if (comment) {
+          yield* self.rethrow(self.githubCLI.closeIssueWithComment(issueNumber, comment));
+        } else {
+          yield* self.rethrow(self.githubCLI.closeIssue(issueNumber));
+        }
+      } catch (error) {
+        throw new ProjectManagementProviderError(
+          error instanceof Error ? error.message : String(error),
+          self.providerId,
+          "closeIssue",
+          error instanceof Error ? error : undefined
+        );
+      }
+    });
+  }
+
+  reopenIssue(issueRef: string): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        const issueNumber = self.parseIssueNumber(issueRef);
+        yield* self.rethrow(self.githubCLI.reopenIssue(issueNumber));
+      } catch (error) {
+        throw new ProjectManagementProviderError(
+          error instanceof Error ? error.message : String(error),
+          self.providerId,
+          "reopenIssue",
+          error instanceof Error ? error : undefined
+        );
+      }
+    });
+  }
+
+  getIssue(issueRef: string): Effect<ExternalIssue | null> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        const issueNumber = self.parseIssueNumber(issueRef);
+        const githubIssue = yield* self.rethrow(self.githubCLI.getIssue(issueNumber));
+        if (!githubIssue) {
+          return null;
+        }
+        return self.mapGitHubIssueToExternalIssue(githubIssue);
+      } catch (error) {
+        throw new ProjectManagementProviderError(
+          error instanceof Error ? error.message : String(error),
+          self.providerId,
+          "getIssue",
+          error instanceof Error ? error : undefined
+        );
+      }
+    });
+  }
+
+  searchIssues(
     query: string,
     state: "open" | "closed" | "all" = "all",
     limit = 10
-  ): Promise<ExternalIssue[]> {
-    try {
-      const githubIssues = await this.githubCLI.searchIssues(query, state, limit);
-      return githubIssues.map((issue) => this.mapGitHubIssueToExternalIssue(issue));
-    } catch (error) {
-      throw new ProjectManagementProviderError(
-        error instanceof Error ? error.message : String(error),
-        this.providerId,
-        "searchIssues",
-        error instanceof Error ? error : undefined
-      );
-    }
+  ): Effect<ExternalIssue[]> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        const githubIssues = yield* self.rethrow(self.githubCLI.searchIssues(query, state, limit));
+        return githubIssues.map((issue) => self.mapGitHubIssueToExternalIssue(issue));
+      } catch (error) {
+        throw new ProjectManagementProviderError(
+          error instanceof Error ? error.message : String(error),
+          self.providerId,
+          "searchIssues",
+          error instanceof Error ? error : undefined
+        );
+      }
+    });
   }
 
   // ===========================================================================
   // Label/Tag Operations
   // ===========================================================================
 
-  async ensureLabelsExist(labels: string[]): Promise<void> {
-    try {
-      const existingLabels = await this.githubCLI.listLabels();
-      const existingLabelSet = new Set(existingLabels.map((l) => l.toLowerCase()));
+  ensureLabelsExist(labels: string[]): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        const existingLabels = yield* self.rethrow(self.githubCLI.listLabels());
+        const existingLabelSet = new Set(existingLabels.map((l) => l.toLowerCase()));
 
-      for (const label of labels) {
-        if (!existingLabelSet.has(label.toLowerCase())) {
-          await this.githubCLI.createLabel(label);
+        for (const label of labels) {
+          if (!existingLabelSet.has(label.toLowerCase())) {
+            yield* self.rethrow(self.githubCLI.createLabel(label));
+          }
         }
+      } catch (error) {
+        throw new ProjectManagementProviderError(
+          error instanceof Error ? error.message : String(error),
+          self.providerId,
+          "ensureLabelsExist",
+          error instanceof Error ? error : undefined
+        );
       }
-    } catch (error) {
-      throw new ProjectManagementProviderError(
-        error instanceof Error ? error.message : String(error),
-        this.providerId,
-        "ensureLabelsExist",
-        error instanceof Error ? error : undefined
-      );
-    }
+    });
   }
 
   // ===========================================================================
   // Project/Board Operations
   // ===========================================================================
 
-  async addToProject(issueNodeId: string, projectId: string): Promise<ProjectItemResult> {
-    try {
-      const itemId = await this.githubCLI.addToProject(projectId, issueNodeId);
-      return {
-        success: true,
-        itemId,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  }
-
-  async moveToColumn(itemId: string, projectId: string, columnName: string): Promise<void> {
-    try {
-      // Get the project's Status field info
-      const fieldInfo = await this.getProjectStatusField(projectId);
-      if (!fieldInfo) {
-        throw new Error(`Could not find Status field in project ${projectId}`);
+  addToProject(issueNodeId: string, projectId: string): Effect<ProjectItemResult> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        const itemId = yield* self.rethrow(self.githubCLI.addToProject(projectId, issueNodeId));
+        return {
+          success: true,
+          itemId,
+        } as ProjectItemResult;
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        } as ProjectItemResult;
       }
-
-      // Find the option ID for the requested column
-      const option = fieldInfo.options.find(
-        (o) => o.name.toLowerCase() === columnName.toLowerCase()
-      );
-      if (!option) {
-        throw new Error(`Could not find "${columnName}" column in project Status field`);
-      }
-
-      // Update the item's Status field
-      await this.updateProjectItemField(projectId, itemId, fieldInfo.fieldId, option.id);
-    } catch (error) {
-      throw new ProjectManagementProviderError(
-        error instanceof Error ? error.message : String(error),
-        this.providerId,
-        "moveToColumn",
-        error instanceof Error ? error : undefined
-      );
-    }
+    });
   }
 
-  async checkProject(projectId: string): Promise<boolean> {
-    try {
-      return await this.githubCLI.checkProject(projectId);
-    } catch {
-      return false;
-    }
-  }
-
-  async getProjectDetails(projectId: string): Promise<ProjectDetails | null> {
-    try {
-      const details = await this.githubCLI.getProjectDetails(projectId);
-      if (!details) {
-        return null;
-      }
-      return {
-        id: details.id,
-        title: details.title,
-        url: details.url,
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  async getProjectStatusField(projectId: string): Promise<ProjectStatusField | null> {
-    // GraphQL query to get project Status field and options
-    const query = `
-      query($projectId: ID!) {
-        node(id: $projectId) {
-          ... on ProjectV2 {
-            fields(first: 20) {
-              nodes {
-                ... on ProjectV2SingleSelectField {
-                  id
-                  name
-                  options {
-                    id
-                    name
-                  }
-                }
-              }
-            }
-          }
+  moveToColumn(itemId: string, projectId: string, columnName: string): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        // Get the project's Status field info
+        const fieldInfo = yield* self.getProjectStatusField(projectId);
+        if (!fieldInfo) {
+          throw new Error(`Could not find Status field in project ${projectId}`);
         }
-      }
-    `;
 
-    try {
-      const result = await this.githubCLI.run([
-        "api",
-        "graphql",
-        "-f",
-        `query=${query}`,
-        "-f",
-        `projectId=${projectId}`,
-      ]);
-
-      if (!result.success) {
-        return null;
-      }
-
-      const data = JSON.parse(result.stdout) as {
-        data?: {
-          node?: {
-            fields?: {
-              nodes?: Array<{
-                id?: string;
-                name?: string;
-                options?: Array<{ id: string; name: string }>;
-              }>;
-            };
-          };
-        };
-      };
-
-      const fields = data.data?.node?.fields?.nodes ?? [];
-      const statusField = fields.find((f) => f.name?.toLowerCase() === "status" && f.options);
-
-      if (!statusField?.id || !statusField?.options) {
-        return null;
-      }
-
-      const options: ProjectColumn[] = statusField.options.map((opt) => ({
-        id: opt.id,
-        name: opt.name,
-      }));
-
-      return {
-        fieldId: statusField.id,
-        fieldName: "Status",
-        options,
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  async getProjectFields(projectId: string): Promise<ProjectField[]> {
-    // Check cache first
-    const cached = this.fieldCache.get(projectId);
-    if (cached && Date.now() - cached.fetchedAt < this.CACHE_TTL_MS) {
-      return cached.fields;
-    }
-
-    // GraphQL query to get all project fields
-    const query = `
-      query($projectId: ID!) {
-        node(id: $projectId) {
-          ... on ProjectV2 {
-            fields(first: 50) {
-              nodes {
-                ... on ProjectV2Field {
-                  id
-                  name
-                  dataType
-                }
-                ... on ProjectV2SingleSelectField {
-                  id
-                  name
-                  dataType
-                  options {
-                    id
-                    name
-                  }
-                }
-                ... on ProjectV2IterationField {
-                  id
-                  name
-                  dataType
-                }
-              }
-            }
-          }
+        // Find the option ID for the requested column
+        const option = fieldInfo.options.find(
+          (o) => o.name.toLowerCase() === columnName.toLowerCase()
+        );
+        if (!option) {
+          throw new Error(`Could not find "${columnName}" column in project Status field`);
         }
-      }
-    `;
 
-    try {
-      const result = await this.githubCLI.run([
-        "api",
-        "graphql",
-        "-f",
-        `query=${query}`,
-        "-f",
-        `projectId=${projectId}`,
-      ]);
-
-      if (!result.success) {
+        // Update the item's Status field
+        yield* self.updateProjectItemField(projectId, itemId, fieldInfo.fieldId, option.id);
+      } catch (error) {
         throw new ProjectManagementProviderError(
-          result.stderr || "Failed to fetch project fields",
-          this.providerId,
-          "getProjectFields"
+          error instanceof Error ? error.message : String(error),
+          self.providerId,
+          "moveToColumn",
+          error instanceof Error ? error : undefined
         );
       }
+    });
+  }
 
-      const data = JSON.parse(result.stdout) as {
-        data?: {
-          node?: {
-            fields?: {
-              nodes?: Array<{
-                id?: string;
-                name?: string;
-                dataType?: string;
-                options?: Array<{ id: string; name: string }>;
-              }>;
+  checkProject(projectId: string): Effect<boolean> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        return yield* self.rethrow(self.githubCLI.checkProject(projectId));
+      } catch {
+        return false;
+      }
+    });
+  }
+
+  getProjectDetails(projectId: string): Effect<ProjectDetails | null> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        const details = yield* self.rethrow(self.githubCLI.getProjectDetails(projectId));
+        if (!details) {
+          return null;
+        }
+        return {
+          id: details.id,
+          title: details.title,
+          url: details.url,
+        } as ProjectDetails;
+      } catch {
+        return null;
+      }
+    });
+  }
+
+  getProjectStatusField(projectId: string): Effect<ProjectStatusField | null> {
+    const self = this;
+    return Effect.gen(function* () {
+      // GraphQL query to get project Status field and options
+      const query = `
+        query($projectId: ID!) {
+          node(id: $projectId) {
+            ... on ProjectV2 {
+              fields(first: 20) {
+                nodes {
+                  ... on ProjectV2SingleSelectField {
+                    id
+                    name
+                    options {
+                      id
+                      name
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `;
+
+      try {
+        const result = yield* self.rethrow(
+          self.githubCLI.run([
+            "api",
+            "graphql",
+            "-f",
+            `query=${query}`,
+            "-f",
+            `projectId=${projectId}`,
+          ])
+        );
+
+        if (!result.success) {
+          return null;
+        }
+
+        const data = JSON.parse(result.stdout) as {
+          data?: {
+            node?: {
+              fields?: {
+                nodes?: Array<{
+                  id?: string;
+                  name?: string;
+                  options?: Array<{ id: string; name: string }>;
+                }>;
+              };
             };
           };
         };
-      };
 
-      const rawFields = data.data?.node?.fields?.nodes ?? [];
-      const fields: ProjectField[] = rawFields
-        .filter((f) => f.id && f.name)
-        .map((f) => ({
-          id: f.id!,
-          name: f.name!,
-          type: this.mapDataTypeToFieldType(f.dataType),
-          options: f.options?.map((o) => ({ id: o.id, name: o.name })),
+        const fields = data.data?.node?.fields?.nodes ?? [];
+        const statusField = fields.find((f) => f.name?.toLowerCase() === "status" && f.options);
+
+        if (!statusField?.id || !statusField?.options) {
+          return null;
+        }
+
+        const options: ProjectColumn[] = statusField.options.map((opt) => ({
+          id: opt.id,
+          name: opt.name,
         }));
 
-      // Update cache
-      this.fieldCache.set(projectId, { fields, fetchedAt: Date.now() });
-
-      return fields;
-    } catch (error) {
-      if (error instanceof ProjectManagementProviderError) {
-        throw error;
+        return {
+          fieldId: statusField.id,
+          fieldName: "Status",
+          options,
+        } as ProjectStatusField;
+      } catch {
+        return null;
       }
-      throw new ProjectManagementProviderError(
-        error instanceof Error ? error.message : String(error),
-        this.providerId,
-        "getProjectFields",
-        error instanceof Error ? error : undefined
-      );
-    }
+    });
   }
 
-  async setProjectItemField(
+  getProjectFields(projectId: string): Effect<ProjectField[]> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Check cache first
+      const cached = self.fieldCache.get(projectId);
+      if (cached && Date.now() - cached.fetchedAt < self.CACHE_TTL_MS) {
+        return cached.fields;
+      }
+
+      // GraphQL query to get all project fields
+      const query = `
+        query($projectId: ID!) {
+          node(id: $projectId) {
+            ... on ProjectV2 {
+              fields(first: 50) {
+                nodes {
+                  ... on ProjectV2Field {
+                    id
+                    name
+                    dataType
+                  }
+                  ... on ProjectV2SingleSelectField {
+                    id
+                    name
+                    dataType
+                    options {
+                      id
+                      name
+                    }
+                  }
+                  ... on ProjectV2IterationField {
+                    id
+                    name
+                    dataType
+                  }
+                }
+              }
+            }
+          }
+        }
+      `;
+
+      try {
+        const result = yield* self.rethrow(
+          self.githubCLI.run([
+            "api",
+            "graphql",
+            "-f",
+            `query=${query}`,
+            "-f",
+            `projectId=${projectId}`,
+          ])
+        );
+
+        if (!result.success) {
+          throw new ProjectManagementProviderError(
+            result.stderr || "Failed to fetch project fields",
+            self.providerId,
+            "getProjectFields"
+          );
+        }
+
+        const data = JSON.parse(result.stdout) as {
+          data?: {
+            node?: {
+              fields?: {
+                nodes?: Array<{
+                  id?: string;
+                  name?: string;
+                  dataType?: string;
+                  options?: Array<{ id: string; name: string }>;
+                }>;
+              };
+            };
+          };
+        };
+
+        const rawFields = data.data?.node?.fields?.nodes ?? [];
+        const fields: ProjectField[] = rawFields
+          .filter((f) => f.id && f.name)
+          .map((f) => ({
+            id: f.id!,
+            name: f.name!,
+            type: self.mapDataTypeToFieldType(f.dataType),
+            options: f.options?.map((o) => ({ id: o.id, name: o.name })),
+          }));
+
+        // Update cache
+        self.fieldCache.set(projectId, { fields, fetchedAt: Date.now() });
+
+        return fields;
+      } catch (error) {
+        if (error instanceof ProjectManagementProviderError) {
+          throw error;
+        }
+        throw new ProjectManagementProviderError(
+          error instanceof Error ? error.message : String(error),
+          self.providerId,
+          "getProjectFields",
+          error instanceof Error ? error : undefined
+        );
+      }
+    });
+  }
+
+  setProjectItemField(
     projectId: string,
     itemId: string,
     fieldId: string,
     value: string
-  ): Promise<SetFieldResult> {
-    try {
-      // Get field metadata to determine type and resolve options
-      const fields = await this.getProjectFields(projectId);
-      const field = fields.find((f) => f.id === fieldId);
+  ): Effect<SetFieldResult> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        // Get field metadata to determine type and resolve options
+        const fields = yield* self.getProjectFields(projectId);
+        const field = fields.find((f) => f.id === fieldId);
 
-      if (!field) {
-        return {
-          success: false,
-          error: `Field ${fieldId} not found in project ${projectId}`,
-        };
-      }
-
-      if (field.type === "SINGLE_SELECT") {
-        // Resolve value to option ID (case-insensitive)
-        const option = field.options?.find((o) => o.name.toLowerCase() === value.toLowerCase());
-
-        if (!option) {
+        if (!field) {
           return {
             success: false,
-            error: `Option "${value}" not found for field "${field.name}". Available options: ${field.options?.map((o) => o.name).join(", ")}`,
-          };
+            error: `Field ${fieldId} not found in project ${projectId}`,
+          } as SetFieldResult;
         }
 
-        await this.updateProjectItemSingleSelectField(projectId, itemId, fieldId, option.id);
-      } else if (field.type === "TEXT") {
-        await this.updateProjectItemTextField(projectId, itemId, fieldId, value);
-      } else if (field.type === "NUMBER") {
-        const numValue = parseFloat(value);
-        if (isNaN(numValue)) {
+        if (field.type === "SINGLE_SELECT") {
+          // Resolve value to option ID (case-insensitive)
+          const option = field.options?.find((o) => o.name.toLowerCase() === value.toLowerCase());
+
+          if (!option) {
+            return {
+              success: false,
+              error: `Option "${value}" not found for field "${field.name}". Available options: ${field.options?.map((o) => o.name).join(", ")}`,
+            } as SetFieldResult;
+          }
+
+          yield* self.updateProjectItemSingleSelectField(projectId, itemId, fieldId, option.id);
+        } else if (field.type === "TEXT") {
+          yield* self.updateProjectItemTextField(projectId, itemId, fieldId, value);
+        } else if (field.type === "NUMBER") {
+          const numValue = parseFloat(value);
+          if (isNaN(numValue)) {
+            return {
+              success: false,
+              error: `Invalid number value "${value}" for field "${field.name}"`,
+            } as SetFieldResult;
+          }
+          yield* self.updateProjectItemNumberField(projectId, itemId, fieldId, numValue);
+        } else {
           return {
             success: false,
-            error: `Invalid number value "${value}" for field "${field.name}"`,
-          };
+            error: `Unsupported field type "${field.type}" for field "${field.name}"`,
+          } as SetFieldResult;
         }
-        await this.updateProjectItemNumberField(projectId, itemId, fieldId, numValue);
-      } else {
+
+        return { success: true } as SetFieldResult;
+      } catch (error) {
         return {
           success: false,
-          error: `Unsupported field type "${field.type}" for field "${field.name}"`,
-        };
+          error: error instanceof Error ? error.message : String(error),
+        } as SetFieldResult;
       }
-
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
+    });
   }
 
-  async clearProjectItemField(
+  clearProjectItemField(
     projectId: string,
     itemId: string,
     fieldId: string
-  ): Promise<SetFieldResult> {
-    const mutation = `
-      mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!) {
-        clearProjectV2ItemFieldValue(input: {
-          projectId: $projectId
-          itemId: $itemId
-          fieldId: $fieldId
-        }) {
-          projectV2Item {
-            id
+  ): Effect<SetFieldResult> {
+    const self = this;
+    return Effect.gen(function* () {
+      const mutation = `
+        mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!) {
+          clearProjectV2ItemFieldValue(input: {
+            projectId: $projectId
+            itemId: $itemId
+            fieldId: $fieldId
+          }) {
+            projectV2Item {
+              id
+            }
           }
         }
-      }
-    `;
+      `;
 
-    try {
-      const result = await this.githubCLI.run([
-        "api",
-        "graphql",
-        "-f",
-        `query=${mutation}`,
-        "-f",
-        `projectId=${projectId}`,
-        "-f",
-        `itemId=${itemId}`,
-        "-f",
-        `fieldId=${fieldId}`,
-      ]);
+      try {
+        const result = yield* self.rethrow(
+          self.githubCLI.run([
+            "api",
+            "graphql",
+            "-f",
+            `query=${mutation}`,
+            "-f",
+            `projectId=${projectId}`,
+            "-f",
+            `itemId=${itemId}`,
+            "-f",
+            `fieldId=${fieldId}`,
+          ])
+        );
 
-      if (!result.success) {
+        if (!result.success) {
+          return {
+            success: false,
+            error: result.stderr || "Failed to clear field",
+          } as SetFieldResult;
+        }
+
+        return { success: true } as SetFieldResult;
+      } catch (error) {
         return {
           success: false,
-          error: result.stderr || "Failed to clear field",
-        };
+          error: error instanceof Error ? error.message : String(error),
+        } as SetFieldResult;
       }
-
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
+    });
   }
 
   // ===========================================================================
   // Labels
   // ===========================================================================
 
-  async getAvailableLabels(): Promise<AvailableLabelsResult> {
-    // Use internally configured projectId
-    const projectId = this.config?.projectId;
-    if (!projectId) {
-      return {
-        supported: false,
-        labels: [],
-        error: "No project configured - labels require a GitHub Project",
-      };
-    }
+  getAvailableLabels(): Effect<AvailableLabelsResult> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Use internally configured projectId
+      const projectId = self.config?.projectId;
+      if (!projectId) {
+        return {
+          supported: false,
+          labels: [],
+          error: "No project configured - labels require a GitHub Project",
+        } as AvailableLabelsResult;
+      }
 
-    try {
-      const fields = await this.getProjectFields(projectId);
+      try {
+        const fields = yield* self.getProjectFields(projectId);
 
-      // Convert project fields to available labels
-      // Exclude Status field (handled specially for column mapping)
-      const labels: AvailableLabel[] = fields
-        .filter((field) => field.name.toLowerCase() !== "status")
-        .map((field) => ({
-          name: field.name,
-          validValues:
-            field.type === "SINGLE_SELECT" && field.options
-              ? field.options.map((o) => o.name)
-              : null, // null means any value is allowed (TEXT, NUMBER, etc.)
-        }));
+        // Convert project fields to available labels
+        // Exclude Status field (handled specially for column mapping)
+        const labels: AvailableLabel[] = fields
+          .filter((field) => field.name.toLowerCase() !== "status")
+          .map((field) => ({
+            name: field.name,
+            validValues:
+              field.type === "SINGLE_SELECT" && field.options
+                ? field.options.map((o) => o.name)
+                : null, // null means any value is allowed (TEXT, NUMBER, etc.)
+          }));
 
-      return {
-        supported: true,
-        labels,
-      };
-    } catch (error) {
-      return {
-        supported: true, // GitHub Projects does support labels
-        labels: [],
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
+        return {
+          supported: true,
+          labels,
+        } as AvailableLabelsResult;
+      } catch (error) {
+        return {
+          supported: true, // GitHub Projects does support labels
+          labels: [],
+          error: error instanceof Error ? error.message : String(error),
+        } as AvailableLabelsResult;
+      }
+    });
   }
 
   // ===========================================================================
   // Hierarchical Issues (Parent-Child Linking)
   // ===========================================================================
 
-  async linkParentChild(parentRef: string, childRef: string): Promise<void> {
-    try {
-      const parentNumber = this.parseIssueNumber(parentRef);
-      const childNumber = this.parseIssueNumber(childRef);
+  linkParentChild(parentRef: string, childRef: string): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        const parentNumber = self.parseIssueNumber(parentRef);
+        const childNumber = self.parseIssueNumber(childRef);
 
-      // For linkSubIssue, we need the numeric ID (not issue number) of the child
-      // The GitHubCLI.linkSubIssue expects the child's numeric database ID
-      // We need to get the child issue to extract its numeric ID from the nodeId
-      const childIssue = await this.githubCLI.getIssue(childNumber);
-      if (!childIssue) {
-        throw new Error(`Child issue ${childRef} not found`);
+        // For linkSubIssue, we need the numeric ID (not issue number) of the child
+        // The GitHubCLI.linkSubIssue expects the child's numeric database ID
+        // We need to get the child issue to extract its numeric ID from the nodeId
+        const childIssue = yield* self.rethrow(self.githubCLI.getIssue(childNumber));
+        if (!childIssue) {
+          throw new Error(`Child issue ${childRef} not found`);
+        }
+
+        // The nodeId for issues is in format "I_..." but we need the numeric ID
+        // We can extract it by parsing the nodeId or getting the ID from the API
+        // Actually, looking at the gh CLI usage, the sub_issue_id expects the numeric ID
+        // which is different from the issue number. Let's get it via GraphQL.
+        const numericId = yield* self.getIssueNumericId(childNumber);
+        if (!numericId) {
+          throw new Error(`Could not get numeric ID for issue ${childRef}`);
+        }
+
+        yield* self.rethrow(self.githubCLI.linkSubIssue(parentNumber, numericId));
+      } catch (error) {
+        throw new ProjectManagementProviderError(
+          error instanceof Error ? error.message : String(error),
+          self.providerId,
+          "linkParentChild",
+          error instanceof Error ? error : undefined
+        );
       }
-
-      // The nodeId for issues is in format "I_..." but we need the numeric ID
-      // We can extract it by parsing the nodeId or getting the ID from the API
-      // Actually, looking at the gh CLI usage, the sub_issue_id expects the numeric ID
-      // which is different from the issue number. Let's get it via GraphQL.
-      const numericId = await this.getIssueNumericId(childNumber);
-      if (!numericId) {
-        throw new Error(`Could not get numeric ID for issue ${childRef}`);
-      }
-
-      await this.githubCLI.linkSubIssue(parentNumber, numericId);
-    } catch (error) {
-      throw new ProjectManagementProviderError(
-        error instanceof Error ? error.message : String(error),
-        this.providerId,
-        "linkParentChild",
-        error instanceof Error ? error : undefined
-      );
-    }
+    });
   }
 
   // ===========================================================================
   // Comments
   // ===========================================================================
 
-  async addComment(issueRef: string, body: string): Promise<void> {
-    try {
-      const issueNumber = this.parseIssueNumber(issueRef);
-      await this.githubCLI.commentOnIssue(issueNumber, body);
-    } catch (error) {
-      throw new ProjectManagementProviderError(
-        error instanceof Error ? error.message : String(error),
-        this.providerId,
-        "addComment",
-        error instanceof Error ? error : undefined
-      );
-    }
+  addComment(issueRef: string, body: string): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        const issueNumber = self.parseIssueNumber(issueRef);
+        yield* self.rethrow(self.githubCLI.commentOnIssue(issueNumber, body));
+      } catch (error) {
+        throw new ProjectManagementProviderError(
+          error instanceof Error ? error.message : String(error),
+          self.providerId,
+          "addComment",
+          error instanceof Error ? error : undefined
+        );
+      }
+    });
   }
 
   // ===========================================================================
   // Assignment
   // ===========================================================================
 
-  async assignIssue(issueRef: string, assignee: string): Promise<void> {
-    try {
-      const issueNumber = this.parseIssueNumber(issueRef);
-      await this.githubCLI.assignIssue(issueNumber, assignee);
-    } catch (error) {
-      throw new ProjectManagementProviderError(
-        error instanceof Error ? error.message : String(error),
-        this.providerId,
-        "assignIssue",
-        error instanceof Error ? error : undefined
-      );
-    }
+  assignIssue(issueRef: string, assignee: string): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      try {
+        const issueNumber = self.parseIssueNumber(issueRef);
+        yield* self.rethrow(self.githubCLI.assignIssue(issueNumber, assignee));
+      } catch (error) {
+        throw new ProjectManagementProviderError(
+          error instanceof Error ? error.message : String(error),
+          self.providerId,
+          "assignIssue",
+          error instanceof Error ? error : undefined
+        );
+      }
+    });
   }
 
   // ===========================================================================
@@ -849,39 +941,44 @@ export class GitHubProjectManagementProvider implements ProjectManagementProvide
   /**
    * Get the numeric database ID for an issue (needed for sub-issues API)
    */
-  private async getIssueNumericId(issueNumber: number): Promise<number | null> {
-    const query = `
-      query($issueNumber: Int!) {
-        repository(owner: "{owner}", name: "{repo}") {
-          issue(number: $issueNumber) {
-            databaseId
+  private getIssueNumericId(issueNumber: number): Effect<number | null> {
+    const self = this;
+    return Effect.gen(function* () {
+      const query = `
+        query($issueNumber: Int!) {
+          repository(owner: "{owner}", name: "{repo}") {
+            issue(number: $issueNumber) {
+              databaseId
+            }
           }
         }
+      `;
+
+      // Use gh api to query with template variables
+      const result = yield* self.rethrow(
+        self.githubCLI.run([
+          "api",
+          "graphql",
+          "-f",
+          `query=${query}`,
+          "-F",
+          `issueNumber=${issueNumber}`,
+        ])
+      );
+
+      if (!result.success) {
+        return null;
       }
-    `;
 
-    // Use gh api to query with template variables
-    const result = await this.githubCLI.run([
-      "api",
-      "graphql",
-      "-f",
-      `query=${query}`,
-      "-F",
-      `issueNumber=${issueNumber}`,
-    ]);
-
-    if (!result.success) {
-      return null;
-    }
-
-    try {
-      const data = JSON.parse(result.stdout) as {
-        data?: { repository?: { issue?: { databaseId?: number } } };
-      };
-      return data.data?.repository?.issue?.databaseId ?? null;
-    } catch {
-      return null;
-    }
+      try {
+        const data = JSON.parse(result.stdout) as {
+          data?: { repository?: { issue?: { databaseId?: number } } };
+        };
+        return data.data?.repository?.issue?.databaseId ?? null;
+      } catch {
+        return null;
+      }
+    });
   }
 
   /**
@@ -889,145 +986,160 @@ export class GitHubProjectManagementProvider implements ProjectManagementProvide
    *
    * Moved from TaskSyncService to centralize GitHub Projects V2 operations
    */
-  private async updateProjectItemField(
+  private updateProjectItemField(
     projectId: string,
     itemId: string,
     fieldId: string,
     optionId: string
-  ): Promise<void> {
-    await this.updateProjectItemSingleSelectField(projectId, itemId, fieldId, optionId);
+  ): Effect<void> {
+    return this.updateProjectItemSingleSelectField(projectId, itemId, fieldId, optionId);
   }
 
   /**
    * Update a single-select field value
    */
-  private async updateProjectItemSingleSelectField(
+  private updateProjectItemSingleSelectField(
     projectId: string,
     itemId: string,
     fieldId: string,
     optionId: string
-  ): Promise<void> {
-    const mutation = `
-      mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-        updateProjectV2ItemFieldValue(input: {
-          projectId: $projectId
-          itemId: $itemId
-          fieldId: $fieldId
-          value: { singleSelectOptionId: $optionId }
-        }) {
-          projectV2Item {
-            id
+  ): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      const mutation = `
+        mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+          updateProjectV2ItemFieldValue(input: {
+            projectId: $projectId
+            itemId: $itemId
+            fieldId: $fieldId
+            value: { singleSelectOptionId: $optionId }
+          }) {
+            projectV2Item {
+              id
+            }
           }
         }
+      `;
+
+      const result = yield* self.rethrow(
+        self.githubCLI.run([
+          "api",
+          "graphql",
+          "-f",
+          `query=${mutation}`,
+          "-f",
+          `projectId=${projectId}`,
+          "-f",
+          `itemId=${itemId}`,
+          "-f",
+          `fieldId=${fieldId}`,
+          "-f",
+          `optionId=${optionId}`,
+        ])
+      );
+
+      if (!result.success) {
+        throw new Error(`Failed to update project item field: ${result.stderr}`);
       }
-    `;
-
-    const result = await this.githubCLI.run([
-      "api",
-      "graphql",
-      "-f",
-      `query=${mutation}`,
-      "-f",
-      `projectId=${projectId}`,
-      "-f",
-      `itemId=${itemId}`,
-      "-f",
-      `fieldId=${fieldId}`,
-      "-f",
-      `optionId=${optionId}`,
-    ]);
-
-    if (!result.success) {
-      throw new Error(`Failed to update project item field: ${result.stderr}`);
-    }
+    });
   }
 
   /**
    * Update a text field value
    */
-  private async updateProjectItemTextField(
+  private updateProjectItemTextField(
     projectId: string,
     itemId: string,
     fieldId: string,
     text: string
-  ): Promise<void> {
-    const mutation = `
-      mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $text: String!) {
-        updateProjectV2ItemFieldValue(input: {
-          projectId: $projectId
-          itemId: $itemId
-          fieldId: $fieldId
-          value: { text: $text }
-        }) {
-          projectV2Item {
-            id
+  ): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      const mutation = `
+        mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $text: String!) {
+          updateProjectV2ItemFieldValue(input: {
+            projectId: $projectId
+            itemId: $itemId
+            fieldId: $fieldId
+            value: { text: $text }
+          }) {
+            projectV2Item {
+              id
+            }
           }
         }
+      `;
+
+      const result = yield* self.rethrow(
+        self.githubCLI.run([
+          "api",
+          "graphql",
+          "-f",
+          `query=${mutation}`,
+          "-f",
+          `projectId=${projectId}`,
+          "-f",
+          `itemId=${itemId}`,
+          "-f",
+          `fieldId=${fieldId}`,
+          "-f",
+          `text=${text}`,
+        ])
+      );
+
+      if (!result.success) {
+        throw new Error(`Failed to update project item text field: ${result.stderr}`);
       }
-    `;
-
-    const result = await this.githubCLI.run([
-      "api",
-      "graphql",
-      "-f",
-      `query=${mutation}`,
-      "-f",
-      `projectId=${projectId}`,
-      "-f",
-      `itemId=${itemId}`,
-      "-f",
-      `fieldId=${fieldId}`,
-      "-f",
-      `text=${text}`,
-    ]);
-
-    if (!result.success) {
-      throw new Error(`Failed to update project item text field: ${result.stderr}`);
-    }
+    });
   }
 
   /**
    * Update a number field value
    */
-  private async updateProjectItemNumberField(
+  private updateProjectItemNumberField(
     projectId: string,
     itemId: string,
     fieldId: string,
     num: number
-  ): Promise<void> {
-    const mutation = `
-      mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $num: Float!) {
-        updateProjectV2ItemFieldValue(input: {
-          projectId: $projectId
-          itemId: $itemId
-          fieldId: $fieldId
-          value: { number: $num }
-        }) {
-          projectV2Item {
-            id
+  ): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      const mutation = `
+        mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $num: Float!) {
+          updateProjectV2ItemFieldValue(input: {
+            projectId: $projectId
+            itemId: $itemId
+            fieldId: $fieldId
+            value: { number: $num }
+          }) {
+            projectV2Item {
+              id
+            }
           }
         }
+      `;
+
+      const result = yield* self.rethrow(
+        self.githubCLI.run([
+          "api",
+          "graphql",
+          "-f",
+          `query=${mutation}`,
+          "-f",
+          `projectId=${projectId}`,
+          "-f",
+          `itemId=${itemId}`,
+          "-f",
+          `fieldId=${fieldId}`,
+          "-F",
+          `num=${num}`,
+        ])
+      );
+
+      if (!result.success) {
+        throw new Error(`Failed to update project item number field: ${result.stderr}`);
       }
-    `;
-
-    const result = await this.githubCLI.run([
-      "api",
-      "graphql",
-      "-f",
-      `query=${mutation}`,
-      "-f",
-      `projectId=${projectId}`,
-      "-f",
-      `itemId=${itemId}`,
-      "-f",
-      `fieldId=${fieldId}`,
-      "-F",
-      `num=${num}`,
-    ]);
-
-    if (!result.success) {
-      throw new Error(`Failed to update project item number field: ${result.stderr}`);
-    }
+    });
   }
 
   /**

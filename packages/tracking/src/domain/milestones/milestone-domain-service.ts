@@ -68,7 +68,6 @@ export class MilestoneDomainService {
    * Compute the milestone status from issue stats and dates.
    */
   getComputedStatus(milestone: Milestone): Effect<string, never, never> {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     return Effect.gen(function* () {
       const stats = yield* self.computeIssueStats(milestone.id);

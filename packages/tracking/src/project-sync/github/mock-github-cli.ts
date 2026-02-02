@@ -5,6 +5,7 @@
  * Allows tests to control responses and verify calls without making real API requests.
  */
 
+import { Effect } from "@dev-workflow/effect";
 import type {
   GitHubCLI,
   GitHubCLIResult,
@@ -12,6 +13,7 @@ import type {
   GitHubPRData,
   GitHubMergeStrategy,
 } from "./github-cli.js";
+import { GitHubCLIError } from "./github-cli.js";
 
 /**
  * Recorded call to the mock GitHub CLI
@@ -48,7 +50,7 @@ export interface MockGitHubCLIConfig {
   projectDetails?: { id: string; title: string; url: string } | null;
 
   /** Custom error to throw on specific operations */
-  errors?: Partial<Record<keyof GitHubCLI, Error>>;
+  errors?: Partial<Record<string, Error>>;
 
   /** Project Status field configuration for GraphQL queries */
   projectStatusField?: {
@@ -129,7 +131,7 @@ export class MockGitHubCLI implements GitHubCLI {
   /**
    * Get calls to a specific method
    */
-  getCallsTo(method: keyof GitHubCLI): MockGitHubCLICall[] {
+  getCallsTo(method: string): MockGitHubCLICall[] {
     return this.calls.filter((c) => c.method === method);
   }
 
@@ -182,10 +184,8 @@ export class MockGitHubCLI implements GitHubCLI {
    */
   setPRStatus(prNumber: number, status: { merged: boolean; state: string } | null): void {
     if (status === null) {
-      // Remove PR to simulate "not found"
       this.prs.delete(prNumber);
     } else {
-      // Create or update PR with specified status
       const existing = this.prs.get(prNumber);
       const pr: GitHubPRData = {
         number: prNumber,
@@ -208,291 +208,390 @@ export class MockGitHubCLI implements GitHubCLI {
     this.calls.push({ method, args, timestamp: new Date() });
   }
 
-  private checkError(method: keyof GitHubCLI): void {
+  private checkError(method: string): void {
     const error = this.config.errors[method];
     if (error) {
       throw error;
     }
   }
 
-  async checkAuth(): Promise<boolean> {
-    this.recordCall("checkAuth", []);
-    this.checkError("checkAuth");
-    return this.config.isAuthenticated;
+  // ===========================================================================
+  // Effect-returning methods (matching the GitHubCLI interface)
+  // ===========================================================================
+
+  checkAuth(): Effect<boolean> {
+    return Effect.promise(async () => {
+      this.recordCall("checkAuth", []);
+      this.checkError("checkAuth");
+      return this.config.isAuthenticated;
+    });
   }
 
-  async checkCurrentRepository(): Promise<boolean> {
-    this.recordCall("checkCurrentRepository", []);
-    this.checkError("checkCurrentRepository");
-    return this.config.isInRepository;
+  checkCurrentRepository(): Effect<boolean> {
+    return Effect.promise(async () => {
+      this.recordCall("checkCurrentRepository", []);
+      this.checkError("checkCurrentRepository");
+      return this.config.isInRepository;
+    });
   }
 
-  async getRepoUrl(): Promise<string | null> {
-    this.recordCall("getRepoUrl", []);
-    this.checkError("getRepoUrl");
-    return this.config.isInRepository ? "https://github.com/test-owner/test-repo" : null;
+  getRepoUrl(): Effect<string | null> {
+    return Effect.promise(async () => {
+      this.recordCall("getRepoUrl", []);
+      this.checkError("getRepoUrl");
+      return this.config.isInRepository ? "https://github.com/test-owner/test-repo" : null;
+    });
   }
 
-  async createIssue(title: string, body: string, labels: string[]): Promise<GitHubIssueData> {
-    this.recordCall("createIssue", [title, body, labels]);
-    this.checkError("createIssue");
-
-    const number = this.config.nextIssueNumber++;
-    const issue: GitHubIssueData = {
-      number,
-      url: `https://github.com/test/repo/issues/${number}`,
-      nodeId: `I_test_${number}`,
-      title,
-      body,
-      state: "OPEN",
-      labels,
-    };
-
-    this.issues.set(number, issue);
-    return issue;
+  createIssue(
+    title: string,
+    body: string,
+    labels: string[]
+  ): Effect<GitHubIssueData, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("createIssue", [title, body, labels]);
+        this.checkError("createIssue");
+        const number = this.config.nextIssueNumber++;
+        const issue: GitHubIssueData = {
+          number,
+          url: `https://github.com/test/repo/issues/${number}`,
+          nodeId: `I_test_${number}`,
+          title,
+          body,
+          state: "OPEN",
+          labels,
+        };
+        this.issues.set(number, issue);
+        return issue;
+      },
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
   }
 
-  async updateIssue(
+  updateIssue(
     issueNumber: number,
     title: string,
     body: string,
     labels: string[]
-  ): Promise<GitHubIssueData> {
-    this.recordCall("updateIssue", [issueNumber, title, body, labels]);
-    this.checkError("updateIssue");
-
-    const existing = this.issues.get(issueNumber);
-    const issue: GitHubIssueData = {
-      number: issueNumber,
-      url: existing?.url ?? `https://github.com/test/repo/issues/${issueNumber}`,
-      nodeId: existing?.nodeId ?? `I_test_${issueNumber}`,
-      title,
-      body,
-      state: existing?.state ?? "OPEN",
-      labels,
-    };
-
-    this.issues.set(issueNumber, issue);
-    return issue;
+  ): Effect<GitHubIssueData, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("updateIssue", [issueNumber, title, body, labels]);
+        this.checkError("updateIssue");
+        const existing = this.issues.get(issueNumber);
+        const issue: GitHubIssueData = {
+          number: issueNumber,
+          url: existing?.url ?? `https://github.com/test/repo/issues/${issueNumber}`,
+          nodeId: existing?.nodeId ?? `I_test_${issueNumber}`,
+          title,
+          body,
+          state: existing?.state ?? "OPEN",
+          labels,
+        };
+        this.issues.set(issueNumber, issue);
+        return issue;
+      },
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
   }
 
-  async closeIssue(issueNumber: number): Promise<void> {
-    this.recordCall("closeIssue", [issueNumber]);
-    this.checkError("closeIssue");
-
-    const existing = this.issues.get(issueNumber);
-    if (existing) {
-      this.issues.set(issueNumber, { ...existing, state: "CLOSED" });
-    }
+  closeIssue(issueNumber: number): Effect<void, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("closeIssue", [issueNumber]);
+        this.checkError("closeIssue");
+        const existing = this.issues.get(issueNumber);
+        if (existing) {
+          this.issues.set(issueNumber, { ...existing, state: "CLOSED" });
+        }
+      },
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
   }
 
-  async reopenIssue(issueNumber: number): Promise<void> {
-    this.recordCall("reopenIssue", [issueNumber]);
-    this.checkError("reopenIssue");
-
-    const existing = this.issues.get(issueNumber);
-    if (existing) {
-      this.issues.set(issueNumber, { ...existing, state: "OPEN" });
-    }
+  reopenIssue(issueNumber: number): Effect<void, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("reopenIssue", [issueNumber]);
+        this.checkError("reopenIssue");
+        const existing = this.issues.get(issueNumber);
+        if (existing) {
+          this.issues.set(issueNumber, { ...existing, state: "OPEN" });
+        }
+      },
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
   }
 
-  async getIssue(issueNumber: number): Promise<GitHubIssueData | null> {
-    this.recordCall("getIssue", [issueNumber]);
-    this.checkError("getIssue");
-
-    return this.issues.get(issueNumber) ?? null;
+  getIssue(issueNumber: number): Effect<GitHubIssueData | null, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("getIssue", [issueNumber]);
+        this.checkError("getIssue");
+        return this.issues.get(issueNumber) ?? null;
+      },
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
   }
 
-  async searchIssues(
+  searchIssues(
     query: string,
     state: "open" | "closed" | "all" = "all",
     limit = 10
-  ): Promise<GitHubIssueData[]> {
-    this.recordCall("searchIssues", [query, state, limit]);
-    this.checkError("searchIssues");
-
-    // Return configured search results, filtered by state if specified
-    let results = [...this.config.searchResults];
-
-    if (state !== "all") {
-      const stateUpper = state.toUpperCase();
-      results = results.filter((issue) => issue.state === stateUpper);
-    }
-
-    return results.slice(0, limit);
+  ): Effect<GitHubIssueData[], GitHubCLIError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("searchIssues", [query, state, limit]);
+        this.checkError("searchIssues");
+        let results = [...this.config.searchResults];
+        if (state !== "all") {
+          const stateUpper = state.toUpperCase();
+          results = results.filter((issue) => issue.state === stateUpper);
+        }
+        return results.slice(0, limit);
+      },
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
   }
 
-  async commentOnIssue(issueNumber: number, comment: string): Promise<void> {
-    this.recordCall("commentOnIssue", [issueNumber, comment]);
-    this.checkError("commentOnIssue");
-    // Just record the call - comments aren't stored in the mock
+  commentOnIssue(issueNumber: number, comment: string): Effect<void, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("commentOnIssue", [issueNumber, comment]);
+        this.checkError("commentOnIssue");
+      },
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
   }
 
-  async closeIssueWithComment(issueNumber: number, comment?: string): Promise<void> {
-    this.recordCall("closeIssueWithComment", [issueNumber, comment]);
-    this.checkError("closeIssueWithComment");
-
-    // Add comment if provided, then close the issue
-    if (comment) {
-      await this.commentOnIssue(issueNumber, comment);
-    }
-    await this.closeIssue(issueNumber);
+  closeIssueWithComment(issueNumber: number, comment?: string): Effect<void, GitHubCLIError> {
+    const self = this;
+    return Effect.catchAll(
+      Effect.gen(function* () {
+        self.recordCall("closeIssueWithComment", [issueNumber, comment]);
+        self.checkError("closeIssueWithComment");
+        if (comment) {
+          yield* self.commentOnIssue(issueNumber, comment);
+        }
+        yield* self.closeIssue(issueNumber);
+      }),
+      (e: GitHubCLIError) => Effect.fail(e)
+    );
   }
 
-  async listLabels(): Promise<string[]> {
-    this.recordCall("listLabels", []);
-    this.checkError("listLabels");
-
-    return [...this.config.existingLabels];
+  listLabels(): Effect<string[], GitHubCLIError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("listLabels", []);
+        this.checkError("listLabels");
+        return [...this.config.existingLabels];
+      },
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
   }
 
-  async createLabel(name: string, color?: string, description?: string): Promise<void> {
-    this.recordCall("createLabel", [name, color, description]);
-    this.checkError("createLabel");
-
-    if (!this.config.existingLabels.includes(name)) {
-      this.config.existingLabels.push(name);
-    }
+  createLabel(name: string, color?: string, description?: string): Effect<void, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("createLabel", [name, color, description]);
+        this.checkError("createLabel");
+        if (!this.config.existingLabels.includes(name)) {
+          this.config.existingLabels.push(name);
+        }
+      },
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
   }
 
-  async addToProject(projectId: string, issueNodeId: string): Promise<string> {
-    this.recordCall("addToProject", [projectId, issueNodeId]);
-    this.checkError("addToProject");
-
-    if (!this.config.projectExists) {
-      throw new Error(`Project ${projectId} not found`);
-    }
-
-    return `PVTI_${issueNodeId}_${Date.now()}`;
+  addToProject(projectId: string, issueNodeId: string): Effect<string, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("addToProject", [projectId, issueNodeId]);
+        this.checkError("addToProject");
+        if (!this.config.projectExists) {
+          throw new Error(`Project ${projectId} not found`);
+        }
+        return `PVTI_${issueNodeId}_${Date.now()}`;
+      },
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
   }
 
-  async checkProject(projectId: string): Promise<boolean> {
-    this.recordCall("checkProject", [projectId]);
-    this.checkError("checkProject");
-
-    return this.config.projectExists;
+  checkProject(projectId: string): Effect<boolean> {
+    return Effect.promise(async () => {
+      this.recordCall("checkProject", [projectId]);
+      this.checkError("checkProject");
+      return this.config.projectExists;
+    });
   }
 
-  async getProjectDetails(
-    projectId: string
-  ): Promise<{ id: string; title: string; url: string } | null> {
-    this.recordCall("getProjectDetails", [projectId]);
-    this.checkError("getProjectDetails");
-
-    if (!this.config.projectExists) {
-      return null;
-    }
-
-    return this.config.projectDetails;
+  getProjectDetails(projectId: string): Effect<{ id: string; title: string; url: string } | null> {
+    return Effect.promise(async () => {
+      this.recordCall("getProjectDetails", [projectId]);
+      this.checkError("getProjectDetails");
+      if (!this.config.projectExists) {
+        return null;
+      }
+      return this.config.projectDetails;
+    });
   }
 
-  async createPR(
+  createPR(
     headBranch: string,
     baseBranch: string,
     title: string,
     body: string,
     draft = false
-  ): Promise<GitHubPRData> {
-    this.recordCall("createPR", [headBranch, baseBranch, title, body, draft]);
-    this.checkError("createPR");
-
-    const number = this.config.nextPRNumber++;
-    const pr: GitHubPRData = {
-      number,
-      url: `https://github.com/test/repo/pull/${number}`,
-      nodeId: `PR_test_${number}`,
-      title,
-      body,
-      state: "OPEN",
-      isDraft: draft,
-      headBranch,
-      baseBranch,
-      merged: false,
-      mergeable: "MERGEABLE",
-    };
-
-    this.prs.set(number, pr);
-    return pr;
+  ): Effect<GitHubPRData, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("createPR", [headBranch, baseBranch, title, body, draft]);
+        this.checkError("createPR");
+        const number = this.config.nextPRNumber++;
+        const pr: GitHubPRData = {
+          number,
+          url: `https://github.com/test/repo/pull/${number}`,
+          nodeId: `PR_test_${number}`,
+          title,
+          body,
+          state: "OPEN",
+          isDraft: draft,
+          headBranch,
+          baseBranch,
+          merged: false,
+          mergeable: "MERGEABLE",
+        };
+        this.prs.set(number, pr);
+        return pr;
+      },
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
   }
 
-  async mergePR(
+  mergePR(
     prNumber: number,
     _strategy?: GitHubMergeStrategy,
     _commitTitle?: string
-  ): Promise<GitHubPRData> {
-    this.recordCall("mergePR", [prNumber, _strategy, _commitTitle]);
-    this.checkError("mergePR");
-
-    const existing = this.prs.get(prNumber);
-    if (!existing) {
-      throw new Error(`PR #${prNumber} not found`);
-    }
-
-    const merged: GitHubPRData = {
-      ...existing,
-      state: "MERGED",
-      merged: true,
-    };
-
-    this.prs.set(prNumber, merged);
-    return merged;
+  ): Effect<GitHubPRData, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("mergePR", [prNumber, _strategy, _commitTitle]);
+        this.checkError("mergePR");
+        const existing = this.prs.get(prNumber);
+        if (!existing) {
+          throw new Error(`PR #${prNumber} not found`);
+        }
+        const merged: GitHubPRData = {
+          ...existing,
+          state: "MERGED",
+          merged: true,
+        };
+        this.prs.set(prNumber, merged);
+        return merged;
+      },
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
   }
 
-  async getPR(prNumber: number): Promise<GitHubPRData | null> {
-    this.recordCall("getPR", [prNumber]);
-    this.checkError("getPR");
-
-    return this.prs.get(prNumber) ?? null;
+  getPR(prNumber: number): Effect<GitHubPRData | null, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("getPR", [prNumber]);
+        this.checkError("getPR");
+        return this.prs.get(prNumber) ?? null;
+      },
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
   }
 
-  async findPRByBranch(headBranch: string): Promise<GitHubPRData | null> {
-    this.recordCall("findPRByBranch", [headBranch]);
-    this.checkError("findPRByBranch");
-
-    for (const pr of this.prs.values()) {
-      if (pr.headBranch === headBranch) {
-        return pr;
-      }
-    }
-    return null;
+  findPRByBranch(headBranch: string): Effect<GitHubPRData | null, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("findPRByBranch", [headBranch]);
+        this.checkError("findPRByBranch");
+        for (const pr of this.prs.values()) {
+          if (pr.headBranch === headBranch) {
+            return pr;
+          }
+        }
+        return null;
+      },
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
   }
 
-  async linkSubIssue(parentIssueNumber: number, childIssueId: number): Promise<void> {
-    this.recordCall("linkSubIssue", [parentIssueNumber, childIssueId]);
-    this.checkError("linkSubIssue");
-    // No-op for mock - just record the call
+  linkSubIssue(parentIssueNumber: number, childIssueId: number): Effect<void, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("linkSubIssue", [parentIssueNumber, childIssueId]);
+        this.checkError("linkSubIssue");
+      },
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
   }
 
-  async assignIssue(issueNumber: number, assignee: string): Promise<void> {
-    this.recordCall("assignIssue", [issueNumber, assignee]);
-    this.checkError("assignIssue");
-    // No-op for mock - just record the call
+  assignIssue(issueNumber: number, assignee: string): Effect<void, GitHubCLIError> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.recordCall("assignIssue", [issueNumber, assignee]);
+        this.checkError("assignIssue");
+      },
+      catch: (e) => (e instanceof GitHubCLIError ? e : new GitHubCLIError(String(e))),
+    });
   }
 
-  async run(args: string[]): Promise<GitHubCLIResult> {
-    this.recordCall("run", [args]);
-    this.checkError("run");
+  run(args: string[]): Effect<GitHubCLIResult> {
+    return Effect.promise(async () => {
+      this.recordCall("run", [args]);
+      this.checkError("run");
 
-    // Check if this is a GraphQL query and return appropriate mock response
-    const queryArg = args.find((arg) => arg.startsWith("query="));
-    if (queryArg) {
-      const query = queryArg.substring(6); // Remove "query=" prefix
+      // Check if this is a GraphQL query and return appropriate mock response
+      const queryArg = args.find((arg) => arg.startsWith("query="));
+      if (queryArg) {
+        const query = queryArg.substring(6); // Remove "query=" prefix
 
-      // Check if this is a project fields query
-      if (query.includes("ProjectV2") && query.includes("fields")) {
-        // If custom projectFields are configured, return them
-        if (this.config.projectFields.length > 0) {
-          const nodes = this.config.projectFields.map((f) => ({
-            id: f.id,
-            name: f.name,
-            dataType: f.type, // Map our type to GitHub's dataType
-            options: f.options,
-          }));
+        // Check if this is a project fields query
+        if (query.includes("ProjectV2") && query.includes("fields")) {
+          // If custom projectFields are configured, return them
+          if (this.config.projectFields.length > 0) {
+            const nodes = this.config.projectFields.map((f) => ({
+              id: f.id,
+              name: f.name,
+              dataType: f.type,
+              options: f.options,
+            }));
+            const response = {
+              data: {
+                node: {
+                  fields: {
+                    nodes,
+                  },
+                },
+              },
+            };
+            return {
+              success: true,
+              stdout: JSON.stringify(response),
+              stderr: "",
+              exitCode: 0,
+            };
+          }
+
+          // Default: return status field from projectStatusField config
+          const { fieldId, options } = this.config.projectStatusField;
           const response = {
             data: {
               node: {
                 fields: {
-                  nodes,
+                  nodes: [
+                    {
+                      id: fieldId,
+                      name: "Status",
+                      dataType: "SINGLE_SELECT",
+                      options: options,
+                    },
+                  ],
                 },
               },
             },
@@ -505,74 +604,47 @@ export class MockGitHubCLI implements GitHubCLI {
           };
         }
 
-        // Default: return status field from projectStatusField config
-        const { fieldId, options } = this.config.projectStatusField;
-        const response = {
-          data: {
-            node: {
-              fields: {
-                nodes: [
-                  {
-                    id: fieldId,
-                    name: "Status",
-                    dataType: "SINGLE_SELECT",
-                    options: options,
-                  },
-                ],
+        // Check if this is an updateProjectV2ItemFieldValue mutation
+        if (query.includes("updateProjectV2ItemFieldValue")) {
+          const itemIdArg = args.find((arg) => arg.startsWith("itemId="));
+          const itemId = itemIdArg ? itemIdArg.substring(7) : "PVTI_test_item";
+          const response = {
+            data: {
+              updateProjectV2ItemFieldValue: {
+                projectV2Item: {
+                  id: itemId,
+                },
               },
             },
-          },
-        };
+          };
+          return {
+            success: true,
+            stdout: JSON.stringify(response),
+            stderr: "",
+            exitCode: 0,
+          };
+        }
+      }
+
+      // Check if this is a REST API call to get issue ID
+      const issueApiMatch = args[0]?.match(/repos\/\{owner\}\/\{repo\}\/issues\/(\d+)/);
+      if (issueApiMatch && args.includes("--jq") && args.includes(".id")) {
+        const issueNumber = parseInt(issueApiMatch[1], 10);
         return {
           success: true,
-          stdout: JSON.stringify(response),
+          stdout: String(1000000 + issueNumber),
           stderr: "",
           exitCode: 0,
         };
       }
 
-      // Check if this is an updateProjectV2ItemFieldValue mutation
-      if (query.includes("updateProjectV2ItemFieldValue")) {
-        const itemIdArg = args.find((arg) => arg.startsWith("itemId="));
-        const itemId = itemIdArg ? itemIdArg.substring(7) : "PVTI_test_item";
-        const response = {
-          data: {
-            updateProjectV2ItemFieldValue: {
-              projectV2Item: {
-                id: itemId,
-              },
-            },
-          },
-        };
-        return {
-          success: true,
-          stdout: JSON.stringify(response),
-          stderr: "",
-          exitCode: 0,
-        };
-      }
-    }
-
-    // Check if this is a REST API call to get issue ID
-    // Format: repos/{owner}/{repo}/issues/{number} with --jq .id
-    const issueApiMatch = args[0]?.match(/repos\/\{owner\}\/\{repo\}\/issues\/(\d+)/);
-    if (issueApiMatch && args.includes("--jq") && args.includes(".id")) {
-      const issueNumber = parseInt(issueApiMatch[1], 10);
-      // Return a mock numeric ID based on the issue number
+      // Default response for other commands
       return {
         success: true,
-        stdout: String(1000000 + issueNumber), // Mock ID format: 1000000 + issue number
+        stdout: "",
         stderr: "",
         exitCode: 0,
       };
-    }
-
-    // Default response for other commands
-    return {
-      success: true,
-      stdout: "",
-      stderr: "",
-      exitCode: 0,
-    };
+    });
   }
 }

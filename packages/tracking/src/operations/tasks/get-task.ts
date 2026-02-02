@@ -138,7 +138,7 @@ export function getTask(input: GetTaskInput) {
     let task: Task | null = null;
 
     if (taskId) {
-      task = yield* Effect.promise(() => taskService.findById(taskId));
+      task = yield* taskService.findById(taskId);
     } else if (taskNumber !== undefined && issueNumber !== undefined) {
       const issueService = yield* IssueService;
       const planService = yield* PlanService;
@@ -148,12 +148,12 @@ export function getTask(input: GetTaskInput) {
         throw new Error(`Issue not found: #${issueNumber}`);
       }
 
-      const plan = yield* Effect.promise(() => planService.findByIssueId(issue.id));
+      const plan = yield* planService.findByIssueId(issue.id);
       if (!plan) {
         throw new Error(`No plan found for issue #${issueNumber}`);
       }
 
-      const tasks = yield* Effect.promise(() => taskService.findByPlanId(plan.id));
+      const tasks = yield* taskService.findByPlanId(plan.id);
       task = tasks.find((t) => t.number === taskNumber) ?? null;
     }
 

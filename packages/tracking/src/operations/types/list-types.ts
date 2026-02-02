@@ -30,7 +30,7 @@ export interface ListTypesResult {
 export function listTypes() {
   return Effect.gen(function* () {
     const typeService = yield* TypeService;
-    const types = yield* Effect.promise(() => typeService.getTypes());
+    const types = yield* typeService.getTypes();
 
     return {
       types: types.map((t) => ({

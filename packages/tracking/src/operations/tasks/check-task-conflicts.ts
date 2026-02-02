@@ -74,13 +74,13 @@ export function checkTaskConflicts(input: CheckTaskConflictsInput) {
     const issueService = yield* IssueService;
 
     // Verify task exists
-    const task = yield* Effect.promise(() => taskService.findById(taskId));
+    const task = yield* taskService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
 
     // Run conflict detection
-    const result = yield* Effect.promise(() => conflictDetectionService.detectConflicts(taskId));
+    const result = yield* conflictDetectionService.detectConflicts(taskId);
 
     // Build response
     const response: CheckTaskConflictsResult = {
@@ -93,7 +93,7 @@ export function checkTaskConflicts(input: CheckTaskConflictsInput) {
 
     if (result.hasConflicts) {
       // Get issue number for #issue.task format in warning message
-      const taskPlan = yield* Effect.promise(() => planService.findById(task.planId));
+      const taskPlan = yield* planService.findById(task.planId);
       const taskIssue = taskPlan ? yield* issueService.findById(taskPlan.issueId) : null;
       response.warningMessage = formatConflictWarnings(result.warnings, taskIssue?.number);
     } else {

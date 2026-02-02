@@ -77,41 +77,43 @@ function createLocalMockClient(
     getProjectId: () => null,
     getLabelFieldMapping: () => ({}),
     // Auth/Validation
-    checkAuth: async () => ({ authenticated: true }),
-    checkRepository: async () => ({ accessible: true }),
+    checkAuth: () => Effect.succeed({ authenticated: true }),
+    checkRepository: () => Effect.succeed({ accessible: true }),
     // Issue operations
-    createIssue: async () => ({
-      id: "1",
-      numericId: 1,
-      url: "https://example.com/1",
-      nodeId: "mock_1",
-      title: "Mock",
-      body: "",
-      state: "OPEN",
-      labels: [],
-    }),
-    closeIssue: async () => {},
-    reopenIssue: async () => {},
-    getIssue: async () => null,
-    searchIssues: async () => [],
-    ensureLabelsExist: async () => {},
+    createIssue: () =>
+      Effect.succeed({
+        id: "1",
+        numericId: 1,
+        url: "https://example.com/1",
+        nodeId: "mock_1",
+        title: "Mock",
+        body: "",
+        state: "OPEN",
+        labels: [],
+      }),
+    closeIssue: () => Effect.succeed(undefined as void),
+    reopenIssue: () => Effect.succeed(undefined as void),
+    getIssue: () => Effect.succeed(null),
+    searchIssues: () => Effect.succeed([]),
+    ensureLabelsExist: () => Effect.succeed(undefined as void),
     // Project operations
-    addToProject: async () => ({ success: true, itemId: "mock_item" }),
-    moveToColumn: async () => {},
-    checkProject: async () => true,
-    getProjectDetails: async () => null,
-    getProjectStatusField: async () => null,
-    getProjectFields: async () => [],
-    setProjectItemField: async () => ({ success: true }),
-    clearProjectItemField: async () => ({ success: true }),
-    getAvailableLabels: async () => ({ supported: true, labels: [] }),
-    linkParentChild: async () => {},
-    addComment: async () => {},
-    assignIssue: async (externalId: string) => {
+    addToProject: () => Effect.succeed({ success: true, itemId: "mock_item" }),
+    moveToColumn: () => Effect.succeed(undefined as void),
+    checkProject: () => Effect.succeed(true),
+    getProjectDetails: () => Effect.succeed(null),
+    getProjectStatusField: () => Effect.succeed(null),
+    getProjectFields: () => Effect.succeed([]),
+    setProjectItemField: () => Effect.succeed({ success: true }),
+    clearProjectItemField: () => Effect.succeed({ success: true }),
+    getAvailableLabels: () => Effect.succeed({ supported: true, labels: [] }),
+    linkParentChild: () => Effect.succeed(undefined as void),
+    addComment: () => Effect.succeed(undefined as void),
+    assignIssue: (externalId: string) => {
       // Only track calls if there's an assignee (like real client behavior)
       if (calls && assignee) {
         calls.autoAssign.push({ externalId });
       }
+      return Effect.succeed(undefined as void);
     },
   };
 }
@@ -152,11 +154,13 @@ async function createTaskToolContext(
   }
 ): Promise<{ ctx: TestTaskToolContext; client: DbClient }> {
   // Create project first with optional GitHub sync config
-  const project = await testDb.source.projects.create({
-    name: "Test Project",
-    gitRootHash: "test-hash-" + crypto.randomUUID().slice(0, 8),
-    syncConfig: options?.githubSync ?? null,
-  });
+  const project = await Effect.runPromise(
+    testDb.source.projects.create({
+      name: "Test Project",
+      gitRootHash: "test-hash-" + crypto.randomUUID().slice(0, 8),
+      syncConfig: options?.githubSync ?? null,
+    })
+  );
 
   const projectId = project.id;
   const client = createClientForProject(testDb, projectId);
