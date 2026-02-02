@@ -5,16 +5,15 @@
  */
 
 import { NextResponse } from "next/server";
-import type { WebCradle } from "@/lib/di/container";
+import { Effect } from "@dev-workflow/effect";
+import { listProjectsWithSync } from "@/lib/operations/list-projects";
+import { createApiEndpoint } from "@/lib/di/bootstrap";
 
-export async function listProjectsEndpoint(
-  _req: Request,
-  _params: Record<string, string>,
-  { projectAppService }: Pick<WebCradle, "projectAppService">
-): Promise<NextResponse> {
-  const projects = await projectAppService.listProjectsWithSync();
-
-  return NextResponse.json({
-    projects,
-  });
-}
+export const endpoint = createApiEndpoint({
+  handler: (_req: Request, _params: Record<string, string>) =>
+    Effect.gen(function* () {
+      return NextResponse.json({
+        projects: yield* listProjectsWithSync(),
+      });
+    }),
+});

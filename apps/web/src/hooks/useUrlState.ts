@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useEffect, useRef } from "react";
-import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { useNavigation } from "@/contexts/NavigationContext";
 
 /**
  * URL state shape. Add new properties here as needed.
@@ -99,9 +99,7 @@ function getStoredState(): UrlState {
  * ```
  */
 export function useUrlState() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const { router, pathname, searchParams } = useNavigation();
   const prevPathnameRef = useRef(pathname);
   const isUserActionRef = useRef(false);
 

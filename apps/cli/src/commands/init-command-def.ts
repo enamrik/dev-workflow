@@ -5,17 +5,21 @@
  */
 
 import { createCliHandler, createCliCommand, defaultMiddleware } from "../di/bootstrap.js";
-import type { InitCommand, InitOptions } from "./init-command.js";
+import { Effect } from "@dev-workflow/effect";
+import { InitCommandTag } from "../di/cli-tags.js";
+import type { InitOptions } from "./init-command.js";
 
 /**
- * Handler - thin wrapper that destructures just what it needs (the command).
+ * Handler - thin wrapper that yields the command from Effect context.
  */
-export const handleInit = createCliHandler(
-  async (options: InitOptions, { initCommand }: { initCommand: InitCommand }) => {
-    await initCommand.execute(options);
-  },
-  defaultMiddleware
-);
+export const handleInit = createCliHandler({
+  handler: (options: InitOptions) =>
+    Effect.gen(function* () {
+      const initCommand = yield* InitCommandTag;
+      yield* Effect.promise(() => initCommand.execute(options));
+    }),
+  middleware: defaultMiddleware,
+});
 
 /**
  * Executable runner for the init command.

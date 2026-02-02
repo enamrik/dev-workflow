@@ -13,16 +13,150 @@ import {
   CreateIssueSchema,
   UpdateIssueSchema,
   GetIssueSchema,
-  GeneratePlanSchema,
-  LoadTaskSessionSchema,
-  UpdateTaskSchema,
-  CreateMilestoneSchema,
-  UpdateSettingsSchema,
   IssueTypeEnum,
   IssuePriorityEnum,
-  toolSchemas,
-} from "../../tools/schemas.js";
+} from "../../tools/issue-tools.js";
+import { GeneratePlanSchema } from "../../tools/plan-tools.js";
+import { LoadTaskSessionSchema, UpdateTaskSchema } from "../../tools/task-tools.js";
+import { CreateMilestoneSchema } from "../../tools/milestone-tools.js";
+import { UpdateSettingsSchema } from "../../tools/settings-tools.js";
+import { DispatchTaskSchema } from "../../tools/dispatch-tools.js";
 import { safeValidateArgs, validateArgs, zodToInputSchema } from "../../tools/schema-utils.js";
+
+// Local schema registry for testing — replaces the deleted toolSchemas from schemas.ts
+import {
+  DeleteIssueSchema,
+  RestoreIssueSchema,
+  ListTemplatesSchema,
+  GetTemplateSchema,
+  CreateTemplateSchema,
+  UpdateTemplateSchema,
+  DeleteTemplateSchema,
+  CopyTemplateSchema,
+  CloseIssueSchema,
+  ChangeIssueTypeSchema,
+  GetProjectStatsSchema,
+  SearchIssuesSchema,
+  GetWorkQueueSchema,
+  ImportGitHubIssueSchema,
+} from "../../tools/issue-tools.js";
+import {
+  GetPlanSchema,
+  PauseIssueSchema,
+  MoveIssueToReadySchema,
+  MoveIssueToBacklogSchema,
+  SyncIssueSchema,
+} from "../../tools/plan-tools.js";
+import {
+  AbandonTaskSchema,
+  GetTaskSchema,
+  ListAvailableTasksSchema,
+  DeleteTaskSchema,
+  GetTaskExecutionPromptSchema,
+  LogTaskProgressSchema,
+  GetTaskExecutionLogSchema,
+  CheckTaskConflictsSchema,
+} from "../../tools/task-tools.js";
+import {
+  GetSnapshotHistorySchema,
+  RevertToSnapshotSchema,
+  ViewSnapshotSchema,
+} from "../../tools/snapshot-tools.js";
+import {
+  GetMilestoneSchema,
+  ListMilestonesSchema,
+  UpdateMilestoneSchema,
+  DeleteMilestoneSchema,
+  AssignIssueToMilestoneSchema,
+  RemoveIssueFromMilestoneSchema,
+} from "../../tools/milestone-tools.js";
+import { ListWorktreesSchema, PruneStaleWorktreesSchema } from "../../tools/worktree-tools.js";
+import {
+  GetTaskPRStatusSchema,
+  CreatePRSchema,
+  SubmitForReviewSchema,
+  CompleteTaskSchema,
+} from "../../tools/pr-tools.js";
+import { MergeIssuesSchema } from "../../tools/merge-tools.js";
+import {
+  ListTypesSchema,
+  CreateTypeSchema,
+  UpdateTypeSchema,
+  DeleteTypeSchema,
+} from "../../tools/type-tools.js";
+import { GetDispatchStatusSchema, EndWorkerSessionSchema } from "../../tools/dispatch-tools.js";
+
+const toolSchemas = {
+  // Issue tools
+  create_issue: CreateIssueSchema,
+  get_issue: GetIssueSchema,
+  delete_issue: DeleteIssueSchema,
+  restore_issue: RestoreIssueSchema,
+  list_templates: ListTemplatesSchema,
+  get_template: GetTemplateSchema,
+  create_template: CreateTemplateSchema,
+  update_template: UpdateTemplateSchema,
+  delete_template: DeleteTemplateSchema,
+  copy_template: CopyTemplateSchema,
+  update_issue: UpdateIssueSchema,
+  close_issue: CloseIssueSchema,
+  change_issue_type: ChangeIssueTypeSchema,
+  get_project_stats: GetProjectStatsSchema,
+  search_issues: SearchIssuesSchema,
+  get_work_queue: GetWorkQueueSchema,
+  import_github_issue: ImportGitHubIssueSchema,
+  // Plan tools
+  generate_plan: GeneratePlanSchema,
+  get_plan: GetPlanSchema,
+  pause_issue: PauseIssueSchema,
+  move_issue_to_ready: MoveIssueToReadySchema,
+  move_issue_to_backlog: MoveIssueToBacklogSchema,
+  sync_issue: SyncIssueSchema,
+  // Task tools
+  load_task_session: LoadTaskSessionSchema,
+  abandon_task: AbandonTaskSchema,
+  get_task: GetTaskSchema,
+  list_available_tasks: ListAvailableTasksSchema,
+  delete_task: DeleteTaskSchema,
+  update_task: UpdateTaskSchema,
+  get_task_execution_prompt: GetTaskExecutionPromptSchema,
+  log_task_progress: LogTaskProgressSchema,
+  get_task_execution_log: GetTaskExecutionLogSchema,
+  check_task_conflicts: CheckTaskConflictsSchema,
+  // Snapshot tools
+  get_snapshot_history: GetSnapshotHistorySchema,
+  revert_to_snapshot: RevertToSnapshotSchema,
+  view_snapshot: ViewSnapshotSchema,
+  // Settings tools
+  update_settings: UpdateSettingsSchema,
+  // Milestone tools
+  create_milestone: CreateMilestoneSchema,
+  get_milestone: GetMilestoneSchema,
+  list_milestones: ListMilestonesSchema,
+  update_milestone: UpdateMilestoneSchema,
+  delete_milestone: DeleteMilestoneSchema,
+  assign_issue_to_milestone: AssignIssueToMilestoneSchema,
+  remove_issue_from_milestone: RemoveIssueFromMilestoneSchema,
+  // Worktree tools
+  list_worktrees: ListWorktreesSchema,
+  prune_stale_worktrees: PruneStaleWorktreesSchema,
+  // PR tools
+  get_task_pr_status: GetTaskPRStatusSchema,
+  create_pr: CreatePRSchema,
+  submit_for_review: SubmitForReviewSchema,
+  complete_task: CompleteTaskSchema,
+  // Merge tools
+  merge_issues: MergeIssuesSchema,
+  // Type tools
+  list_types: ListTypesSchema,
+  create_type: CreateTypeSchema,
+  update_type: UpdateTypeSchema,
+  delete_type: DeleteTypeSchema,
+  // Dispatch tools
+  dispatch_task: DispatchTaskSchema,
+  get_dispatch_status: GetDispatchStatusSchema,
+  end_worker_session: EndWorkerSessionSchema,
+} as const;
 
 describe("Schema Validation", () => {
   describe("CreateIssueSchema", () => {
@@ -39,7 +173,7 @@ describe("Schema Validation", () => {
         expect(result.data.title).toBe("Test Issue");
         expect(result.data.description).toBe("Test description");
         expect(result.data.type).toBeUndefined();
-        expect(result.data.priority).toBeUndefined();
+        expect(result.data.priority).toBe("MEDIUM");
       }
     });
 
@@ -252,29 +386,24 @@ describe("Schema Validation", () => {
   });
 
   describe("GetIssueSchema", () => {
-    it("should accept issueNumber only", () => {
-      const input = { issueNumber: 42 };
-
-      const result = GetIssueSchema.safeParse(input);
+    it("should accept issueNumber", () => {
+      const result = GetIssueSchema.safeParse({ issueNumber: 42 });
 
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.issueNumber).toBe(42);
+        expect(result.data.includePlan).toBe(false);
       }
     });
 
-    it("should accept id only", () => {
-      const input = { id: "uuid-here" };
+    it("should require issueNumber", () => {
+      const result = GetIssueSchema.safeParse({});
 
-      const result = GetIssueSchema.safeParse(input);
-
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
     });
 
     it("should accept includePlan flag", () => {
-      const input = { issueNumber: 1, includePlan: true };
-
-      const result = GetIssueSchema.safeParse(input);
+      const result = GetIssueSchema.safeParse({ issueNumber: 1, includePlan: true });
 
       expect(result.success).toBe(true);
       if (result.success) {
@@ -282,12 +411,13 @@ describe("Schema Validation", () => {
       }
     });
 
-    it("should accept empty object (all optional)", () => {
-      const input = {};
-
-      const result = GetIssueSchema.safeParse(input);
+    it("should default includePlan to false", () => {
+      const result = GetIssueSchema.safeParse({ issueNumber: 1 });
 
       expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.includePlan).toBe(false);
+      }
     });
   });
 

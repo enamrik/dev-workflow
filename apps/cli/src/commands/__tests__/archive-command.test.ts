@@ -12,16 +12,19 @@ import { createCliContainer, type CliContainer } from "../../di/container.js";
 import type { FileSystem } from "../../infrastructure/file-system.js";
 import type { TrackDirectoryResolver } from "@dev-workflow/git/track-directory-resolver.js";
 import type { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
-import type {
-  DbSourceProvider,
-  DbSource,
-  ProjectRepository,
-  Project,
+import {
+  Issue,
+  type DbSourceProvider,
+  type DbSource,
+  type ProjectRepository,
+  type Project,
 } from "@dev-workflow/tracking";
 import type { DatabaseConfigService } from "../../application/database.service.js";
 import { InstallService } from "../../application/install.service.js";
 import { ArchiveService } from "../../application/archive.service.js";
 import { ArchiveCommand, UnarchiveCommand, NukeCommand } from "../archive-command.js";
+import type { UserPrompt } from "../../infrastructure/user-prompt.js";
+import { Effect } from "@dev-workflow/effect";
 
 // Mock console methods - these are at module level
 let mockConsoleLog: ReturnType<typeof vi.spyOn>;
@@ -39,14 +42,6 @@ beforeAll(() => {
 afterAll(() => {
   vi.restoreAllMocks();
 });
-
-// Mock readline for nuke confirmation
-vi.mock("node:readline", () => ({
-  createInterface: vi.fn().mockReturnValue({
-    question: vi.fn((_prompt, callback) => callback("test-project")),
-    close: vi.fn(),
-  }),
-}));
 
 /**
  * Create a mock project
@@ -150,11 +145,13 @@ function createMockSourceProvider(
   const mockClient = {
     tasks: {
       findMany: vi.fn().mockImplementation(({ status }: { status?: string }) => {
-        return tasks.filter((t: unknown) => !status || (t as { status: string }).status === status);
+        return Effect.succeed(
+          tasks.filter((t: unknown) => !status || (t as { status: string }).status === status)
+        );
       }),
     },
     issues: {
-      findMany: vi.fn().mockReturnValue(issues),
+      findMany: vi.fn().mockImplementation(() => Effect.succeed(issues)),
     },
   };
 
@@ -227,6 +224,7 @@ function setupTestContainer(
     gitOps: asValue(mockGitOps),
     sourceProvider: asValue(mockSourceProvider),
     databaseService: asValue(mockDatabaseService),
+    userPrompt: asValue({ ask: vi.fn(async () => "test-project") }),
   });
 
   // Register services that use injected dependencies
@@ -286,13 +284,16 @@ function setupTestContainer(
       );
     }).scoped(),
 
-    nukeCommand: asFunction(({ archiveService, databaseService, trackDirectoryResolver }) => {
-      return new NukeCommand(
-        archiveService as ArchiveService,
-        databaseService as DatabaseConfigService,
-        trackDirectoryResolver as TrackDirectoryResolver
-      );
-    }).scoped(),
+    nukeCommand: asFunction(
+      ({ archiveService, databaseService, trackDirectoryResolver, userPrompt }) => {
+        return new NukeCommand(
+          archiveService as ArchiveService,
+          databaseService as DatabaseConfigService,
+          trackDirectoryResolver as TrackDirectoryResolver,
+          userPrompt as UserPrompt
+        );
+      }
+    ).scoped(),
   });
 
   return container;
@@ -414,7 +415,21 @@ describe("NukeCommand", () => {
     it("should nuke project when user confirms", async () => {
       const project = createMockProject({ name: "test-project" });
       // All issues must be CLOSED for nuke validation
-      const issues = [{ id: "issue-1", status: "CLOSED" }];
+      const issues = [
+        Issue.from({
+          id: "issue-1",
+          projectId: "proj-123",
+          number: 1,
+          title: "Test",
+          description: "",
+          acceptanceCriteria: [],
+          type: "TASK",
+          priority: "MEDIUM",
+          status: "CLOSED",
+          createdAt: "2024-01-01T00:00:00Z",
+          updatedAt: "2024-01-01T00:00:00Z",
+        }),
+      ];
       const container = setupTestContainer({ project, issues });
 
       const command = container.cradle.nukeCommand;
@@ -453,7 +468,21 @@ describe("NukeCommand", () => {
 
     it("should allow nuke on remote database with --force", async () => {
       const project = createMockProject({ name: "test-project" });
-      const issues = [{ id: "issue-1", status: "CLOSED" }];
+      const issues = [
+        Issue.from({
+          id: "issue-1",
+          projectId: "proj-123",
+          number: 1,
+          title: "Test",
+          description: "",
+          acceptanceCriteria: [],
+          type: "TASK",
+          priority: "MEDIUM",
+          status: "CLOSED",
+          createdAt: "2024-01-01T00:00:00Z",
+          updatedAt: "2024-01-01T00:00:00Z",
+        }),
+      ];
       const container = setupTestContainer({ project, isRemote: true, issues });
 
       const command = container.cradle.nukeCommand;
@@ -470,7 +499,21 @@ describe("NukeCommand", () => {
     it("should fail when there are open issues", async () => {
       const project = createMockProject();
       // OPEN issue will block nuke
-      const issues = [{ id: "issue-1", status: "OPEN" }];
+      const issues = [
+        Issue.from({
+          id: "issue-1",
+          projectId: "proj-123",
+          number: 1,
+          title: "Test",
+          description: "",
+          acceptanceCriteria: [],
+          type: "TASK",
+          priority: "MEDIUM",
+          status: "OPEN",
+          createdAt: "2024-01-01T00:00:00Z",
+          updatedAt: "2024-01-01T00:00:00Z",
+        }),
+      ];
       const container = setupTestContainer({ project, issues });
 
       const command = container.cradle.nukeCommand;

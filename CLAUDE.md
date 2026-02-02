@@ -548,6 +548,9 @@ Our `tsconfig.json` enforces maximum type safety:
 ❌ **Bypassing Service Layer** - calling repository mutations directly from MCP tools, API routes, or CLI instead of through services
 ❌ **Duplicated Logic Across Services** - implementing the same operation in multiple services instead of one service calling another
 ❌ **Scattered Status Identity Checks** - checking `status === "COMPLETED" || status === "ABANDONED"` instead of using trait functions like `isTerminal(task)`. Status semantics are defined in `packages/tracking/src/tasks/types.ts` via `STATUS_TRAITS`. Use `isTerminal()`, `isWorkable()`, `isActive()` for all status queries.
+❌ **Bypassing Effect R channel** - accessing `container.cradle` directly in handlers instead of yielding service tags. All handler dependencies must come through the Effect R channel.
+❌ **Manual body parsing in web handlers** - using `jsonBody(req, Schema)` instead of the `bodySchema` option on `createApiEndpoint`
+❌ **Direct `Effect.runPromise` with cradle cast** - using `Effect.runPromise(effect, cradle as never)` instead of `createRuntime(container).runEffectAndUnwrap(effect)`. The `as never` cast belongs only in `createRuntime`.
 
 ## Dependency Injection Patterns
 
@@ -652,6 +655,113 @@ async function runInit(options: InitOptions): Promise<void> {
   const installer = new InstallService(fileSystem, workingDirectory, resolver);
   // ... use installer
 }
+```
+
+### Bootstrap Architecture (Program Creators vs Runners)
+
+All three mediums (MCP, Web, CLI) share a unified two-layer bootstrap pattern:
+
+1. **Handler returns `Effect<Response, E, R>`** — dependencies come from the R channel
+2. **Program creator** validates input, catches E, returns a program struct `{ run, middleware? }`
+3. **Runner** executes middleware, resolves R from container via `createRuntime`, runs the Effect
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Program Creators (testable logic)                              │
+│  createMcpHandler, createApiEndpoint, createCliHandler          │
+│  - Handler: (args) => Effect<Response, E, R>                    │
+│  - Schema validation at boundary (medium-specific)              │
+│  - Catches E → never (medium-appropriate error mapping)         │
+│  - Optional middleware: (container) => void                     │
+│  - Returns: { run, middleware? } (program struct)               │
+└─────────────────────────────┬───────────────────────────────────┘
+                              │ produces program struct
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Runners (trivial container binding)                            │
+│  createMcpTool, createApiRoute, createCliCommand                │
+│  - Executes middleware (mutates container before Effect runs)   │
+│  - Resolves R via createRuntime(container)                      │
+│  - Single boundary cast (as never) lives in createRuntime only  │
+│  - Positional args: (program, container?)                       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Unified program creator signatures:**
+
+| Medium | Creator             | Handler signature                                    | Schema   | Returns          |
+| ------ | ------------------- | ---------------------------------------------------- | -------- | ---------------- |
+| MCP    | `createMcpHandler`  | `(args: T) => Effect<ToolResponse, E, R>`            | Required | `McpProgram<R>`  |
+| Web    | `createApiEndpoint` | `(req, params, body?) => Effect<NextResponse, E, R>` | Optional | `WebProgram<R>`  |
+| CLI    | `createCliHandler`  | `(opts: T) => Effect<void, E, R>`                    | None     | `WrappedHandler` |
+
+**Error handling by medium:**
+
+- **MCP**: `Effect.catchAll` → `errorResponse(e)` (MCP tool error response)
+- **Web**: `Effect.catchAll` → `mapError(e)` (HTTP error response)
+- **CLI**: E thrown by `runEffectAndUnwrap` → `handleCliError(e)` → `process.exit(1)`
+
+**Container middleware:** `(container: AwilixContainer) => Promise<void> | void`
+
+Middleware mutates the container before the Effect executes. Used by CLI for registering dynamic values (workingDirectory, config). Available on MCP/Web for future use.
+
+**Service tags for dependency resolution:**
+
+CLI handlers use service tags to yield dependencies from the Effect R channel:
+
+```typescript
+// cli-tags.ts — Tag IDs match CliCradle keys
+export class InitCommandTag extends Service<InitCommand>()("initCommand") {}
+
+// init-command-def.ts — handler yields tag, Effect resolves from container
+export const handleInit = createCliHandler({
+  handler: (options: InitOptions) =>
+    Effect.gen(function* () {
+      const initCommand = yield* InitCommandTag;
+      yield* Effect.promise(() => initCommand.execute(options));
+    }),
+  middleware: defaultMiddleware,
+});
+```
+
+MCP/Web handlers use operation-level service tags defined in `packages/tracking/src/*/operations/`.
+
+**Web bodySchema:**
+
+POST endpoints use `bodySchema` for automatic body parsing and validation:
+
+```typescript
+export const endpoint = createApiEndpoint({
+  bodySchema: BodySchema,
+  handler: (_req, params, body) =>
+    Effect.gen(function* () {
+      return NextResponse.json(
+        yield* closeIssue({ ...body, issueNumber: Number(params["issueNumber"]) })
+      );
+    }),
+});
+```
+
+GET endpoints omit `bodySchema` and receive only `(req, params)`.
+
+**Files:**
+
+- MCP: `apps/mcp-server/src/di/bootstrap.ts`
+- Web: `apps/web/src/lib/di/bootstrap.ts`
+- CLI: `apps/cli/src/di/bootstrap.ts`, `apps/cli/src/di/cli-tags.ts`
+- Effect runtime: `packages/effect/src/effect-runtime.ts` (`createRuntime`)
+
+**❌ Anti-patterns:**
+
+```typescript
+// BAD - Direct container.cradle access bypasses Effect R channel
+await handler(options, container.cradle as TCradle);
+
+// BAD - Effect.runPromise with cradle cast (use createRuntime instead)
+Effect.runPromise(handler(args), container.cradle as never);
+
+// BAD - Manual jsonBody in web handler (use bodySchema option)
+const body = yield * jsonBody(req, BodySchema);
 ```
 
 ### Repository Pattern
@@ -920,6 +1030,8 @@ const active = issues.filter((i) => !isIssueClosed(i) && !isIssueInPlanning(i));
 - [ ] **Mutations go through services** (not direct repository calls from MCP/API/CLI)
 - [ ] **Services call services** (not duplicating logic - one service delegates to another)
 - [ ] **Status checks use trait functions** (use `isTerminal()`, `isActive()` - not direct `status === "COMPLETED"` checks)
+- [ ] **Bootstrap follows unified Effect pattern** (handlers return Effect, program creators return structs, R resolved via createRuntime)
+- [ ] **Web POST endpoints use bodySchema** (not manual jsonBody)
 
 ## Testing GitHub Sync
 

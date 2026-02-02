@@ -2,22 +2,37 @@
  * Tests for Close Issue Endpoint
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
+import { Effect } from "@dev-workflow/effect";
+import { createTestContainer, createTestRequest, runTestEndpoint } from "@/lib/di/test-utils";
 import { EntityNotFoundError } from "@dev-workflow/tracking";
-import { buildTestContainer, createTestRequest, runTestApiEndpoint } from "@/lib/di/test-utils";
-import { endpoint } from "../route";
+import { endpoint } from "../endpoint";
 
 describe("closeIssueEndpoint", () => {
-  it("closes an issue and returns success", async () => {
-    const mockCloseResult = {
-      issue: { id: "issue-1", number: 42, title: "Test Issue", status: "CLOSED" },
-      abandonedTasks: [],
-      externalIssueClosed: false,
+  it("closes an issue and returns result", async () => {
+    const issuesMock = {
+      getByNumber: () =>
+        Effect.succeed({ id: "issue-1", number: 42, title: "Test Issue", status: "OPEN" }),
+      close: () =>
+        Effect.succeed({ id: "issue-1", number: 42, title: "Test Issue", status: "CLOSED" }),
+      update: () => Effect.succeed(undefined),
+    };
+    const tasksMock = {
+      getIncompleteTasksForIssue: () => Effect.succeed([]),
     };
 
-    const testContainer = buildTestContainer({
-      issueAppService: {
-        closeIssue: vi.fn().mockResolvedValue(mockCloseResult),
+    const testContainer = createTestContainer({
+      domain: {
+        forProject: () =>
+          Effect.succeed({
+            issues: issuesMock,
+            tasks: tasksMock,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+            transaction: (fn: Function) => fn({ issues: issuesMock, tasks: tasksMock }),
+          }),
+      },
+      projectManagement: {
+        closeIssue: () => Effect.succeed(null),
       },
     });
 
@@ -25,21 +40,25 @@ describe("closeIssueEndpoint", () => {
       body: { projectSlug: "my-project" },
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       issueNumber: "42",
     });
 
     expect(result.status).toBe(200);
     const body = await result.json();
-    expect(body.success).toBe(true);
     expect(body.issue.status).toBe("CLOSED");
     expect(body.issue.number).toBe(42);
   });
 
   it("returns 404 when issue not found", async () => {
-    const testContainer = buildTestContainer({
-      issueAppService: {
-        closeIssue: vi.fn().mockRejectedValue(new EntityNotFoundError("Issue", "#999")),
+    const testContainer = createTestContainer({
+      domain: {
+        forProject: () =>
+          Effect.succeed({
+            issues: {
+              getByNumber: () => Effect.fail(new EntityNotFoundError("Issue", "#999")),
+            },
+          }),
       },
     });
 
@@ -47,7 +66,7 @@ describe("closeIssueEndpoint", () => {
       body: { projectSlug: "my-project" },
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       issueNumber: "999",
     });
 
@@ -57,47 +76,64 @@ describe("closeIssueEndpoint", () => {
   });
 
   it("returns 400 when validation fails", async () => {
-    const testContainer = buildTestContainer({
-      issueAppService: {
-        closeIssue: vi.fn(),
-      },
-    });
+    const testContainer = createTestContainer({});
 
-    // Missing projectSlug
     const req = createTestRequest("POST", "/api/issues/42/close", {
       body: {},
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       issueNumber: "42",
     });
 
     expect(result.status).toBe(400);
-    const body = await result.json();
-    expect(body.code).toBe("ZOD_VALIDATION_ERROR");
   });
 
   it("returns abandoned tasks when closing with incomplete tasks", async () => {
-    const mockCloseResult = {
-      issue: { id: "issue-1", number: 42, title: "Test Issue", status: "CLOSED" },
-      abandonedTasks: [
-        { task: { id: "task-1", number: 1, title: "Incomplete Task" } },
-        { task: { id: "task-2", number: 2, title: "Another Task" } },
-      ],
-      externalIssueClosed: true,
+    const incompleteTasks = [
+      { id: "task-1", number: 1, title: "Incomplete Task", status: "IN_PROGRESS" },
+      { id: "task-2", number: 2, title: "Another Task", status: "READY" },
+    ];
+
+    const issuesMock = {
+      getByNumber: () =>
+        Effect.succeed({
+          id: "issue-1",
+          number: 42,
+          title: "Test Issue",
+          status: "OPEN",
+          syncState: { externalId: "gh-123" },
+        }),
+      close: () =>
+        Effect.succeed({ id: "issue-1", number: 42, title: "Test Issue", status: "CLOSED" }),
+      update: () => Effect.succeed(undefined),
+    };
+    const tasksMock = {
+      getIncompleteTasksForIssue: () => Effect.succeed(incompleteTasks),
+      abandon: (id: string) =>
+        Effect.succeed({ ...incompleteTasks.find((t) => t.id === id)!, status: "ABANDONED" }),
     };
 
-    const testContainer = buildTestContainer({
-      issueAppService: {
-        closeIssue: vi.fn().mockResolvedValue(mockCloseResult),
+    const testContainer = createTestContainer({
+      domain: {
+        forProject: () =>
+          Effect.succeed({
+            issues: issuesMock,
+            tasks: tasksMock,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+            transaction: (fn: Function) => fn({ issues: issuesMock, tasks: tasksMock }),
+          }),
+      },
+      projectManagement: {
+        closeIssue: () => Effect.succeed(null),
       },
     });
 
     const req = createTestRequest("POST", "/api/issues/42/close", {
-      body: { projectSlug: "my-project" },
+      body: { projectSlug: "my-project", force: true },
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       issueNumber: "42",
     });
 

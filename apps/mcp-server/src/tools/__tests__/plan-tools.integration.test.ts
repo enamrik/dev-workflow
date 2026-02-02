@@ -5,11 +5,13 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
+import { Effect } from "@dev-workflow/effect";
 import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import {
   createClientForProject,
   createTestIssue,
   createNoOpProjectManagementService,
+  runMcpHandler,
 } from "../../test/helpers.js";
 import {
   PlanningService,
@@ -25,16 +27,13 @@ import {
   handleGetPlan,
   handleMoveIssueToReady,
   handleMoveIssueToBacklog,
-} from "../../tools/plan-tool-def.js";
-import { PlanTool } from "../../tools/plan-tool.js";
-import {
   GeneratePlanSchema,
   GetPlanSchema,
   MoveIssueToReadySchema,
   MoveIssueToBacklogSchema,
   PauseIssueSchema,
   SyncIssueSchema,
-} from "../../tools/schemas.js";
+} from "../../tools/plan-tools.js";
 
 const TEST_PROJECT_ID = "test-project-plan";
 
@@ -68,20 +67,10 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<{
   const taskService = new TaskService(client, projectManagement, null);
   const issueService = new IssueService(client, taskService, projectManagement);
 
-  // Create PlanTool with all dependencies
-  const planTool = new PlanTool(
-    project,
-    issueService,
-    planService,
-    taskService,
-    planningService,
-    typeService
-  );
-
   return {
     ctx: {
-      planTool,
       project,
+      projectSlug: "test",
       issueService,
       planService,
       taskService,
@@ -108,12 +97,13 @@ describe("Plan Tools Integration", () => {
   describe("handleGeneratePlan", () => {
     it("should generate a plan with tasks", async () => {
       // Create an issue first
-      const issue = createTestIssue(client.issues, {
+      const issue = await createTestIssue(client.issues, {
         title: "Test Feature",
         status: "PLANNED",
       });
 
-      const result = await handleGeneratePlan(
+      const result = await runMcpHandler(
+        handleGeneratePlan,
         {
           issueNumber: issue.number,
           summary: "Implementation plan",
@@ -139,17 +129,18 @@ describe("Plan Tools Integration", () => {
       expect(content.tasks).toHaveLength(2);
 
       // Verify database state
-      const plan = client.plans.findByIssueId(issue.id);
+      const plan = await client.plans.findByIssueId(issue.id);
       expect(plan).toBeDefined();
       expect(plan!.summary).toBe("Implementation plan");
 
-      const tasks = client.tasks.findByPlanId(plan!.id);
+      const tasks = await Effect.runPromise(client.tasks.findByPlanId(plan!.id));
       expect(tasks).toHaveLength(2);
       expect(tasks[0].status).toBe("PLANNED");
     });
 
     it("should return error for non-existent issue", async () => {
-      const result = await handleGeneratePlan(
+      const result = await runMcpHandler(
+        handleGeneratePlan,
         {
           issueNumber: 99999,
           summary: "Test",
@@ -165,13 +156,14 @@ describe("Plan Tools Integration", () => {
     });
 
     it("should return error when task is missing type field", async () => {
-      const issue = createTestIssue(client.issues, {
+      const issue = await createTestIssue(client.issues, {
         title: "Test Feature",
         status: "PLANNED",
       });
 
       // Cast to bypass TypeScript check - testing runtime validation
-      const result = await handleGeneratePlan(
+      const result = await runMcpHandler(
+        handleGeneratePlan,
         {
           issueNumber: issue.number,
           summary: "Implementation plan",
@@ -184,17 +176,17 @@ describe("Plan Tools Integration", () => {
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
-      // Zod validation returns "Required" for missing required fields
-      expect(content.error).toContain("tasks.0.type: Required");
+      expect(content.error).toContain("Required");
     });
 
     it("should return error when task has invalid type", async () => {
-      const issue = createTestIssue(client.issues, {
+      const issue = await createTestIssue(client.issues, {
         title: "Test Feature",
         status: "PLANNED",
       });
 
-      const result = await handleGeneratePlan(
+      const result = await runMcpHandler(
+        handleGeneratePlan,
         {
           issueNumber: issue.number,
           summary: "Implementation plan",
@@ -215,12 +207,13 @@ describe("Plan Tools Integration", () => {
     });
 
     it("should accept valid types", async () => {
-      const issue = createTestIssue(client.issues, {
+      const issue = await createTestIssue(client.issues, {
         title: "Test Feature",
         status: "PLANNED",
       });
 
-      const result = await handleGeneratePlan(
+      const result = await runMcpHandler(
+        handleGeneratePlan,
         {
           issueNumber: issue.number,
           summary: "Implementation plan",
@@ -247,7 +240,7 @@ describe("Plan Tools Integration", () => {
       expect(content.tasks).toHaveLength(4);
 
       // Verify task types are stored correctly
-      const tasks = client.tasks.findByPlanId(content.plan.id);
+      const tasks = await Effect.runPromise(client.tasks.findByPlanId(content.plan.id));
       expect(tasks[0].type).toBe("FEATURE");
       expect(tasks[1].type).toBe("BUG");
       expect(tasks[2].type).toBe("ENHANCEMENT");
@@ -258,8 +251,9 @@ describe("Plan Tools Integration", () => {
   describe("handleGetPlan", () => {
     it("should return plan with tasks", async () => {
       // Create issue and plan
-      const issue = createTestIssue(client.issues, { status: "PLANNED" });
-      await handleGeneratePlan(
+      const issue = await createTestIssue(client.issues, { status: "PLANNED" });
+      await runMcpHandler(
+        handleGeneratePlan,
         {
           issueNumber: issue.number,
           summary: "Test plan",
@@ -270,7 +264,7 @@ describe("Plan Tools Integration", () => {
         ctx
       );
 
-      const result = await handleGetPlan({ issueNumber: issue.number }, ctx);
+      const result = await runMcpHandler(handleGetPlan, { issueNumber: issue.number }, ctx);
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -279,9 +273,9 @@ describe("Plan Tools Integration", () => {
     });
 
     it("should return error when no plan exists", async () => {
-      const issue = createTestIssue(client.issues);
+      const issue = await createTestIssue(client.issues);
 
-      const result = await handleGetPlan({ issueNumber: issue.number }, ctx);
+      const result = await runMcpHandler(handleGetPlan, { issueNumber: issue.number }, ctx);
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
@@ -291,8 +285,9 @@ describe("Plan Tools Integration", () => {
   describe("handleMoveIssueToBacklog", () => {
     it("should activate tasks and transition issue", async () => {
       // Create issue and plan
-      const issue = createTestIssue(client.issues, { status: "PLANNED" });
-      await handleGeneratePlan(
+      const issue = await createTestIssue(client.issues, { status: "PLANNED" });
+      await runMcpHandler(
+        handleGeneratePlan,
         {
           issueNumber: issue.number,
           summary: "Test plan",
@@ -306,7 +301,8 @@ describe("Plan Tools Integration", () => {
         ctx
       );
 
-      const result = await handleMoveIssueToBacklog(
+      const result = await runMcpHandler(
+        handleMoveIssueToBacklog,
         {
           issueNumber: issue.number,
         },
@@ -319,18 +315,19 @@ describe("Plan Tools Integration", () => {
       expect(content.issueStatus).toBe("OPEN");
 
       // Verify database state
-      const updatedIssue = client.issues.findByNumber(issue.number);
+      const updatedIssue = await Effect.runPromise(client.issues.findByNumber(issue.number));
       expect(updatedIssue!.status).toBe("OPEN");
 
-      const plan = client.plans.findByIssueId(issue.id);
-      const tasks = client.tasks.findByPlanId(plan!.id);
+      const plan = await client.plans.findByIssueId(issue.id);
+      const tasks = await Effect.runPromise(client.tasks.findByPlanId(plan!.id));
       expect(tasks.every((t) => t.status === "BACKLOG")).toBe(true);
     });
 
     it("should skip GitHub sync when skipGitHubSync is true", async () => {
       // Create issue and plan
-      const issue = createTestIssue(client.issues, { status: "PLANNED" });
-      await handleGeneratePlan(
+      const issue = await createTestIssue(client.issues, { status: "PLANNED" });
+      await runMcpHandler(
+        handleGeneratePlan,
         {
           issueNumber: issue.number,
           summary: "Test plan",
@@ -344,7 +341,8 @@ describe("Plan Tools Integration", () => {
         ctx
       );
 
-      const result = await handleMoveIssueToBacklog(
+      const result = await runMcpHandler(
+        handleMoveIssueToBacklog,
         {
           issueNumber: issue.number,
           skipGitHubSync: true,
@@ -361,11 +359,11 @@ describe("Plan Tools Integration", () => {
       expect(content.message).toContain("GitHub sync skipped");
 
       // Verify database state - tasks should still transition to BACKLOG
-      const updatedIssue = client.issues.findByNumber(issue.number);
+      const updatedIssue = await Effect.runPromise(client.issues.findByNumber(issue.number));
       expect(updatedIssue!.status).toBe("OPEN");
 
-      const plan = client.plans.findByIssueId(issue.id);
-      const tasks = client.tasks.findByPlanId(plan!.id);
+      const plan = await client.plans.findByIssueId(issue.id);
+      const tasks = await Effect.runPromise(client.tasks.findByPlanId(plan!.id));
       expect(tasks.every((t) => t.status === "BACKLOG")).toBe(true);
 
       // Tasks should NOT have sync state
@@ -374,8 +372,9 @@ describe("Plan Tools Integration", () => {
 
     it("should not skip GitHub sync when skipGitHubSync is false (default)", async () => {
       // Create issue and plan
-      const issue = createTestIssue(client.issues, { status: "PLANNED" });
-      await handleGeneratePlan(
+      const issue = await createTestIssue(client.issues, { status: "PLANNED" });
+      await runMcpHandler(
+        handleGeneratePlan,
         {
           issueNumber: issue.number,
           summary: "Test plan",
@@ -387,7 +386,8 @@ describe("Plan Tools Integration", () => {
       );
 
       // Call without skipGitHubSync (defaults to false)
-      const result = await handleMoveIssueToBacklog(
+      const result = await runMcpHandler(
+        handleMoveIssueToBacklog,
         {
           issueNumber: issue.number,
         },
@@ -405,8 +405,9 @@ describe("Plan Tools Integration", () => {
   describe("handleMoveIssueToReady", () => {
     it("should move BACKLOG tasks to READY", async () => {
       // Create issue and plan, then activate to BACKLOG
-      const issue = createTestIssue(client.issues, { status: "PLANNED" });
-      await handleGeneratePlan(
+      const issue = await createTestIssue(client.issues, { status: "PLANNED" });
+      await runMcpHandler(
+        handleGeneratePlan,
         {
           issueNumber: issue.number,
           summary: "Test plan",
@@ -421,10 +422,14 @@ describe("Plan Tools Integration", () => {
       );
 
       // Move to backlog first (PLANNED -> BACKLOG)
-      await handleMoveIssueToBacklog({ issueNumber: issue.number }, ctx);
+      await runMcpHandler(handleMoveIssueToBacklog, { issueNumber: issue.number }, ctx);
 
       // Now move to ready (BACKLOG -> READY)
-      const result = await handleMoveIssueToReady({ issueNumber: issue.number }, ctx);
+      const result = await runMcpHandler(
+        handleMoveIssueToReady,
+        { issueNumber: issue.number },
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -432,15 +437,16 @@ describe("Plan Tools Integration", () => {
       expect(content.message).toContain("is ready");
 
       // Verify database state
-      const plan = client.plans.findByIssueId(issue.id);
-      const tasks = client.tasks.findByPlanId(plan!.id);
+      const plan = await client.plans.findByIssueId(issue.id);
+      const tasks = await Effect.runPromise(client.tasks.findByPlanId(plan!.id));
       expect(tasks.every((t) => t.status === "READY")).toBe(true);
     });
 
     it("should do nothing when no BACKLOG tasks exist", async () => {
       // Create issue and plan, activate to BACKLOG, then move to READY
-      const issue = createTestIssue(client.issues, { status: "PLANNED" });
-      await handleGeneratePlan(
+      const issue = await createTestIssue(client.issues, { status: "PLANNED" });
+      await runMcpHandler(
+        handleGeneratePlan,
         {
           issueNumber: issue.number,
           summary: "Test plan",
@@ -451,11 +457,15 @@ describe("Plan Tools Integration", () => {
         ctx
       );
 
-      await handleMoveIssueToBacklog({ issueNumber: issue.number }, ctx);
-      await handleMoveIssueToReady({ issueNumber: issue.number }, ctx);
+      await runMcpHandler(handleMoveIssueToBacklog, { issueNumber: issue.number }, ctx);
+      await runMcpHandler(handleMoveIssueToReady, { issueNumber: issue.number }, ctx);
 
       // Call again - should be idempotent (no BACKLOG tasks to move)
-      const result = await handleMoveIssueToReady({ issueNumber: issue.number }, ctx);
+      const result = await runMcpHandler(
+        handleMoveIssueToReady,
+        { issueNumber: issue.number },
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
@@ -464,7 +474,7 @@ describe("Plan Tools Integration", () => {
     });
 
     it("should return error for non-existent issue", async () => {
-      const result = await handleMoveIssueToReady({ issueNumber: 99999 }, ctx);
+      const result = await runMcpHandler(handleMoveIssueToReady, { issueNumber: 99999 }, ctx);
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
@@ -473,9 +483,13 @@ describe("Plan Tools Integration", () => {
 
     it("should return error when no plan exists", async () => {
       // Create issue without a plan
-      const issue = createTestIssue(client.issues);
+      const issue = await createTestIssue(client.issues);
 
-      const result = await handleMoveIssueToReady({ issueNumber: issue.number }, ctx);
+      const result = await runMcpHandler(
+        handleMoveIssueToReady,
+        { issueNumber: issue.number },
+        ctx
+      );
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);

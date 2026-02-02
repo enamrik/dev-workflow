@@ -101,7 +101,7 @@ function logProviderStatus(cradle: McpCradle): void {
   const providerDeps = { githubCLI: cradle.githubCLI };
 
   if (cradle.project.syncConfig?.enabled) {
-    const providerId = cradle.projectManagementService.getProviderId();
+    const providerId = cradle.projectManagement.getProviderId();
     const providerInfo = providerRegistry.tryGet(providerId);
     const displayName = providerInfo?.displayName ?? providerId;
     console.error(`External sync enabled: ${displayName} provider (repository auto-detected)`);

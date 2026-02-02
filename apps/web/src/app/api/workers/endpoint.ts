@@ -5,13 +5,13 @@
  */
 
 import { NextResponse } from "next/server";
-import type { WebCradle } from "@/lib/di/container";
+import { Effect } from "@dev-workflow/effect";
+import { getWorkerData } from "@/lib/operations/get-worker-data";
+import { createApiEndpoint } from "@/lib/di/bootstrap";
 
-export async function listWorkersEndpoint(
-  _req: Request,
-  _params: Record<string, string>,
-  { projectAppService }: Pick<WebCradle, "projectAppService">
-): Promise<NextResponse> {
-  const workerData = await projectAppService.getWorkerData();
-  return NextResponse.json(workerData);
-}
+export const endpoint = createApiEndpoint({
+  handler: (_req: Request, _params: Record<string, string>) =>
+    Effect.gen(function* () {
+      return NextResponse.json(yield* getWorkerData());
+    }),
+});

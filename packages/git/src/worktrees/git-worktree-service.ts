@@ -8,6 +8,7 @@
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { Service } from "@dev-workflow/effect";
 
 /**
  * Result from a git command
@@ -93,6 +94,8 @@ export interface GitWorktreeService {
    */
   run(args: string[], cwd?: string): Promise<GitCommandResult>;
 }
+
+export class GitWorktreeServiceTag extends Service<GitWorktreeService>()("gitWorktreeService") {}
 
 /**
  * Generates branch and worktree names for a task

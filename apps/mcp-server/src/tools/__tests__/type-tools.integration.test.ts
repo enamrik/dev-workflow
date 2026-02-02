@@ -6,26 +6,24 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createContainer, asValue, asClass, InjectionMode } from "awilix";
+import { createContainer, asValue, InjectionMode } from "awilix";
 import type { AwilixContainer } from "awilix";
 import { TypeService } from "@dev-workflow/tracking";
 import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
-import { handleListTypes } from "../../tools/type-tool-def.js";
-import { TypeTool } from "../../tools/type-tool.js";
-import { createMcpTool, type McpTool } from "../../di/bootstrap.js";
 import {
+  handleListTypes,
   ListTypesSchema,
   CreateTypeSchema,
   UpdateTypeSchema,
   DeleteTypeSchema,
-} from "../../tools/schemas.js";
+} from "../../tools/type-tools.js";
+import { createMcpTool, type McpTool } from "../../di/bootstrap.js";
 
 /**
  * Test cradle interface - subset of McpCradle for type tools
  */
 interface TypeTestCradle {
   typeService: TypeService;
-  typeTool: TypeTool;
 }
 
 describe("Type Tools Integration", () => {
@@ -40,14 +38,13 @@ describe("Type Tools Integration", () => {
 
     const typeService = new TypeService(testDb.source.types);
 
-    // Create test container with dependencies + tool class
+    // Create test container with dependencies
     testContainer = createContainer<TypeTestCradle>({
       injectionMode: InjectionMode.CLASSIC,
     });
 
     testContainer.register({
       typeService: asValue(typeService),
-      typeTool: asClass(TypeTool).singleton(),
     });
 
     // Bind handlers to test container - tests the full pipeline

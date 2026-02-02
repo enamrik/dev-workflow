@@ -4,21 +4,14 @@
  * Returns project info by slug.
  */
 
-import { z } from "zod";
 import { NextResponse } from "next/server";
-import { parseJsonBody } from "@/lib/di/bootstrap";
-import type { WebCradle } from "@/lib/di/container";
+import { Effect } from "@dev-workflow/effect";
+import { getProject } from "@/lib/operations/get-project";
+import { createApiEndpoint } from "@/lib/di/bootstrap";
 
-const GetProjectSchema = z.object({
-  project: z.string().min(1),
+export const endpoint = createApiEndpoint({
+  handler: (_req: Request, params: Record<string, string>) =>
+    Effect.gen(function* () {
+      return NextResponse.json(yield* getProject({ projectSlug: params["project"] ?? "" }));
+    }),
 });
-
-export async function getProjectEndpoint(
-  _req: Request,
-  params: Record<string, string>,
-  { projectAppService }: Pick<WebCradle, "projectAppService">
-): Promise<NextResponse> {
-  const validated = parseJsonBody(GetProjectSchema, params);
-  const project = await projectAppService.getProject(validated.project);
-  return NextResponse.json(project);
-}

@@ -5,17 +5,19 @@
  */
 
 import { NextResponse } from "next/server";
-import type { WebCradle } from "@/lib/di/container";
+import { Effect } from "@dev-workflow/effect";
+import { getMilestonesWithDetails } from "@/lib/operations/list-all-milestones";
+import { createApiEndpoint } from "@/lib/di/bootstrap";
 
-export async function listMilestonesEndpoint(
-  req: Request,
-  _params: Record<string, string>,
-  { projectAppService }: Pick<WebCradle, "projectAppService">
-): Promise<NextResponse> {
-  const url = new URL(req.url);
-  const projectFilter = url.searchParams.get("project") ?? undefined;
-  const sourceFilter = url.searchParams.get("source") ?? undefined;
-
-  const milestones = await projectAppService.getMilestonesWithDetails(projectFilter, sourceFilter);
-  return NextResponse.json(milestones);
-}
+export const endpoint = createApiEndpoint({
+  handler: (req: Request, _params: Record<string, string>) =>
+    Effect.gen(function* () {
+      const url = new URL(req.url);
+      return NextResponse.json(
+        yield* getMilestonesWithDetails({
+          projectFilter: url.searchParams.get("project") ?? undefined,
+          sourceFilter: url.searchParams.get("source") ?? undefined,
+        })
+      );
+    }),
+});

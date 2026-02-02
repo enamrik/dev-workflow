@@ -21,7 +21,8 @@ import * as path from "node:path";
 import type { Template, TemplateDiscovery } from "../template.js";
 import type { FileSystem } from "../file-system/file-system.js";
 import { TemplateParser, TemplateParseError } from "./template-parser.js";
-import type { TypeService } from "../types/type-service.js";
+import type { TypeService } from "../domain/types/type-service.js";
+import { Service } from "@dev-workflow/effect";
 
 /**
  * Template scope - determines where templates are stored.
@@ -80,7 +81,7 @@ export interface TemplateServiceConfig {
  * - Dependency Inversion Principle (depends on FileSystem interface)
  * - Open/Closed Principle (extensible via strategy pattern for selection)
  */
-export class TemplateService {
+export class TemplateService extends Service<TemplateService>()("templateService") {
   private readonly parser: TemplateParser;
   private cachedTemplates: TemplateDiscovery | null = null;
   private cachedTaskTemplates: TemplateDiscovery | null = null;
@@ -97,6 +98,7 @@ export class TemplateService {
     private readonly config: TemplateServiceConfig,
     private readonly typeService?: TypeService
   ) {
+    super();
     this.parser = new TemplateParser();
   }
 

@@ -2,7 +2,7 @@
  * Domain types for Template entity
  */
 
-import type { IssueType, IssuePriority } from "./issues/issue.js";
+import type { IssueType, IssuePriority } from "./domain/issues/issue.js";
 
 /**
  * Template metadata extracted from markdown frontmatter

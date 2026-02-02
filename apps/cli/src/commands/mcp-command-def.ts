@@ -5,7 +5,8 @@
  */
 
 import { createCliHandler, createCliCommand, defaultMiddleware } from "../di/bootstrap.js";
-import type { MCPCommand } from "./mcp-command.js";
+import { Effect } from "@dev-workflow/effect";
+import { MCPCommandTag } from "../di/cli-tags.js";
 
 /**
  * Options for MCP command (currently no options)
@@ -15,12 +16,14 @@ export type MCPOptions = Record<string, never>;
 /**
  * Handler for mcp command.
  */
-export const handleMCP = createCliHandler(
-  (_options: MCPOptions, { mcpCommand }: { mcpCommand: MCPCommand }) => {
-    mcpCommand.execute();
-  },
-  defaultMiddleware
-);
+export const handleMCP = createCliHandler({
+  handler: (_options: MCPOptions) =>
+    Effect.gen(function* () {
+      const mcpCommand = yield* MCPCommandTag;
+      mcpCommand.execute();
+    }),
+  middleware: defaultMiddleware,
+});
 
 /**
  * Executable runner.

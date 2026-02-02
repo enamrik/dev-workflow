@@ -8,6 +8,7 @@
  */
 
 import type { Worker, WorkerWithHealth, WorkerStatus, QueueStats } from "./worker.js";
+import { Service } from "@dev-workflow/effect";
 
 // Re-export for convenience
 export type { QueueStats };
@@ -192,3 +193,5 @@ export interface WorkerQueueDb {
    */
   setClaudeDone(taskId: string, workerId: string): QueueEntry | null;
 }
+
+export class WorkerQueueDbTag extends Service<WorkerQueueDb>()("workerQueueDb") {}

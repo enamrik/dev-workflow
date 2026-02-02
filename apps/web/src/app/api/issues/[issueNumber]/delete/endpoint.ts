@@ -4,35 +4,23 @@
  * Soft deletes an issue (only allowed for PLANNED issues).
  */
 
-import { z } from "zod";
 import { NextResponse } from "next/server";
-import { parseJsonBody } from "@/lib/di/bootstrap";
-import type { WebCradle } from "@/lib/di/container";
+import { Effect } from "@dev-workflow/effect";
+import { z } from "zod";
+import { deleteIssue } from "@dev-workflow/tracking";
+import { createApiEndpoint } from "@/lib/di/bootstrap";
 
-const DeleteIssueSchema = z.object({
+const BodySchema = z.object({
   projectSlug: z.string().min(1),
-  issueNumber: z.coerce.number().int().positive(),
+  deletedBy: z.string().optional().default("system"),
 });
 
-export async function deleteIssueEndpoint(
-  req: Request,
-  params: Record<string, string>,
-  { issueAppService }: Pick<WebCradle, "issueAppService">
-): Promise<NextResponse> {
-  const body = await req.json();
-  const validated = parseJsonBody(DeleteIssueSchema, {
-    ...body,
-    issueNumber: params["issueNumber"],
-  });
-
-  const issue = await issueAppService.deleteIssue(validated.projectSlug, validated.issueNumber);
-
-  return NextResponse.json({
-    success: true,
-    issue: {
-      id: issue.id,
-      number: issue.number,
-      title: issue.title,
-    },
-  });
-}
+export const endpoint = createApiEndpoint({
+  bodySchema: BodySchema,
+  handler: (_req: Request, params: Record<string, string>, body: z.infer<typeof BodySchema>) =>
+    Effect.gen(function* () {
+      return NextResponse.json(
+        yield* deleteIssue({ ...body, issueNumber: Number(params["issueNumber"]) })
+      );
+    }),
+});

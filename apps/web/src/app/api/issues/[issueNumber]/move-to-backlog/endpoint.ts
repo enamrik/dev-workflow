@@ -4,39 +4,22 @@
  * Activates a PLANNED issue to OPEN and transitions PLANNED tasks to BACKLOG.
  */
 
-import { z } from "zod";
 import { NextResponse } from "next/server";
-import { parseJsonBody } from "@/lib/di/bootstrap";
-import type { WebCradle } from "@/lib/di/container";
+import { Effect } from "@dev-workflow/effect";
+import { z } from "zod";
+import { activateIssue } from "@dev-workflow/tracking";
+import { createApiEndpoint } from "@/lib/di/bootstrap";
 
-const MoveToBacklogSchema = z.object({
+const BodySchema = z.object({
   projectSlug: z.string().min(1),
-  issueNumber: z.coerce.number().int().positive(),
 });
 
-export async function moveToBacklogEndpoint(
-  req: Request,
-  params: Record<string, string>,
-  { issueAppService }: Pick<WebCradle, "issueAppService">
-): Promise<NextResponse> {
-  const body = await req.json();
-  const validated = parseJsonBody(MoveToBacklogSchema, {
-    ...body,
-    issueNumber: params["issueNumber"],
-  });
-
-  const result = await issueAppService.activateIssue(validated.projectSlug, validated.issueNumber);
-
-  return NextResponse.json({
-    success: true,
-    issue: {
-      id: result.issue.id,
-      number: result.issue.number,
-      title: result.issue.title,
-      previousStatus: result.previousStatus,
-      newStatus: result.issue.status,
-    },
-    tasksActivated: result.tasksActivated,
-    tasks: result.tasks,
-  });
-}
+export const endpoint = createApiEndpoint({
+  bodySchema: BodySchema,
+  handler: (_req: Request, params: Record<string, string>, body: z.infer<typeof BodySchema>) =>
+    Effect.gen(function* () {
+      return NextResponse.json(
+        yield* activateIssue({ ...body, issueNumber: Number(params["issueNumber"]) })
+      );
+    }),
+});

@@ -1,46 +1,25 @@
 /**
  * Task Abandon Endpoint
  *
- * Abandons a task with full cleanup.
+ * Abandons a task.
  */
 
-import { z } from "zod";
 import { NextResponse } from "next/server";
-import { parseJsonBody } from "@/lib/di/bootstrap";
-import type { WebCradle } from "@/lib/di/container";
+import { Effect } from "@dev-workflow/effect";
+import { z } from "zod";
+import { abandonTask } from "@dev-workflow/tracking";
+import { createApiEndpoint } from "@/lib/di/bootstrap";
 
-const AbandonTaskSchema = z.object({
-  taskId: z.string().min(1),
+const BodySchema = z.object({
   projectSlug: z.string().min(1),
   reason: z.string().optional(),
+  abandonedBy: z.string().optional(),
 });
 
-export async function abandonTaskEndpoint(
-  req: Request,
-  params: Record<string, string>,
-  { taskAppService }: Pick<WebCradle, "taskAppService">
-): Promise<NextResponse> {
-  const body = await req.json();
-  const validated = parseJsonBody(AbandonTaskSchema, {
-    ...body,
-    taskId: params["taskId"],
-  });
-
-  const result = await taskAppService.abandonTaskWithCleanup(
-    validated.projectSlug,
-    validated.taskId,
-    validated.reason
-  );
-
-  return NextResponse.json({
-    success: true,
-    task: {
-      id: result.task.id,
-      number: result.task.number,
-      title: result.task.title,
-      status: "ABANDONED",
-      previousStatus: result.previousStatus,
-    },
-    cleanup: result.cleanup,
-  });
-}
+export const endpoint = createApiEndpoint({
+  bodySchema: BodySchema,
+  handler: (_req: Request, params: Record<string, string>, body: z.infer<typeof BodySchema>) =>
+    Effect.gen(function* () {
+      return NextResponse.json(yield* abandonTask({ ...body, taskId: params["taskId"]! }));
+    }),
+});

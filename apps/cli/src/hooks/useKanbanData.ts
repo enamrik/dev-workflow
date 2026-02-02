@@ -104,7 +104,7 @@ async function fetchKanbanData(dbPath: string, projectId: string): Promise<Kanba
     // Create BoardQueryService with DbClient and worker queue
     const boardService = new BoardQueryService(client, workerQueueDb);
 
-    const boardData = boardService.getBoardData();
+    const boardData = await boardService.getBoardData();
 
     // Map BoardTask to KanbanTask for backward compatibility
     const columns = boardData.columns.map((col) => ({
@@ -136,7 +136,7 @@ async function fetchKanbanData(dbPath: string, projectId: string): Promise<Kanba
     }));
 
     // Get active issues for the ribbon
-    const issuesWithTasks = boardService.getActiveIssuesWithTasks();
+    const issuesWithTasks = await boardService.getActiveIssuesWithTasks();
     const issues: KanbanIssue[] = issuesWithTasks.map(
       ({ issue, plan, tasks, milestone }): KanbanIssue => ({
         id: issue.id,
@@ -526,7 +526,7 @@ export function useKanbanActions(
         }
 
         // Get all tasks for the issue and move BACKLOG ones to READY
-        const tasks = services.taskService.getIncompleteTasksForIssue(issueId);
+        const tasks = await services.taskService.getIncompleteTasksForIssue(issueId);
         let activated = 0;
         for (const task of tasks) {
           if (task.status === "BACKLOG") {

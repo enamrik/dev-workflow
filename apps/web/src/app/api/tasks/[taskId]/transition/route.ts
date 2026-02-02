@@ -1,7 +1,12 @@
-import { createApiEndpoint, createApiRoute } from "@/lib/di/bootstrap";
-import { transitionTaskEndpoint } from "./endpoint";
+/**
+ * POST /api/tasks/[taskId]/transition
+ *
+ * Transitions a task to a new status with full validation.
+ */
+
+import { createApiRoute } from "@/lib/di/bootstrap";
+import { endpoint } from "./endpoint";
 
 export const dynamic = "force-dynamic";
 
-export const endpoint = createApiEndpoint(transitionTaskEndpoint);
 export const POST = createApiRoute(endpoint);

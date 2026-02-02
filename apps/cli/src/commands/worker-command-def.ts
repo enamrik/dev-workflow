@@ -5,7 +5,9 @@
  */
 
 import { createCliHandler, createCliCommand, defaultMiddleware } from "../di/bootstrap.js";
-import type { WorkerCommand, StartWorkerOptions } from "./worker-command.js";
+import { Effect } from "@dev-workflow/effect";
+import { WorkerCommandTag } from "../di/cli-tags.js";
+import type { StartWorkerOptions } from "./worker-command.js";
 
 /**
  * Options for workers list command (currently no options)
@@ -15,22 +17,26 @@ export type WorkersOptions = Record<string, never>;
 /**
  * Handler for workers (list) command.
  */
-export const handleWorkers = createCliHandler(
-  async (_options: WorkersOptions, { workerCommand }: { workerCommand: WorkerCommand }) => {
-    await workerCommand.list();
-  },
-  defaultMiddleware
-);
+export const handleWorkers = createCliHandler({
+  handler: (_options: WorkersOptions) =>
+    Effect.gen(function* () {
+      const workerCommand = yield* WorkerCommandTag;
+      yield* Effect.promise(() => workerCommand.list());
+    }),
+  middleware: defaultMiddleware,
+});
 
 /**
  * Handler for claude (start worker) command.
  */
-export const handleClaudeWorker = createCliHandler(
-  async (options: StartWorkerOptions, { workerCommand }: { workerCommand: WorkerCommand }) => {
-    await workerCommand.start(options);
-  },
-  defaultMiddleware
-);
+export const handleClaudeWorker = createCliHandler({
+  handler: (options: StartWorkerOptions) =>
+    Effect.gen(function* () {
+      const workerCommand = yield* WorkerCommandTag;
+      yield* Effect.promise(() => workerCommand.start(options));
+    }),
+  middleware: defaultMiddleware,
+});
 
 /**
  * Executable runners.

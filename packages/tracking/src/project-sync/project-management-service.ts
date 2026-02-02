@@ -25,7 +25,8 @@
  * - Callers persist the returned state
  */
 
-import type { TaskStatus } from "../tasks/task.js";
+import { Effect, Service } from "@dev-workflow/effect";
+import type { TaskStatus } from "../domain/tasks/task.js";
 import type { SyncState, CreateIssueParams } from "./project-management-provider.js";
 import type { ProjectManagementClient } from "./project-management-client.js";
 
@@ -48,8 +49,12 @@ import type { ProjectManagementClient } from "./project-management-client.js";
  * }
  * ```
  */
-export class ProjectManagementService {
-  constructor(private readonly client: ProjectManagementClient) {}
+export class ProjectManagementService extends Service<ProjectManagementService>()(
+  "projectManagement"
+) {
+  constructor(private readonly client: ProjectManagementClient) {
+    super();
+  }
 
   // ===========================================================================
   // Configuration Accessors (delegate to client)
@@ -328,26 +333,29 @@ export class ProjectManagementService {
    * @param comment - Optional comment to add when closing
    * @returns Updated sync state, or null if nothing to close
    */
-  async closeIssue(syncState: SyncState | undefined, comment?: string): Promise<SyncState | null> {
-    if (!syncState?.externalId) {
-      return null;
-    }
+  closeIssue(syncState: SyncState | undefined, comment?: string): Effect<SyncState | null> {
+    const client = this.client;
+    return Effect.promise(async () => {
+      if (!syncState?.externalId) {
+        return null;
+      }
 
-    try {
-      await this.client.closeIssue(syncState.externalId, comment);
-      return {
-        ...syncState,
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: null,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn(`Failed to close external issue: ${errorMessage}`);
-      return {
-        ...syncState,
-        lastSyncError: errorMessage,
-      };
-    }
+      try {
+        await client.closeIssue(syncState.externalId, comment);
+        return {
+          ...syncState,
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn(`Failed to close external issue: ${errorMessage}`);
+        return {
+          ...syncState,
+          lastSyncError: errorMessage,
+        };
+      }
+    });
   }
 
   /**

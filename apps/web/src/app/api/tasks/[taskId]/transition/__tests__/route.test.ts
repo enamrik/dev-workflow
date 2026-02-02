@@ -2,26 +2,34 @@
  * Tests for Task Transition Endpoint
  */
 
-import { describe, it, expect, vi } from "vitest";
-import { EntityNotFoundError, BusinessRuleError } from "@dev-workflow/tracking";
-import { buildTestContainer, createTestRequest, runTestApiEndpoint } from "@/lib/di/test-utils";
-import { endpoint } from "../route";
+import { describe, it, expect } from "vitest";
+import { Effect } from "@dev-workflow/effect";
+import { createTestContainer, createTestRequest, runTestEndpoint } from "@/lib/di/test-utils";
+import { EntityNotFoundError, Task } from "@dev-workflow/tracking";
+import { endpoint } from "../endpoint";
 
 describe("transitionTaskEndpoint", () => {
   it("transitions task successfully", async () => {
-    const mockResult = {
-      task: {
-        id: "task-1",
-        number: 1,
-        title: "Task One",
-        status: "READY",
-      },
-      previousStatus: "BACKLOG",
-    };
-
-    const testContainer = buildTestContainer({
-      taskAppService: {
-        transitionTask: vi.fn().mockResolvedValue(mockResult),
+    const testContainer = createTestContainer({
+      domain: {
+        forProject: () =>
+          Effect.succeed({
+            tasks: {
+              getOrThrow: () =>
+                Effect.succeed(
+                  Task.from({
+                    id: "task-1",
+                    number: 1,
+                    title: "Task One",
+                    status: "BACKLOG",
+                  } as Task)
+                ),
+              moveToReady: () =>
+                Effect.succeed(
+                  Task.from({ id: "task-1", number: 1, title: "Task One", status: "READY" } as Task)
+                ),
+            },
+          }),
       },
     });
 
@@ -29,24 +37,25 @@ describe("transitionTaskEndpoint", () => {
       body: { targetStatus: "READY", projectSlug: "my-project" },
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       taskId: "task-1",
     });
 
     expect(result.status).toBe(200);
     const body = await result.json();
-    expect(body.success).toBe(true);
     expect(body.task.status).toBe("READY");
-    expect(body.task.previousStatus).toBe("BACKLOG");
-
-    const service = testContainer.resolve("taskAppService") as any;
-    expect(service.transitionTask).toHaveBeenCalledWith("my-project", "task-1", "READY");
+    expect(body.previousStatus).toBe("BACKLOG");
   });
 
   it("returns 404 when task not found", async () => {
-    const testContainer = buildTestContainer({
-      taskAppService: {
-        transitionTask: vi.fn().mockRejectedValue(new EntityNotFoundError("Task", "not-found")),
+    const testContainer = createTestContainer({
+      domain: {
+        forProject: () =>
+          Effect.succeed({
+            tasks: {
+              getOrThrow: () => Effect.fail(new EntityNotFoundError("Task", "not-found")),
+            },
+          }),
       },
     });
 
@@ -54,7 +63,7 @@ describe("transitionTaskEndpoint", () => {
       body: { targetStatus: "READY", projectSlug: "my-project" },
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       taskId: "not-found",
     });
 
@@ -62,11 +71,15 @@ describe("transitionTaskEndpoint", () => {
   });
 
   it("returns 422 for invalid transition", async () => {
-    const testContainer = buildTestContainer({
-      taskAppService: {
-        transitionTask: vi
-          .fn()
-          .mockRejectedValue(new BusinessRuleError("Invalid transition from COMPLETED to READY")),
+    const testContainer = createTestContainer({
+      domain: {
+        forProject: () =>
+          Effect.succeed({
+            tasks: {
+              getOrThrow: () =>
+                Effect.succeed(Task.from({ id: "task-1", status: "COMPLETED" } as Task)),
+            },
+          }),
       },
     });
 
@@ -74,7 +87,7 @@ describe("transitionTaskEndpoint", () => {
       body: { targetStatus: "READY", projectSlug: "my-project" },
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       taskId: "task-1",
     });
 
@@ -82,17 +95,13 @@ describe("transitionTaskEndpoint", () => {
   });
 
   it("returns 400 when projectSlug is missing", async () => {
-    const testContainer = buildTestContainer({
-      taskAppService: {
-        transitionTask: vi.fn(),
-      },
-    });
+    const testContainer = createTestContainer({});
 
     const req = createTestRequest("POST", "/api/tasks/task-1/transition", {
       body: { targetStatus: "READY" },
     });
 
-    const result = await runTestApiEndpoint(req, endpoint, testContainer, {
+    const result = await runTestEndpoint(testContainer, endpoint, req, {
       taskId: "task-1",
     });
 

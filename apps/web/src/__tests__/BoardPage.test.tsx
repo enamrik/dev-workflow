@@ -1,29 +1,11 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createTestWrapper } from "./test-utils";
+import { ProjectProvider } from "@/contexts/ProjectContext";
+import type { AppRouter } from "@/contexts/NavigationContext";
 import BoardPage from "../app/page";
 
-// Mock next/navigation
 const mockPush = vi.fn();
-let mockSearchParams = new URLSearchParams();
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({
-    push: mockPush,
-  }),
-  usePathname: () => "/",
-  useSearchParams: () => mockSearchParams,
-}));
-
-// Mock ProjectContext
-vi.mock("../contexts", () => ({
-  useProjectContext: () => ({
-    projectId: "",
-    isLoading: false,
-    projects: [],
-    setProjectId: vi.fn(),
-  }),
-}));
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -46,92 +28,33 @@ Object.defineProperty(window, "localStorage", { value: localStorageMock });
 
 const URL_STATE_KEY = "dev-workflow-url-state";
 
-// Mock hooks - must be after localStorageMock declaration
-vi.mock("../hooks", () => ({
-  useTasks: () => ({
-    data: {
-      issuesWithTasks: [],
-      completedTasks: [],
-    },
-    isLoading: false,
-    error: null,
-    refetch: vi.fn(),
-  }),
-  useWorkerData: () => ({
-    data: {
-      workers: [],
-      queue: [],
-      stats: { total: 0, unclaimed: 0, claimed: 0, stale: 0 },
-    },
-    isLoading: false,
-    error: null,
-    refetch: vi.fn(),
-  }),
-  useUrlState: () => {
-    // Re-use the mock localStorage state for useUrlState
-    const stored = localStorageMock.getItem(URL_STATE_KEY);
-    const state = stored ? JSON.parse(stored) : {};
-    return {
-      state,
-      setState: (newState: Record<string, unknown>) => {
-        if (Object.keys(newState).length > 0) {
-          localStorageMock.setItem(URL_STATE_KEY, JSON.stringify(newState));
-        } else {
-          localStorageMock.removeItem(URL_STATE_KEY);
-        }
-        // Build _state param
-        const encoded =
-          Object.keys(newState).length > 0
-            ? btoa(JSON.stringify(newState))
-                .replace(/\+/g, "-")
-                .replace(/\//g, "_")
-                .replace(/=+$/, "")
-            : null;
-        const params = new URLSearchParams();
-        if (encoded) {
-          params.set("_state", encoded);
-        }
-        mockPush(`/?${params.toString()}`);
+function createWrapper(options?: { searchParams?: URLSearchParams }) {
+  const Outer = createTestWrapper({
+    router: { push: mockPush } as Partial<AppRouter>,
+    pathname: "/",
+    searchParams: options?.searchParams,
+    queryData: [
+      { queryKey: ["projects"], data: { projects: [] } },
+      {
+        queryKey: ["tasks", { project: undefined }],
+        data: { issuesWithTasks: [], completedTasks: [] },
       },
-      setProperty: (key: string, value: unknown) => {
-        const stored = localStorageMock.getItem(URL_STATE_KEY);
-        const currentState = stored ? JSON.parse(stored) : {};
-        const newState = { ...currentState, [key]: value };
-        if (value === undefined) {
-          delete newState[key];
-        }
-        if (Object.keys(newState).length > 0) {
-          localStorageMock.setItem(URL_STATE_KEY, JSON.stringify(newState));
-        } else {
-          localStorageMock.removeItem(URL_STATE_KEY);
-        }
-        // Build _state param
-        const encoded =
-          Object.keys(newState).length > 0
-            ? btoa(JSON.stringify(newState))
-                .replace(/\+/g, "-")
-                .replace(/\//g, "_")
-                .replace(/=+$/, "")
-            : null;
-        const params = new URLSearchParams();
-        if (encoded) {
-          params.set("_state", encoded);
-        }
-        mockPush(`/?${params.toString()}`);
+      {
+        queryKey: ["workerData"],
+        data: {
+          workers: [],
+          queue: [],
+          stats: { total: 0, unclaimed: 0, claimed: 0, stale: 0 },
+        },
       },
-    };
-  },
-}));
-
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-    },
+    ],
   });
-
   return function Wrapper({ children }: { children: React.ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+    return (
+      <Outer>
+        <ProjectProvider>{children}</ProjectProvider>
+      </Outer>
+    );
   };
 }
 
@@ -154,7 +77,6 @@ describe("BoardPage showBacklog persistence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
-    mockSearchParams = new URLSearchParams();
   });
 
   afterEach(() => {
@@ -162,8 +84,6 @@ describe("BoardPage showBacklog persistence", () => {
   });
 
   it("renders the board page with settings dropdown", async () => {
-    localStorageMock.getItem.mockReturnValue(null);
-
     const Wrapper = createWrapper();
     render(
       <Wrapper>
@@ -179,8 +99,6 @@ describe("BoardPage showBacklog persistence", () => {
   });
 
   it("persists showBacklog to localStorage when toggled on via dropdown", async () => {
-    localStorageMock.getItem.mockReturnValue(null);
-
     const Wrapper = createWrapper();
     render(
       <Wrapper>
@@ -201,14 +119,22 @@ describe("BoardPage showBacklog persistence", () => {
   });
 
   it("removes from localStorage when showBacklog is toggled off", async () => {
-    localStorageMock.getItem.mockImplementation((key: string) => {
-      if (key === URL_STATE_KEY) {
-        return JSON.stringify({ showBacklog: true });
-      }
-      return null;
-    });
+    // Pre-set localStorage with showBacklog: true
+    localStorageMock.setItem(URL_STATE_KEY, JSON.stringify({ showBacklog: true }));
+    // Clear the mock call history so we only see the new calls
+    localStorageMock.setItem.mockClear();
+    localStorageMock.removeItem.mockClear();
 
-    const Wrapper = createWrapper();
+    // Provide _state in searchParams so useUrlState reads it from URL
+    const stateObj = { showBacklog: true };
+    const encoded = btoa(JSON.stringify(stateObj))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    const searchParams = new URLSearchParams();
+    searchParams.set("_state", encoded);
+
+    const Wrapper = createWrapper({ searchParams });
     render(
       <Wrapper>
         <BoardPage />
@@ -225,8 +151,6 @@ describe("BoardPage showBacklog persistence", () => {
   });
 
   it("updates URL with _state param when showBacklog changes", async () => {
-    localStorageMock.getItem.mockReturnValue(null);
-
     const Wrapper = createWrapper();
     render(
       <Wrapper>
@@ -248,14 +172,20 @@ describe("BoardPage showBacklog persistence", () => {
   });
 
   it("removes _state param from URL when toggled off", async () => {
-    localStorageMock.getItem.mockImplementation((key: string) => {
-      if (key === URL_STATE_KEY) {
-        return JSON.stringify({ showBacklog: true });
-      }
-      return null;
-    });
+    // Pre-set localStorage with showBacklog: true
+    localStorageMock.setItem(URL_STATE_KEY, JSON.stringify({ showBacklog: true }));
+    localStorageMock.setItem.mockClear();
 
-    const Wrapper = createWrapper();
+    // Provide _state in searchParams so useUrlState reads it from URL
+    const stateObj = { showBacklog: true };
+    const encoded = btoa(JSON.stringify(stateObj))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    const searchParams = new URLSearchParams();
+    searchParams.set("_state", encoded);
+
+    const Wrapper = createWrapper({ searchParams });
     render(
       <Wrapper>
         <BoardPage />
@@ -268,12 +198,14 @@ describe("BoardPage showBacklog persistence", () => {
 
     await clickSettingsToggle(/show backlog/i);
 
-    expect(mockPush).toHaveBeenCalledWith("/?");
+    // When state is empty, push is called without _state
+    expect(mockPush).toHaveBeenCalled();
+    const calledWith = mockPush.mock.calls[0]?.[0] as string | undefined;
+    expect(calledWith).toBeDefined();
+    expect(calledWith).not.toContain("_state=");
   });
 
   it("can toggle showWorkQueue via dropdown", async () => {
-    localStorageMock.getItem.mockReturnValue(null);
-
     const Wrapper = createWrapper();
     render(
       <Wrapper>

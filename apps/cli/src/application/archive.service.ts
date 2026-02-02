@@ -1,9 +1,5 @@
-import {
-  DbSourceProvider,
-  resolveConfig,
-  isIssueClosed,
-  type Project,
-} from "@dev-workflow/tracking";
+import { DbSourceProvider, resolveConfig, type Project } from "@dev-workflow/tracking";
+import { Effect } from "@dev-workflow/effect";
 import { TrackDirectoryResolver } from "@dev-workflow/git/track-directory-resolver.js";
 import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
 import { NodeGitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
@@ -67,13 +63,15 @@ export class ArchiveService {
     const client = source.createClient(projectId);
 
     // Check for IN_PROGRESS tasks
-    const inProgressTasks = client.tasks.findMany({ status: "IN_PROGRESS" });
+    const inProgressTasks = await Effect.runPromise(
+      client.tasks.findMany({ status: "IN_PROGRESS" })
+    );
     if (inProgressTasks.length > 0) {
       return true;
     }
 
     // Also check for PR_REVIEW tasks (work in progress awaiting merge)
-    const prReviewTasks = client.tasks.findMany({ status: "PR_REVIEW" });
+    const prReviewTasks = await Effect.runPromise(client.tasks.findMany({ status: "PR_REVIEW" }));
     return prReviewTasks.length > 0;
   }
 
@@ -122,10 +120,10 @@ export class ArchiveService {
     const client = source.createClient(projectId);
 
     // Get all non-deleted issues
-    const issues = client.issues.findMany({ includeDeleted: false });
+    const issues = await Effect.runPromise(client.issues.findMany({ includeDeleted: false }));
 
     // Check if any are not CLOSED (open issues exist)
-    return issues.some((issue) => !isIssueClosed(issue));
+    return issues.some((issue) => !issue.isClosed);
   }
 
   /**

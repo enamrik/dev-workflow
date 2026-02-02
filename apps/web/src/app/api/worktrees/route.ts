@@ -1,10 +1,8 @@
-import { createApiEndpoint, createApiRoute } from "@/lib/di/bootstrap";
-import { listWorktreesEndpoint, pruneWorktreesEndpoint } from "./endpoint";
+import { createApiRoute } from "@/lib/di/bootstrap";
+import { listEndpoint, pruneEndpoint } from "./endpoint";
 
+export { listEndpoint, pruneEndpoint };
 export const dynamic = "force-dynamic";
-
-export const listEndpoint = createApiEndpoint(listWorktreesEndpoint);
-export const pruneEndpoint = createApiEndpoint(pruneWorktreesEndpoint);
 
 export const GET = createApiRoute(listEndpoint);
 export const POST = createApiRoute(pruneEndpoint);

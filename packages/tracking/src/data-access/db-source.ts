@@ -9,11 +9,12 @@
  * This separates connection management from project scoping.
  */
 
-import type { ProjectRepository } from "../projects/project.js";
-import type { TypeRepository } from "../types/type-definition.js";
-import type { GlobalSettingsRepository } from "../global-settings-repository.js";
+import type { ProjectRepository } from "../domain/projects/project.js";
+import type { TypeRepository } from "../domain/types/type-definition.js";
+import type { GlobalSettingsRepository } from "../domain/global-settings-repository.js";
 import type { DbClient } from "./db-client.js";
 import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
+import { Service } from "@dev-workflow/effect";
 
 /**
  * Database source - owns the connection and global repositories
@@ -51,3 +52,10 @@ export interface DbSource {
    */
   close(): void;
 }
+
+/**
+ * Standalone Service tag for DbSource interface
+ *
+ * Used in Effect-based operations to yield the DbSource dependency.
+ */
+export class DbSourceTag extends Service<DbSource>()("dbSource") {}

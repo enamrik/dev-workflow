@@ -20,7 +20,7 @@
  * ```
  */
 
-import type { TaskStatus } from "../tasks/task.js";
+import type { TaskStatus } from "../domain/tasks/task.js";
 import type {
   CreateIssueParams,
   ExternalIssue,

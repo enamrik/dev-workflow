@@ -97,9 +97,8 @@ describe("E2E: Issue Workflow", () => {
     // 4. Verify issue moved to OPEN
     const issueAfterPlan = await executor.getIssue({ issue_number: 1 });
     expect(issueAfterPlan.success).toBe(true);
-    // getIssue returns issue properties directly, not wrapped in { issue: {...} }
-    const issueData = issueAfterPlan.data as { status: string };
-    expect(issueData.status).toBe("OPEN");
+    const issueData = issueAfterPlan.data as { issue: { status: string } };
+    expect(issueData.issue.status).toBe("OPEN");
 
     // 5. Move to ready (activates the issue)
     const readyResult = await executor.moveIssueToReady({ issue_number: 1 });
@@ -184,11 +183,12 @@ describe("E2E: Issue CRUD", () => {
     // Verify update
     const getResult = await executor.getIssue({ issue_number: 1 });
     expect(getResult.success).toBe(true);
-    // getIssue returns issue properties directly, not wrapped in { issue: {...} }
-    const issue = getResult.data as { title: string; description: string; priority: string };
-    expect(issue.title).toBe("Updated title");
-    expect(issue.description).toBe("Updated description");
-    expect(issue.priority).toBe("HIGH");
+    const issueResult = getResult.data as {
+      issue: { title: string; description: string; priority: string };
+    };
+    expect(issueResult.issue.title).toBe("Updated title");
+    expect(issueResult.issue.description).toBe("Updated description");
+    expect(issueResult.issue.priority).toBe("HIGH");
 
     // Delete (soft delete)
     const deleteResult = await executor.deleteIssue({ issue_number: 1 });

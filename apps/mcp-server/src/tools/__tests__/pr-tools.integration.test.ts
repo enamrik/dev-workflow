@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { Effect } from "@dev-workflow/effect";
 import { eq } from "drizzle-orm";
 import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import {
@@ -13,6 +14,7 @@ import {
   createTestPlan,
   createTestTask,
   createNoOpProjectManagementService,
+  runMcpHandler,
 } from "../../test/helpers.js";
 import {
   MockGitHubCLI,
@@ -30,14 +32,11 @@ import {
   handleCreatePR,
   handleSubmitForReview,
   handleCompleteTask,
-} from "../../tools/pr-tool-def.js";
-import { PRTool } from "../../tools/pr-tool.js";
-import {
   GetTaskPRStatusSchema,
   CreatePRSchema,
   SubmitForReviewSchema,
   CompleteTaskSchema,
-} from "../../tools/schemas.js";
+} from "../../tools/pr-tools.js";
 
 const TEST_PROJECT_ID = "test-project-pr";
 
@@ -84,19 +83,8 @@ async function createPRToolContext(
   const taskService = new TaskService(client, projectManagement, gitWorktreeService);
   const issueService = new IssueService(client, taskService, projectManagement);
 
-  // Create PRTool with all dependencies
-  const prTool = new PRTool(
-    githubCLI,
-    issueService,
-    planService,
-    taskService,
-    gitWorktreeService,
-    client
-  );
-
   return {
     ctx: {
-      prTool,
       project: { ...createTestProject(), id: project.id },
       githubCLI,
       issueService,
@@ -127,20 +115,22 @@ describe("create_pr", () => {
         mockGitWorktreeService
       );
 
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Implement feature",
         status: "IN_PROGRESS",
       });
 
-      client.tasks.update(task.id, {
-        branchName: "issue-1/task-1-implement-feature",
-        worktreePath: "/tmp/worktree/issue-1-task-1",
-      });
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          branchName: "issue-1/task-1-implement-feature",
+          worktreePath: "/tmp/worktree/issue-1-task-1",
+        })
+      );
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleCreatePR, { taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -153,7 +143,7 @@ describe("create_pr", () => {
       expect(createPRCalls).toHaveLength(1);
 
       // Verify task still has IN_PROGRESS status in DB
-      const updatedTask = client.tasks.findById(task.id);
+      const updatedTask = await Effect.runPromise(client.tasks.findById(task.id));
       expect(updatedTask?.status).toBe("IN_PROGRESS");
       expect(updatedTask?.prNumber).toBeDefined();
     });
@@ -168,20 +158,22 @@ describe("create_pr", () => {
         mockGitWorktreeService
       );
 
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Update feature",
         status: "IN_PROGRESS",
       });
 
-      client.tasks.update(task.id, {
-        branchName: "issue-1/task-1-update-feature",
-        worktreePath: "/tmp/worktree/issue-1-task-1",
-      });
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          branchName: "issue-1/task-1-update-feature",
+          worktreePath: "/tmp/worktree/issue-1-task-1",
+        })
+      );
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleCreatePR, { taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -200,29 +192,33 @@ describe("create_pr", () => {
         mockGitWorktreeService
       );
 
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Implement feature",
         status: "IN_PROGRESS",
       });
 
-      client.tasks.update(task.id, {
-        branchName: "issue-1/task-1-implement-feature",
-        worktreePath: "/tmp/worktree/issue-1-task-1",
-      });
-      client.tasks.updateSyncState(task.id, {
-        externalId: "42",
-        externalUrl: "https://github.com/test/repo/issues/42",
-        externalNodeId: "I_test_42",
-        syncStatus: "SYNCED",
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: null,
-        remoteProjectId: null,
-      });
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          branchName: "issue-1/task-1-implement-feature",
+          worktreePath: "/tmp/worktree/issue-1-task-1",
+        })
+      );
+      await Effect.runPromise(
+        client.tasks.updateSyncState(task.id, {
+          externalId: "42",
+          externalUrl: "https://github.com/test/repo/issues/42",
+          externalNodeId: "I_test_42",
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          remoteProjectId: null,
+        })
+      );
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleCreatePR, { taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -241,30 +237,34 @@ describe("create_pr", () => {
         mockGitWorktreeService
       );
 
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         description: "Task description",
         status: "IN_PROGRESS",
       });
 
-      client.tasks.update(task.id, {
-        branchName: "issue-1/task-1-test-task",
-        worktreePath: "/tmp/worktree/issue-1-task-1",
-      });
-      client.tasks.updateSyncState(task.id, {
-        externalId: "99",
-        externalUrl: "https://github.com/test/repo/issues/99",
-        externalNodeId: "I_test_99",
-        syncStatus: "SYNCED",
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: null,
-        remoteProjectId: null,
-      });
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          branchName: "issue-1/task-1-test-task",
+          worktreePath: "/tmp/worktree/issue-1-task-1",
+        })
+      );
+      await Effect.runPromise(
+        client.tasks.updateSyncState(task.id, {
+          externalId: "99",
+          externalUrl: "https://github.com/test/repo/issues/99",
+          externalNodeId: "I_test_99",
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          remoteProjectId: null,
+        })
+      );
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleCreatePR, { taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -284,44 +284,50 @@ describe("create_pr", () => {
         mockGitWorktreeService
       );
 
-      const issue = createTestIssue(client.issues, { title: "Regular Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Regular Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Regular task",
         description: "Task description",
         status: "IN_PROGRESS",
       });
 
-      client.tasks.update(task.id, {
-        branchName: "issue-1/task-1-regular-task",
-        worktreePath: "/tmp/worktree/issue-1-task-1",
-      });
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          branchName: "issue-1/task-1-regular-task",
+          worktreePath: "/tmp/worktree/issue-1-task-1",
+        })
+      );
 
       // Set GitHub sync for BOTH task and parent issue (but parent is NOT imported)
-      client.tasks.updateSyncState(task.id, {
-        externalId: "101",
-        externalUrl: "https://github.com/test/repo/issues/101",
-        externalNodeId: "I_test_101",
-        syncStatus: "SYNCED",
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: null,
-        remoteProjectId: null,
-      });
-
-      client.issues.update(issue.id, {
-        syncState: {
-          externalId: "100",
-          externalUrl: "https://github.com/test/repo/issues/100",
-          externalNodeId: "I_test_100",
+      await Effect.runPromise(
+        client.tasks.updateSyncState(task.id, {
+          externalId: "101",
+          externalUrl: "https://github.com/test/repo/issues/101",
+          externalNodeId: "I_test_101",
           syncStatus: "SYNCED",
           lastSyncedAt: new Date().toISOString(),
           lastSyncError: null,
           remoteProjectId: null,
-        },
-      });
+        })
+      );
+
+      await Effect.runPromise(
+        client.issues.update(issue.id, {
+          syncState: {
+            externalId: "100",
+            externalUrl: "https://github.com/test/repo/issues/100",
+            externalNodeId: "I_test_100",
+            syncStatus: "SYNCED",
+            lastSyncedAt: new Date().toISOString(),
+            lastSyncError: null,
+            remoteProjectId: null,
+          },
+        })
+      );
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleCreatePR, { taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -342,47 +348,53 @@ describe("create_pr", () => {
         mockGitWorktreeService
       );
 
-      const issue = createTestIssue(client.issues, {
+      const issue = await createTestIssue(client.issues, {
         title: "Imported Issue",
       });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Sub-issue task",
         description: "Task description",
         status: "IN_PROGRESS",
       });
 
-      client.tasks.update(task.id, {
-        branchName: "issue-1/task-1-sub-issue-task",
-        worktreePath: "/tmp/worktree/issue-1-task-1",
-      });
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          branchName: "issue-1/task-1-sub-issue-task",
+          worktreePath: "/tmp/worktree/issue-1-task-1",
+        })
+      );
 
       // Set GitHub sync for BOTH task and parent issue, AND mark parent as imported
-      client.tasks.updateSyncState(task.id, {
-        externalId: "201",
-        externalUrl: "https://github.com/test/repo/issues/201",
-        externalNodeId: "I_test_201",
-        syncStatus: "SYNCED",
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: null,
-        remoteProjectId: null,
-      });
-
-      client.issues.update(issue.id, {
-        sourceExternalId: "200", // Mark as imported
-        syncState: {
-          externalId: "200",
-          externalUrl: "https://github.com/test/repo/issues/200",
-          externalNodeId: "I_test_200",
+      await Effect.runPromise(
+        client.tasks.updateSyncState(task.id, {
+          externalId: "201",
+          externalUrl: "https://github.com/test/repo/issues/201",
+          externalNodeId: "I_test_201",
           syncStatus: "SYNCED",
           lastSyncedAt: new Date().toISOString(),
           lastSyncError: null,
           remoteProjectId: null,
-        },
-      });
+        })
+      );
+
+      await Effect.runPromise(
+        client.issues.update(issue.id, {
+          sourceExternalId: "200", // Mark as imported
+          syncState: {
+            externalId: "200",
+            externalUrl: "https://github.com/test/repo/issues/200",
+            externalNodeId: "I_test_200",
+            syncStatus: "SYNCED",
+            lastSyncedAt: new Date().toISOString(),
+            lastSyncError: null,
+            remoteProjectId: null,
+          },
+        })
+      );
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleCreatePR, { taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -398,20 +410,22 @@ describe("create_pr", () => {
     it("should fail if task is not IN_PROGRESS", async () => {
       // Arrange
       const { ctx, client } = await createPRToolContext(testDb);
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "READY", // Not IN_PROGRESS
       });
 
-      client.tasks.update(task.id, {
-        branchName: "issue-1/task-1-test",
-        worktreePath: "/tmp/worktree",
-      });
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          branchName: "issue-1/task-1-test",
+          worktreePath: "/tmp/worktree",
+        })
+      );
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleCreatePR, { taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBe(true);
@@ -428,20 +442,22 @@ describe("create_pr", () => {
         mockGitWorktreeService
       );
 
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "READY", // Not IN_PROGRESS
       });
 
-      client.tasks.update(task.id, {
-        branchName: "issue-1/task-1-test",
-        worktreePath: "/tmp/worktree",
-      });
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          branchName: "issue-1/task-1-test",
+          worktreePath: "/tmp/worktree",
+        })
+      );
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id, force: true }, ctx);
+      const result = await runMcpHandler(handleCreatePR, { taskId: task.id, force: true }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -453,16 +469,16 @@ describe("create_pr", () => {
     it("should fail if task has no branch", async () => {
       // Arrange
       const { ctx, client } = await createPRToolContext(testDb);
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
       // No branch set
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleCreatePR, { taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBe(true);
@@ -479,21 +495,25 @@ describe("create_pr", () => {
         mockGitWorktreeService
       );
 
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
 
-      client.tasks.update(task.id, {
-        branchName: "issue-1/task-1-test",
-        worktreePath: "/tmp/worktree",
-      });
-      client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/123", 123, "OPEN");
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          branchName: "issue-1/task-1-test",
+          worktreePath: "/tmp/worktree",
+        })
+      );
+      await Effect.runPromise(
+        client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/123", 123, "OPEN")
+      );
 
       // Act
-      const result = await handleCreatePR({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleCreatePR, { taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBe(true);
@@ -520,22 +540,26 @@ describe("submit_for_review", () => {
         mockGitWorktreeService
       );
 
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
 
       // Set up task with branch and existing PR
-      client.tasks.update(task.id, {
-        branchName: "issue-1/task-1-test",
-        worktreePath: "/tmp/worktree",
-      });
-      client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          branchName: "issue-1/task-1-test",
+          worktreePath: "/tmp/worktree",
+        })
+      );
+      await Effect.runPromise(
+        client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN")
+      );
 
       // Act
-      const result = await handleSubmitForReview({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleSubmitForReview, { taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -544,7 +568,7 @@ describe("submit_for_review", () => {
       expect(content.task.status).toBe("PR_REVIEW");
 
       // Verify task status changed in DB
-      const updatedTask = client.tasks.findById(task.id);
+      const updatedTask = await Effect.runPromise(client.tasks.findById(task.id));
       expect(updatedTask?.status).toBe("PR_REVIEW");
     });
 
@@ -558,21 +582,25 @@ describe("submit_for_review", () => {
         mockGitWorktreeService
       );
 
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
 
-      client.tasks.update(task.id, {
-        branchName: "issue-1/task-1-test",
-        worktreePath: "/tmp/worktree",
-      });
-      client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          branchName: "issue-1/task-1-test",
+          worktreePath: "/tmp/worktree",
+        })
+      );
+      await Effect.runPromise(
+        client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN")
+      );
 
       // Act
-      await handleSubmitForReview({ taskId: task.id }, ctx);
+      await runMcpHandler(handleSubmitForReview, { taskId: task.id }, ctx);
 
       // Assert - NO PR creation should happen
       const createPRCalls = mockGitHubCLI.getCallsTo("createPR");
@@ -584,15 +612,15 @@ describe("submit_for_review", () => {
     it("should fail if task is not IN_PROGRESS", async () => {
       // Arrange
       const { ctx, client } = await createPRToolContext(testDb);
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "READY", // Not IN_PROGRESS
       });
 
       // Act
-      const result = await handleSubmitForReview({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleSubmitForReview, { taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBe(true);
@@ -602,16 +630,16 @@ describe("submit_for_review", () => {
     it("should fail if task has no PR", async () => {
       // Arrange
       const { ctx, client } = await createPRToolContext(testDb);
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
       // No PR set
 
       // Act
-      const result = await handleSubmitForReview({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleSubmitForReview, { taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBe(true);
@@ -624,16 +652,20 @@ describe("submit_for_review", () => {
       const mockGitHubCLI = new MockGitHubCLI();
       const { ctx, client } = await createPRToolContext(testDb, mockGitHubCLI);
 
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
       // No PR set
 
       // Act
-      const result = await handleSubmitForReview({ taskId: task.id, force: true }, ctx);
+      const result = await runMcpHandler(
+        handleSubmitForReview,
+        { taskId: task.id, force: true },
+        ctx
+      );
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -648,17 +680,23 @@ describe("submit_for_review", () => {
       const mockGitHubCLI = new MockGitHubCLI();
       const { ctx, client } = await createPRToolContext(testDb, mockGitHubCLI);
 
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "PR_REVIEW", // Already in PR_REVIEW
       });
 
-      client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+      await Effect.runPromise(
+        client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN")
+      );
 
       // Act
-      const result = await handleSubmitForReview({ taskId: task.id, force: true }, ctx);
+      const result = await runMcpHandler(
+        handleSubmitForReview,
+        { taskId: task.id, force: true },
+        ctx
+      );
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -743,18 +781,7 @@ describe("submit_for_review", () => {
       const taskService = new TaskService(client, projectManagement, mockGitWorktreeService);
       const issueService = new IssueService(client, taskService, projectManagement);
 
-      // Create PRTool with all dependencies
-      const prTool = new PRTool(
-        mockGitHubCLI,
-        issueService,
-        planService,
-        taskService,
-        mockGitWorktreeService,
-        client
-      );
-
       const ctx: any = {
-        prTool,
         project,
         githubCLI: mockGitHubCLI,
         issueService,
@@ -765,31 +792,37 @@ describe("submit_for_review", () => {
       };
 
       // Create issue, plan, and task
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
 
       // Set up task with branch, worktree, PR, and GitHub sync (including remoteProjectId)
-      client.tasks.update(task.id, {
-        branchName: "issue-1/task-1-test-task",
-        worktreePath: "/tmp/worktree/issue-1-task-1",
-      });
-      client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
-      client.tasks.updateSyncState(task.id, {
-        externalId: "42",
-        externalUrl: "https://github.com/test/repo/issues/42",
-        externalNodeId: "I_test_42",
-        syncStatus: "SYNCED",
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: null,
-        remoteProjectId: "PVTI_test_item_123",
-      });
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          branchName: "issue-1/task-1-test-task",
+          worktreePath: "/tmp/worktree/issue-1-task-1",
+        })
+      );
+      await Effect.runPromise(
+        client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN")
+      );
+      await Effect.runPromise(
+        client.tasks.updateSyncState(task.id, {
+          externalId: "42",
+          externalUrl: "https://github.com/test/repo/issues/42",
+          externalNodeId: "I_test_42",
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: null,
+          remoteProjectId: "PVTI_test_item_123",
+        })
+      );
 
       // Act
-      const result = await handleSubmitForReview({ taskId: task.id }, ctx);
+      const result = await runMcpHandler(handleSubmitForReview, { taskId: task.id }, ctx);
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -822,33 +855,35 @@ describe("two-step PR workflow", () => {
       mockGitWorktreeService
     );
 
-    const issue = createTestIssue(client.issues, { title: "Test Issue" });
-    const plan = createTestPlan(client.plans, issue.id);
-    const task = createTestTask(client.tasks, plan.id, {
+    const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+    const plan = await createTestPlan(client.plans, issue.id);
+    const task = await createTestTask(client.tasks, plan.id, {
       title: "Implement feature",
       status: "IN_PROGRESS",
     });
 
-    client.tasks.update(task.id, {
-      branchName: "issue-1/task-1-implement-feature",
-      worktreePath: "/tmp/worktree/issue-1-task-1",
-    });
+    await Effect.runPromise(
+      client.tasks.update(task.id, {
+        branchName: "issue-1/task-1-implement-feature",
+        worktreePath: "/tmp/worktree/issue-1-task-1",
+      })
+    );
 
     // Step 1: Create PR
-    const createResult = await handleCreatePR({ taskId: task.id }, ctx);
+    const createResult = await runMcpHandler(handleCreatePR, { taskId: task.id }, ctx);
     expect(createResult.isError).toBeFalsy();
 
     // Verify status is still IN_PROGRESS after create_pr
-    const taskAfterCreate = client.tasks.findById(task.id);
+    const taskAfterCreate = await Effect.runPromise(client.tasks.findById(task.id));
     expect(taskAfterCreate?.status).toBe("IN_PROGRESS");
     expect(taskAfterCreate?.prNumber).toBeDefined();
 
     // Step 2: Submit for review
-    const submitResult = await handleSubmitForReview({ taskId: task.id }, ctx);
+    const submitResult = await runMcpHandler(handleSubmitForReview, { taskId: task.id }, ctx);
     expect(submitResult.isError).toBeFalsy();
 
     // Verify status is now PR_REVIEW
-    const taskAfterSubmit = client.tasks.findById(task.id);
+    const taskAfterSubmit = await Effect.runPromise(client.tasks.findById(task.id));
     expect(taskAfterSubmit?.status).toBe("PR_REVIEW");
   });
 
@@ -862,26 +897,28 @@ describe("two-step PR workflow", () => {
       mockGitWorktreeService
     );
 
-    const issue = createTestIssue(client.issues, { title: "Test Issue" });
-    const plan = createTestPlan(client.plans, issue.id);
-    const task = createTestTask(client.tasks, plan.id, {
+    const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+    const plan = await createTestPlan(client.plans, issue.id);
+    const task = await createTestTask(client.tasks, plan.id, {
       title: "Implement feature",
       status: "IN_PROGRESS",
     });
 
-    client.tasks.update(task.id, {
-      branchName: "issue-1/task-1-implement-feature",
-      worktreePath: "/tmp/worktree/issue-1-task-1",
-    });
+    await Effect.runPromise(
+      client.tasks.update(task.id, {
+        branchName: "issue-1/task-1-implement-feature",
+        worktreePath: "/tmp/worktree/issue-1-task-1",
+      })
+    );
 
     // Step 1: Create PR
-    await handleCreatePR({ taskId: task.id }, ctx);
+    await runMcpHandler(handleCreatePR, { taskId: task.id }, ctx);
 
     // Simulate time passing - task is still IN_PROGRESS with PR open
     // User might push more commits before submitting for review
 
     // Step 2: Submit for review later
-    const submitResult = await handleSubmitForReview({ taskId: task.id }, ctx);
+    const submitResult = await runMcpHandler(handleSubmitForReview, { taskId: task.id }, ctx);
     expect(submitResult.isError).toBeFalsy();
 
     const content = JSON.parse(submitResult.content[0].text);
@@ -900,22 +937,23 @@ describe("complete_task", () => {
     it("should return allTasksComplete=true when completing the final task", async () => {
       // Arrange
       const { ctx, client } = await createPRToolContext(testDb);
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
 
       // Create two tasks - first is COMPLETED, second is IN_PROGRESS (will be completed)
-      createTestTask(client.tasks, plan.id, {
+      await createTestTask(client.tasks, plan.id, {
         title: "First task",
         status: "COMPLETED",
       });
-      const task2 = createTestTask(client.tasks, plan.id, {
+      const task2 = await createTestTask(client.tasks, plan.id, {
         title: "Second task",
         status: "IN_PROGRESS",
       });
       // No branch = main mode
 
       // Act
-      const result = await handleCompleteTask(
+      const result = await runMcpHandler(
+        handleCompleteTask,
         {
           taskId: task2.id,
           sessionId: "test-session",
@@ -936,21 +974,22 @@ describe("complete_task", () => {
     it("should return allTasksComplete=false when tasks remain", async () => {
       // Arrange
       const { ctx, client } = await createPRToolContext(testDb);
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
 
       // Create two tasks - first is IN_PROGRESS (will be completed), second is READY
-      const taskToComplete = createTestTask(client.tasks, plan.id, {
+      const taskToComplete = await createTestTask(client.tasks, plan.id, {
         title: "First task",
         status: "IN_PROGRESS",
       });
-      createTestTask(client.tasks, plan.id, {
+      await createTestTask(client.tasks, plan.id, {
         title: "Second task",
         status: "READY",
       });
 
       // Act
-      const result = await handleCompleteTask(
+      const result = await runMcpHandler(
+        handleCompleteTask,
         {
           taskId: taskToComplete.id,
           sessionId: "test-session",
@@ -970,17 +1009,18 @@ describe("complete_task", () => {
     it("should auto-close issue when autoCloseIssue=true and all tasks complete", async () => {
       // Arrange
       const { ctx, client } = await createPRToolContext(testDb);
-      const issue = createTestIssue(client.issues, { title: "Test Issue", status: "OPEN" });
-      const plan = createTestPlan(client.plans, issue.id);
+      const issue = await createTestIssue(client.issues, { title: "Test Issue", status: "OPEN" });
+      const plan = await createTestPlan(client.plans, issue.id);
 
       // Create single task
-      const task = createTestTask(client.tasks, plan.id, {
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Only task",
         status: "IN_PROGRESS",
       });
 
       // Act
-      const result = await handleCompleteTask(
+      const result = await runMcpHandler(
+        handleCompleteTask,
         {
           taskId: task.id,
           sessionId: "test-session",
@@ -999,28 +1039,29 @@ describe("complete_task", () => {
       expect(content.message).toContain("has been closed");
 
       // Verify issue was actually closed in DB
-      const updatedIssue = client.issues.findById(issue.id);
+      const updatedIssue = await Effect.runPromise(client.issues.findById(issue.id));
       expect(updatedIssue?.status).toBe("CLOSED");
     });
 
     it("should NOT auto-close issue when autoCloseIssue=true but tasks remain", async () => {
       // Arrange
       const { ctx, client } = await createPRToolContext(testDb);
-      const issue = createTestIssue(client.issues, { title: "Test Issue", status: "OPEN" });
-      const plan = createTestPlan(client.plans, issue.id);
+      const issue = await createTestIssue(client.issues, { title: "Test Issue", status: "OPEN" });
+      const plan = await createTestPlan(client.plans, issue.id);
 
       // Create two tasks
-      const taskToComplete = createTestTask(client.tasks, plan.id, {
+      const taskToComplete = await createTestTask(client.tasks, plan.id, {
         title: "First task",
         status: "IN_PROGRESS",
       });
-      createTestTask(client.tasks, plan.id, {
+      await createTestTask(client.tasks, plan.id, {
         title: "Second task",
         status: "READY",
       });
 
       // Act
-      const result = await handleCompleteTask(
+      const result = await runMcpHandler(
+        handleCompleteTask,
         {
           taskId: taskToComplete.id,
           sessionId: "test-session",
@@ -1038,28 +1079,29 @@ describe("complete_task", () => {
       expect(content.issueClosed).toBe(false);
 
       // Verify issue is still open
-      const updatedIssue = client.issues.findById(issue.id);
+      const updatedIssue = await Effect.runPromise(client.issues.findById(issue.id));
       expect(updatedIssue?.status).toBe("OPEN");
     });
 
     it("should count ABANDONED tasks as terminal for allTasksComplete", async () => {
       // Arrange
       const { ctx, client } = await createPRToolContext(testDb);
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
 
       // Create two tasks - first is ABANDONED, second is IN_PROGRESS (will be completed)
-      createTestTask(client.tasks, plan.id, {
+      await createTestTask(client.tasks, plan.id, {
         title: "Abandoned task",
         status: "ABANDONED",
       });
-      const taskToComplete = createTestTask(client.tasks, plan.id, {
+      const taskToComplete = await createTestTask(client.tasks, plan.id, {
         title: "Final task",
         status: "IN_PROGRESS",
       });
 
       // Act
-      const result = await handleCompleteTask(
+      const result = await runMcpHandler(
+        handleCompleteTask,
         {
           taskId: taskToComplete.id,
           sessionId: "test-session",
@@ -1077,23 +1119,24 @@ describe("complete_task", () => {
     it("should exclude deleted tasks from allTasksComplete calculation", async () => {
       // Arrange
       const { ctx, client } = await createPRToolContext(testDb);
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
 
       // Create two tasks - first is READY but deleted, second is IN_PROGRESS
-      const deletedTask = createTestTask(client.tasks, plan.id, {
+      const deletedTask = await createTestTask(client.tasks, plan.id, {
         title: "Deleted task",
         status: "READY",
       });
-      client.tasks.softDelete(deletedTask.id, "test-user");
+      await Effect.runPromise(client.tasks.softDelete(deletedTask.id, "test-user"));
 
-      const taskToComplete = createTestTask(client.tasks, plan.id, {
+      const taskToComplete = await createTestTask(client.tasks, plan.id, {
         title: "Only active task",
         status: "IN_PROGRESS",
       });
 
       // Act
-      const result = await handleCompleteTask(
+      const result = await runMcpHandler(
+        handleCompleteTask,
         {
           taskId: taskToComplete.id,
           sessionId: "test-session",
@@ -1113,15 +1156,16 @@ describe("complete_task", () => {
     it("should fail if finalLogEntry is not provided", async () => {
       // Arrange
       const { ctx, client } = await createPRToolContext(testDb);
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
 
       // Act - call without finalLogEntry
-      const result = await handleCompleteTask(
+      const result = await runMcpHandler(
+        handleCompleteTask,
         {
           taskId: task.id,
           sessionId: "test-session",
@@ -1138,15 +1182,16 @@ describe("complete_task", () => {
     it("should fail if finalLogEntry is only whitespace", async () => {
       // Arrange
       const { ctx, client } = await createPRToolContext(testDb);
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
 
       // Act - call with whitespace-only finalLogEntry
-      const result = await handleCompleteTask(
+      const result = await runMcpHandler(
+        handleCompleteTask,
         {
           taskId: task.id,
           sessionId: "test-session",
@@ -1163,16 +1208,17 @@ describe("complete_task", () => {
     it("should write finalLogEntry to execution log on successful completion (main mode)", async () => {
       // Arrange
       const { ctx, client } = await createPRToolContext(testDb);
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
       // No branch = main mode
 
       // Act
-      const result = await handleCompleteTask(
+      const result = await runMcpHandler(
+        handleCompleteTask,
         {
           taskId: task.id,
           sessionId: "test-session",
@@ -1203,9 +1249,9 @@ describe("complete_task", () => {
     it("should preserve existing log entries when completing task", async () => {
       // Arrange
       const { ctx, client } = await createPRToolContext(testDb);
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS",
       });
@@ -1224,7 +1270,8 @@ describe("complete_task", () => {
         .run();
 
       // Act
-      const result = await handleCompleteTask(
+      const result = await runMcpHandler(
+        handleCompleteTask,
         {
           taskId: task.id,
           sessionId: "test-session",
@@ -1260,25 +1307,30 @@ describe("complete_task", () => {
         mockGitWorktreeService
       );
 
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "PR_REVIEW",
       });
 
       // Set up task with branch, worktree, and PR
-      client.tasks.update(task.id, {
-        branchName: "issue-1/task-1-test-task",
-        worktreePath: "/tmp/worktree/issue-1-task-1",
-      });
-      client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          branchName: "issue-1/task-1-test-task",
+          worktreePath: "/tmp/worktree/issue-1-task-1",
+        })
+      );
+      await Effect.runPromise(
+        client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN")
+      );
 
       // Configure mock to return an unmerged PR
       mockGitHubCLI.setPRStatus(42, { merged: false, state: "open" });
 
       // Act - try to force complete with unmerged PR
-      const result = await handleCompleteTask(
+      const result = await runMcpHandler(
+        handleCompleteTask,
         {
           taskId: task.id,
           sessionId: "test-session",
@@ -1294,7 +1346,7 @@ describe("complete_task", () => {
       expect(result.content[0].text).toContain("force=true cannot bypass");
 
       // Verify task was NOT completed
-      const updatedTask = client.tasks.findById(task.id);
+      const updatedTask = await Effect.runPromise(client.tasks.findById(task.id));
       expect(updatedTask?.status).toBe("PR_REVIEW");
     });
 
@@ -1308,25 +1360,30 @@ describe("complete_task", () => {
         mockGitWorktreeService
       );
 
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "PR_REVIEW",
       });
 
       // Set up task with branch, worktree, and PR
-      client.tasks.update(task.id, {
-        branchName: "issue-1/task-1-test-task",
-        worktreePath: "/tmp/worktree/issue-1-task-1",
-      });
-      client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          branchName: "issue-1/task-1-test-task",
+          worktreePath: "/tmp/worktree/issue-1-task-1",
+        })
+      );
+      await Effect.runPromise(
+        client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN")
+      );
 
       // Configure mock to return null (PR not found)
       mockGitHubCLI.setPRStatus(42, null);
 
       // Act - force complete when PR is not found
-      const result = await handleCompleteTask(
+      const result = await runMcpHandler(
+        handleCompleteTask,
         {
           taskId: task.id,
           sessionId: "test-session",
@@ -1353,25 +1410,30 @@ describe("complete_task", () => {
         mockGitWorktreeService
       );
 
-      const issue = createTestIssue(client.issues, { title: "Test Issue" });
-      const plan = createTestPlan(client.plans, issue.id);
-      const task = createTestTask(client.tasks, plan.id, {
+      const issue = await createTestIssue(client.issues, { title: "Test Issue" });
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
         title: "Test task",
         status: "IN_PROGRESS", // Wrong status for completion
       });
 
       // Set up task with branch, worktree, and PR
-      client.tasks.update(task.id, {
-        branchName: "issue-1/task-1-test-task",
-        worktreePath: "/tmp/worktree/issue-1-task-1",
-      });
-      client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN");
+      await Effect.runPromise(
+        client.tasks.update(task.id, {
+          branchName: "issue-1/task-1-test-task",
+          worktreePath: "/tmp/worktree/issue-1-task-1",
+        })
+      );
+      await Effect.runPromise(
+        client.tasks.updatePRInfo(task.id, "https://github.com/test/repo/pull/42", 42, "OPEN")
+      );
 
       // Configure mock to return a merged PR
       mockGitHubCLI.setPRStatus(42, { merged: true, state: "closed" });
 
       // Act - force complete with wrong status but merged PR
-      const result = await handleCompleteTask(
+      const result = await runMcpHandler(
+        handleCompleteTask,
         {
           taskId: task.id,
           sessionId: "test-session",

@@ -10,6 +10,7 @@ import { TrackDirectoryResolver } from "@dev-workflow/git/track-directory-resolv
 import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
 import { ArchiveService, ArchiveError } from "../application/archive.service.js";
 import { DatabaseConfigService } from "../application/database.service.js";
+import type { UserPrompt } from "../infrastructure/user-prompt.js";
 
 export interface NukeOptions {
   force?: boolean;
@@ -124,7 +125,8 @@ export class NukeCommand {
   constructor(
     private readonly archiveService: ArchiveService,
     private readonly databaseService: DatabaseConfigService,
-    private readonly trackDirectoryResolver: TrackDirectoryResolver
+    private readonly trackDirectoryResolver: TrackDirectoryResolver,
+    private readonly userPrompt: UserPrompt
   ) {}
 
   /**
@@ -171,18 +173,9 @@ export class NukeCommand {
       console.log("\n   This action CANNOT be undone.\n");
 
       // Interactive confirmation - user must type project name
-      const readline = await import("node:readline");
-      const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-      });
-
-      const answer = await new Promise<string>((resolve) => {
-        rl.question(`Type the project name to confirm deletion (${project.name}): `, (answer) => {
-          rl.close();
-          resolve(answer);
-        });
-      });
+      const answer = await this.userPrompt.ask(
+        `Type the project name to confirm deletion (${project.name}): `
+      );
 
       if (answer !== project.name) {
         console.error("\n❌ Project name does not match. Aborting.");

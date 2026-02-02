@@ -1,7 +1,12 @@
-import { createApiEndpoint, createApiRoute } from "@/lib/di/bootstrap";
-import { abandonTaskEndpoint } from "./endpoint";
+/**
+ * POST /api/tasks/[taskId]/abandon
+ *
+ * Abandons a task.
+ */
+
+import { createApiRoute } from "@/lib/di/bootstrap";
+import { endpoint } from "./endpoint";
 
 export const dynamic = "force-dynamic";
 
-export const endpoint = createApiEndpoint(abandonTaskEndpoint);
 export const POST = createApiRoute(endpoint);

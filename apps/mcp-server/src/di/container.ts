@@ -7,21 +7,11 @@
  */
 
 import * as path from "node:path";
-import { createContainer, asFunction, asValue, asClass, InjectionMode } from "awilix";
+import { createContainer, asFunction, asValue, InjectionMode } from "awilix";
 import type { AwilixContainer } from "awilix";
-import { DispatchTool } from "../tools/dispatch-tool.js";
-import { MilestoneTool } from "../tools/milestone-tool.js";
-import { TypeTool } from "../tools/type-tool.js";
-import { WorktreeTool } from "../tools/worktree-tool.js";
-import { SnapshotTool } from "../tools/snapshot-tool.js";
-import { MergeTool } from "../tools/merge-tool.js";
-import { SettingsTool } from "../tools/settings-tool.js";
-import { PRTool } from "../tools/pr-tool.js";
-import { IssueTool } from "../tools/issue-tool.js";
-import { TaskTool } from "../tools/task-tool.js";
-import { PlanTool } from "../tools/plan-tool.js";
 import {
   DbSourceProvider,
+  DomainExecutorFactory,
   type DbSource,
   type DbClient,
   type Project,
@@ -79,6 +69,7 @@ export interface McpCradle {
 
   // Core infrastructure
   sourceProvider: DbSourceProvider;
+  domain: DomainExecutorFactory;
   dbSource: DbSource;
   dbClient: DbClient;
   project: Project;
@@ -90,7 +81,7 @@ export interface McpCradle {
   // External integrations
   githubCLI: GitHubCLI;
   providerRegistry: ProjectManagementRegistry;
-  projectManagementService: ProjectManagementService;
+  projectManagement: ProjectManagementService;
   projectManagementProvider: ProjectManagementProvider;
   gitWorktreeService: GitWorktreeService;
   workerQueueDb: WorkerQueueDb;
@@ -113,19 +104,6 @@ export interface McpCradle {
   issueService: IssueService;
   milestoneService: MilestoneService;
   mergeService: MergeService;
-
-  // Tool classes
-  dispatchTool: DispatchTool;
-  milestoneTool: MilestoneTool;
-  typeTool: TypeTool;
-  worktreeTool: WorktreeTool;
-  snapshotTool: SnapshotTool;
-  mergeTool: MergeTool;
-  settingsTool: SettingsTool;
-  prTool: PRTool;
-  issueTool: IssueTool;
-  taskTool: TaskTool;
-  planTool: PlanTool;
 }
 
 /**
@@ -185,6 +163,10 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
 
     // Core infrastructure (singletons)
     sourceProvider: asValue(sourceProvider),
+    domain: asFunction(
+      ({ sourceProvider: sp }: { sourceProvider: DbSourceProvider }) =>
+        new DomainExecutorFactory(sp)
+    ).singleton(),
     dbSource: asValue(dbSource),
     project: asValue(project),
 
@@ -215,7 +197,7 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
     githubCLI: asFunction(() => new NodeGitHubCLI()).singleton(),
     providerRegistry: asFunction(() => ProjectManagementRegistry.getInstance()).singleton(),
 
-    projectManagementService: asFunction(
+    projectManagement: asFunction(
       ({ project: proj, githubCLI: cli }: { project: Project; githubCLI: GitHubCLI }) => {
         const providerDeps = { githubCLI: cli };
         return getProjectManagementService(proj, providerDeps);
@@ -303,14 +285,14 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
     taskService: asFunction(
       ({
         dbClient,
-        projectManagementService,
+        projectManagement,
         gitWorktreeService,
         workerQueueDb,
         templateService,
         typeService,
       }: {
         dbClient: DbClient;
-        projectManagementService: ProjectManagementService;
+        projectManagement: ProjectManagementService;
         gitWorktreeService: GitWorktreeService;
         workerQueueDb: WorkerQueueDb;
         templateService: TemplateService;
@@ -318,7 +300,7 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
       }) =>
         new TaskService(
           dbClient,
-          projectManagementService,
+          projectManagement,
           gitWorktreeService,
           workerQueueDb,
           templateService,
@@ -330,12 +312,12 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
       ({
         dbClient,
         taskService,
-        projectManagementService,
+        projectManagement,
       }: {
         dbClient: DbClient;
         taskService: TaskService;
-        projectManagementService: ProjectManagementService;
-      }) => new IssueService(dbClient, taskService, projectManagementService)
+        projectManagement: ProjectManagementService;
+      }) => new IssueService(dbClient, taskService, projectManagement)
     ).singleton(),
 
     milestoneService: asFunction(
@@ -354,137 +336,6 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
         config: McpConfig;
         githubCLI: GitHubCLI;
       }) => new MergeService(src, versioningService, cfg.projectId, cli)
-    ).singleton(),
-
-    // Tool classes
-    dispatchTool: asClass(DispatchTool).singleton(),
-    milestoneTool: asClass(MilestoneTool).singleton(),
-    typeTool: asClass(TypeTool).singleton(),
-    worktreeTool: asClass(WorktreeTool).singleton(),
-    snapshotTool: asClass(SnapshotTool).singleton(),
-    mergeTool: asClass(MergeTool).singleton(),
-    settingsTool: asClass(SettingsTool).singleton(),
-    prTool: asFunction(
-      ({
-        githubCLI,
-        issueService,
-        planService,
-        taskService,
-        gitWorktreeService,
-        dbClient,
-      }: {
-        githubCLI: GitHubCLI;
-        issueService: IssueService;
-        planService: PlanService;
-        taskService: TaskService;
-        gitWorktreeService: GitWorktreeService | null;
-        dbClient: DbClient;
-      }) =>
-        new PRTool(githubCLI, issueService, planService, taskService, gitWorktreeService, dbClient)
-    ).singleton(),
-    issueTool: asFunction(
-      ({
-        project,
-        issueService,
-        planService,
-        taskService,
-        milestoneService,
-        workerQueueDb,
-        templateService,
-        planningService,
-        projectManagementProvider,
-        gitWorktreeService,
-        githubCLI,
-        typeService,
-      }: {
-        project: Project;
-        issueService: IssueService;
-        planService: PlanService;
-        taskService: TaskService;
-        milestoneService: MilestoneService;
-        workerQueueDb: WorkerQueueDb;
-        templateService: TemplateService;
-        planningService: PlanningService;
-        projectManagementProvider: ProjectManagementProvider;
-        gitWorktreeService: GitWorktreeService;
-        githubCLI: GitHubCLI;
-        typeService: TypeService;
-      }) =>
-        new IssueTool(
-          project,
-          issueService,
-          planService,
-          taskService,
-          milestoneService,
-          workerQueueDb,
-          templateService,
-          planningService,
-          projectManagementProvider,
-          gitWorktreeService,
-          githubCLI,
-          typeService
-        )
-    ).singleton(),
-    taskTool: asFunction(
-      ({
-        taskService,
-        taskSessionService,
-        taskManagementService,
-        planService,
-        issueService,
-        dbClient,
-        workerQueueDb,
-        conflictDetectionService,
-        providerRegistry,
-        project,
-        dbSource,
-        githubCLI,
-      }: {
-        taskService: TaskService;
-        taskSessionService: TaskSessionService;
-        taskManagementService: TaskManagementService;
-        planService: PlanService;
-        issueService: IssueService;
-        dbClient: DbClient;
-        workerQueueDb: WorkerQueueDb;
-        conflictDetectionService: ConflictDetectionService;
-        providerRegistry: ProjectManagementRegistry;
-        project: Project;
-        dbSource: DbSource;
-        githubCLI: GitHubCLI;
-      }) =>
-        new TaskTool(
-          taskService,
-          taskSessionService,
-          taskManagementService,
-          planService,
-          issueService,
-          dbClient,
-          workerQueueDb,
-          conflictDetectionService,
-          providerRegistry,
-          project,
-          dbSource,
-          githubCLI
-        )
-    ).singleton(),
-    planTool: asFunction(
-      ({
-        project,
-        issueService,
-        planService,
-        taskService,
-        planningService,
-        typeService,
-      }: {
-        project: Project;
-        issueService: IssueService;
-        planService: PlanService;
-        taskService: TaskService;
-        planningService: PlanningService;
-        typeService: TypeService;
-      }) =>
-        new PlanTool(project, issueService, planService, taskService, planningService, typeService)
     ).singleton(),
   });
 

@@ -1,33 +1,57 @@
 /**
  * Web Container - Awilix DI container for Next.js API routes
  *
- * This module provides the dependency injection container for the web package.
- * AppServices are registered here and injected into endpoints via cradle.
+ * Infrastructure-only container. Operations are called directly by endpoints
+ * and resolve their dependencies from the container via the Effect runtime.
  */
 
-import { createContainer, asClass, asFunction, InjectionMode, type AwilixContainer } from "awilix";
-import { ProjectsResolver, DbSourceProvider } from "@dev-workflow/tracking";
-import { IssueAppService } from "../app-services/issue-app-service";
-import { TaskAppService } from "../app-services/task-app-service";
-import { ProjectAppService } from "../app-services/project-app-service";
+import {
+  createContainer,
+  asClass,
+  asFunction,
+  asValue,
+  InjectionMode,
+  type AwilixContainer,
+} from "awilix";
+import {
+  ProjectsResolver,
+  DbSourceProvider,
+  DomainExecutorFactory,
+  ProjectManagementService,
+  NoOpProjectManagementClient,
+} from "@dev-workflow/tracking";
+import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-queue-db.js";
+import { NodeGitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
+import type { GitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
+import type { WorkerQueueDb } from "@dev-workflow/dispatch/worker-queue-db.js";
 
 // =============================================================================
-// WebCradle - Types available for injection
+// WebCradle - Infrastructure dependencies only
 // =============================================================================
 
 /**
  * The cradle type defines what dependencies are available for injection.
- * Endpoints destructure what they need: `{ issueAppService }` from WebCradle
+ * Keys match the Service tag ids used by operations via yield*.
  */
 export interface WebCradle {
+  // Index signature required by createRuntime's Record<string, unknown> constraint
+  [key: string]: unknown;
+
   // Infrastructure (shared across all requests)
   projectsResolver: ProjectsResolver;
   sourceProvider: DbSourceProvider;
 
-  // App Services (stateless, can be shared)
-  issueAppService: IssueAppService;
-  taskAppService: TaskAppService;
-  projectAppService: ProjectAppService;
+  // Domain executor factory (for mutation operations)
+  domain: DomainExecutorFactory;
+
+  // Project management (no-op for web — real impl in MCP)
+  projectManagement: ProjectManagementService;
+
+  // Worker queue (for board + worker endpoints)
+  workerQueueDb: WorkerQueueDb;
+
+  // Worktree service factory (for worktree endpoints)
+  createWorktreeService: (gitRoot: string) => GitWorktreeService;
 }
 
 // =============================================================================
@@ -35,32 +59,28 @@ export interface WebCradle {
 // =============================================================================
 
 /**
- * Build the web container with all dependencies registered.
+ * Build the web container with infrastructure dependencies.
  */
 export function buildWebContainer(): AwilixContainer<WebCradle> {
-  // Use PROXY injection mode - supports destructured parameters in asFunction callbacks.
-  // CLASSIC mode requires named parameters matching registration keys exactly.
   const container = createContainer<WebCradle>({
     injectionMode: InjectionMode.PROXY,
   });
 
   container.register({
-    // Infrastructure - singletons shared across requests
     projectsResolver: asClass(ProjectsResolver).singleton(),
     sourceProvider: asClass(DbSourceProvider).singleton(),
 
-    // App Services - depend on infrastructure
-    issueAppService: asFunction(
-      ({ projectsResolver, sourceProvider }) =>
-        new IssueAppService(projectsResolver, sourceProvider)
+    domain: asFunction(
+      ({ sourceProvider }) => new DomainExecutorFactory(sourceProvider)
     ).singleton(),
-    taskAppService: asFunction(
-      ({ projectsResolver, sourceProvider }) => new TaskAppService(projectsResolver, sourceProvider)
+
+    projectManagement: asFunction(
+      () => new ProjectManagementService(new NoOpProjectManagementClient())
     ).singleton(),
-    projectAppService: asFunction(
-      ({ projectsResolver, sourceProvider }) =>
-        new ProjectAppService(projectsResolver, sourceProvider)
-    ).singleton(),
+
+    workerQueueDb: asFunction(() => new GlobalDbWorkerQueueDb()).singleton(),
+
+    createWorktreeService: asValue((gitRoot: string) => new NodeGitWorktreeService(gitRoot)),
   });
 
   return container;
@@ -70,10 +90,6 @@ export function buildWebContainer(): AwilixContainer<WebCradle> {
 // Production Container (singleton)
 // =============================================================================
 
-/**
- * The production container - lazily initialized on first use.
- * This is imported by createApiRoute to bind endpoints to dependencies.
- */
 let _webContainer: AwilixContainer<WebCradle> | null = null;
 
 export function getWebContainer(): AwilixContainer<WebCradle> {

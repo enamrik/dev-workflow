@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { NavigationProvider } from "@/contexts/NavigationContext";
 import { ProjectProvider } from "@/contexts";
 
 function WebSocketProvider({ children }: { children: React.ReactNode }) {
@@ -29,7 +30,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <WebSocketProvider>
         <Suspense fallback={null}>
-          <ProjectProvider>{children}</ProjectProvider>
+          <NavigationProvider>
+            <ProjectProvider>{children}</ProjectProvider>
+          </NavigationProvider>
         </Suspense>
       </WebSocketProvider>
     </QueryClientProvider>

@@ -1,11 +1,22 @@
 /**
  * Integration tests for URL state persistence across all pages.
- * Verifies that the _state parameter is preserved when navigating between views.
+ * Verifies that the _state parameter is synced between URL and localStorage.
+ *
+ * Uses TestNavigationProvider (via createTestWrapper) instead of vi.mock("next/navigation").
+ * Uses pre-seeded React Query cache instead of vi.mock("@/hooks").
+ * Uses ProjectProvider with pre-seeded projects data instead of vi.mock("@/contexts").
  */
 
+import React, { useState } from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, waitFor } from "@testing-library/react";
-import { usePathname, useSearchParams, useRouter } from "next/navigation";
+import { render, waitFor, act } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TestNavigationProvider, type AppRouter } from "@/contexts/NavigationContext";
+import { ProjectProvider } from "@/contexts/ProjectContext";
+
+import WorktreesPage from "@/app/worktrees/page";
+import WorkersPage from "@/app/workers/page";
+import IssuesPage from "@/app/issues/page";
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -26,98 +37,189 @@ const localStorageMock = (() => {
 
 Object.defineProperty(global, "localStorage", { value: localStorageMock });
 
-// Mock Next.js navigation hooks
-vi.mock("next/navigation", () => ({
-  usePathname: vi.fn(),
-  useSearchParams: vi.fn(),
-  useRouter: vi.fn(),
-  useParams: vi.fn(() => ({})),
-}));
+const URL_STATE_KEY = "dev-workflow-url-state";
 
-// Mock ProjectContext
-vi.mock("@/contexts", () => ({
-  useProjectContext: vi.fn(() => ({
-    projectId: "test-project",
-    setProjectId: vi.fn(),
-    allProjects: [],
-    isLoading: false,
-  })),
-}));
+const mockProjects = [
+  {
+    id: "test-project",
+    name: "Test Project",
+    slug: "test-project",
+    trackDirectory: "/path",
+    gitRoot: "/git",
+  },
+];
 
-// Mock data hooks
-vi.mock("@/hooks", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/hooks")>();
+/**
+ * Base query data pre-seeded into the React Query cache for all page renders.
+ * Query keys must match what the real hooks produce given the components' arguments.
+ */
+function getBaseQueryData() {
+  return [
+    { queryKey: ["projects"], data: { projects: mockProjects } },
+    {
+      queryKey: ["worktrees", { project: "test-project" }],
+      data: [],
+    },
+    {
+      queryKey: ["workerData"],
+      data: {
+        workers: [],
+        queue: [],
+        stats: { total: 0, unclaimed: 0, claimed: 0, stale: 0 },
+      },
+    },
+    {
+      queryKey: ["issues", { project: "test-project" }],
+      data: [],
+    },
+    {
+      queryKey: ["tasks", { project: "test-project" }],
+      data: { issuesWithTasks: [], completedTasks: [] },
+    },
+  ];
+}
+
+/**
+ * Creates a QueryClient pre-seeded with base query data.
+ */
+function createSeededQueryClient(): QueryClient {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  for (const { queryKey, data } of getBaseQueryData()) {
+    queryClient.setQueryData(queryKey, data);
+  }
+  return queryClient;
+}
+
+/**
+ * Encode a state object to URL-safe base64, matching the format used by useUrlState.
+ */
+function encodeUrlState(state: Record<string, unknown>): string {
+  return btoa(JSON.stringify(state)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/**
+ * A wrapper component that supports changing the pathname to simulate navigation.
+ * useUrlState restores _state from localStorage only when the pathname changes.
+ */
+function NavigableWrapper({
+  children,
+  initialPathname,
+  searchParams,
+  router,
+  queryClient,
+  onSetPathname,
+}: {
+  children: React.ReactNode;
+  initialPathname: string;
+  searchParams?: URLSearchParams;
+  router?: Partial<AppRouter>;
+  queryClient: QueryClient;
+  onSetPathname?: (setter: (p: string) => void) => void;
+}) {
+  const [pathname, setPathname] = useState(initialPathname);
+
+  // Expose the setter to the test so it can trigger navigation
+  React.useEffect(() => {
+    if (onSetPathname) {
+      onSetPathname(setPathname);
+    }
+  }, [onSetPathname]);
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TestNavigationProvider router={router} pathname={pathname} searchParams={searchParams}>
+        <ProjectProvider>{children}</ProjectProvider>
+      </TestNavigationProvider>
+    </QueryClientProvider>
+  );
+}
+
+/**
+ * Renders a page inside the navigable wrapper, returning a navigateTo function
+ * that simulates changing the pathname (triggering useUrlState's restore effect).
+ */
+function renderWithNavigation(
+  PageComponent: React.ComponentType,
+  options: {
+    initialPathname: string;
+    searchParams?: URLSearchParams;
+    router?: Partial<AppRouter>;
+  }
+) {
+  const queryClient = createSeededQueryClient();
+  let navigate: ((p: string) => void) | null = null;
+
+  const result = render(
+    <NavigableWrapper
+      initialPathname={options.initialPathname}
+      searchParams={options.searchParams}
+      router={options.router}
+      queryClient={queryClient}
+      onSetPathname={(setter) => {
+        navigate = setter;
+      }}
+    >
+      <PageComponent />
+    </NavigableWrapper>
+  );
+
   return {
-    ...actual,
-    useWorktrees: vi.fn(() => ({
-      data: [],
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    })),
-    usePruneWorktrees: vi.fn(() => ({
-      mutateAsync: vi.fn(),
-      isPending: false,
-    })),
-    useWorkerData: vi.fn(() => ({
-      data: { workers: [], queue: [], stats: { total: 0, unclaimed: 0, claimed: 0, stale: 0 } },
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    })),
-    useRefreshWorkerData: vi.fn(() => vi.fn()),
-    useIssues: vi.fn(() => ({
-      data: [],
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    })),
+    ...result,
+    navigateTo: (pathname: string) => {
+      act(() => {
+        navigate?.(pathname);
+      });
+    },
   };
-});
+}
 
-import WorktreesPage from "@/app/worktrees/page";
-import WorkersPage from "@/app/workers/page";
-import IssuesPage from "@/app/issues/page";
+/**
+ * Simple page render for tests that don't need navigation simulation.
+ */
+function renderPage(
+  PageComponent: React.ComponentType,
+  options: {
+    pathname?: string;
+    searchParams?: URLSearchParams;
+    router?: Partial<AppRouter>;
+  } = {}
+) {
+  const queryClient = createSeededQueryClient();
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <TestNavigationProvider
+        router={options.router}
+        pathname={options.pathname ?? "/"}
+        searchParams={options.searchParams}
+      >
+        <ProjectProvider>
+          <PageComponent />
+        </ProjectProvider>
+      </TestNavigationProvider>
+    </QueryClientProvider>
+  );
+}
 
 describe("URL State Persistence", () => {
-  let mockRouter: ReturnType<typeof vi.fn>;
-  let mockSearchParams: ReturnType<typeof vi.fn>;
-
   beforeEach(() => {
-    // Clear localStorage
-    localStorage.clear();
-
-    // Setup mock router
-    mockRouter = vi.fn(() => ({
-      push: vi.fn(),
-      replace: vi.fn(),
-      prefetch: vi.fn(),
-    }));
-    vi.mocked(useRouter).mockReturnValue(mockRouter());
-
-    // Setup mock search params
-    mockSearchParams = vi.fn(() => ({
-      get: vi.fn((key: string) => {
-        if (key === "_state") {
-          // Return encoded state: {project: "test-project"}
-          return "eyJwcm9qZWN0IjoidGVzdC1wcm9qZWN0In0";
-        }
-        return null;
-      }),
-      toString: () => "_state=eyJwcm9qZWN0IjoidGVzdC1wcm9qZWN0In0",
-    }));
-    vi.mocked(useSearchParams).mockReturnValue(mockSearchParams() as any);
+    localStorageMock.clear();
   });
 
   describe("Worktrees Page", () => {
-    it("should call useUrlState hook to enable state persistence", () => {
-      vi.mocked(usePathname).mockReturnValue("/worktrees");
+    it("should sync _state from URL to localStorage", async () => {
+      const encoded = encodeUrlState({ project: "test-project" });
+      const searchParams = new URLSearchParams();
+      searchParams.set("_state", encoded);
 
-      render(<WorktreesPage />);
+      renderPage(WorktreesPage, {
+        pathname: "/worktrees",
+        searchParams,
+      });
 
-      // Check that state was synced to localStorage
-      waitFor(() => {
-        const stored = localStorage.getItem("dev-workflow-url-state");
+      await waitFor(() => {
+        const stored = localStorage.getItem(URL_STATE_KEY);
         expect(stored).toBeDefined();
         if (stored) {
           const parsed = JSON.parse(stored);
@@ -126,31 +228,26 @@ describe("URL State Persistence", () => {
       });
     });
 
-    it("should restore _state from localStorage when URL doesn't have it", () => {
-      vi.mocked(usePathname).mockReturnValue("/worktrees");
-
-      // Set state in localStorage
-      localStorage.setItem("dev-workflow-url-state", JSON.stringify({ project: "test-project" }));
-
-      // Mock search params without _state
-      vi.mocked(useSearchParams).mockReturnValue({
-        get: vi.fn(() => null),
-        toString: () => "",
-      } as any);
+    it("should restore _state from localStorage when URL doesn't have it", async () => {
+      // Pre-set localStorage with state
+      localStorage.setItem(URL_STATE_KEY, JSON.stringify({ project: "test-project" }));
 
       const mockReplace = vi.fn();
-      vi.mocked(useRouter).mockReturnValue({
-        push: vi.fn(),
-        replace: mockReplace,
-        prefetch: vi.fn(),
-      } as any);
 
-      render(<WorktreesPage />);
+      // Start at a different pathname, then "navigate" to /worktrees
+      // to trigger useUrlState's restore-from-localStorage effect
+      const { navigateTo } = renderWithNavigation(WorktreesPage, {
+        initialPathname: "/",
+        searchParams: new URLSearchParams(),
+        router: { replace: mockReplace },
+      });
 
-      // Should call replace with _state parameter
-      waitFor(() => {
+      // Simulate navigation to /worktrees (pathname change triggers restore)
+      navigateTo("/worktrees");
+
+      await waitFor(() => {
         expect(mockReplace).toHaveBeenCalled();
-        const callArgs = mockReplace.mock.calls[0]?.[0];
+        const callArgs = mockReplace.mock.calls[0]?.[0] as string | undefined;
         expect(callArgs).toBeDefined();
         expect(callArgs).toContain("_state=");
       });
@@ -158,14 +255,18 @@ describe("URL State Persistence", () => {
   });
 
   describe("Workers Page", () => {
-    it("should call useUrlState hook to enable state persistence", () => {
-      vi.mocked(usePathname).mockReturnValue("/workers");
+    it("should sync _state from URL to localStorage", async () => {
+      const encoded = encodeUrlState({ project: "test-project" });
+      const searchParams = new URLSearchParams();
+      searchParams.set("_state", encoded);
 
-      render(<WorkersPage />);
+      renderPage(WorkersPage, {
+        pathname: "/workers",
+        searchParams,
+      });
 
-      // Check that state was synced to localStorage
-      waitFor(() => {
-        const stored = localStorage.getItem("dev-workflow-url-state");
+      await waitFor(() => {
+        const stored = localStorage.getItem(URL_STATE_KEY);
         expect(stored).toBeDefined();
         if (stored) {
           const parsed = JSON.parse(stored);
@@ -176,14 +277,18 @@ describe("URL State Persistence", () => {
   });
 
   describe("Issues Page", () => {
-    it("should call useUrlState hook to enable state persistence", () => {
-      vi.mocked(usePathname).mockReturnValue("/issues");
+    it("should sync _state from URL to localStorage", async () => {
+      const encoded = encodeUrlState({ project: "test-project" });
+      const searchParams = new URLSearchParams();
+      searchParams.set("_state", encoded);
 
-      render(<IssuesPage />);
+      renderPage(IssuesPage, {
+        pathname: "/issues",
+        searchParams,
+      });
 
-      // Check that state was synced to localStorage
-      waitFor(() => {
-        const stored = localStorage.getItem("dev-workflow-url-state");
+      await waitFor(() => {
+        const stored = localStorage.getItem(URL_STATE_KEY);
         expect(stored).toBeDefined();
         if (stored) {
           const parsed = JSON.parse(stored);
@@ -194,26 +299,20 @@ describe("URL State Persistence", () => {
   });
 
   describe("Pinned navigation items", () => {
-    it("should store pinned nav items in _state", () => {
-      vi.mocked(usePathname).mockReturnValue("/");
+    it("should store pinned nav items in _state", async () => {
+      const encoded = encodeUrlState({
+        pinnedNavItems: ["/worktrees", "/workers"],
+      });
+      const searchParams = new URLSearchParams();
+      searchParams.set("_state", encoded);
 
-      // Mock URL state with pinned items
-      vi.mocked(useSearchParams).mockReturnValue({
-        get: vi.fn((key: string) => {
-          if (key === "_state") {
-            // State with pinned items: {pinnedNavItems: ["/worktrees", "/workers"]}
-            return "eyJwaW5uZWROYXZJdGVtcyI6WyIvd29ya3RyZWVzIiwiL3dvcmtlcnMiXX0";
-          }
-          return null;
-        }),
-        toString: () => "_state=eyJwaW5uZWROYXZJdGVtcyI6WyIvd29ya3RyZWVzIiwiL3dvcmtlcnMiXX0",
-      } as any);
+      renderPage(WorktreesPage, {
+        pathname: "/worktrees",
+        searchParams,
+      });
 
-      render(<WorktreesPage />);
-
-      // Should sync pinned items to localStorage
-      waitFor(() => {
-        const stored = localStorage.getItem("dev-workflow-url-state");
+      await waitFor(() => {
+        const stored = localStorage.getItem(URL_STATE_KEY);
         expect(stored).toBeDefined();
         if (stored) {
           const parsed = JSON.parse(stored);
@@ -222,38 +321,35 @@ describe("URL State Persistence", () => {
       });
     });
 
-    it("should preserve pinned items when sharing URL", () => {
-      // Set pinned items in localStorage
-      localStorage.setItem(
-        "dev-workflow-url-state",
-        JSON.stringify({ pinnedNavItems: ["/worktrees"] })
-      );
-
-      vi.mocked(usePathname).mockReturnValue("/");
-      vi.mocked(useSearchParams).mockReturnValue({
-        get: vi.fn(() => null),
-        toString: () => "",
-      } as any);
+    it("should preserve pinned items when sharing URL", async () => {
+      // Pre-set pinned items in localStorage
+      localStorage.setItem(URL_STATE_KEY, JSON.stringify({ pinnedNavItems: ["/worktrees"] }));
 
       const mockReplace = vi.fn();
-      vi.mocked(useRouter).mockReturnValue({
-        push: vi.fn(),
-        replace: mockReplace,
-        prefetch: vi.fn(),
-      } as any);
 
-      render(<WorktreesPage />);
+      // Start at a different pathname, then navigate to trigger restore
+      const { navigateTo } = renderWithNavigation(WorktreesPage, {
+        initialPathname: "/",
+        searchParams: new URLSearchParams(),
+        router: { replace: mockReplace },
+      });
 
-      // Should restore _state with pinned items
-      waitFor(() => {
+      navigateTo("/worktrees");
+
+      await waitFor(() => {
         expect(mockReplace).toHaveBeenCalled();
-        const callArgs = mockReplace.mock.calls[0]?.[0];
+        const callArgs = mockReplace.mock.calls[0]?.[0] as string | undefined;
         expect(callArgs).toBeDefined();
         expect(callArgs).toContain("_state=");
         // Decode and verify pinnedNavItems is in the URL
         const match = callArgs?.match(/_state=([^&]+)/);
-        if (match) {
-          const decoded = JSON.parse(atob(match[1].replace(/-/g, "+").replace(/_/g, "/")));
+        if (match?.[1]) {
+          let base64 = match[1].replace(/-/g, "+").replace(/_/g, "/");
+          const padding = base64.length % 4;
+          if (padding) {
+            base64 += "=".repeat(4 - padding);
+          }
+          const decoded = JSON.parse(atob(base64));
           expect(decoded.pinnedNavItems).toEqual(["/worktrees"]);
         }
       });
@@ -261,60 +357,48 @@ describe("URL State Persistence", () => {
   });
 
   describe("Cross-page navigation", () => {
-    it("should preserve state when navigating from Board to Worktrees", () => {
-      // Simulate user on Board page with state
-      localStorage.setItem("dev-workflow-url-state", JSON.stringify({ project: "test-project" }));
-
-      // Navigate to Worktrees
-      vi.mocked(usePathname).mockReturnValue("/worktrees");
-      vi.mocked(useSearchParams).mockReturnValue({
-        get: vi.fn(() => null),
-        toString: () => "",
-      } as any);
+    it("should preserve state when navigating from Board to Worktrees", async () => {
+      // Simulate user on Board page with state already in localStorage
+      localStorage.setItem(URL_STATE_KEY, JSON.stringify({ project: "test-project" }));
 
       const mockReplace = vi.fn();
-      vi.mocked(useRouter).mockReturnValue({
-        push: vi.fn(),
-        replace: mockReplace,
-        prefetch: vi.fn(),
-      } as any);
 
-      render(<WorktreesPage />);
+      // Start on Board ("/"), then navigate to Worktrees
+      const { navigateTo } = renderWithNavigation(WorktreesPage, {
+        initialPathname: "/",
+        searchParams: new URLSearchParams(),
+        router: { replace: mockReplace },
+      });
 
-      // Should restore _state from localStorage
-      waitFor(() => {
+      navigateTo("/worktrees");
+
+      await waitFor(() => {
         expect(mockReplace).toHaveBeenCalled();
-        const callArgs = mockReplace.mock.calls[0]?.[0];
+        const callArgs = mockReplace.mock.calls[0]?.[0] as string | undefined;
         expect(callArgs).toBeDefined();
         expect(callArgs).toContain("_state=");
         expect(callArgs).toContain("/worktrees");
       });
     });
 
-    it("should preserve state when navigating from Board to Workers", () => {
-      // Simulate user on Board page with state
-      localStorage.setItem("dev-workflow-url-state", JSON.stringify({ project: "test-project" }));
-
-      // Navigate to Workers
-      vi.mocked(usePathname).mockReturnValue("/workers");
-      vi.mocked(useSearchParams).mockReturnValue({
-        get: vi.fn(() => null),
-        toString: () => "",
-      } as any);
+    it("should preserve state when navigating from Board to Workers", async () => {
+      // Simulate user on Board page with state already in localStorage
+      localStorage.setItem(URL_STATE_KEY, JSON.stringify({ project: "test-project" }));
 
       const mockReplace = vi.fn();
-      vi.mocked(useRouter).mockReturnValue({
-        push: vi.fn(),
-        replace: mockReplace,
-        prefetch: vi.fn(),
-      } as any);
 
-      render(<WorkersPage />);
+      // Start on Board ("/"), then navigate to Workers
+      const { navigateTo } = renderWithNavigation(WorkersPage, {
+        initialPathname: "/",
+        searchParams: new URLSearchParams(),
+        router: { replace: mockReplace },
+      });
 
-      // Should restore _state from localStorage
-      waitFor(() => {
+      navigateTo("/workers");
+
+      await waitFor(() => {
         expect(mockReplace).toHaveBeenCalled();
-        const callArgs = mockReplace.mock.calls[0]?.[0];
+        const callArgs = mockReplace.mock.calls[0]?.[0] as string | undefined;
         expect(callArgs).toBeDefined();
         expect(callArgs).toContain("_state=");
         expect(callArgs).toContain("/workers");

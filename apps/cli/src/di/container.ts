@@ -20,6 +20,7 @@ import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
 import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-queue-db.js";
 import { DbSourceProvider, ProjectsResolver, type ProjectConfig } from "@dev-workflow/tracking";
 import { NodeFileSystem, type FileSystem } from "../infrastructure/file-system.js";
+import { NodeUserPrompt, type UserPrompt } from "../infrastructure/user-prompt.js";
 
 // Application services
 import { UninstallService } from "../application/uninstall.service.js";
@@ -76,6 +77,7 @@ export interface CliCradle {
   backupService: BackupConfigService;
   databaseService: DatabaseConfigService;
   claudeConfigService: ClaudeConfigService;
+  userPrompt: UserPrompt;
 
   // Commands
   uninitCommand: UninitCommand;
@@ -119,6 +121,7 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
   container.register({
     // Infrastructure (singleton within command - reused if resolved multiple times)
     fileSystem: asClass(NodeFileSystem).singleton(),
+    userPrompt: asClass(NodeUserPrompt).singleton(),
     gitOps: asClass(GitOperations).singleton(),
     sourceProvider: asClass(DbSourceProvider)
       .singleton()
@@ -296,12 +299,14 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
         archiveService,
         databaseService,
         trackDirectoryResolver,
+        userPrompt,
       }: {
         archiveService: ArchiveService;
         databaseService: DatabaseConfigService;
         trackDirectoryResolver: TrackDirectoryResolver;
+        userPrompt: UserPrompt;
       }) => {
-        return new NukeCommand(archiveService, databaseService, trackDirectoryResolver);
+        return new NukeCommand(archiveService, databaseService, trackDirectoryResolver, userPrompt);
       }
     ).scoped(),
 

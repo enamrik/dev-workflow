@@ -132,6 +132,17 @@ export interface DrizzleDb {
    * Start a DELETE query for the given table.
    */
   delete(table: any): DrizzleDeleteBuilder;
+
+  /**
+   * Execute operations within a database transaction.
+   *
+   * The callback receives a DrizzleDb bound to the transaction.
+   * For SQLite, all operations on the connection are in the transaction.
+   * For PostgreSQL, the tx object is a separate transaction-scoped executor.
+   *
+   * Supports async callbacks for both SQLite and PostgreSQL backends.
+   */
+  transaction<T>(fn: (tx: DrizzleDb) => Promise<T>): Promise<T>;
 }
 
 /* eslint-enable @typescript-eslint/no-explicit-any */

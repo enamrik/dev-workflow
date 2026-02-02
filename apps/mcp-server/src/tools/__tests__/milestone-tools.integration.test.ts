@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createContainer, asValue, asClass, InjectionMode } from "awilix";
+import { createContainer, asValue, InjectionMode } from "awilix";
 import type { AwilixContainer } from "awilix";
 import {
   MilestoneService,
@@ -14,7 +14,15 @@ import {
   TaskService,
   type DbClient,
   type Project,
+  CreateMilestoneOperationSchema as CreateMilestoneSchema,
+  GetMilestoneOperationSchema as GetMilestoneSchema,
+  ListMilestonesOperationSchema as ListMilestonesSchema,
+  UpdateMilestoneOperationSchema as UpdateMilestoneSchema,
+  DeleteMilestoneOperationSchema as DeleteMilestoneSchema,
+  AssignIssueToMilestoneOperationSchema as AssignIssueToMilestoneSchema,
+  RemoveIssueFromMilestoneOperationSchema as RemoveIssueFromMilestoneSchema,
 } from "@dev-workflow/tracking";
+import { Effect } from "@dev-workflow/effect";
 import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import {
   createClientForProject,
@@ -29,18 +37,8 @@ import {
   handleDeleteMilestone,
   handleAssignIssueToMilestone,
   handleRemoveIssueFromMilestone,
-} from "../../tools/milestone-tool-def.js";
+} from "../../tools/milestone-tools.js";
 import { createMcpTool, type McpTool } from "../../di/bootstrap.js";
-import { MilestoneTool } from "../../tools/milestone-tool.js";
-import {
-  CreateMilestoneSchema,
-  GetMilestoneSchema,
-  ListMilestonesSchema,
-  UpdateMilestoneSchema,
-  DeleteMilestoneSchema,
-  AssignIssueToMilestoneSchema,
-  RemoveIssueFromMilestoneSchema,
-} from "../../tools/schemas.js";
 
 /** Test project ID */
 const TEST_PROJECT_ID = "test-project-milestone";
@@ -52,7 +50,6 @@ interface MilestoneTestCradle {
   project: Project;
   milestoneService: MilestoneService;
   issueService: IssueService;
-  milestoneTool: MilestoneTool;
 }
 
 describe("Milestone Tools Integration", () => {
@@ -96,7 +93,6 @@ describe("Milestone Tools Integration", () => {
       project: asValue(project),
       milestoneService: asValue(milestoneService),
       issueService: asValue(issueService),
-      milestoneTool: asClass(MilestoneTool).singleton(),
     });
 
     // Bind handlers to test container - tests the full pipeline
@@ -157,13 +153,15 @@ describe("Milestone Tools Integration", () => {
   describe("handleGetMilestone", () => {
     it("should get milestone by number", async () => {
       // Create a milestone
-      const milestone = client.milestones.create({
-        title: "MVP",
-        description: "First release",
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        status: "PLANNED",
-      });
+      const milestone = await Effect.runPromise(
+        client.milestones.create({
+          title: "MVP",
+          description: "First release",
+          startDate: "2026-01-01",
+          endDate: "2026-01-31",
+          status: "PLANNED",
+        })
+      );
 
       const result = await getMilestone({
         milestoneNumber: milestone.number,
@@ -196,20 +194,24 @@ describe("Milestone Tools Integration", () => {
   describe("handleListMilestones", () => {
     it("should list all milestones", async () => {
       // Create milestones
-      client.milestones.create({
-        title: "M1",
-        description: "First milestone",
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        status: "PLANNED",
-      });
-      client.milestones.create({
-        title: "M2",
-        description: "Second milestone",
-        startDate: "2026-02-01",
-        endDate: "2026-02-28",
-        status: "PLANNED",
-      });
+      await Effect.runPromise(
+        client.milestones.create({
+          title: "M1",
+          description: "First milestone",
+          startDate: "2026-01-01",
+          endDate: "2026-01-31",
+          status: "PLANNED",
+        })
+      );
+      await Effect.runPromise(
+        client.milestones.create({
+          title: "M2",
+          description: "Second milestone",
+          startDate: "2026-02-01",
+          endDate: "2026-02-28",
+          status: "PLANNED",
+        })
+      );
 
       const result = await listMilestones({});
 
@@ -221,13 +223,15 @@ describe("Milestone Tools Integration", () => {
 
   describe("handleUpdateMilestone", () => {
     it("should update milestone title", async () => {
-      const milestone = client.milestones.create({
-        title: "Old Title",
-        description: "Test milestone",
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        status: "PLANNED",
-      });
+      const milestone = await Effect.runPromise(
+        client.milestones.create({
+          title: "Old Title",
+          description: "Test milestone",
+          startDate: "2026-01-01",
+          endDate: "2026-01-31",
+          status: "PLANNED",
+        })
+      );
 
       const result = await updateMilestone({
         milestoneNumber: milestone.number,
@@ -253,13 +257,15 @@ describe("Milestone Tools Integration", () => {
 
   describe("handleDeleteMilestone", () => {
     it("should delete milestone", async () => {
-      const milestone = client.milestones.create({
-        title: "To Delete",
-        description: "Milestone to delete",
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        status: "PLANNED",
-      });
+      const milestone = await Effect.runPromise(
+        client.milestones.create({
+          title: "To Delete",
+          description: "Milestone to delete",
+          startDate: "2026-01-01",
+          endDate: "2026-01-31",
+          status: "PLANNED",
+        })
+      );
 
       const result = await deleteMilestone({
         milestoneNumber: milestone.number,
@@ -270,21 +276,23 @@ describe("Milestone Tools Integration", () => {
       expect(content.message).toContain("Deleted milestone");
 
       // Verify it's gone
-      const found = client.milestones.findById(milestone.id);
+      const found = await Effect.runPromise(client.milestones.findById(milestone.id));
       expect(found).toBeNull();
     });
 
     it("should unassign issues when deleting milestone", async () => {
-      const milestone = client.milestones.create({
-        title: "To Delete",
-        description: "Milestone to delete with issues",
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        status: "PLANNED",
-      });
+      const milestone = await Effect.runPromise(
+        client.milestones.create({
+          title: "To Delete",
+          description: "Milestone to delete with issues",
+          startDate: "2026-01-01",
+          endDate: "2026-01-31",
+          status: "PLANNED",
+        })
+      );
 
-      const issue = createTestIssue(client.issues);
-      client.issues.update(issue.id, { milestoneId: milestone.id });
+      const issue = await createTestIssue(client.issues);
+      await Effect.runPromise(client.issues.update(issue.id, { milestoneId: milestone.id }));
 
       const result = await deleteMilestone({
         milestoneNumber: milestone.number,
@@ -295,24 +303,26 @@ describe("Milestone Tools Integration", () => {
       expect(content.unassignedIssues).toBe(1);
 
       // Verify issue is unassigned (domain model uses undefined for unset fields)
-      const updatedIssue = client.issues.findById(issue.id);
+      const updatedIssue = await Effect.runPromise(client.issues.findById(issue.id));
       expect(updatedIssue?.milestoneId).toBeUndefined();
     });
   });
 
   describe("handleAssignIssueToMilestone", () => {
     it("should assign an issue to a milestone", async () => {
-      const issue = createTestIssue(client.issues, {
+      const issue = await createTestIssue(client.issues, {
         title: "Test Issue",
       });
 
-      const milestone = client.milestones.create({
-        title: "MVP",
-        description: "First release",
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        status: "PLANNED",
-      });
+      const milestone = await Effect.runPromise(
+        client.milestones.create({
+          title: "MVP",
+          description: "First release",
+          startDate: "2026-01-01",
+          endDate: "2026-01-31",
+          status: "PLANNED",
+        })
+      );
 
       const result = await assignIssueToMilestone({
         issueNumber: issue.number,
@@ -324,18 +334,20 @@ describe("Milestone Tools Integration", () => {
       expect(content.message).toContain("Assigned issue");
 
       // Verify the issue now has the milestoneId
-      const updatedIssue = client.issues.findByNumber(issue.number);
+      const updatedIssue = await Effect.runPromise(client.issues.findByNumber(issue.number));
       expect(updatedIssue?.milestoneId).toBe(milestone.id);
     });
 
     it("should return error if issue not found", async () => {
-      const milestone = client.milestones.create({
-        title: "MVP",
-        description: "First release",
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        status: "PLANNED",
-      });
+      const milestone = await Effect.runPromise(
+        client.milestones.create({
+          title: "MVP",
+          description: "First release",
+          startDate: "2026-01-01",
+          endDate: "2026-01-31",
+          status: "PLANNED",
+        })
+      );
 
       const result = await assignIssueToMilestone({
         issueNumber: 999,
@@ -348,7 +360,7 @@ describe("Milestone Tools Integration", () => {
     });
 
     it("should return error if milestone not found", async () => {
-      const issue = createTestIssue(client.issues);
+      const issue = await createTestIssue(client.issues);
 
       const result = await assignIssueToMilestone({
         issueNumber: issue.number,
@@ -363,21 +375,23 @@ describe("Milestone Tools Integration", () => {
 
   describe("handleRemoveIssueFromMilestone", () => {
     it("should remove an issue from its milestone", async () => {
-      const milestone = client.milestones.create({
-        title: "MVP",
-        description: "First release",
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        status: "PLANNED",
-      });
+      const milestone = await Effect.runPromise(
+        client.milestones.create({
+          title: "MVP",
+          description: "First release",
+          startDate: "2026-01-01",
+          endDate: "2026-01-31",
+          status: "PLANNED",
+        })
+      );
 
-      const issue = createTestIssue(client.issues, {
+      const issue = await createTestIssue(client.issues, {
         title: "Test Issue",
       });
-      client.issues.update(issue.id, { milestoneId: milestone.id });
+      await Effect.runPromise(client.issues.update(issue.id, { milestoneId: milestone.id }));
 
       // Verify it's assigned
-      const assignedIssue = client.issues.findByNumber(issue.number);
+      const assignedIssue = await Effect.runPromise(client.issues.findByNumber(issue.number));
       expect(assignedIssue?.milestoneId).toBe(milestone.id);
 
       const result = await removeIssueFromMilestone({
@@ -389,7 +403,7 @@ describe("Milestone Tools Integration", () => {
       expect(content.message).toContain("Removed issue");
 
       // Verify the issue no longer has a milestoneId (domain model uses undefined for unset fields)
-      const updatedIssue = client.issues.findByNumber(issue.number);
+      const updatedIssue = await Effect.runPromise(client.issues.findByNumber(issue.number));
       expect(updatedIssue?.milestoneId).toBeUndefined();
     });
 
@@ -404,7 +418,7 @@ describe("Milestone Tools Integration", () => {
     });
 
     it("should return error if issue is not assigned to any milestone", async () => {
-      const issue = createTestIssue(client.issues, {
+      const issue = await createTestIssue(client.issues, {
         title: "Test Issue",
       });
 

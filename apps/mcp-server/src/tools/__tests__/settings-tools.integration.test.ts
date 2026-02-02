@@ -6,30 +6,40 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
+import { createContainer, asValue, InjectionMode } from "awilix";
 import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import {
   MockGitHubCLI,
   TypeService,
   DEFAULT_COLUMN_MAPPING,
   ProjectManagementRegistry,
+  UpdateSettingsSchema,
   type Project,
 } from "@dev-workflow/tracking";
-import { handleUpdateSettings } from "../../tools/settings-tool-def.js";
-import { SettingsTool } from "../../tools/settings-tool.js";
-import { UpdateSettingsSchema } from "../../tools/schemas.js";
+import { handleUpdateSettings } from "../../tools/settings-tools.js";
+import { createMcpTool } from "../../di/bootstrap.js";
 
 const TEST_GIT_ROOT_HASH = "abc123def456";
 const TEST_GIT_ROOT = "/test/repo";
 
 /**
- * Create a test context for settings tools
+ * Test context returned by createSettingsTestContext
  */
+interface SettingsTestContext {
+  updateSettings: ReturnType<typeof createMcpTool>;
+  project: Project;
+  dbSource: TestDatabase["source"];
+}
 
-async function createSettingsToolContext(
+/**
+ * Create a test context for settings tools.
+ * Returns a bound tool function + raw deps for assertions.
+ */
+async function createSettingsTestContext(
   testDb: TestDatabase,
   mockGitHubCLI?: MockGitHubCLI,
   project?: Project
-): Promise<any> {
+): Promise<SettingsTestContext> {
   const githubCLI = mockGitHubCLI ?? new MockGitHubCLI();
   const typeService = new TypeService(testDb.source.types);
 
@@ -41,33 +51,29 @@ async function createSettingsToolContext(
       gitRootHash: TEST_GIT_ROOT_HASH,
     }));
 
-  const config = {
-    projectSlug: "test-project",
-    databasePath: ":memory:",
-    projectId: testProject.id,
-    gitRoot: TEST_GIT_ROOT,
-  };
-
   const providerRegistry = ProjectManagementRegistry.getInstance();
 
-  // Create SettingsTool with all dependencies
-  const settingsTool = new SettingsTool(
-    testDb.source,
-    testProject,
-    config,
-    githubCLI,
-    providerRegistry,
-    typeService
-  );
+  // Create test container with dependencies
+  const testContainer = createContainer({
+    injectionMode: InjectionMode.CLASSIC,
+  });
+
+  testContainer.register({
+    dbSource: asValue(testDb.source),
+    project: asValue(testProject),
+    githubCLI: asValue(githubCLI),
+    providerRegistry: asValue(providerRegistry),
+    typeService: asValue(typeService),
+    projectRoot: asValue(TEST_GIT_ROOT),
+  });
+
+  // Bind handler to test container
+  const updateSettings = createMcpTool(handleUpdateSettings, testContainer);
 
   return {
-    settingsTool,
+    updateSettings,
     project: testProject,
     dbSource: testDb.source,
-    githubCLI,
-    config,
-    providerRegistry,
-    typeService,
   };
 }
 
@@ -81,18 +87,15 @@ describe("update_settings - configure_column_mapping", () => {
   describe("when GitHub sync is not enabled", () => {
     it("should return error when trying to configure column mapping", async () => {
       // Arrange
-      const ctx = await createSettingsToolContext(testDb);
+      const ctx = await createSettingsTestContext(testDb);
 
       // Act
-      const result = await handleUpdateSettings(
-        {
-          action: "configure_column_mapping",
-          github: {
-            columnMapping: { IN_PROGRESS: "Working" },
-          },
+      const result = await ctx.updateSettings({
+        action: "configure_column_mapping",
+        github: {
+          columnMapping: { IN_PROGRESS: "Working" },
         },
-        ctx
-      );
+      });
 
       // Assert
       expect(result.isError).toBe(true);
@@ -102,28 +105,22 @@ describe("update_settings - configure_column_mapping", () => {
   });
 
   describe("when GitHub sync is enabled", () => {
-    let ctx: any;
+    let ctx: SettingsTestContext;
 
     beforeEach(async () => {
-      ctx = await createSettingsToolContext(testDb);
+      ctx = await createSettingsTestContext(testDb);
 
       // Enable GitHub sync first
-      await handleUpdateSettings(
-        {
-          action: "enable_github",
-        },
-        ctx
-      );
+      await ctx.updateSettings({
+        action: "enable_github",
+      });
     });
 
     it("should return current mapping when no changes provided", async () => {
       // Act
-      const result = await handleUpdateSettings(
-        {
-          action: "configure_column_mapping",
-        },
-        ctx
-      );
+      const result = await ctx.updateSettings({
+        action: "configure_column_mapping",
+      });
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -136,15 +133,12 @@ describe("update_settings - configure_column_mapping", () => {
 
     it("should update single column mapping", async () => {
       // Act
-      const result = await handleUpdateSettings(
-        {
-          action: "configure_column_mapping",
-          github: {
-            columnMapping: { PR_REVIEW: "Code Review" },
-          },
+      const result = await ctx.updateSettings({
+        action: "configure_column_mapping",
+        github: {
+          columnMapping: { PR_REVIEW: "Code Review" },
         },
-        ctx
-      );
+      });
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -165,22 +159,19 @@ describe("update_settings - configure_column_mapping", () => {
 
     it("should update multiple column mappings", async () => {
       // Act
-      const result = await handleUpdateSettings(
-        {
-          action: "configure_column_mapping",
-          github: {
-            columnMapping: {
-              BACKLOG: "To Do",
-              READY: "Up Next",
-              IN_PROGRESS: "Working On",
-              PR_REVIEW: "In Code Review",
-              COMPLETED: "Finished",
-              ABANDONED: "Cancelled",
-            },
+      const result = await ctx.updateSettings({
+        action: "configure_column_mapping",
+        github: {
+          columnMapping: {
+            BACKLOG: "To Do",
+            READY: "Up Next",
+            IN_PROGRESS: "Working On",
+            PR_REVIEW: "In Code Review",
+            COMPLETED: "Finished",
+            ABANDONED: "Cancelled",
           },
         },
-        ctx
-      );
+      });
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -196,26 +187,20 @@ describe("update_settings - configure_column_mapping", () => {
 
     it("should merge with existing custom mapping", async () => {
       // Arrange - first set one mapping
-      await handleUpdateSettings(
-        {
-          action: "configure_column_mapping",
-          github: {
-            columnMapping: { PR_REVIEW: "Code Review" },
-          },
+      await ctx.updateSettings({
+        action: "configure_column_mapping",
+        github: {
+          columnMapping: { PR_REVIEW: "Code Review" },
         },
-        ctx
-      );
+      });
 
       // Act - update a different mapping
-      const result = await handleUpdateSettings(
-        {
-          action: "configure_column_mapping",
-          github: {
-            columnMapping: { IN_PROGRESS: "Active" },
-          },
+      const result = await ctx.updateSettings({
+        action: "configure_column_mapping",
+        github: {
+          columnMapping: { IN_PROGRESS: "Active" },
         },
-        ctx
-      );
+      });
 
       // Assert - both mappings should be preserved
       expect(result.isError).toBeFalsy();
@@ -230,27 +215,21 @@ describe("update_settings - configure_column_mapping", () => {
 
     it("should reset column mapping to defaults", async () => {
       // Arrange - first set some custom mappings
-      await handleUpdateSettings(
-        {
-          action: "configure_column_mapping",
-          github: {
-            columnMapping: {
-              PR_REVIEW: "Code Review",
-              IN_PROGRESS: "Active",
-            },
+      await ctx.updateSettings({
+        action: "configure_column_mapping",
+        github: {
+          columnMapping: {
+            PR_REVIEW: "Code Review",
+            IN_PROGRESS: "Active",
           },
         },
-        ctx
-      );
+      });
 
       // Act - reset to defaults
-      const result = await handleUpdateSettings(
-        {
-          action: "configure_column_mapping",
-          resetColumnMapping: true,
-        },
-        ctx
-      );
+      const result = await ctx.updateSettings({
+        action: "configure_column_mapping",
+        resetColumnMapping: true,
+      });
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -263,15 +242,12 @@ describe("update_settings - configure_column_mapping", () => {
 
     it("should persist column mapping in database", async () => {
       // Act
-      await handleUpdateSettings(
-        {
-          action: "configure_column_mapping",
-          github: {
-            columnMapping: { PR_REVIEW: "Review" },
-          },
+      await ctx.updateSettings({
+        action: "configure_column_mapping",
+        github: {
+          columnMapping: { PR_REVIEW: "Review" },
         },
-        ctx
-      );
+      });
 
       // Assert - verify persisted in database
       const project = await ctx.dbSource.projects.findById(ctx.project.id);
@@ -289,27 +265,21 @@ describe("update_settings - get_settings", () => {
 
   it("should include column mapping in get_settings response", async () => {
     // Arrange
-    const ctx = await createSettingsToolContext(testDb);
+    const ctx = await createSettingsTestContext(testDb);
 
     // Enable GitHub and configure custom mapping
-    await handleUpdateSettings({ action: "enable_github" }, ctx);
-    await handleUpdateSettings(
-      {
-        action: "configure_column_mapping",
-        github: {
-          columnMapping: { PR_REVIEW: "In Review" },
-        },
+    await ctx.updateSettings({ action: "enable_github" });
+    await ctx.updateSettings({
+      action: "configure_column_mapping",
+      github: {
+        columnMapping: { PR_REVIEW: "In Review" },
       },
-      ctx
-    );
+    });
 
     // Act
-    const result = await handleUpdateSettings(
-      {
-        action: "get_settings",
-      },
-      ctx
-    );
+    const result = await ctx.updateSettings({
+      action: "get_settings",
+    });
 
     // Assert
     expect(result.isError).toBeFalsy();
@@ -325,16 +295,13 @@ describe("update_settings - get_settings", () => {
 
   it("should show default column mapping when none configured", async () => {
     // Arrange
-    const ctx = await createSettingsToolContext(testDb);
-    await handleUpdateSettings({ action: "enable_github" }, ctx);
+    const ctx = await createSettingsTestContext(testDb);
+    await ctx.updateSettings({ action: "enable_github" });
 
     // Act
-    const result = await handleUpdateSettings(
-      {
-        action: "get_settings",
-      },
-      ctx
-    );
+    const result = await ctx.updateSettings({
+      action: "get_settings",
+    });
 
     // Assert
     expect(result.isError).toBeFalsy();
@@ -346,22 +313,16 @@ describe("update_settings - get_settings", () => {
 
   it("should include assignee in get_settings response when configured", async () => {
     // Arrange
-    const ctx = await createSettingsToolContext(testDb);
-    await handleUpdateSettings(
-      {
-        action: "enable_github",
-        github: { assignee: "testuser" },
-      },
-      ctx
-    );
+    const ctx = await createSettingsTestContext(testDb);
+    await ctx.updateSettings({
+      action: "enable_github",
+      github: { assignee: "testuser" },
+    });
 
     // Act
-    const result = await handleUpdateSettings(
-      {
-        action: "get_settings",
-      },
-      ctx
-    );
+    const result = await ctx.updateSettings({
+      action: "get_settings",
+    });
 
     // Assert
     expect(result.isError).toBeFalsy();
@@ -372,16 +333,13 @@ describe("update_settings - get_settings", () => {
 
   it("should show null assignee when not configured", async () => {
     // Arrange
-    const ctx = await createSettingsToolContext(testDb);
-    await handleUpdateSettings({ action: "enable_github" }, ctx);
+    const ctx = await createSettingsTestContext(testDb);
+    await ctx.updateSettings({ action: "enable_github" });
 
     // Act
-    const result = await handleUpdateSettings(
-      {
-        action: "get_settings",
-      },
-      ctx
-    );
+    const result = await ctx.updateSettings({
+      action: "get_settings",
+    });
 
     // Assert
     expect(result.isError).toBeFalsy();
@@ -400,16 +358,13 @@ describe("update_settings - assignee configuration", () => {
   describe("enable_github with assignee", () => {
     it("should store assignee when provided with enable_github", async () => {
       // Arrange
-      const ctx = await createSettingsToolContext(testDb);
+      const ctx = await createSettingsTestContext(testDb);
 
       // Act
-      const result = await handleUpdateSettings(
-        {
-          action: "enable_github",
-          github: { assignee: "octocat" },
-        },
-        ctx
-      );
+      const result = await ctx.updateSettings({
+        action: "enable_github",
+        github: { assignee: "octocat" },
+      });
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -424,16 +379,13 @@ describe("update_settings - assignee configuration", () => {
 
     it("should reject assignee with @ prefix", async () => {
       // Arrange
-      const ctx = await createSettingsToolContext(testDb);
+      const ctx = await createSettingsTestContext(testDb);
 
       // Act
-      const result = await handleUpdateSettings(
-        {
-          action: "enable_github",
-          github: { assignee: "@octocat" },
-        },
-        ctx
-      );
+      const result = await ctx.updateSettings({
+        action: "enable_github",
+        github: { assignee: "@octocat" },
+      });
 
       // Assert
       expect(result.isError).toBe(true);
@@ -443,16 +395,13 @@ describe("update_settings - assignee configuration", () => {
 
     it("should reject invalid username format", async () => {
       // Arrange
-      const ctx = await createSettingsToolContext(testDb);
+      const ctx = await createSettingsTestContext(testDb);
 
       // Act
-      const result = await handleUpdateSettings(
-        {
-          action: "enable_github",
-          github: { assignee: "user--name" }, // consecutive hyphens
-        },
-        ctx
-      );
+      const result = await ctx.updateSettings({
+        action: "enable_github",
+        github: { assignee: "user--name" }, // consecutive hyphens
+      });
 
       // Assert
       expect(result.isError).toBe(true);
@@ -462,16 +411,13 @@ describe("update_settings - assignee configuration", () => {
 
     it("should accept valid usernames with hyphens", async () => {
       // Arrange
-      const ctx = await createSettingsToolContext(testDb);
+      const ctx = await createSettingsTestContext(testDb);
 
       // Act
-      const result = await handleUpdateSettings(
-        {
-          action: "enable_github",
-          github: { assignee: "my-username-123" },
-        },
-        ctx
-      );
+      const result = await ctx.updateSettings({
+        action: "enable_github",
+        github: { assignee: "my-username-123" },
+      });
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -481,23 +427,20 @@ describe("update_settings - assignee configuration", () => {
   });
 
   describe("configure_github with assignee", () => {
-    let ctx: any;
+    let ctx: SettingsTestContext;
 
     beforeEach(async () => {
-      ctx = await createSettingsToolContext(testDb);
+      ctx = await createSettingsTestContext(testDb);
       // Enable GitHub sync first
-      await handleUpdateSettings({ action: "enable_github" }, ctx);
+      await ctx.updateSettings({ action: "enable_github" });
     });
 
     it("should update assignee via configure_github", async () => {
       // Act
-      const result = await handleUpdateSettings(
-        {
-          action: "configure_github",
-          github: { assignee: "newuser" },
-        },
-        ctx
-      );
+      const result = await ctx.updateSettings({
+        action: "configure_github",
+        github: { assignee: "newuser" },
+      });
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -508,22 +451,16 @@ describe("update_settings - assignee configuration", () => {
 
     it("should clear assignee when empty string provided", async () => {
       // Arrange - first set an assignee
-      await handleUpdateSettings(
-        {
-          action: "configure_github",
-          github: { assignee: "existinguser" },
-        },
-        ctx
-      );
+      await ctx.updateSettings({
+        action: "configure_github",
+        github: { assignee: "existinguser" },
+      });
 
       // Act - clear with empty string
-      const result = await handleUpdateSettings(
-        {
-          action: "configure_github",
-          github: { assignee: "" },
-        },
-        ctx
-      );
+      const result = await ctx.updateSettings({
+        action: "configure_github",
+        github: { assignee: "" },
+      });
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -537,22 +474,16 @@ describe("update_settings - assignee configuration", () => {
 
     it("should preserve assignee when not provided in configure_github", async () => {
       // Arrange - first set an assignee
-      await handleUpdateSettings(
-        {
-          action: "configure_github",
-          github: { assignee: "existinguser" },
-        },
-        ctx
-      );
+      await ctx.updateSettings({
+        action: "configure_github",
+        github: { assignee: "existinguser" },
+      });
 
       // Act - update something else, don't provide assignee
-      await handleUpdateSettings(
-        {
-          action: "configure_column_mapping",
-          github: { columnMapping: { PR_REVIEW: "Review" } },
-        },
-        ctx
-      );
+      await ctx.updateSettings({
+        action: "configure_column_mapping",
+        github: { columnMapping: { PR_REVIEW: "Review" } },
+      });
 
       // Assert - assignee should still be there
       const project = await ctx.dbSource.projects.findById(ctx.project.id);
@@ -561,13 +492,10 @@ describe("update_settings - assignee configuration", () => {
 
     it("should reject assignee with @ prefix via configure_github", async () => {
       // Act
-      const result = await handleUpdateSettings(
-        {
-          action: "configure_github",
-          github: { assignee: "@baduser" },
-        },
-        ctx
-      );
+      const result = await ctx.updateSettings({
+        action: "configure_github",
+        github: { assignee: "@baduser" },
+      });
 
       // Assert
       expect(result.isError).toBe(true);
@@ -586,15 +514,12 @@ describe("update_settings - list_available_labels", () => {
 
   it("should return error when GitHub sync is not enabled", async () => {
     // Arrange
-    const ctx = await createSettingsToolContext(testDb);
+    const ctx = await createSettingsTestContext(testDb);
 
     // Act
-    const result = await handleUpdateSettings(
-      {
-        action: "list_available_labels",
-      },
-      ctx
-    );
+    const result = await ctx.updateSettings({
+      action: "list_available_labels",
+    });
 
     // Assert
     expect(result.isError).toBe(true);
@@ -624,24 +549,18 @@ describe("update_settings - list_available_labels", () => {
         { id: "PVTF_3", name: "Notes", type: "TEXT" as const },
       ],
     });
-    const ctx = await createSettingsToolContext(testDb, mockGitHubCLI);
+    const ctx = await createSettingsTestContext(testDb, mockGitHubCLI);
 
     // Enable GitHub with a projectId
-    await handleUpdateSettings(
-      {
-        action: "enable_github",
-        github: { projectId: "PVT_test123" },
-      },
-      ctx
-    );
+    await ctx.updateSettings({
+      action: "enable_github",
+      github: { projectId: "PVT_test123" },
+    });
 
     // Act
-    const result = await handleUpdateSettings(
-      {
-        action: "list_available_labels",
-      },
-      ctx
-    );
+    const result = await ctx.updateSettings({
+      action: "list_available_labels",
+    });
 
     // Assert
     expect(result.isError).toBeFalsy();
@@ -664,16 +583,13 @@ describe("update_settings - list_available_labels", () => {
 
   it("should return not supported when no projectId is configured", async () => {
     // Arrange
-    const ctx = await createSettingsToolContext(testDb);
-    await handleUpdateSettings({ action: "enable_github" }, ctx);
+    const ctx = await createSettingsTestContext(testDb);
+    await ctx.updateSettings({ action: "enable_github" });
 
     // Act
-    const result = await handleUpdateSettings(
-      {
-        action: "list_available_labels",
-      },
-      ctx
-    );
+    const result = await ctx.updateSettings({
+      action: "list_available_labels",
+    });
 
     // Assert
     expect(result.isError).toBeFalsy();
@@ -695,23 +611,20 @@ describe("update_settings - typeLabels validation", () => {
   describe("enable_github with typeLabels", () => {
     it("should accept valid typeLabels (uses default types when DB empty)", async () => {
       // Arrange
-      const ctx = await createSettingsToolContext(testDb);
+      const ctx = await createSettingsTestContext(testDb);
 
       // Act - use default types (FEATURE, BUG, etc.)
-      const result = await handleUpdateSettings(
-        {
-          action: "enable_github",
-          github: {
-            labels: {
-              typeLabels: {
-                FEATURE: "feat",
-                BUG: "bug-fix",
-              },
+      const result = await ctx.updateSettings({
+        action: "enable_github",
+        github: {
+          labels: {
+            typeLabels: {
+              FEATURE: "feat",
+              BUG: "bug-fix",
             },
           },
         },
-        ctx
-      );
+      });
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -723,23 +636,20 @@ describe("update_settings - typeLabels validation", () => {
 
     it("should reject invalid typeLabels", async () => {
       // Arrange
-      const ctx = await createSettingsToolContext(testDb);
+      const ctx = await createSettingsTestContext(testDb);
 
       // Act - use an invalid type name
-      const result = await handleUpdateSettings(
-        {
-          action: "enable_github",
-          github: {
-            labels: {
-              typeLabels: {
-                FEATURE: "feat",
-                INVALID_TYPE: "invalid",
-              },
+      const result = await ctx.updateSettings({
+        action: "enable_github",
+        github: {
+          labels: {
+            typeLabels: {
+              FEATURE: "feat",
+              INVALID_TYPE: "invalid",
             },
           },
         },
-        ctx
-      );
+      });
 
       // Assert
       expect(result.isError).toBe(true);
@@ -752,23 +662,20 @@ describe("update_settings - typeLabels validation", () => {
 
     it("should list multiple invalid types in error message", async () => {
       // Arrange
-      const ctx = await createSettingsToolContext(testDb);
+      const ctx = await createSettingsTestContext(testDb);
 
       // Act - use multiple invalid type names
-      const result = await handleUpdateSettings(
-        {
-          action: "enable_github",
-          github: {
-            labels: {
-              typeLabels: {
-                SPKE: "spike-typo", // typo of SPIKE
-                FEATUR: "feature-typo", // typo of FEATURE
-              },
+      const result = await ctx.updateSettings({
+        action: "enable_github",
+        github: {
+          labels: {
+            typeLabels: {
+              SPKE: "spike-typo", // typo of SPIKE
+              FEATUR: "feature-typo", // typo of FEATURE
             },
           },
         },
-        ctx
-      );
+      });
 
       // Assert
       expect(result.isError).toBe(true);
@@ -779,30 +686,27 @@ describe("update_settings - typeLabels validation", () => {
   });
 
   describe("configure_github with typeLabels", () => {
-    let ctx: any;
+    let ctx: SettingsTestContext;
 
     beforeEach(async () => {
-      ctx = await createSettingsToolContext(testDb);
+      ctx = await createSettingsTestContext(testDb);
       // Enable GitHub sync first
-      await handleUpdateSettings({ action: "enable_github" }, ctx);
+      await ctx.updateSettings({ action: "enable_github" });
     });
 
     it("should accept valid typeLabels via configure_github", async () => {
       // Act
-      const result = await handleUpdateSettings(
-        {
-          action: "configure_github",
-          github: {
-            labels: {
-              typeLabels: {
-                TASK: "chore",
-                ENHANCEMENT: "improvement",
-              },
+      const result = await ctx.updateSettings({
+        action: "configure_github",
+        github: {
+          labels: {
+            typeLabels: {
+              TASK: "chore",
+              ENHANCEMENT: "improvement",
             },
           },
         },
-        ctx
-      );
+      });
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -814,19 +718,16 @@ describe("update_settings - typeLabels validation", () => {
 
     it("should reject invalid typeLabels via configure_github", async () => {
       // Act
-      const result = await handleUpdateSettings(
-        {
-          action: "configure_github",
-          github: {
-            labels: {
-              typeLabels: {
-                NOT_A_TYPE: "invalid",
-              },
+      const result = await ctx.updateSettings({
+        action: "configure_github",
+        github: {
+          labels: {
+            typeLabels: {
+              NOT_A_TYPE: "invalid",
             },
           },
         },
-        ctx
-      );
+      });
 
       // Assert
       expect(result.isError).toBe(true);
@@ -846,23 +747,20 @@ describe("update_settings - typeLabels validation", () => {
 
       // Re-create context with fresh TypeService to pick up seeded types
       // Pass existing project to avoid UNIQUE constraint violation
-      const newCtx = await createSettingsToolContext(testDb, undefined, ctx.project);
-      await handleUpdateSettings({ action: "enable_github" }, newCtx);
+      const newCtx = await createSettingsTestContext(testDb, undefined, ctx.project);
+      await newCtx.updateSettings({ action: "enable_github" });
 
       // Act - use the custom type
-      const result = await handleUpdateSettings(
-        {
-          action: "configure_github",
-          github: {
-            labels: {
-              typeLabels: {
-                CUSTOM: "custom-label",
-              },
+      const result = await newCtx.updateSettings({
+        action: "configure_github",
+        github: {
+          labels: {
+            typeLabels: {
+              CUSTOM: "custom-label",
             },
           },
         },
-        newCtx
-      );
+      });
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -881,23 +779,20 @@ describe("update_settings - typeLabels validation", () => {
 
       // Re-create context with fresh TypeService to pick up seeded types
       // Pass existing project to avoid UNIQUE constraint violation
-      const newCtx = await createSettingsToolContext(testDb, undefined, ctx.project);
-      await handleUpdateSettings({ action: "enable_github" }, newCtx);
+      const newCtx = await createSettingsTestContext(testDb, undefined, ctx.project);
+      await newCtx.updateSettings({ action: "enable_github" });
 
       // Act - try to use a default type that's not in the seeded DB
-      const result = await handleUpdateSettings(
-        {
-          action: "configure_github",
-          github: {
-            labels: {
-              typeLabels: {
-                FEATURE: "feature", // Not in DB when custom types are seeded
-              },
+      const result = await newCtx.updateSettings({
+        action: "configure_github",
+        github: {
+          labels: {
+            typeLabels: {
+              FEATURE: "feature", // Not in DB when custom types are seeded
             },
           },
         },
-        newCtx
-      );
+      });
 
       // Assert - should reject since only CUSTOM exists in DB
       expect(result.isError).toBe(true);
@@ -909,22 +804,19 @@ describe("update_settings - typeLabels validation", () => {
 
     it("should allow mix of valid types", async () => {
       // Act - mix of default types
-      const result = await handleUpdateSettings(
-        {
-          action: "configure_github",
-          github: {
-            labels: {
-              typeLabels: {
-                FEATURE: "feat",
-                BUG: "bug",
-                ENHANCEMENT: "enhance",
-                TASK: "task",
-              },
+      const result = await ctx.updateSettings({
+        action: "configure_github",
+        github: {
+          labels: {
+            typeLabels: {
+              FEATURE: "feat",
+              BUG: "bug",
+              ENHANCEMENT: "enhance",
+              TASK: "task",
             },
           },
         },
-        ctx
-      );
+      });
 
       // Assert
       expect(result.isError).toBeFalsy();
@@ -940,23 +832,24 @@ describe("update_settings - typeLabels validation", () => {
 describe("Settings Tool Schema Validation", () => {
   describe("UpdateSettingsSchema", () => {
     it("should accept get_settings action", () => {
-      const result = UpdateSettingsSchema.safeParse({ action: "get_settings" });
+      const result = UpdateSettingsSchema.safeParse({ action: "get_settings", gitRoot: "/repo" });
       expect(result.success).toBe(true);
     });
 
     it("should accept enable_github action", () => {
-      const result = UpdateSettingsSchema.safeParse({ action: "enable_github" });
+      const result = UpdateSettingsSchema.safeParse({ action: "enable_github", gitRoot: "/repo" });
       expect(result.success).toBe(true);
     });
 
     it("should accept disable_github action", () => {
-      const result = UpdateSettingsSchema.safeParse({ action: "disable_github" });
+      const result = UpdateSettingsSchema.safeParse({ action: "disable_github", gitRoot: "/repo" });
       expect(result.success).toBe(true);
     });
 
     it("should accept configure_github with options", () => {
       const input = {
         action: "configure_github",
+        gitRoot: "/repo",
         github: {
           projectId: "PVT_test123",
           assignee: "username",
@@ -973,6 +866,7 @@ describe("Settings Tool Schema Validation", () => {
     it("should accept configure_column_mapping action", () => {
       const input = {
         action: "configure_column_mapping",
+        gitRoot: "/repo",
         github: {
           columnMapping: {
             BACKLOG: "Backlog",
@@ -990,6 +884,7 @@ describe("Settings Tool Schema Validation", () => {
     it("should accept resetColumnMapping flag", () => {
       const input = {
         action: "configure_column_mapping",
+        gitRoot: "/repo",
         resetColumnMapping: true,
       };
       const result = UpdateSettingsSchema.safeParse(input);
@@ -997,12 +892,12 @@ describe("Settings Tool Schema Validation", () => {
     });
 
     it("should reject invalid action", () => {
-      const result = UpdateSettingsSchema.safeParse({ action: "invalid_action" });
+      const result = UpdateSettingsSchema.safeParse({ action: "invalid_action", gitRoot: "/repo" });
       expect(result.success).toBe(false);
     });
 
     it("should reject missing action", () => {
-      const result = UpdateSettingsSchema.safeParse({});
+      const result = UpdateSettingsSchema.safeParse({ gitRoot: "/repo" });
       expect(result.success).toBe(false);
     });
   });

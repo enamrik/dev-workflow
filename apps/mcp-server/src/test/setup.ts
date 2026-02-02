@@ -67,8 +67,29 @@ export function createTestDatabase(projectId: string = TEST_PROJECT_ID): TestDat
   // Track for cleanup
   currentTestDb = sqlite;
 
+  // Wrap to support async transaction callbacks (same as DbSourceProvider).
+  // better-sqlite3's native transaction() is synchronous and commits before
+  // async callbacks finish. We use raw BEGIN/COMMIT/ROLLBACK instead.
+  const rawDrizzleDb = db as unknown as DrizzleDb;
+  const drizzleDb: DrizzleDb = {
+    select: (fields) => rawDrizzleDb.select(fields),
+    insert: (table) => rawDrizzleDb.insert(table),
+    update: (table) => rawDrizzleDb.update(table),
+    delete: (table) => rawDrizzleDb.delete(table),
+    async transaction<T>(fn: (tx: DrizzleDb) => Promise<T>): Promise<T> {
+      sqlite.exec("BEGIN");
+      try {
+        const result = await fn(rawDrizzleDb);
+        sqlite.exec("COMMIT");
+        return result;
+      } catch (e) {
+        sqlite.exec("ROLLBACK");
+        throw e;
+      }
+    },
+  };
+
   // Create DbClient for repository access
-  const drizzleDb = db as unknown as DrizzleDb;
   const client = new DrizzleDbClient(drizzleDb, projectId);
 
   // Create global repositories for DbSource

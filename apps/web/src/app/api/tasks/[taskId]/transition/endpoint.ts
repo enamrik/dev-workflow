@@ -4,42 +4,37 @@
  * Transitions a task to a new status with full validation.
  */
 
-import { z } from "zod";
 import { NextResponse } from "next/server";
-import { parseJsonBody } from "@/lib/di/bootstrap";
-import type { WebCradle } from "@/lib/di/container";
+import { Effect } from "@dev-workflow/effect";
+import { z } from "zod";
+import { transitionTask } from "@dev-workflow/tracking";
+import { createApiEndpoint } from "@/lib/di/bootstrap";
 
-const TransitionTaskSchema = z.object({
-  taskId: z.string().min(1),
-  targetStatus: z.enum(["BACKLOG", "READY", "IN_PROGRESS", "PR_REVIEW", "COMPLETED", "ABANDONED"]),
+const BodySchema = z.object({
   projectSlug: z.string().min(1),
+  targetStatus: z.enum([
+    "PLANNED",
+    "BACKLOG",
+    "READY",
+    "IN_PROGRESS",
+    "PR_REVIEW",
+    "COMPLETED",
+    "ABANDONED",
+  ]),
+  changedBy: z.string().optional(),
 });
 
-export async function transitionTaskEndpoint(
-  req: Request,
-  params: Record<string, string>,
-  { taskAppService }: Pick<WebCradle, "taskAppService">
-): Promise<NextResponse> {
-  const body = await req.json();
-  const validated = parseJsonBody(TransitionTaskSchema, {
-    ...body,
-    taskId: params["taskId"],
-  });
-
-  const result = await taskAppService.transitionTask(
-    validated.projectSlug,
-    validated.taskId,
-    validated.targetStatus
-  );
-
-  return NextResponse.json({
-    success: true,
-    task: {
-      id: result.task.id,
-      number: result.task.number,
-      title: result.task.title,
-      status: result.task.status,
-      previousStatus: result.previousStatus,
-    },
-  });
-}
+export const endpoint = createApiEndpoint({
+  bodySchema: BodySchema,
+  handler: (_req: Request, params: Record<string, string>, body: z.infer<typeof BodySchema>) =>
+    Effect.gen(function* () {
+      return NextResponse.json(
+        yield* transitionTask({
+          projectSlug: body.projectSlug,
+          taskId: params["taskId"]!,
+          toStatus: body.targetStatus,
+          changedBy: body.changedBy,
+        })
+      );
+    }),
+});

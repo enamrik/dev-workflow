@@ -9,8 +9,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { Effect } from "@dev-workflow/effect";
 import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
-import { createClientForProject, createNoOpProjectManagementService } from "../../test/helpers.js";
+import {
+  createClientForProject,
+  createNoOpProjectManagementService,
+  runMcpHandler,
+} from "../../test/helpers.js";
 import {
   TemplateService,
   PlanningService,
@@ -22,6 +27,8 @@ import {
   PlanService,
   MilestoneService,
   TypeService,
+  DomainExecutorFactory,
+  DbSourceProvider,
   type DbClient,
 } from "@dev-workflow/tracking";
 import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-queue-db.js";
@@ -32,16 +39,13 @@ import {
   handleCloseIssue,
   handleImportGitHubIssue,
   handleGetIssue,
-} from "../../tools/issue-tool-def.js";
-import { IssueTool } from "../../tools/issue-tool.js";
-import {
   CreateIssueSchema,
   GetIssueSchema,
   UpdateIssueSchema,
   DeleteIssueSchema,
   CloseIssueSchema,
   ImportGitHubIssueSchema,
-} from "../../tools/schemas.js";
+} from "../../tools/issue-tools.js";
 
 /** Test project ID */
 const TEST_PROJECT_ID = "test-project-integration";
@@ -94,26 +98,20 @@ async function createIssueToolContext(
   const milestoneService = new MilestoneService(client);
   const typeService = new TypeService(testDb.source.types);
 
-  // Create IssueTool with all dependencies
-  const issueTool = new IssueTool(
-    project,
-    issueService,
-    planService,
-    taskService,
-    milestoneService,
-    workerQueueDb,
-    mockTemplateService,
-    planningService,
-    mockProvider,
-    null, // gitWorktreeService
-    mockGitHubCLI,
-    typeService
-  );
+  // Create DomainExecutorFactory for Effect-based operations
+  const sourceProvider = new DbSourceProvider();
+  const domainFactory = new DomainExecutorFactory(sourceProvider);
+  // Mock forProject to use the test client directly (no config file in tests)
+  const testDomain = {
+    forProject: () => Effect.succeed(domainFactory.fromClient(client)),
+  } as unknown as DomainExecutorFactory;
 
   return {
     ctx: {
-      issueTool,
       project,
+      projectSlug: "test",
+      domain: testDomain,
+      projectManagement,
       issueService,
       planService,
       taskService,
@@ -164,7 +162,8 @@ describe("Issue Tools Integration", () => {
 
   describe("handleCreateIssue", () => {
     it("should create an issue with default values", async () => {
-      const result = await handleCreateIssue(
+      const result = await runMcpHandler(
+        handleCreateIssue,
         {
           title: "Test Issue",
           description: "Test description",
@@ -174,20 +173,20 @@ describe("Issue Tools Integration", () => {
 
       expect(result.isError).toBeUndefined(); // Success responses don't set isError
       const content = JSON.parse(result.content[0].text);
-      expect(content.success).toBe(true);
       expect(content.issue.title).toBe("Test Issue");
       expect(content.issue.type).toBe("FEATURE");
       expect(content.issue.priority).toBe("MEDIUM");
       expect(content.issue.status).toBe("PLANNED");
 
       // Verify database state
-      const issue = client.issues.findByNumber(content.issue.number);
+      const issue = await Effect.runPromise(client.issues.findByNumber(content.issue.number));
       expect(issue).toBeDefined();
       expect(issue!.title).toBe("Test Issue");
     });
 
     it("should create an issue with custom type and priority", async () => {
-      const result = await handleCreateIssue(
+      const result = await runMcpHandler(
+        handleCreateIssue,
         {
           title: "Bug Report",
           description: "Something is broken",
@@ -204,7 +203,8 @@ describe("Issue Tools Integration", () => {
     });
 
     it("should create an issue with acceptance criteria", async () => {
-      const result = await handleCreateIssue(
+      const result = await runMcpHandler(
+        handleCreateIssue,
         {
           title: "Feature with AC",
           description: "Feature description",
@@ -217,7 +217,7 @@ describe("Issue Tools Integration", () => {
       const content = JSON.parse(result.content[0].text);
 
       // Verify database state
-      const issue = client.issues.findByNumber(content.issue.number);
+      const issue = await Effect.runPromise(client.issues.findByNumber(content.issue.number));
       expect(issue!.acceptanceCriteria).toEqual(["AC 1", "AC 2", "AC 3"]);
     });
   });
@@ -225,7 +225,8 @@ describe("Issue Tools Integration", () => {
   describe("handleUpdateIssue", () => {
     it("should update issue title and description", async () => {
       // Create an issue first
-      const createResult = await handleCreateIssue(
+      const createResult = await runMcpHandler(
+        handleCreateIssue,
         {
           title: "Original Title",
           description: "Original description",
@@ -235,7 +236,8 @@ describe("Issue Tools Integration", () => {
       const created = JSON.parse(createResult.content[0].text);
 
       // Update it
-      const updateResult = await handleUpdateIssue(
+      const updateResult = await runMcpHandler(
+        handleUpdateIssue,
         {
           issueNumber: created.issue.number,
           updates: {
@@ -251,13 +253,14 @@ describe("Issue Tools Integration", () => {
       expect(content.issue.title).toBe("Updated Title");
 
       // Verify database state
-      const issue = client.issues.findByNumber(created.issue.number);
+      const issue = await Effect.runPromise(client.issues.findByNumber(created.issue.number));
       expect(issue!.title).toBe("Updated Title");
       expect(issue!.description).toBe("Updated description");
     });
 
     it("should return error for non-existent issue", async () => {
-      const result = await handleUpdateIssue(
+      const result = await runMcpHandler(
+        handleUpdateIssue,
         {
           issueNumber: 99999,
           updates: { title: "Won't work" },
@@ -274,7 +277,8 @@ describe("Issue Tools Integration", () => {
   describe("handleDeleteIssue", () => {
     it("should soft delete an issue", async () => {
       // Create an issue first
-      const createResult = await handleCreateIssue(
+      const createResult = await runMcpHandler(
+        handleCreateIssue,
         {
           title: "To Be Deleted",
           description: "This will be deleted",
@@ -284,7 +288,8 @@ describe("Issue Tools Integration", () => {
       const created = JSON.parse(createResult.content[0].text);
 
       // Delete it
-      const deleteResult = await handleDeleteIssue(
+      const deleteResult = await runMcpHandler(
+        handleDeleteIssue,
         {
           issueNumber: created.issue.number,
         },
@@ -293,17 +298,17 @@ describe("Issue Tools Integration", () => {
 
       expect(deleteResult.isError).toBeUndefined();
       const content = JSON.parse(deleteResult.content[0].text);
-      expect(content.success).toBe(true);
       expect(content.issue.isDeleted).toBe(true);
 
       // Verify database state - issue should be marked as deleted
       // Use includeDeleted: true since findByNumber filters out deleted issues by default
-      const issue = client.issues.findByNumber(created.issue.number, true);
+      const issue = await Effect.runPromise(client.issues.findByNumber(created.issue.number, true));
       expect(issue!.isDeleted).toBe(true);
     });
 
     it("should return error for non-existent issue", async () => {
-      const result = await handleDeleteIssue(
+      const result = await runMcpHandler(
+        handleDeleteIssue,
         {
           issueNumber: 99999,
         },
@@ -318,7 +323,8 @@ describe("Issue Tools Integration", () => {
   describe("handleCloseIssue", () => {
     it("should close an issue", async () => {
       // Create an issue first
-      const createResult = await handleCreateIssue(
+      const createResult = await runMcpHandler(
+        handleCreateIssue,
         {
           title: "To Be Closed",
           description: "This will be closed",
@@ -328,10 +334,11 @@ describe("Issue Tools Integration", () => {
       const created = JSON.parse(createResult.content[0].text);
 
       // Need to transition to OPEN first (issues start as PLANNED)
-      client.issues.update(created.issue.id, { status: "OPEN" });
+      await Effect.runPromise(client.issues.update(created.issue.id, { status: "OPEN" }));
 
       // Close it
-      const closeResult = await handleCloseIssue(
+      const closeResult = await runMcpHandler(
+        handleCloseIssue,
         {
           issueNumber: created.issue.number,
         },
@@ -340,10 +347,10 @@ describe("Issue Tools Integration", () => {
 
       expect(closeResult.isError).toBeUndefined();
       const content = JSON.parse(closeResult.content[0].text);
-      expect(content.message).toContain("closed successfully");
+      expect(content.issue.status).toBe("CLOSED");
 
       // Verify database state
-      const issue = client.issues.findByNumber(created.issue.number);
+      const issue = await Effect.runPromise(client.issues.findByNumber(created.issue.number));
       expect(issue!.status).toBe("CLOSED");
     });
   });
@@ -364,7 +371,8 @@ describe("Issue Tools Integration", () => {
         },
       ]);
 
-      const result = await handleImportGitHubIssue(
+      const result = await runMcpHandler(
+        handleImportGitHubIssue,
         {
           githubIssueNumber: 42,
         },
@@ -380,7 +388,7 @@ describe("Issue Tools Integration", () => {
       expect(content.inferred.type).toBe("TASK"); // Default when no labels
 
       // Verify database state
-      const issue = client.issues.findByNumber(content.issue.number);
+      const issue = await Effect.runPromise(client.issues.findByNumber(content.issue.number));
       expect(issue).toBeDefined();
       expect(issue!.sourceExternalId).toBe("42");
     });
@@ -399,7 +407,8 @@ describe("Issue Tools Integration", () => {
         },
       ]);
 
-      const result = await handleImportGitHubIssue(
+      const result = await runMcpHandler(
+        handleImportGitHubIssue,
         {
           githubIssueUrl: "https://github.com/owner/repo/issues/123",
         },
@@ -427,7 +436,8 @@ describe("Issue Tools Integration", () => {
         },
       ]);
 
-      const result = await handleImportGitHubIssue(
+      const result = await runMcpHandler(
+        handleImportGitHubIssue,
         {
           githubIssueNumber: 10,
         },
@@ -452,7 +462,8 @@ describe("Issue Tools Integration", () => {
         },
       ]);
 
-      const result = await handleImportGitHubIssue(
+      const result = await runMcpHandler(
+        handleImportGitHubIssue,
         {
           githubIssueNumber: 11,
         },
@@ -477,7 +488,8 @@ describe("Issue Tools Integration", () => {
         },
       ]);
 
-      const result = await handleImportGitHubIssue(
+      const result = await runMcpHandler(
+        handleImportGitHubIssue,
         {
           githubIssueNumber: 12,
         },
@@ -502,7 +514,8 @@ describe("Issue Tools Integration", () => {
         },
       ]);
 
-      const result = await handleImportGitHubIssue(
+      const result = await runMcpHandler(
+        handleImportGitHubIssue,
         {
           githubIssueNumber: 13,
         },
@@ -527,7 +540,8 @@ describe("Issue Tools Integration", () => {
         },
       ]);
 
-      const result = await handleImportGitHubIssue(
+      const result = await runMcpHandler(
+        handleImportGitHubIssue,
         {
           githubIssueNumber: 14,
         },
@@ -553,10 +567,10 @@ describe("Issue Tools Integration", () => {
       ]);
 
       // First import
-      await handleImportGitHubIssue({ githubIssueNumber: 50 }, ctx);
+      await runMcpHandler(handleImportGitHubIssue, { githubIssueNumber: 50 }, ctx);
 
       // Try to import again
-      const result = await handleImportGitHubIssue({ githubIssueNumber: 50 }, ctx);
+      const result = await runMcpHandler(handleImportGitHubIssue, { githubIssueNumber: 50 }, ctx);
 
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
@@ -564,7 +578,8 @@ describe("Issue Tools Integration", () => {
     });
 
     it("should reject invalid URL format", async () => {
-      const result = await handleImportGitHubIssue(
+      const result = await runMcpHandler(
+        handleImportGitHubIssue,
         {
           githubIssueUrl: "https://example.com/not-a-github-url",
         },
@@ -580,7 +595,8 @@ describe("Issue Tools Integration", () => {
       const mockCLI = ctx.githubCLI as MockGitHubCLI;
       mockCLI.setIssues([]); // No issues available
 
-      const result = await handleImportGitHubIssue(
+      const result = await runMcpHandler(
+        handleImportGitHubIssue,
         {
           githubIssueNumber: 99999,
         },
@@ -593,7 +609,7 @@ describe("Issue Tools Integration", () => {
     });
 
     it("should require either number or URL", async () => {
-      const result = await handleImportGitHubIssue({}, ctx);
+      const result = await runMcpHandler(handleImportGitHubIssue, {}, ctx);
 
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
@@ -604,7 +620,8 @@ describe("Issue Tools Integration", () => {
   describe("handleCloseIssue", () => {
     it("should close an issue with no tasks", async () => {
       // Create an issue first
-      const createResult = await handleCreateIssue(
+      const createResult = await runMcpHandler(
+        handleCreateIssue,
         {
           title: "Issue to close",
           description: "Will be closed",
@@ -614,7 +631,8 @@ describe("Issue Tools Integration", () => {
       const created = JSON.parse(createResult.content[0].text);
 
       // Close it
-      const closeResult = await handleCloseIssue(
+      const closeResult = await runMcpHandler(
+        handleCloseIssue,
         {
           issueNumber: created.issue.number,
         },
@@ -624,10 +642,9 @@ describe("Issue Tools Integration", () => {
       expect(closeResult.isError).toBeUndefined();
       const content = JSON.parse(closeResult.content[0].text);
       expect(content.issue.status).toBe("CLOSED");
-      expect(content.message).toContain("closed successfully");
 
       // Verify database state
-      const issue = client.issues.findByNumber(created.issue.number);
+      const issue = await Effect.runPromise(client.issues.findByNumber(created.issue.number));
       expect(issue!.status).toBe("CLOSED");
     });
 
@@ -647,7 +664,7 @@ describe("Issue Tools Integration", () => {
       ]);
 
       // Enable GitHub sync on the project
-      testDb.source.projects.update(ctx.project.id, {
+      await testDb.source.projects.update(ctx.project.id, {
         syncConfig: {
           enabled: true,
           projectId: "PVT_test123",
@@ -655,7 +672,8 @@ describe("Issue Tools Integration", () => {
       });
 
       // Import the GitHub issue
-      const importResult = await handleImportGitHubIssue(
+      const importResult = await runMcpHandler(
+        handleImportGitHubIssue,
         {
           githubIssueNumber: 42,
         },
@@ -665,7 +683,8 @@ describe("Issue Tools Integration", () => {
       expect(imported.issue.sourceGitHubIssueNumber).toBe(42);
 
       // Close the imported issue
-      const closeResult = await handleCloseIssue(
+      const closeResult = await runMcpHandler(
+        handleCloseIssue,
         {
           issueNumber: imported.issue.number,
         },
@@ -675,7 +694,6 @@ describe("Issue Tools Integration", () => {
       expect(closeResult.isError).toBeUndefined();
       const content = JSON.parse(closeResult.content[0].text);
       expect(content.parentGitHubIssueClosed).toBe("42");
-      expect(content.message).toContain("Parent GitHub issue #42 also closed");
 
       // Verify closeIssue was called on the mock
       const closeCalls = mockCLI.getCallsTo("closeIssue");
@@ -687,7 +705,8 @@ describe("Issue Tools Integration", () => {
       const mockCLI = ctx.githubCLI as MockGitHubCLI;
 
       // Create a regular (non-imported) issue
-      const createResult = await handleCreateIssue(
+      const createResult = await runMcpHandler(
+        handleCreateIssue,
         {
           title: "Regular Issue",
           description: "Not imported",
@@ -697,7 +716,8 @@ describe("Issue Tools Integration", () => {
       const created = JSON.parse(createResult.content[0].text);
 
       // Close it
-      const closeResult = await handleCloseIssue(
+      const closeResult = await runMcpHandler(
+        handleCloseIssue,
         {
           issueNumber: created.issue.number,
         },
@@ -717,7 +737,8 @@ describe("Issue Tools Integration", () => {
   describe("handleGetIssue", () => {
     it("should get issue by number", async () => {
       // Create an issue
-      const createResult = await handleCreateIssue(
+      const createResult = await runMcpHandler(
+        handleCreateIssue,
         {
           title: "Test Issue",
           description: "Test description",
@@ -726,17 +747,22 @@ describe("Issue Tools Integration", () => {
       );
       const created = JSON.parse(createResult.content[0].text);
 
-      const result = await handleGetIssue({ issueNumber: created.issue.number }, ctx);
+      const result = await runMcpHandler(
+        handleGetIssue,
+        { issueNumber: created.issue.number },
+        ctx
+      );
 
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
-      expect(content.title).toBe("Test Issue");
-      expect(content.description).toBe("Test description");
+      expect(content.issue.title).toBe("Test Issue");
+      expect(content.issue.description).toBe("Test description");
     });
 
     it("should return enriched task data when includePlan is true", async () => {
       // Create issue with plan and tasks
-      const createResult = await handleCreateIssue(
+      const createResult = await runMcpHandler(
+        handleCreateIssue,
         {
           title: "Issue with Plan",
           description: "Has tasks",
@@ -746,7 +772,7 @@ describe("Issue Tools Integration", () => {
       const created = JSON.parse(createResult.content[0].text);
 
       // Create a plan with tasks
-      const plan = client.plans.create({
+      const plan = await client.plans.create({
         issueId: created.issue.id,
         summary: "Test plan",
         approach: "Test approach",
@@ -754,41 +780,48 @@ describe("Issue Tools Integration", () => {
         generatedBy: "test",
       });
 
-      const task1 = client.tasks.create({
-        id: crypto.randomUUID(),
-        planId: plan.id,
-        title: "Task 1",
-        description: "First task",
-        status: "BACKLOG",
-        type: "TASK",
-        source: "generated",
-        acceptanceCriteria: [],
-        isDeleted: false,
-      });
+      const task1 = await Effect.runPromise(
+        client.tasks.create({
+          id: crypto.randomUUID(),
+          planId: plan.id,
+          title: "Task 1",
+          description: "First task",
+          status: "BACKLOG",
+          type: "TASK",
+          source: "generated",
+          acceptanceCriteria: [],
+          isDeleted: false,
+        })
+      );
 
-      const task2 = client.tasks.create({
-        id: crypto.randomUUID(),
-        planId: plan.id,
-        title: "Task 2",
-        description: "Second task",
-        status: "IN_PROGRESS",
-        type: "TASK",
-        source: "generated",
-        acceptanceCriteria: [],
-        isDeleted: false,
-      });
+      const task2 = await Effect.runPromise(
+        client.tasks.create({
+          id: crypto.randomUUID(),
+          planId: plan.id,
+          title: "Task 2",
+          description: "Second task",
+          status: "IN_PROGRESS",
+          type: "TASK",
+          source: "generated",
+          acceptanceCriteria: [],
+          isDeleted: false,
+        })
+      );
 
       // Add session to the IN_PROGRESS task
-      client.tasks.update(task2.id, { sessionId: "test-session" });
+      await Effect.runPromise(client.tasks.update(task2.id, { sessionId: "test-session" }));
 
       // Add PR info to one task
-      client.tasks.update(task1.id, {
-        prNumber: 123,
-        prUrl: "https://github.com/test/repo/pull/123",
-        prStatus: "OPEN",
-      });
+      await Effect.runPromise(
+        client.tasks.update(task1.id, {
+          prNumber: 123,
+          prUrl: "https://github.com/test/repo/pull/123",
+          prStatus: "OPEN",
+        })
+      );
 
-      const result = await handleGetIssue(
+      const result = await runMcpHandler(
+        handleGetIssue,
         {
           issueNumber: created.issue.number,
           includePlan: true,
@@ -802,28 +835,24 @@ describe("Issue Tools Integration", () => {
       // Verify plan is included
       expect(content.plan).toBeDefined();
       expect(content.plan.summary).toBe("Test plan");
-      expect(content.plan.tasks).toHaveLength(2);
+      expect(content.tasks).toHaveLength(2);
 
       // Find the tasks in the response
-      const taskWithPR = content.plan.tasks.find((t: { id: string }) => t.id === task1.id);
-      const taskInProgress = content.plan.tasks.find((t: { id: string }) => t.id === task2.id);
+      const taskWithPR = content.tasks.find((t: { id: string }) => t.id === task1.id);
+      const taskInProgress = content.tasks.find((t: { id: string }) => t.id === task2.id);
 
-      // Verify PR info is included
-      expect(taskWithPR.prInfo).toBeDefined();
-      expect(taskWithPR.prInfo.prNumber).toBe(123);
-      expect(taskWithPR.prInfo.prUrl).toBe("https://github.com/test/repo/pull/123");
+      // Verify PR info is included as raw task fields
+      expect(taskWithPR.prNumber).toBe(123);
+      expect(taskWithPR.prUrl).toBe("https://github.com/test/repo/pull/123");
 
-      // Verify worker info for IN_PROGRESS task
-      expect(taskInProgress.workerInfo).toBeDefined();
-      expect(taskInProgress.workerInfo.sessionId).toBe("test-session");
-
-      // Task in BACKLOG should not have workerInfo (even with PR)
-      expect(taskWithPR.workerInfo).toBeUndefined();
+      // Verify session info for IN_PROGRESS task
+      expect(taskInProgress.sessionId).toBe("test-session");
     });
 
     it("should not include enriched data when includePlan is false", async () => {
       // Create issue with plan and tasks
-      const createResult = await handleCreateIssue(
+      const createResult = await runMcpHandler(
+        handleCreateIssue,
         {
           title: "Issue without Plan",
           description: "No plan requested",
@@ -833,7 +862,7 @@ describe("Issue Tools Integration", () => {
       const created = JSON.parse(createResult.content[0].text);
 
       // Create a plan with tasks
-      const plan = client.plans.create({
+      const plan = await client.plans.create({
         issueId: created.issue.id,
         summary: "Test plan",
         approach: "Test approach",
@@ -841,20 +870,23 @@ describe("Issue Tools Integration", () => {
         generatedBy: "test",
       });
 
-      client.tasks.create({
-        id: crypto.randomUUID(),
-        planId: plan.id,
-        title: "Task 1",
-        description: "First task",
-        status: "IN_PROGRESS",
-        type: "TASK",
-        source: "generated",
-        acceptanceCriteria: [],
-        isDeleted: false,
-      });
+      await Effect.runPromise(
+        client.tasks.create({
+          id: crypto.randomUUID(),
+          planId: plan.id,
+          title: "Task 1",
+          description: "First task",
+          status: "IN_PROGRESS",
+          type: "TASK",
+          source: "generated",
+          acceptanceCriteria: [],
+          isDeleted: false,
+        })
+      );
 
       // Request without includePlan
-      const result = await handleGetIssue(
+      const result = await runMcpHandler(
+        handleGetIssue,
         {
           issueNumber: created.issue.number,
           includePlan: false,
@@ -865,8 +897,11 @@ describe("Issue Tools Integration", () => {
       expect(result.isError).toBeUndefined();
       const content = JSON.parse(result.content[0].text);
 
-      // Plan should not be included
+      // Plan and tasks should not be included when includePlan is false
       expect(content.plan).toBeUndefined();
+      expect(content.tasks).toBeUndefined();
+      // Issue should still be present
+      expect(content.issue).toBeDefined();
     });
   });
 });
@@ -928,14 +963,18 @@ describe("Issue Tool Schema Validation", () => {
   });
 
   describe("GetIssueSchema", () => {
-    it("should accept issueNumber only", () => {
+    it("should accept issueNumber", () => {
       const result = GetIssueSchema.safeParse({ issueNumber: 42 });
       expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.issueNumber).toBe(42);
+        expect(result.data.includePlan).toBe(false);
+      }
     });
 
-    it("should accept id only", () => {
-      const result = GetIssueSchema.safeParse({ id: "uuid-here" });
-      expect(result.success).toBe(true);
+    it("should require issueNumber", () => {
+      const result = GetIssueSchema.safeParse({});
+      expect(result.success).toBe(false);
     });
 
     it("should accept includePlan flag", () => {
@@ -946,9 +985,12 @@ describe("Issue Tool Schema Validation", () => {
       }
     });
 
-    it("should accept empty object (all optional)", () => {
-      const result = GetIssueSchema.safeParse({});
+    it("should default includePlan to false", () => {
+      const result = GetIssueSchema.safeParse({ issueNumber: 1 });
       expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.includePlan).toBe(false);
+      }
     });
   });
 
@@ -995,16 +1037,22 @@ describe("Issue Tool Schema Validation", () => {
     it("should accept issueNumber", () => {
       const result = DeleteIssueSchema.safeParse({ issueNumber: 1 });
       expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.deletedBy).toBe("mcp");
+      }
     });
 
-    it("should accept issueId", () => {
-      const result = DeleteIssueSchema.safeParse({ issueId: "uuid-here" });
-      expect(result.success).toBe(true);
-    });
-
-    it("should accept empty object (all optional)", () => {
+    it("should require issueNumber", () => {
       const result = DeleteIssueSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+
+    it("should accept custom deletedBy", () => {
+      const result = DeleteIssueSchema.safeParse({ issueNumber: 1, deletedBy: "user" });
       expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.deletedBy).toBe("user");
+      }
     });
   });
 
