@@ -12,8 +12,7 @@ import { createServices } from "../../test/helpers.js";
 import {
   VersioningService,
   PlanDomainService,
-  TaskManagementService,
-  TaskSessionService,
+  TaskDomainService,
   type DbClient,
   type IssueType,
   type IssuePriority,
@@ -172,11 +171,11 @@ async function updateTaskStatusTool(
  * Simulate delete_task tool
  */
 async function deleteTaskTool(
-  taskManagementService: TaskManagementService,
+  taskDomainService: TaskDomainService,
   params: { taskId: string }
 ): Promise<ToolResult> {
   try {
-    const task = await Effect.runPromise(taskManagementService.deleteTask(params.taskId, "test"));
+    const task = await Effect.runPromise(taskDomainService.deleteTask(params.taskId, "test"));
     return { success: true, task };
   } catch (error) {
     return {
@@ -496,13 +495,13 @@ describe("MCP Tool: update_task_status", () => {
 describe("MCP Tool: delete_task", () => {
   let testDb: TestDatabase;
   let planDomainService: PlanDomainService;
-  let taskManagementService: TaskManagementService;
+  let taskDomainService: TaskDomainService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
     const services = createServices(testDb.client);
     planDomainService = services.planDomainService;
-    taskManagementService = services.taskManagementService;
+    taskDomainService = services.taskDomainService;
   });
 
   afterEach(() => {
@@ -539,7 +538,7 @@ describe("MCP Tool: delete_task", () => {
     expect(tasks[0]!.status).toBe("PLANNED");
 
     // Delete task
-    const result = await deleteTaskTool(taskManagementService, { taskId });
+    const result = await deleteTaskTool(taskDomainService, { taskId });
 
     expect(result.success).toBe(true);
 
@@ -583,7 +582,7 @@ describe("MCP Tool: delete_task", () => {
     await Effect.runPromise(testDb.client.tasks.updateStatus(taskId, "BACKLOG"));
 
     // Try to delete - should fail because task is past PLANNED status
-    const result = await deleteTaskTool(taskManagementService, { taskId });
+    const result = await deleteTaskTool(taskDomainService, { taskId });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("PLANNED status");
@@ -621,7 +620,7 @@ describe("MCP Tool: delete_task", () => {
     await Effect.runPromise(testDb.client.tasks.updateStatus(taskId, "IN_PROGRESS", "test"));
 
     // Try to delete
-    const result = await deleteTaskTool(taskManagementService, { taskId });
+    const result = await deleteTaskTool(taskDomainService, { taskId });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("PLANNED status");
@@ -805,13 +804,13 @@ describe("MCP Tool: list_issues", () => {
 describe("MCP Tool: list_available_tasks", () => {
   let testDb: TestDatabase;
   let planDomainService: PlanDomainService;
-  let taskSessionService: TaskSessionService;
+  let taskDomainService: TaskDomainService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
     const services = createServices(testDb.client);
     planDomainService = services.planDomainService;
-    taskSessionService = new TaskSessionService(testDb.client);
+    taskDomainService = services.taskDomainService;
   });
 
   afterEach(() => {
@@ -843,7 +842,7 @@ describe("MCP Tool: list_available_tasks", () => {
     await Effect.runPromise(testDb.client.tasks.updateStatus(task.id, "BACKLOG"));
 
     // Check task availability
-    const isAvailable = await Effect.runPromise(taskSessionService.isTaskAvailable(task.id));
+    const isAvailable = await Effect.runPromise(taskDomainService.isTaskAvailable(task.id));
 
     expect(isAvailable).toBe(true);
   });
@@ -876,7 +875,7 @@ describe("MCP Tool: list_available_tasks", () => {
     await Effect.runPromise(testDb.client.issues.update(issue!.id, { status: "CLOSED" }));
 
     // Check task availability - should be false because issue is closed
-    const isAvailable = await Effect.runPromise(taskSessionService.isTaskAvailable(task.id));
+    const isAvailable = await Effect.runPromise(taskDomainService.isTaskAvailable(task.id));
 
     expect(isAvailable).toBe(false);
   });
@@ -907,11 +906,11 @@ describe("MCP Tool: list_available_tasks", () => {
 
     // Close the issue
     await Effect.runPromise(testDb.client.issues.update(issue!.id, { status: "CLOSED" }));
-    expect(await Effect.runPromise(taskSessionService.isTaskAvailable(task.id))).toBe(false);
+    expect(await Effect.runPromise(taskDomainService.isTaskAvailable(task.id))).toBe(false);
 
     // Reopen the issue
     await Effect.runPromise(testDb.client.issues.update(issue!.id, { status: "OPEN" }));
-    expect(await Effect.runPromise(taskSessionService.isTaskAvailable(task.id))).toBe(true);
+    expect(await Effect.runPromise(taskDomainService.isTaskAvailable(task.id))).toBe(true);
   });
 });
 

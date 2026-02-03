@@ -18,8 +18,7 @@ import {
   runMcpHandler,
 } from "../../test/helpers.js";
 import {
-  TaskSessionService,
-  TaskManagementService,
+  TaskDomainService,
   ConflictDetectionService,
   IssueService,
   TaskService,
@@ -171,14 +170,7 @@ async function createTaskToolContext(
   const projectManagement = createLocalMockService(options?.mockServiceCalls, options?.githubSync);
 
   const conflictDetectionService = new ConflictDetectionService(client);
-
-  const taskSessionService = new TaskSessionService(
-    client,
-    mockGitWorktreeService,
-    conflictDetectionService
-  );
-
-  const taskManagementService = new TaskManagementService(client);
+  const taskDomainService = new TaskDomainService(client.tasks, client.plans, client.issues);
 
   const planDomainService = new PlanDomainService(client.plans, client.tasks, client.issues);
   const issueDomainService = new IssueDomainService(client.issues);
@@ -191,11 +183,11 @@ async function createTaskToolContext(
       issueService,
       planDomainService,
       issueDomainService,
+      taskDomainService,
       taskService,
       workerQueueDb,
-      taskSessionService,
-      taskManagementService,
       conflictDetectionService,
+      gitWorktreeService: mockGitWorktreeService,
       projectId,
     },
     client,

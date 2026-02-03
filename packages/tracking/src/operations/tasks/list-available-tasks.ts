@@ -8,8 +8,7 @@
 
 import { z } from "zod";
 import { Task } from "../../domain/tasks/task.js";
-import { TaskService } from "../../domain/tasks/task-service.js";
-import { TaskSessionService } from "../../domain/tasks/task-session-service.js";
+import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { IssueService } from "../../domain/issues/issue-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { validateInput } from "../validation.js";
@@ -42,31 +41,30 @@ export interface ListAvailableTasksResult {
 export function listAvailableTasks(input: ListAvailableTasksInput) {
   return Effect.gen(function* () {
     const { planId, issueNumber } = validateInput(listAvailableTasksSchema, input);
-    const taskService = yield* TaskService;
-    const taskSessionService = yield* TaskSessionService;
+    const taskDomainService = yield* TaskDomainService;
     const issueService = yield* IssueService;
     const planDomainService = yield* PlanDomainService;
 
     let tasks: Task[] = [];
 
     if (planId) {
-      tasks = yield* taskService.findByPlanId(planId);
+      tasks = yield* taskDomainService.findByPlanId(planId);
     } else if (issueNumber) {
       const issue = yield* issueService.findByNumber(issueNumber);
       if (issue) {
         const plan = yield* planDomainService.findByIssueId(issue.id);
         if (plan) {
-          tasks = yield* taskService.findByPlanId(plan.id);
+          tasks = yield* taskDomainService.findByPlanId(plan.id);
         }
       }
     } else {
-      tasks = yield* taskService.findMany({});
+      tasks = yield* taskDomainService.findMany({});
     }
 
     // Filter to only available tasks and include availability info
     const availableTasks: Array<Task & { isAvailable: boolean; blockedBy: string[] }> = [];
     for (const task of tasks) {
-      const isAvailable = yield* taskSessionService.isTaskAvailable(task.id);
+      const isAvailable = yield* taskDomainService.isTaskAvailable(task.id);
       if (isAvailable) {
         availableTasks.push(
           Object.assign(Task.from(task), {
