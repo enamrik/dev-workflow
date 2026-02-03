@@ -75,11 +75,13 @@ export {
   type CompleteTaskSessionRequest,
   type TaskExecutionMode,
 } from "./domain/tasks/task-session-service.js";
-export { TaskMatchingService } from "./domain/tasks/task-matching-service.js";
-export { PlanService } from "./domain/plans/plan-service.js";
-export { PlanningService, type GeneratePlanRequest } from "./domain/plans/planning-service.js";
-export { DependencyService } from "./domain/plans/dependency-service.js";
-export { DAGValidationService } from "./domain/plans/dag-validation-service.js";
+export {
+  matchTasks,
+  type TaskDefinition,
+  type TaskMatchResult,
+} from "./domain/tasks/task-matching.js";
+// PlanService, PlanningService, DependencyService removed - use PlanDomainService instead
+export { validateDAG, getTopologicalOrder, type DAGNode } from "./domain/plans/dag-validation.js";
 export { MilestoneService } from "./domain/milestones/milestone-service.js";
 export { VersioningService } from "./domain/snapshots/versioning-service.js";
 export { TypeService } from "./domain/types/type-service.js";
@@ -180,7 +182,12 @@ export {
 } from "./domain/domain-executor.js";
 export { IssueDomainService } from "./domain/issues/issue-domain-service.js";
 export { TaskDomainService } from "./domain/tasks/task-domain-service.js";
-export { PlanDomainService } from "./domain/plans/plan-domain-service.js";
+export {
+  PlanDomainService,
+  type GeneratePlanRequest,
+  type PlanWithTasks,
+  type IssueUpdates,
+} from "./domain/plans/plan-domain-service.js";
 export { MilestoneDomainService } from "./domain/milestones/milestone-domain-service.js";
 export {
   closeIssue,

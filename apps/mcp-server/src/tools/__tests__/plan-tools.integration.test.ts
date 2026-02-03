@@ -14,12 +14,12 @@ import {
   runMcpHandler,
 } from "../../test/helpers.js";
 import {
-  PlanningService,
+  PlanDomainService,
+  IssueDomainService,
   VersioningService,
   TypeService,
   IssueService,
   TaskService,
-  PlanService,
   type DbClient,
 } from "@dev-workflow/tracking";
 import {
@@ -58,14 +58,14 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<{
   const projectManagement = createNoOpProjectManagementService();
 
   // Create services with DbClient
+  const planDomainService = new PlanDomainService(client.plans, client.tasks, client.issues);
+  const issueDomainService = new IssueDomainService(client.issues);
   const versioningService = new VersioningService(client);
-  const planningService = new PlanningService(client, versioningService);
 
   // TypeService for type validation (backed by database - types are global)
   const typeService = new TypeService(testDb.source.types);
 
   // Create services with DbClient
-  const planService = new PlanService(client);
   const taskService = new TaskService(client, projectManagement, null);
   const issueService = new IssueService(client, taskService, projectManagement);
 
@@ -74,9 +74,10 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<{
       project,
       projectSlug: "test",
       issueService,
-      planService,
+      planDomainService,
+      issueDomainService,
+      versioningService,
       taskService,
-      planningService,
       typeService,
     },
     client,

@@ -11,7 +11,7 @@ import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import { createServices } from "../../test/helpers.js";
 import {
   VersioningService,
-  PlanningService,
+  PlanDomainService,
   TaskManagementService,
   TaskSessionService,
   type DbClient,
@@ -108,7 +108,7 @@ async function listIssuesTool(
  * Simulate generate_plan tool
  */
 async function generatePlanTool(
-  planningService: PlanningService,
+  planDomainService: PlanDomainService,
   client: DbClient,
   params: {
     issueId?: string;
@@ -135,7 +135,7 @@ async function generatePlanTool(
   }
 
   const result = await Effect.runPromise(
-    planningService.generatePlan({
+    planDomainService.savePlan({
       issueId: resolvedIssueId!,
       summary: params.summary,
       approach: params.approach,
@@ -341,12 +341,12 @@ describe("MCP Tool: get_issue", () => {
 
 describe("MCP Tool: generate_plan", () => {
   let testDb: TestDatabase;
-  let planningService: PlanningService;
+  let planDomainService: PlanDomainService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
     const services = createServices(testDb.client);
-    planningService = services.planningService;
+    planDomainService = services.planDomainService;
   });
 
   afterEach(() => {
@@ -360,7 +360,7 @@ describe("MCP Tool: generate_plan", () => {
       description: "Test description",
     });
 
-    const result = await generatePlanTool(planningService, testDb.client, {
+    const result = await generatePlanTool(planDomainService, testDb.client, {
       issueNumber: 1,
       summary: "Test plan summary",
       approach: "Test approach",
@@ -388,7 +388,7 @@ describe("MCP Tool: generate_plan", () => {
   });
 
   it("should return error for non-existent issue", async () => {
-    const result = await generatePlanTool(planningService, testDb.client, {
+    const result = await generatePlanTool(planDomainService, testDb.client, {
       issueNumber: 99999,
       summary: "Test",
       approach: "Test",
@@ -405,12 +405,12 @@ describe("MCP Tool: generate_plan", () => {
 
 describe("MCP Tool: update_task_status", () => {
   let testDb: TestDatabase;
-  let planningService: PlanningService;
+  let planDomainService: PlanDomainService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
     const services = createServices(testDb.client);
-    planningService = services.planningService;
+    planDomainService = services.planDomainService;
   });
 
   afterEach(() => {
@@ -423,7 +423,7 @@ describe("MCP Tool: update_task_status", () => {
       title: "Test Issue",
       description: "Test description",
     });
-    await generatePlanTool(planningService, testDb.client, {
+    await generatePlanTool(planDomainService, testDb.client, {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
@@ -461,7 +461,7 @@ describe("MCP Tool: update_task_status", () => {
       title: "Test Issue",
       description: "Test description",
     });
-    await generatePlanTool(planningService, testDb.client, {
+    await generatePlanTool(planDomainService, testDb.client, {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
@@ -495,13 +495,13 @@ describe("MCP Tool: update_task_status", () => {
 
 describe("MCP Tool: delete_task", () => {
   let testDb: TestDatabase;
-  let planningService: PlanningService;
+  let planDomainService: PlanDomainService;
   let taskManagementService: TaskManagementService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
     const services = createServices(testDb.client);
-    planningService = services.planningService;
+    planDomainService = services.planDomainService;
     taskManagementService = services.taskManagementService;
   });
 
@@ -515,7 +515,7 @@ describe("MCP Tool: delete_task", () => {
       title: "Test Issue",
       description: "Test description",
     });
-    await generatePlanTool(planningService, testDb.client, {
+    await generatePlanTool(planDomainService, testDb.client, {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
@@ -559,7 +559,7 @@ describe("MCP Tool: delete_task", () => {
       title: "Test Issue",
       description: "Test description",
     });
-    await generatePlanTool(planningService, testDb.client, {
+    await generatePlanTool(planDomainService, testDb.client, {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
@@ -596,7 +596,7 @@ describe("MCP Tool: delete_task", () => {
       title: "Test Issue",
       description: "Test description",
     });
-    await generatePlanTool(planningService, testDb.client, {
+    await generatePlanTool(planDomainService, testDb.client, {
       issueNumber: 1,
       summary: "Test",
       approach: "Test",
@@ -804,13 +804,13 @@ describe("MCP Tool: list_issues", () => {
 
 describe("MCP Tool: list_available_tasks", () => {
   let testDb: TestDatabase;
-  let planningService: PlanningService;
+  let planDomainService: PlanDomainService;
   let taskSessionService: TaskSessionService;
 
   beforeEach(() => {
     testDb = createTestDatabase();
     const services = createServices(testDb.client);
-    planningService = services.planningService;
+    planDomainService = services.planDomainService;
     taskSessionService = new TaskSessionService(testDb.client);
   });
 
@@ -824,7 +824,7 @@ describe("MCP Tool: list_available_tasks", () => {
       title: "Open Issue",
       description: "This issue is open",
     });
-    await generatePlanTool(planningService, testDb.client, {
+    await generatePlanTool(planDomainService, testDb.client, {
       issueNumber: 1,
       summary: "Test plan",
       approach: "Test approach",
@@ -854,7 +854,7 @@ describe("MCP Tool: list_available_tasks", () => {
       title: "Will Be Closed",
       description: "This issue will be closed",
     });
-    await generatePlanTool(planningService, testDb.client, {
+    await generatePlanTool(planDomainService, testDb.client, {
       issueNumber: 1,
       summary: "Test plan",
       approach: "Test approach",
@@ -887,7 +887,7 @@ describe("MCP Tool: list_available_tasks", () => {
       title: "Reopened Issue",
       description: "This issue was reopened",
     });
-    await generatePlanTool(planningService, testDb.client, {
+    await generatePlanTool(planDomainService, testDb.client, {
       issueNumber: 1,
       summary: "Test plan",
       approach: "Test approach",

@@ -23,7 +23,8 @@ import {
   ConflictDetectionService,
   IssueService,
   TaskService,
-  PlanService,
+  PlanDomainService,
+  IssueDomainService,
   ProjectManagementService,
   type DbClient,
   type ProjectManagementClient,
@@ -179,7 +180,8 @@ async function createTaskToolContext(
 
   const taskManagementService = new TaskManagementService(client);
 
-  const planService = new PlanService(client);
+  const planDomainService = new PlanDomainService(client.plans, client.tasks, client.issues);
+  const issueDomainService = new IssueDomainService(client.issues);
   const taskService = new TaskService(client, projectManagement, mockGitWorktreeService);
   const issueService = new IssueService(client, taskService, projectManagement);
 
@@ -187,7 +189,8 @@ async function createTaskToolContext(
     ctx: {
       dbClient: client,
       issueService,
-      planService,
+      planDomainService,
+      issueDomainService,
       taskService,
       workerQueueDb,
       taskSessionService,

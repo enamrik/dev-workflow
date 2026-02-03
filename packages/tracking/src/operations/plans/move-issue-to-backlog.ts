@@ -8,7 +8,7 @@
 
 import { z } from "zod";
 import { IssueService } from "../../domain/issues/issue-service.js";
-import { PlanService } from "../../domain/plans/plan-service.js";
+import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { TaskService } from "../../domain/tasks/task-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
@@ -57,7 +57,7 @@ export function moveIssueToBacklog(input: MoveIssueToBacklogInput) {
   return Effect.gen(function* () {
     const { issueNumber, skipGitHubSync = false } = validateInput(MoveIssueToBacklogSchema, input);
     const issueService = yield* IssueService;
-    const planService = yield* PlanService;
+    const planDomainService = yield* PlanDomainService;
     const taskService = yield* TaskService;
 
     // 1. Get the issue
@@ -72,7 +72,7 @@ export function moveIssueToBacklog(input: MoveIssueToBacklogInput) {
     }
 
     // 3. Get the plan
-    const plan = yield* planService.findByIssueId(issue.id);
+    const plan = yield* planDomainService.findByIssueId(issue.id);
     if (!plan) {
       throw new Error(`No plan found for issue #${issueNumber}`);
     }

@@ -1,8 +1,8 @@
 /**
  * updateIssue - Update an issue's fields
  *
- * Resolves issue by ID or number, applies updates via PlanningService
- * (which handles snapshot creation), and optionally regenerates the plan.
+ * Resolves issue by ID or number, applies updates via PlanDomainService,
+ * and manages side effects (snapshots, events) directly.
  */
 
 import { z } from "zod";
@@ -11,7 +11,9 @@ import type { IssueType, IssuePriority } from "../../domain/issues/issue.js";
 import type { Plan } from "../../domain/plans/plan.js";
 import type { Task } from "../../domain/tasks/task.js";
 import { DomainExecutorFactory } from "../../domain/domain-executor.js";
-import { PlanningService } from "../../domain/plans/planning-service.js";
+import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
+import { VersioningService } from "../../domain/snapshots/versioning-service.js";
+import { EventBus } from "../../events/event-bus.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -54,7 +56,9 @@ export interface UpdateIssueResult {
  *
  * 1. Validate input and resolve project domain
  * 2. Resolve issue by ID or number
- * 3. Apply typed updates via PlanningService (handles snapshots)
+ * 3. Apply typed updates via PlanDomainService
+ * 4. Create snapshot if requested (regeneratePlan)
+ * 5. Emit issue:updated event
  */
 export function updateIssue(input: UpdateIssueInput) {
   return Effect.gen(function* () {
@@ -70,14 +74,32 @@ export function updateIssue(input: UpdateIssueInput) {
       ? yield* pd.issues.getOrThrow(issueId)
       : yield* pd.issues.getByNumber(issueNumber!);
 
-    // Apply typed updates via PlanningService
-    const planningService = yield* PlanningService;
+    // Apply typed updates via PlanDomainService
+    const planDomainService = yield* PlanDomainService;
     const typedUpdates = {
       ...updates,
       type: updates.type as IssueType | undefined,
       priority: updates.priority as IssuePriority | undefined,
     };
-    const result = yield* planningService.updateIssue(issue.id, typedUpdates, regeneratePlan);
+    const result = yield* planDomainService.updateIssue(issue.id, typedUpdates);
+
+    // Side effect: create snapshot if requested
+    if (regeneratePlan) {
+      const versioningService = yield* VersioningService;
+      yield* versioningService.createSnapshot(
+        issue.number,
+        "ISSUE_UPDATE",
+        "user",
+        "Issue updated"
+      );
+    }
+
+    // Side effect: emit event for real-time UI updates
+    EventBus.getInstance().emit("issue:updated", {
+      issueId: issue.id,
+      issueNumber: issue.number,
+      fields: Object.keys(updates),
+    });
 
     return {
       issue: result.issue,

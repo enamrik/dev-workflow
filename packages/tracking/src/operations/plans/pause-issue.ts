@@ -1,12 +1,15 @@
 /**
  * pauseIssue - Pause work on an issue by moving READY tasks to BACKLOG
  *
- * Delegates to PlanningService to move all READY tasks back to BACKLOG,
+ * Delegates to PlanDomainService to move all READY tasks back to BACKLOG,
  * allowing temporary deactivation of an issue's work.
+ * Side effects (events) are owned by this operation.
  */
 
 import { z } from "zod";
-import { PlanningService } from "../../domain/plans/planning-service.js";
+import { IssueService } from "../../domain/issues/issue-service.js";
+import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
+import { EventBus } from "../../events/event-bus.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -33,15 +36,33 @@ export interface PauseIssueResult {
  * Pause work on an issue.
  *
  * 1. Validate input schema
- * 2. Delegate to PlanningService.pauseIssue
- * 3. Format and return result
+ * 2. Resolve issue for event payload
+ * 3. Delegate to PlanDomainService.pauseIssue
+ * 4. Emit issue:paused event
+ * 5. Format and return result
  */
 export function pauseIssue(input: PauseIssueInput) {
   return Effect.gen(function* () {
     const { issueNumber } = validateInput(PauseIssueSchema, input);
-    const planningService = yield* PlanningService;
+    const issueService = yield* IssueService;
+    const planDomainService = yield* PlanDomainService;
 
-    const result = yield* planningService.pauseIssue(issueNumber);
+    // Resolve issue for event payload (need issueId)
+    const issue = yield* issueService.findByNumber(issueNumber);
+    if (!issue) {
+      throw new Error(`Issue not found: #${issueNumber}`);
+    }
+
+    const result = yield* planDomainService.pauseIssue(issueNumber);
+
+    // Side effect: emit event for real-time UI updates
+    if (result.count > 0) {
+      EventBus.getInstance().emit("issue:paused", {
+        issueId: issue.id,
+        issueNumber,
+        tasksMovedCount: result.count,
+      });
+    }
 
     return {
       message:

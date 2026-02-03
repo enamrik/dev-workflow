@@ -1,7 +1,7 @@
 import type { Task } from "./task.js";
 import type { DbClient } from "../../data-access/db-client.js";
 import { EventBus } from "../../events/event-bus.js";
-import { DependencyService } from "../plans/dependency-service.js";
+import { PlanDomainService } from "../plans/plan-domain-service.js";
 import { DependencyNotSatisfiedError } from "../errors.js";
 import type { GitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import { generateWorktreeNames } from "@dev-workflow/git/worktrees/git-worktree-service.js";
@@ -74,7 +74,7 @@ export interface TaskSession {
  */
 export class TaskSessionService extends Service<TaskSessionService>()("taskSessionService") {
   private readonly eventBus: EventBus;
-  private readonly dependencyService: DependencyService;
+  private readonly planDomainService: PlanDomainService;
 
   constructor(
     private readonly db: DbClient,
@@ -84,7 +84,7 @@ export class TaskSessionService extends Service<TaskSessionService>()("taskSessi
   ) {
     super();
     this.eventBus = EventBus.getInstance();
-    this.dependencyService = new DependencyService(db);
+    this.planDomainService = new PlanDomainService(db.plans, db.tasks, db.issues);
   }
 
   /**
@@ -155,9 +155,9 @@ export class TaskSessionService extends Service<TaskSessionService>()("taskSessi
       let conflictWarnings: ConflictWarning[] | undefined;
       if (!isResume) {
         // Check if dependencies are satisfied
-        const depsSatisfied = yield* self.dependencyService.areDependenciesSatisfied(task);
+        const depsSatisfied = yield* self.planDomainService.areDependenciesSatisfied(task);
         if (!depsSatisfied) {
-          const blockingTasks = yield* self.dependencyService.getBlockingDependencies(task);
+          const blockingTasks = yield* self.planDomainService.getBlockingDependencies(task);
           const blockingDetails: {
             id: string;
             number: number;
@@ -554,7 +554,7 @@ export class TaskSessionService extends Service<TaskSessionService>()("taskSessi
 
       // Only BACKLOG and READY tasks are available for fresh starts
       if (task.status === "BACKLOG" || task.status === "READY") {
-        return yield* self.dependencyService.areDependenciesSatisfied(task);
+        return yield* self.planDomainService.areDependenciesSatisfied(task);
       }
 
       return false;

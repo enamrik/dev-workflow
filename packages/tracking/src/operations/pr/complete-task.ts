@@ -11,7 +11,7 @@ import { z } from "zod";
 import { Effect } from "@dev-workflow/effect";
 import { TaskService } from "../../domain/tasks/task-service.js";
 import { IssueService } from "../../domain/issues/issue-service.js";
-import { PlanService } from "../../domain/plans/plan-service.js";
+import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { GitHubCLITag } from "../../project-sync/github/github-cli.js";
 import { GitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import { DbClientTag } from "../../data-access/db-client.js";
@@ -71,7 +71,7 @@ export interface CompleteTaskResult {
 
 function checkAndMaybeCloseIssue(
   taskService: TaskService,
-  planService: PlanService,
+  planDomainService: PlanDomainService,
   issueService: IssueService,
   planId: string,
   autoCloseIssue: boolean
@@ -82,7 +82,7 @@ function checkAndMaybeCloseIssue(
 
     const allTasksComplete = activeTasks.every((t) => t.isTerminal);
 
-    const plan = yield* planService.findById(planId);
+    const plan = yield* planDomainService.findById(planId);
     if (!plan) {
       return { allTasksComplete, issueClosed: false, issueNumber: null };
     }
@@ -104,7 +104,7 @@ function checkAndMaybeCloseIssue(
 
 function findNextAvailableTask(
   taskService: TaskService,
-  planService: PlanService,
+  planDomainService: PlanDomainService,
   issueService: IssueService,
   currentPlanId: string
 ) {
@@ -113,7 +113,7 @@ function findNextAvailableTask(
     const samePlanTasks = yield* taskService.findByPlanId(currentPlanId);
     const readyTask = samePlanTasks.find((t) => t.status === "READY");
     if (readyTask) {
-      const plan = yield* planService.findById(currentPlanId);
+      const plan = yield* planDomainService.findById(currentPlanId);
       const issue = plan ? yield* issueService.findById(plan.issueId) : null;
       return {
         id: readyTask.id,
@@ -127,7 +127,7 @@ function findNextAvailableTask(
 
     const backlogTask = samePlanTasks.find((t) => t.status === "BACKLOG");
     if (backlogTask) {
-      const plan = yield* planService.findById(currentPlanId);
+      const plan = yield* planDomainService.findById(currentPlanId);
       const issue = plan ? yield* issueService.findById(plan.issueId) : null;
       return {
         id: backlogTask.id,
@@ -144,7 +144,7 @@ function findNextAvailableTask(
     const activeIssues = allIssues.filter((i) => !i.isClosed && !i.isInPlanning);
 
     for (const issue of activeIssues) {
-      const plan = yield* planService.findByIssueId(issue.id);
+      const plan = yield* planDomainService.findByIssueId(issue.id);
       if (!plan || plan.id === currentPlanId) continue;
 
       const tasks = yield* taskService.findByPlanId(plan.id);
@@ -172,7 +172,7 @@ function completeMainModeTask(
   force: boolean,
   autoCloseIssue: boolean,
   taskService: TaskService,
-  planService: PlanService,
+  planDomainService: PlanDomainService,
   issueService: IssueService
 ) {
   return Effect.gen(function* () {
@@ -193,14 +193,14 @@ function completeMainModeTask(
 
     const issueStatus = yield* checkAndMaybeCloseIssue(
       taskService,
-      planService,
+      planDomainService,
       issueService,
       task.planId,
       autoCloseIssue
     );
     const nextTask = yield* findNextAvailableTask(
       taskService,
-      planService,
+      planDomainService,
       issueService,
       task.planId
     );
@@ -235,7 +235,7 @@ function completeBranchModeTask(
   hasWorktree: boolean,
   hasBranch: boolean,
   taskService: TaskService,
-  planService: PlanService,
+  planDomainService: PlanDomainService,
   issueService: IssueService,
   githubCLI: GitHubCLI,
   gitWorktreeService: GitWorktreeService
@@ -318,14 +318,14 @@ function completeBranchModeTask(
 
     const issueStatus = yield* checkAndMaybeCloseIssue(
       taskService,
-      planService,
+      planDomainService,
       issueService,
       task.planId,
       autoCloseIssue
     );
     const nextTask = yield* findNextAvailableTask(
       taskService,
-      planService,
+      planDomainService,
       issueService,
       task.planId
     );
@@ -385,7 +385,7 @@ export function completeTask(input: CompleteTaskInput) {
     );
     const taskService = yield* TaskService;
     const issueService = yield* IssueService;
-    const planService = yield* PlanService;
+    const planDomainService = yield* PlanDomainService;
     const githubCLI = yield* GitHubCLITag;
     const gitWorktreeService = yield* GitWorktreeService;
     const dbClient = yield* DbClientTag;
@@ -414,7 +414,7 @@ export function completeTask(input: CompleteTaskInput) {
         force,
         autoCloseIssue,
         taskService,
-        planService,
+        planDomainService,
         issueService
       );
     }
@@ -428,7 +428,7 @@ export function completeTask(input: CompleteTaskInput) {
       hasWorktree,
       hasBranch,
       taskService,
-      planService,
+      planDomainService,
       issueService,
       githubCLI,
       gitWorktreeService

@@ -18,13 +18,12 @@ import {
 } from "../../test/helpers.js";
 import {
   TemplateService,
-  PlanningService,
-  VersioningService,
+  PlanDomainService,
+  IssueDomainService,
   MockGitHubCLI,
   GitHubProjectManagementProvider,
   IssueService,
   TaskService,
-  PlanService,
   MilestoneService,
   TypeService,
   DomainExecutorFactory,
@@ -87,14 +86,13 @@ async function createIssueToolContext(
   } as unknown as TemplateService;
 
   // Create services with DbClient
-  const versioningService = new VersioningService(client);
-  const planningService = new PlanningService(client, versioningService);
+  const planDomainService = new PlanDomainService(client.plans, client.tasks, client.issues);
+  const issueDomainService = new IssueDomainService(client.issues);
 
   // Mock GitHub services (disabled)
   const mockGitHubCLI = new MockGitHubCLI();
   const mockProvider = new GitHubProjectManagementProvider(mockGitHubCLI, null);
 
-  const planService = new PlanService(client);
   const taskService = new TaskService(client, projectManagement, null);
   const issueService = new IssueService(client, taskService, projectManagement);
   const milestoneService = new MilestoneService(client);
@@ -115,12 +113,12 @@ async function createIssueToolContext(
       domain: testDomain,
       projectManagement,
       issueService,
-      planService,
+      planDomainService,
+      issueDomainService,
       taskService,
       milestoneService,
       workerQueueDb,
       templateService: mockTemplateService,
-      planningService,
       projectManagementProvider: mockProvider,
       githubCLI: mockGitHubCLI,
       typeService,
