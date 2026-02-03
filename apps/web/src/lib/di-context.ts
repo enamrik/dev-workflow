@@ -27,6 +27,7 @@ import {
   PlanDomainService,
   IssueDomainService,
   MilestoneDomainService,
+  TypeDomainService,
   BoardQueryService,
   ProjectManagementService,
   NoOpProjectManagementClient,
@@ -101,7 +102,13 @@ export class WebDIContext {
     // Note: Web UI doesn't have GitHub sync or worktree service, so we use NoOp client
     const noOpClient = new NoOpProjectManagementClient();
     const projectManagement = new ProjectManagementService(noOpClient);
-    this.planDomainService = new PlanDomainService(db.plans, db.tasks, db.issues);
+    const typeDomainService = new TypeDomainService(source.types);
+    this.planDomainService = new PlanDomainService(
+      db.plans,
+      db.tasks,
+      db.issues,
+      typeDomainService
+    );
     this.issueDomainService = new IssueDomainService(db.issues);
     this.taskService = new TaskService(db, projectManagement, null);
     this.issueService = new IssueService(db, this.taskService, projectManagement);

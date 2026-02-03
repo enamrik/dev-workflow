@@ -11,7 +11,7 @@ import type { Plan } from "../../domain/plans/plan.js";
 import type { Task } from "../../domain/tasks/task.js";
 import { DomainExecutorFactory } from "../../domain/domain-executor.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
-import { TypeService } from "../../domain/types/type-service.js";
+import { TypeDomainService } from "../../domain/types/type-service.js";
 import { BusinessRuleError } from "../../domain/errors.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
@@ -56,9 +56,9 @@ export function changeIssueType(input: ChangeIssueTypeInput) {
 
     // Validate the type against available types
     const defaultValidTypes = ["FEATURE", "BUG", "ENHANCEMENT", "TASK"];
-    const typeService = yield* TypeService;
+    const typeDomainService = yield* TypeDomainService;
 
-    const typeDefinitions = yield* typeService.loadTypes();
+    const typeDefinitions = yield* typeDomainService.loadTypes();
     const availableTypes = typeDefinitions.types.map((t) => t.name);
 
     if (availableTypes.length > 0) {

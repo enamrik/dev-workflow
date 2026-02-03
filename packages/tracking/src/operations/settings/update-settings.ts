@@ -11,7 +11,7 @@ import { DbSourceTag } from "../../data-access/db-source.js";
 import { ProjectTag } from "../../domain/projects/project.js";
 import { GitHubCLITag } from "../../project-sync/github/github-cli.js";
 import { ProjectManagementRegistry } from "../../project-sync/provider-registry.js";
-import { TypeService } from "../../domain/types/type-service.js";
+import { TypeDomainService } from "../../domain/types/type-service.js";
 import {
   PROVIDER_DEFAULT_COLUMN_MAPPING,
   type ProjectManagementConfig,
@@ -78,14 +78,17 @@ function validateGitHubUsername(username: string): string | null {
 /**
  * Validate typeLabels keys against active types in the database
  */
-function validateTypeLabels(typeService: TypeService, typeLabels: Record<string, string>) {
+function validateTypeLabels(
+  typeDomainService: TypeDomainService,
+  typeLabels: Record<string, string>
+) {
   return Effect.gen(function* () {
     const providedTypes = Object.keys(typeLabels);
     if (providedTypes.length === 0) {
       return null;
     }
 
-    const activeTypes = yield* typeService.getTypes();
+    const activeTypes = yield* typeDomainService.getTypes();
     const validTypeNames = new Set<string>(activeTypes.map((t) => t.name));
 
     const invalidTypes = providedTypes.filter((t) => !validTypeNames.has(t));
@@ -120,20 +123,20 @@ export function updateSettings(input: UpdateSettingsInput) {
     const project = yield* ProjectTag;
     const githubCLI = yield* GitHubCLITag;
     const providerRegistry = yield* ProjectManagementRegistry;
-    const typeService = yield* TypeService;
+    const typeDomainService = yield* TypeDomainService;
 
     switch (action) {
       case "get_settings":
         return yield* getSettings(dbSource, project, gitRoot, githubCLI, providerRegistry);
 
       case "enable_github":
-        return yield* enableGitHub(dbSource, project, githubCLI, typeService, github);
+        return yield* enableGitHub(dbSource, project, githubCLI, typeDomainService, github);
 
       case "disable_github":
         return yield* disableGitHub(dbSource, project);
 
       case "configure_github":
-        return yield* configureGitHub(dbSource, project, githubCLI, typeService, github);
+        return yield* configureGitHub(dbSource, project, githubCLI, typeDomainService, github);
 
       case "configure_column_mapping":
         return yield* configureColumnMapping(
@@ -229,7 +232,7 @@ function enableGitHub(
   dbSource: DbSource,
   project: Project,
   githubCLI: GitHubCLI,
-  typeService: TypeService,
+  typeDomainService: TypeDomainService,
   github?: UpdateSettingsInput["github"]
 ) {
   return Effect.gen(function* () {
@@ -271,7 +274,7 @@ function enableGitHub(
     // Step 5: Validate typeLabels against active types if provided
     if (github?.labels?.typeLabels) {
       const typeValidationError = yield* validateTypeLabels(
-        typeService,
+        typeDomainService,
         github.labels.typeLabels as Record<string, string>
       );
       if (typeValidationError) {
@@ -350,7 +353,7 @@ function configureGitHub(
   dbSource: DbSource,
   project: Project,
   githubCLI: GitHubCLI,
-  typeService: TypeService,
+  typeDomainService: TypeDomainService,
   github?: UpdateSettingsInput["github"]
 ) {
   return Effect.gen(function* () {
@@ -391,7 +394,7 @@ function configureGitHub(
     // Validate typeLabels against active types if provided
     if (github.labels?.typeLabels) {
       const typeValidationError = yield* validateTypeLabels(
-        typeService,
+        typeDomainService,
         github.labels.typeLabels as Record<string, string>
       );
       if (typeValidationError) {

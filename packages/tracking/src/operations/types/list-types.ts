@@ -5,7 +5,7 @@
  * with name, description, and remote label for GitHub sync.
  */
 
-import { TypeService } from "../../domain/types/type-service.js";
+import { TypeDomainService } from "../../domain/types/type-service.js";
 import { Effect } from "@dev-workflow/effect";
 
 // =============================================================================
@@ -29,8 +29,8 @@ export interface ListTypesResult {
 
 export function listTypes() {
   return Effect.gen(function* () {
-    const typeService = yield* TypeService;
-    const types = yield* typeService.getTypes();
+    const typeDomainService = yield* TypeDomainService;
+    const types = yield* typeDomainService.getTypes();
 
     return {
       types: types.map((t) => ({

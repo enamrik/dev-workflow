@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { TypeService } from "../../domain/types/type-service.js";
+import { TypeDomainService } from "../../domain/types/type-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -44,8 +44,8 @@ export function createType(input: CreateTypeInput) {
       CreateTypeSchema,
       input
     );
-    const typeService = yield* TypeService;
-    const type = typeService.createType({ name, displayName, description, keywords, color });
+    const typeDomainService = yield* TypeDomainService;
+    const type = typeDomainService.createType({ name, displayName, description, keywords, color });
 
     return {
       type: {

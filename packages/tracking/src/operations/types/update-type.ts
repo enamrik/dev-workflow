@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { TypeService } from "../../domain/types/type-service.js";
+import { TypeDomainService } from "../../domain/types/type-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -42,8 +42,8 @@ export interface UpdateTypeResult {
 export function updateType(input: UpdateTypeInput) {
   return Effect.gen(function* () {
     const { name, updates } = validateInput(UpdateTypeSchema, input);
-    const typeService = yield* TypeService;
-    const type = typeService.updateType(name, updates);
+    const typeDomainService = yield* TypeDomainService;
+    const type = typeDomainService.updateType(name, updates);
 
     return {
       type: {

@@ -222,7 +222,7 @@ Document key decisions and WHY they were made:
 
 What exists NOW that changes (fresh session won't know the codebase):
 
-- `TypeService` reads from `types.md` files (which are never created by init)
+- `TypeDomainService` reads from `types.md` files (which are never created by init)
 - `VALID_ISSUE_TYPES` hardcoded in `type-service.ts:31` restricts valid types
 - Templates at `~/.track/config/templates/` (changing to `~/.track/templates/`)
 
@@ -270,7 +270,7 @@ Goes DEEPER than approach for the specific task. Include:
    - Follow SqliteIssueRepository pattern
    - Methods: create, update, softDelete, findByName, findAll, findActive
 
-3. Update TypeService in packages/tracking/src/types/type-service.ts
+3. Update TypeDomainService in packages/tracking/src/types/type-service.ts
    - Remove VALID_ISSUE_TYPES hardcoded set (line 31)
    - Change loadTypes() to read from DB via repository
    - Add create/update/delete methods delegating to repository
@@ -389,7 +389,7 @@ Add unit tests to src/__tests__/auth/ following existing test patterns.
    ```
    Dependency Analysis:
    - Task "api" uses the schema from task "db" → api depends on db
-   - Task "validation" needs TypeService from task "types" → validation depends on types
+   - Task "validation" needs TypeDomainService from task "types" → validation depends on types
    - Tasks "templates" and "types" are independent → no dependency
    ```
 

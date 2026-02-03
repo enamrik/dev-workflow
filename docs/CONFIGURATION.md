@@ -115,7 +115,7 @@ When creating an issue with `useTemplate: true`, the system analyzes the descrip
 - Keywords like "task", "chore", "setup" → `task.md`
 - Default → `feature.md`
 
-If a TypeService is configured via `.track/types.md`, it uses the custom type descriptions for smarter matching.
+If a TypeDomainService is configured via `.track/types.md`, it uses the custom type descriptions for smarter matching.
 
 ## Custom Types
 
@@ -154,7 +154,7 @@ Each type definition has:
 
 ### Keywords
 
-The TypeService automatically extracts keywords from descriptions for intelligent type selection. Words 4+ characters (excluding common stop words) become keywords.
+The TypeDomainService automatically extracts keywords from descriptions for intelligent type selection. Words 4+ characters (excluding common stop words) become keywords.
 
 ### Viewing Types
 

@@ -11,7 +11,7 @@ import { createContainer, asValue, InjectionMode } from "awilix";
 import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import {
   MockGitHubCLI,
-  TypeService,
+  TypeDomainService,
   DEFAULT_COLUMN_MAPPING,
   ProjectManagementRegistry,
   UpdateSettingsSchema,
@@ -42,7 +42,7 @@ async function createSettingsTestContext(
   project?: Project
 ): Promise<SettingsTestContext> {
   const githubCLI = mockGitHubCLI ?? new MockGitHubCLI();
-  const typeService = new TypeService(testDb.source.types);
+  const typeDomainService = new TypeDomainService(testDb.source.types);
 
   // Create project if not provided
   const testProject =
@@ -66,7 +66,7 @@ async function createSettingsTestContext(
     project: asValue(testProject),
     githubCLI: asValue(githubCLI),
     providerRegistry: asValue(providerRegistry),
-    typeService: asValue(typeService),
+    typeDomainService: asValue(typeDomainService),
     projectRoot: asValue(TEST_GIT_ROOT),
   });
 
@@ -748,7 +748,7 @@ describe("update_settings - typeLabels validation", () => {
         keywords: ["custom"],
       });
 
-      // Re-create context with fresh TypeService to pick up seeded types
+      // Re-create context with fresh TypeDomainService to pick up seeded types
       // Pass existing project to avoid UNIQUE constraint violation
       const newCtx = await createSettingsTestContext(testDb, undefined, ctx.project);
       await newCtx.updateSettings({ action: "enable_github" });
@@ -780,7 +780,7 @@ describe("update_settings - typeLabels validation", () => {
         keywords: ["custom"],
       });
 
-      // Re-create context with fresh TypeService to pick up seeded types
+      // Re-create context with fresh TypeDomainService to pick up seeded types
       // Pass existing project to avoid UNIQUE constraint violation
       const newCtx = await createSettingsTestContext(testDb, undefined, ctx.project);
       await newCtx.updateSettings({ action: "enable_github" });

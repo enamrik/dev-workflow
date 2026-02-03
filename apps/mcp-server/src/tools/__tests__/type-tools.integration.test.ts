@@ -1,14 +1,14 @@
 /**
  * Type Tools Integration Tests
  *
- * Tests MCP tool handlers with real TypeService backed by database.
+ * Tests MCP tool handlers with real TypeDomainService backed by database.
  * Uses createMcpTool with test containers to test the full pipeline.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createContainer, asValue, InjectionMode } from "awilix";
 import type { AwilixContainer } from "awilix";
-import { TypeService } from "@dev-workflow/tracking";
+import { TypeDomainService } from "@dev-workflow/tracking";
 import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import {
   handleListTypes,
@@ -23,7 +23,7 @@ import { createMcpTool, type McpTool } from "../../di/bootstrap.js";
  * Test cradle interface - subset of McpCradle for type tools
  */
 interface TypeTestCradle {
-  typeService: TypeService;
+  typeDomainService: TypeDomainService;
 }
 
 describe("Type Tools Integration", () => {
@@ -36,7 +36,7 @@ describe("Type Tools Integration", () => {
   beforeEach(() => {
     testDb = createTestDatabase();
 
-    const typeService = new TypeService(testDb.source.types);
+    const typeDomainService = new TypeDomainService(testDb.source.types);
 
     // Create test container with dependencies
     testContainer = createContainer<TypeTestCradle>({
@@ -44,7 +44,7 @@ describe("Type Tools Integration", () => {
     });
 
     testContainer.register({
-      typeService: asValue(typeService),
+      typeDomainService: asValue(typeDomainService),
     });
 
     // Bind handlers to test container - tests the full pipeline

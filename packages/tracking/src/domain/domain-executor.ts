@@ -28,6 +28,7 @@ import { IssueDomainService } from "./issues/issue-domain-service.js";
 import { TaskDomainService } from "./tasks/task-domain-service.js";
 import { PlanDomainService } from "./plans/plan-domain-service.js";
 import { MilestoneDomainService } from "./milestones/milestone-domain-service.js";
+import { TypeDomainService } from "./types/type-service.js";
 
 // =============================================================================
 // Types
@@ -69,7 +70,10 @@ export type ProjectDomain = DomainServices & {
 // =============================================================================
 
 export class DomainExecutorFactory extends Service<DomainExecutorFactory>()("domain") {
-  constructor(private readonly sourceProvider: DbSourceProvider) {
+  constructor(
+    private readonly sourceProvider: DbSourceProvider,
+    private readonly typeDomainService: TypeDomainService
+  ) {
     super();
   }
 
@@ -122,7 +126,7 @@ export class DomainExecutorFactory extends Service<DomainExecutorFactory>()("dom
     return {
       issues: new IssueDomainService(db.issues),
       tasks: new TaskDomainService(db.tasks, db.plans, db.issues),
-      plans: new PlanDomainService(db.plans, db.tasks, db.issues),
+      plans: new PlanDomainService(db.plans, db.tasks, db.issues, this.typeDomainService),
       milestones: new MilestoneDomainService(db.milestones, db.issues),
     };
   }

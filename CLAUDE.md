@@ -920,6 +920,66 @@ class IssueService {
 
 **DI Context Updates:** Both `McpDIContext` and `WebDIContext` must expose services for mutations.
 
+### Operations (Use Case Orchestrators)
+
+Operations (`packages/tracking/src/operations/`) are **thin orchestrators**. They wire together domain service calls with side effects. 90% of logic should live in domain services — operations should be a few lines of glue code.
+
+**An operation should:**
+
+- Validate input (Zod schema via `validateInput()`)
+- Resolve entities via domain service (specification pattern or simple lookups)
+- Call domain service methods for all business logic
+- Execute side effects: snapshots, EventBus emissions, external sync (`ProjectManagementService`)
+
+**An operation should NOT:**
+
+- Validate domain invariants (type validity, dependency references, status preconditions)
+- Normalize or transform data before passing to domain services
+- Contain conditional business logic (`if status === X then do Y`)
+- Duplicate query/loading patterns that belong in domain services
+- Build complex responses by loading multiple entities (use domain service context-enrichment methods)
+
+**Domain services CAN depend on other domain services** — especially for object invariance (e.g., `PlanDomainService` calls `TypeDomainService` to validate task types during `savePlan()`).
+
+**Example — thin operation:**
+
+```typescript
+export function generatePlan(input: GeneratePlanInput) {
+  return Effect.gen(function* () {
+    const { issueId, issueNumber, summary, approach, tasks, ... } =
+      validateInput(GeneratePlanSchema, input);
+    const issueDomainService = yield* IssueDomainService;
+    const planDomainService = yield* PlanDomainService;
+    const versioningService = yield* VersioningService;
+
+    // 1. Resolve (specification pattern — pass what you have, service figures out the rest)
+    const issue = yield* issueDomainService.getOne({ byId: issueId, byNumber: issueNumber });
+
+    // 2. Domain logic (validation, normalization, matching all inside)
+    const result = yield* planDomainService.savePlan({ issueId: issue.id, summary, approach, tasks, ... });
+
+    // 3. Side effects
+    yield* versioningService.createSnapshot(issue.number, "PLAN_REGENERATION", "claude-agent", `Generated plan: ${summary}`);
+    EventBus.getInstance().emit("plan:generated", { planId: result.plan.id, issueId: issue.id });
+
+    return result;
+  });
+}
+```
+
+**Known violations to address:**
+
+| Operation                | Issue                                                        | Severity |
+| ------------------------ | ------------------------------------------------------------ | -------- |
+| `complete-task.ts`       | Issue-closing logic, next-task discovery inlined (~65 lines) | Critical |
+| `load-task-session.ts`   | Session init, dep enrichment, sibling sync (~150 lines)      | Critical |
+| `get-work-queue.ts`      | Scoring algorithms, multi-issue discovery (~120 lines)       | Critical |
+| `create-pr.ts`           | PR state validation, title/body building (~60 lines)         | High     |
+| `update-task.ts`         | Label validation and merge logic (~50 lines)                 | High     |
+| `close-issue.ts`         | Precondition validation, multi-task abandonment (~25 lines)  | High     |
+| `import-github-issue.ts` | Type/priority inference from labels (~40 lines)              | Medium   |
+| `submit-for-review.ts`   | Status validation (~10 lines)                                | Medium   |
+
 ### Soft Delete Convention
 
 **Tables with soft delete**: `issues`, `tasks` (have `isDeleted`, `deletedAt`, `deletedBy` columns)

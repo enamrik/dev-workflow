@@ -77,7 +77,7 @@ export {
 export { validateDAG, getTopologicalOrder, type DAGNode } from "./domain/plans/dag-validation.js";
 // MilestoneService removed - use MilestoneDomainService instead
 export { VersioningService } from "./domain/snapshots/versioning-service.js";
-export { TypeService } from "./domain/types/type-service.js";
+export { TypeDomainService } from "./domain/types/type-service.js";
 export {
   MergeService,
   MergeValidationError,
@@ -173,7 +173,7 @@ export {
   type DomainServices,
   type ProjectDomain,
 } from "./domain/domain-executor.js";
-export { IssueDomainService } from "./domain/issues/issue-domain-service.js";
+export { IssueDomainService, type IssueSpec } from "./domain/issues/issue-domain-service.js";
 export {
   TaskDomainService,
   type AddManualTaskRequest,
@@ -182,6 +182,7 @@ export {
 export {
   PlanDomainService,
   type GeneratePlanRequest,
+  type RawTaskInput,
   type PlanWithTasks,
   type IssueUpdates,
 } from "./domain/plans/plan-domain-service.js";

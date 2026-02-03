@@ -19,10 +19,12 @@ import {
   DomainExecutorFactory,
   ProjectManagementService,
   NoOpProjectManagementClient,
+  TypeDomainService,
 } from "@dev-workflow/tracking";
 import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-queue-db.js";
 import { NodeGitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import type { GitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
+import { getGlobalDatabasePath } from "@dev-workflow/git/track-directory-resolver.js";
 import type { WorkerQueueDb } from "@dev-workflow/dispatch/worker-queue-db.js";
 
 // =============================================================================
@@ -43,6 +45,9 @@ export interface WebCradle {
 
   // Domain executor factory (for mutation operations)
   domain: DomainExecutorFactory;
+
+  // Type service (global, not project-scoped)
+  typeDomainService: TypeDomainService;
 
   // Project management (no-op for web — real impl in MCP)
   projectManagement: ProjectManagementService;
@@ -70,8 +75,22 @@ export function buildWebContainer(): AwilixContainer<WebCradle> {
     projectsResolver: asClass(ProjectsResolver).singleton(),
     sourceProvider: asClass(DbSourceProvider).singleton(),
 
+    typeDomainService: asFunction(
+      ({ sourceProvider: sp }: { sourceProvider: DbSourceProvider }) => {
+        const connectionString = `sqlite://${getGlobalDatabasePath()}`;
+        const source = sp.getOrCreate({ connectionString });
+        return new TypeDomainService(source.types);
+      }
+    ).singleton(),
+
     domain: asFunction(
-      ({ sourceProvider }) => new DomainExecutorFactory(sourceProvider)
+      ({
+        sourceProvider: sp,
+        typeDomainService: tds,
+      }: {
+        sourceProvider: DbSourceProvider;
+        typeDomainService: TypeDomainService;
+      }) => new DomainExecutorFactory(sp, tds)
     ).singleton(),
 
     projectManagement: asFunction(

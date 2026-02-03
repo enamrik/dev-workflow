@@ -41,7 +41,7 @@ export class TypeServiceError extends Error {
  * Manages type definitions stored in the global database.
  * Provides intelligent type assignment based on descriptions.
  */
-export class TypeService extends Service<TypeService>()("typeService") {
+export class TypeDomainService extends Service<TypeDomainService>()("typeDomainService") {
   private cachedTypes: TypeDefinitions | null = null;
 
   constructor(private readonly typeRepository: TypeRepository) {
@@ -152,6 +152,28 @@ export class TypeService extends Service<TypeService>()("typeService") {
    */
   getTypeByName(typeName: string): Effect<TypeDefinition | undefined> {
     return Effect.map(this.getTypes(), (types) => types.find((t) => t.name === typeName));
+  }
+
+  /**
+   * Validate a task type name and return the typed IssueType.
+   *
+   * Used by PlanDomainService.savePlan() to enforce type invariants.
+   * Throws a descriptive error with valid type list if invalid.
+   */
+  validateTaskType(typeName: string): Effect<IssueType> {
+    const self = this;
+    return Effect.gen(function* () {
+      const types = yield* self.getTypes();
+      const validNames = types.map((t) => t.name);
+      if (!validNames.includes(typeName as IssueType)) {
+        throw new Error(
+          `Task has invalid type '${typeName}'. ` +
+            `Valid types: ${validNames.join(", ")}. ` +
+            `Call list_types first to get available types.`
+        );
+      }
+      return typeName as IssueType;
+    });
   }
 
   /**

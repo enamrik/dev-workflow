@@ -18,7 +18,7 @@ import {
   IssueDomainService,
   TaskDomainService,
   VersioningService,
-  TypeService,
+  TypeDomainService,
   IssueService,
   TaskService,
   type DbClient,
@@ -58,14 +58,19 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<{
   const client = createClientForProject(testDb, project.id);
   const projectManagement = createNoOpProjectManagementService();
 
+  // TypeDomainService for type validation (backed by database - types are global)
+  const typeDomainService = new TypeDomainService(testDb.source.types);
+
   // Create services with DbClient
-  const planDomainService = new PlanDomainService(client.plans, client.tasks, client.issues);
+  const planDomainService = new PlanDomainService(
+    client.plans,
+    client.tasks,
+    client.issues,
+    typeDomainService
+  );
   const issueDomainService = new IssueDomainService(client.issues);
   const taskDomainService = new TaskDomainService(client.tasks, client.plans, client.issues);
   const versioningService = new VersioningService(client);
-
-  // TypeService for type validation (backed by database - types are global)
-  const typeService = new TypeService(testDb.source.types);
 
   // Create services with DbClient
   const taskService = new TaskService(client, projectManagement, null);
@@ -81,7 +86,7 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<{
       taskDomainService,
       versioningService,
       taskService,
-      typeService,
+      typeDomainService,
     },
     client,
   };
