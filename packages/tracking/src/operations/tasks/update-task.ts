@@ -10,7 +10,7 @@
 import { z } from "zod";
 import type { Task } from "../../domain/tasks/task.js";
 import type { AvailableLabel } from "../../project-sync/project-management-provider.js";
-import { TaskService } from "../../domain/tasks/task-service.js";
+import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { ProjectManagementRegistry } from "../../project-sync/provider-registry.js";
 import { GitHubCLITag } from "../../project-sync/github/github-cli.js";
 import type { GitHubCLI } from "../../project-sync/github/github-cli.js";
@@ -130,7 +130,7 @@ export function updateTask(input: UpdateTaskInput) {
       labels,
     } = validateInput(updateTaskSchema, input);
 
-    const taskService = yield* TaskService;
+    const taskDomainService = yield* TaskDomainService;
 
     // These are nullable dependencies - try to resolve, fall back to null
     let providerRegistry: ProjectManagementRegistry | null = null;
@@ -159,7 +159,7 @@ export function updateTask(input: UpdateTaskInput) {
       // Optional dependency
     }
 
-    const task = yield* taskService.findById(taskId);
+    const task = yield* taskDomainService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
@@ -203,7 +203,7 @@ export function updateTask(input: UpdateTaskInput) {
       updates.labels = Object.keys(mergedLabels).length > 0 ? mergedLabels : null;
     }
 
-    const updatedTask = yield* taskService.update(taskId, updates);
+    const updatedTask = yield* taskDomainService.update(taskId, updates);
 
     return {
       success: true,

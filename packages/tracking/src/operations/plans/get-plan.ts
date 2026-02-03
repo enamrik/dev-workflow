@@ -6,9 +6,9 @@
  */
 
 import { z } from "zod";
-import { IssueService } from "../../domain/issues/issue-service.js";
+import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
-import { TaskService } from "../../domain/tasks/task-service.js";
+import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -42,14 +42,14 @@ export interface GetPlanResult {
 export function getPlan(input: GetPlanInput) {
   return Effect.gen(function* () {
     const { issueId, issueNumber } = validateInput(GetPlanSchema, input);
-    const issueService = yield* IssueService;
+    const issueDomainService = yield* IssueDomainService;
     const planDomainService = yield* PlanDomainService;
-    const taskService = yield* TaskService;
+    const taskDomainService = yield* TaskDomainService;
 
     // 1. Resolve issue ID
     let resolvedIssueId = issueId;
     if (!resolvedIssueId && issueNumber) {
-      const issue = yield* issueService.findByNumber(issueNumber);
+      const issue = yield* issueDomainService.findByNumber(issueNumber);
       if (!issue) {
         throw new Error(`Issue not found: #${issueNumber}`);
       }
@@ -67,7 +67,7 @@ export function getPlan(input: GetPlanInput) {
     }
 
     // 3. Fetch tasks
-    const tasks = yield* taskService.findByPlanId(plan.id);
+    const tasks = yield* taskDomainService.findByPlanId(plan.id);
 
     return { plan, tasks } satisfies GetPlanResult;
   });

@@ -2,12 +2,12 @@
  * removeIssueFromMilestone - Remove an issue from its milestone
  *
  * Looks up the issue by number, verifies it has a milestone assigned,
- * then unassigns it via MilestoneService.
+ * then unassigns it via MilestoneDomainService.
  */
 
 import { z } from "zod";
-import { MilestoneService } from "../../domain/milestones/milestone-service.js";
-import { IssueService } from "../../domain/issues/issue-service.js";
+import { MilestoneDomainService } from "../../domain/milestones/milestone-domain-service.js";
+import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -39,16 +39,16 @@ export interface RemoveIssueFromMilestoneResult {
 export function removeIssueFromMilestone(input: RemoveIssueFromMilestoneInput) {
   return Effect.gen(function* () {
     const { issueNumber } = validateInput(RemoveIssueFromMilestoneSchema, input);
-    const milestoneService = yield* MilestoneService;
-    const issueService = yield* IssueService;
+    const milestoneDomainService = yield* MilestoneDomainService;
+    const issueDomainService = yield* IssueDomainService;
 
-    const issue = yield* issueService.getIssueByNumber(issueNumber);
+    const issue = yield* issueDomainService.getIssueByNumber(issueNumber);
 
     if (!issue.milestoneId) {
       throw new Error(`Issue #${issue.number} is not assigned to any milestone`);
     }
 
-    yield* milestoneService.unassignIssue(issue.id);
+    yield* milestoneDomainService.unassignIssue(issue.id);
 
     return {
       message: `Removed issue #${issue.number} from its milestone`,

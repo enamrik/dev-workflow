@@ -9,6 +9,7 @@
 import type { Task, TaskStatus, PRStatus, TaskRepository } from "./task.js";
 import type { PlanRepository } from "../plans/plan.js";
 import type { IssueRepository } from "../issues/issue.js";
+import type { SyncState } from "../../project-sync/project-management-provider.js";
 import { EntityNotFoundError, BusinessRuleError } from "../errors.js";
 import { Effect, Service } from "@dev-workflow/effect";
 
@@ -278,6 +279,10 @@ export class TaskDomainService extends Service<TaskDomainService>()("taskDomainS
 
   clearWorktreeInfo(taskId: string): Effect<void> {
     return Effect.map(this.repo.clearWorktreeInfo(taskId), () => undefined as void);
+  }
+
+  updateSyncState(taskId: string, syncState: SyncState): Effect<void> {
+    return Effect.map(this.repo.updateSyncState(taskId, syncState), () => undefined as void);
   }
 
   // ============================================================================

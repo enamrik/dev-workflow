@@ -1,7 +1,7 @@
 /**
  * Milestone Tools Integration Tests
  *
- * Tests MCP tool handlers with real MilestoneService backed by database.
+ * Tests MCP tool handlers with real MilestoneDomainService backed by database.
  * Uses createMcpTool with test containers to test the full pipeline.
  */
 
@@ -9,7 +9,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createContainer, asValue, InjectionMode } from "awilix";
 import type { AwilixContainer } from "awilix";
 import {
-  MilestoneService,
+  MilestoneDomainService,
+  IssueDomainService,
   IssueService,
   TaskService,
   type DbClient,
@@ -48,7 +49,8 @@ const TEST_PROJECT_ID = "test-project-milestone";
  */
 interface MilestoneTestCradle {
   project: Project;
-  milestoneService: MilestoneService;
+  milestoneDomainService: MilestoneDomainService;
+  issueDomainService: IssueDomainService;
   issueService: IssueService;
 }
 
@@ -84,7 +86,8 @@ describe("Milestone Tools Integration", () => {
     const projectManagement = createNoOpProjectManagementService();
     const taskService = new TaskService(client, projectManagement, null);
     const issueService = new IssueService(client, taskService, projectManagement);
-    const milestoneService = new MilestoneService(client);
+    const milestoneDomainService = new MilestoneDomainService(client.milestones, client.issues);
+    const issueDomainService = new IssueDomainService(client.issues);
 
     // Create test container with dependencies + tool class
     testContainer = createContainer<MilestoneTestCradle>({
@@ -93,7 +96,8 @@ describe("Milestone Tools Integration", () => {
 
     testContainer.register({
       project: asValue(project),
-      milestoneService: asValue(milestoneService),
+      milestoneDomainService: asValue(milestoneDomainService),
+      issueDomainService: asValue(issueDomainService),
       issueService: asValue(issueService),
     });
 
@@ -358,7 +362,7 @@ describe("Milestone Tools Integration", () => {
 
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
-      expect(content.error).toContain("Issue #999 not found");
+      expect(content.error).toContain("Issue not found: 999");
     });
 
     it("should return error if milestone not found", async () => {
@@ -371,7 +375,7 @@ describe("Milestone Tools Integration", () => {
 
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
-      expect(content.error).toContain("Milestone M999 not found");
+      expect(content.error).toContain("Milestone not found: M999");
     });
   });
 
@@ -416,7 +420,7 @@ describe("Milestone Tools Integration", () => {
 
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
-      expect(content.error).toContain("Issue #999 not found");
+      expect(content.error).toContain("Issue not found: 999");
     });
 
     it("should return error if issue is not assigned to any milestone", async () => {

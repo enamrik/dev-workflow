@@ -8,7 +8,7 @@
 
 import { z } from "zod";
 import type { IssueType } from "../../domain/issues/issue.js";
-import { IssueService } from "../../domain/issues/issue-service.js";
+import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { VersioningService } from "../../domain/snapshots/versioning-service.js";
 import { TypeService } from "../../domain/types/type-service.js";
@@ -70,16 +70,16 @@ export function generatePlan(input: GeneratePlanInput) {
   return Effect.gen(function* () {
     const { issueId, issueNumber, summary, approach, tasks, estimatedComplexity, projectSlug } =
       validateInput(GeneratePlanSchema, input);
-    const issueService = yield* IssueService;
+    const issueDomainService = yield* IssueDomainService;
     const planDomainService = yield* PlanDomainService;
     const versioningService = yield* VersioningService;
     const typeService = yield* TypeService;
 
     // 1. Resolve issue from ID or number
     const issue = issueId
-      ? yield* issueService.findById(issueId)
+      ? yield* issueDomainService.findById(issueId)
       : issueNumber
-        ? yield* issueService.findByNumber(issueNumber)
+        ? yield* issueDomainService.findByNumber(issueNumber)
         : null;
 
     if (!issue) {

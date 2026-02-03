@@ -80,6 +80,17 @@ export class IssueDomainService extends Service<IssueDomainService>()("issueDoma
     });
   }
 
+  getIssueByNumber(issueNumber: number): Effect<Issue, EntityNotFoundError> {
+    const repo = this.repo;
+    return Effect.gen(function* () {
+      const issue = yield* repo.findByNumber(issueNumber);
+      if (!issue) {
+        return yield* Effect.fail(new EntityNotFoundError("Issue", String(issueNumber)));
+      }
+      return issue;
+    });
+  }
+
   // ============================================================================
   // Write Operations (with business rules)
   // ============================================================================

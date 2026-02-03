@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import { Effect } from "@dev-workflow/effect";
-import { TaskService } from "../../domain/tasks/task-service.js";
+import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { GitHubCLITag } from "../../project-sync/github/github-cli.js";
 import type { PRStatus } from "../../domain/tasks/task.js";
 import { validateInput } from "../validation.js";
@@ -68,10 +68,10 @@ function mapGitHubStateToPRStatus(state: "OPEN" | "CLOSED" | "MERGED", isDraft: 
 export function getTaskPRStatus(input: GetTaskPRStatusInput) {
   return Effect.gen(function* () {
     const { taskId } = validateInput(GetTaskPRStatusSchema, input);
-    const taskService = yield* TaskService;
+    const taskDomainService = yield* TaskDomainService;
     const githubCLI = yield* GitHubCLITag;
 
-    const task = yield* taskService.findById(taskId);
+    const task = yield* taskDomainService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
@@ -102,7 +102,7 @@ export function getTaskPRStatus(input: GetTaskPRStatusInput) {
       // Update cached status if changed
       const prStatus = mapGitHubStateToPRStatus(pr.state, pr.isDraft);
       if (prStatus !== task.prStatus) {
-        yield* taskService.updatePRStatus(taskId, prStatus);
+        yield* taskDomainService.updatePRStatus(taskId, prStatus);
       }
 
       return {

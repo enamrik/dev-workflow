@@ -2,13 +2,13 @@
  * createMilestone - Create a new milestone with date validation
  *
  * Validates date format (YYYY-MM-DD) and date range (startDate <= endDate),
- * then delegates to MilestoneService for creation.
+ * then delegates to MilestoneDomainService for creation.
  */
 
 import { z } from "zod";
 import { Milestone } from "../../domain/milestones/milestone.js";
-import type { MilestoneWithStatus } from "../../domain/milestones/milestone-service.js";
-import { MilestoneService } from "../../domain/milestones/milestone-service.js";
+import type { MilestoneWithStatus } from "../../domain/milestones/milestone-domain-service.js";
+import { MilestoneDomainService } from "../../domain/milestones/milestone-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -38,12 +38,12 @@ export interface CreateMilestoneResult {
  *
  * 1. Validate input schema
  * 2. Validate date formats and range
- * 3. Create milestone via MilestoneService
+ * 3. Create milestone via MilestoneDomainService
  */
 export function createMilestone(input: CreateMilestoneInput) {
   return Effect.gen(function* () {
     const { title, description, startDate, endDate } = validateInput(CreateMilestoneSchema, input);
-    const milestoneService = yield* MilestoneService;
+    const milestoneDomainService = yield* MilestoneDomainService;
 
     const startCheck = Milestone.validateDate(startDate, "startDate");
     if (!startCheck.valid) throw new Error(startCheck.reason!);
@@ -53,7 +53,7 @@ export function createMilestone(input: CreateMilestoneInput) {
     const rangeCheck = Milestone.validateDateRange(startDate, endDate);
     if (!rangeCheck.valid) throw new Error(rangeCheck.reason!);
 
-    const milestone = yield* milestoneService.createMilestone({
+    const milestone = yield* milestoneDomainService.createMilestone({
       title,
       description,
       startDate,

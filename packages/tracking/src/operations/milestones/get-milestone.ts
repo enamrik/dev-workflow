@@ -7,9 +7,9 @@
 
 import { z } from "zod";
 import type { Issue } from "../../domain/issues/issue.js";
-import type { MilestoneWithStatus } from "../../domain/milestones/milestone-service.js";
-import { MilestoneService } from "../../domain/milestones/milestone-service.js";
-import { IssueService } from "../../domain/issues/issue-service.js";
+import type { MilestoneWithStatus } from "../../domain/milestones/milestone-domain-service.js";
+import { MilestoneDomainService } from "../../domain/milestones/milestone-domain-service.js";
+import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -50,8 +50,8 @@ export interface GetMilestoneResult {
 export function getMilestone(input: GetMilestoneInput) {
   return Effect.gen(function* () {
     const { id, milestoneNumber } = validateInput(GetMilestoneSchema, input);
-    const milestoneService = yield* MilestoneService;
-    const issueService = yield* IssueService;
+    const milestoneDomainService = yield* MilestoneDomainService;
+    const issueDomainService = yield* IssueDomainService;
 
     if (!id && milestoneNumber == null) {
       throw new Error("Either id or milestoneNumber is required");
@@ -59,12 +59,12 @@ export function getMilestone(input: GetMilestoneInput) {
 
     let milestone: MilestoneWithStatus;
     if (id) {
-      milestone = yield* milestoneService.getMilestone(id);
+      milestone = yield* milestoneDomainService.getMilestone(id);
     } else {
-      milestone = yield* milestoneService.getMilestoneByNumber(milestoneNumber!);
+      milestone = yield* milestoneDomainService.getMilestoneByNumber(milestoneNumber!);
     }
 
-    const issues = yield* issueService.findMany({ milestoneId: milestone.id });
+    const issues = yield* issueDomainService.findMany({ milestoneId: milestone.id });
 
     const closedIssues = issues.filter((i) => i.isClosed).length;
     const plannedIssues = issues.filter((i) => i.isInPlanning).length;

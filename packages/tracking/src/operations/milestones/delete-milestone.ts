@@ -6,8 +6,8 @@
  */
 
 import { z } from "zod";
-import { MilestoneService } from "../../domain/milestones/milestone-service.js";
-import { IssueService } from "../../domain/issues/issue-service.js";
+import { MilestoneDomainService } from "../../domain/milestones/milestone-domain-service.js";
+import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -40,20 +40,20 @@ export interface DeleteMilestoneResult {
 export function deleteMilestone(input: DeleteMilestoneInput) {
   return Effect.gen(function* () {
     const { milestoneNumber } = validateInput(DeleteMilestoneSchema, input);
-    const milestoneService = yield* MilestoneService;
-    const issueService = yield* IssueService;
+    const milestoneDomainService = yield* MilestoneDomainService;
+    const issueDomainService = yield* IssueDomainService;
 
-    const milestone = yield* milestoneService.getMilestoneByNumber(milestoneNumber);
+    const milestone = yield* milestoneDomainService.getMilestoneByNumber(milestoneNumber);
 
     // Unassign all issues from this milestone
-    const issues = yield* issueService.findMany({ milestoneId: milestone.id });
+    const issues = yield* issueDomainService.findMany({ milestoneId: milestone.id });
 
     for (const issue of issues) {
-      yield* milestoneService.unassignIssue(issue.id);
+      yield* milestoneDomainService.unassignIssue(issue.id);
     }
 
     // Delete the milestone
-    yield* milestoneService.delete(milestone.id);
+    yield* milestoneDomainService.delete(milestone.id);
 
     return {
       message: `Deleted milestone M${milestone.number}: ${milestone.title}. Unassigned ${issues.length} issue(s).`,

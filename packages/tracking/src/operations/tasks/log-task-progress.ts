@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { TaskService } from "../../domain/tasks/task-service.js";
+import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { DbClientTag } from "../../data-access/db-client.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
@@ -45,11 +45,11 @@ export function logTaskProgress(input: LogTaskProgressInput) {
       logTaskProgressSchema,
       input
     );
-    const taskService = yield* TaskService;
+    const taskDomainService = yield* TaskDomainService;
     const dbClient = yield* DbClientTag;
 
     // Verify task exists
-    const task = yield* taskService.findById(taskId);
+    const task = yield* taskDomainService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }

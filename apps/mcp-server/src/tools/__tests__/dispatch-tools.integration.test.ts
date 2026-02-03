@@ -14,6 +14,7 @@ import { createContainer, asValue, InjectionMode } from "awilix";
 import type { AwilixContainer } from "awilix";
 import {
   TaskService,
+  TaskDomainService,
   type DbClient,
   DispatchTaskOperationSchema as DispatchTaskSchema,
   EndWorkerSessionOperationSchema as EndWorkerSessionSchema,
@@ -39,6 +40,7 @@ import { createMcpTool } from "../../di/bootstrap.js";
 interface DispatchTestCradle {
   workerQueueDb: GlobalDbWorkerQueueDb;
   taskService: TaskService;
+  taskDomainService: TaskDomainService;
   projectSlug: string;
 }
 
@@ -66,6 +68,7 @@ describe("Dispatch Tools Integration", () => {
     workerQueueDb = new GlobalDbWorkerQueueDb(workerQueueDbPath);
 
     const taskService = new TaskService(client, createNoOpProjectManagementService(), null);
+    const taskDomainService = new TaskDomainService(client.tasks, client.plans, client.issues);
 
     // Create test container with dependencies + tool class
     testContainer = createContainer<DispatchTestCradle>({
@@ -75,6 +78,7 @@ describe("Dispatch Tools Integration", () => {
     testContainer.register({
       workerQueueDb: asValue(workerQueueDb),
       taskService: asValue(taskService),
+      taskDomainService: asValue(taskDomainService),
       projectSlug: asValue("test-project"),
     });
 

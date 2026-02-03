@@ -7,8 +7,9 @@
  */
 
 import { z } from "zod";
-import { IssueService } from "../../domain/issues/issue-service.js";
+import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
+import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { TaskService } from "../../domain/tasks/task-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
@@ -56,12 +57,13 @@ export interface MoveIssueToBacklogResult {
 export function moveIssueToBacklog(input: MoveIssueToBacklogInput) {
   return Effect.gen(function* () {
     const { issueNumber, skipGitHubSync = false } = validateInput(MoveIssueToBacklogSchema, input);
-    const issueService = yield* IssueService;
+    const issueDomainService = yield* IssueDomainService;
     const planDomainService = yield* PlanDomainService;
+    const taskDomainService = yield* TaskDomainService;
     const taskService = yield* TaskService;
 
     // 1. Get the issue
-    const issue = yield* issueService.findByNumber(issueNumber);
+    const issue = yield* issueDomainService.findByNumber(issueNumber);
     if (!issue) {
       throw new Error(`Issue not found: #${issueNumber}`);
     }
@@ -78,7 +80,7 @@ export function moveIssueToBacklog(input: MoveIssueToBacklogInput) {
     }
 
     // 4. Get PLANNED tasks
-    const allTasks = yield* taskService.findByPlanId(plan.id);
+    const allTasks = yield* taskDomainService.findByPlanId(plan.id);
     const plannedTasks = allTasks.filter((t) => t.status === "PLANNED");
 
     // If no PLANNED tasks and issue is already active, nothing to do
@@ -120,7 +122,7 @@ export function moveIssueToBacklog(input: MoveIssueToBacklogInput) {
     // 6. No GitHub sync - just move tasks to BACKLOG
     const activatedTasks = [];
     for (const task of plannedTasks) {
-      yield* taskService.moveToBacklog(task.id, "system");
+      yield* taskDomainService.moveToBacklog(task.id, "system");
       activatedTasks.push({
         taskId: task.id,
         taskNumber: task.number,
@@ -130,7 +132,7 @@ export function moveIssueToBacklog(input: MoveIssueToBacklogInput) {
     // Transition issue from PLANNED → OPEN
     const issueTransitioned = issue.isInPlanning;
     if (issueTransitioned) {
-      yield* issueService.update(issue.id, { status: "OPEN" });
+      yield* issueDomainService.update(issue.id, { status: "OPEN" });
     }
 
     return {

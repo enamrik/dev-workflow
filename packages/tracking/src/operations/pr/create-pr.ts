@@ -8,8 +8,8 @@
 
 import { z } from "zod";
 import { Effect } from "@dev-workflow/effect";
-import { TaskService } from "../../domain/tasks/task-service.js";
-import { IssueService } from "../../domain/issues/issue-service.js";
+import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
+import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { GitHubCLITag } from "../../project-sync/github/github-cli.js";
 import { GitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
@@ -83,13 +83,13 @@ function mapGitHubStateToPRStatus(state: "OPEN" | "CLOSED" | "MERGED", isDraft: 
 export function createPR(input: CreatePRInput) {
   return Effect.gen(function* () {
     const { taskId, title, body, draft, baseBranch, force } = validateInput(CreatePRSchema, input);
-    const taskService = yield* TaskService;
-    const issueService = yield* IssueService;
+    const taskDomainService = yield* TaskDomainService;
+    const issueDomainService = yield* IssueDomainService;
     const planDomainService = yield* PlanDomainService;
     const githubCLI = yield* GitHubCLITag;
     const gitWorktreeService = yield* GitWorktreeService;
 
-    const task = yield* taskService.findById(taskId);
+    const task = yield* taskDomainService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
@@ -119,7 +119,7 @@ export function createPR(input: CreatePRInput) {
       const existingPR = yield* githubCLI.findPRByBranch(task.branchName!);
       if (existingPR) {
         const prStatus = mapGitHubStateToPRStatus(existingPR.state, existingPR.isDraft);
-        yield* taskService.updatePRInfo(taskId, existingPR.url, existingPR.number, prStatus);
+        yield* taskDomainService.updatePRInfo(taskId, existingPR.url, existingPR.number, prStatus);
 
         return {
           success: true,
@@ -154,7 +154,7 @@ export function createPR(input: CreatePRInput) {
       throw new Error(`Plan not found for task: ${taskId}`);
     }
 
-    const issue = yield* issueService.findById(plan.issueId);
+    const issue = yield* issueDomainService.findById(plan.issueId);
     if (!issue) {
       throw new Error(`Issue not found for plan: ${plan.id}`);
     }
@@ -205,7 +205,7 @@ export function createPR(input: CreatePRInput) {
       const pr = yield* githubCLI.createPR(task.branchName!, targetBranch, prTitle, prBody, draft);
 
       const prStatus = mapGitHubStateToPRStatus(pr.state, pr.isDraft);
-      yield* taskService.updatePRInfo(taskId, pr.url, pr.number, prStatus);
+      yield* taskDomainService.updatePRInfo(taskId, pr.url, pr.number, prStatus);
 
       return {
         success: true,

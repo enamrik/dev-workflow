@@ -6,8 +6,8 @@
  */
 
 import { z } from "zod";
-import type { MilestoneWithStatus } from "../../domain/milestones/milestone-service.js";
-import { MilestoneService } from "../../domain/milestones/milestone-service.js";
+import type { MilestoneWithStatus } from "../../domain/milestones/milestone-domain-service.js";
+import { MilestoneDomainService } from "../../domain/milestones/milestone-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -38,9 +38,9 @@ export interface ListMilestonesResult {
 export function listMilestones(input: ListMilestonesInput) {
   return Effect.gen(function* () {
     const { status } = validateInput(ListMilestonesSchema, input);
-    const milestoneService = yield* MilestoneService;
+    const milestoneDomainService = yield* MilestoneDomainService;
 
-    const milestones = yield* milestoneService.listMilestones(status);
+    const milestones = yield* milestoneDomainService.listMilestones(status);
 
     return { milestones, count: milestones.length };
   });
