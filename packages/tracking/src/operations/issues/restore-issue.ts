@@ -7,7 +7,7 @@
 import { z } from "zod";
 import type { Issue } from "../../domain/issues/issue.js";
 import { DomainExecutorFactory } from "../../domain/domain-executor.js";
-import { BusinessRuleError, EntityNotFoundError } from "../../domain/errors.js";
+import { BusinessRuleError } from "../../domain/errors.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -49,17 +49,11 @@ export function restoreIssue(input: RestoreIssueInput) {
     const pd = yield* domain.forProject(projectSlug);
 
     // Find the issue including deleted ones
-    const allIssues = yield* pd.issues.findMany({ includeDeleted: true });
-    const issue = issueId
-      ? allIssues.find((i) => i.id === issueId)
-      : issueNumber !== undefined
-        ? allIssues.find((i) => i.number === issueNumber)
-        : null;
-
-    if (!issue) {
-      const identifier = issueId ?? `#${issueNumber}`;
-      return yield* Effect.fail(new EntityNotFoundError("Issue", identifier));
-    }
+    const issue = yield* pd.issues.getOne({
+      byId: issueId,
+      byNumber: issueNumber,
+      includeDeleted: true,
+    });
 
     if (!issue.isDeleted) {
       return yield* Effect.fail(new BusinessRuleError(`Issue #${issue.number} is not deleted`));

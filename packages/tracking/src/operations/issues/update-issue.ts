@@ -69,10 +69,8 @@ export function updateIssue(input: UpdateIssueInput) {
     const domain = yield* DomainExecutorFactory;
     const pd = yield* domain.forProject(projectSlug);
 
-    // Resolve issue from ID or number
-    const issue = issueId
-      ? yield* pd.issues.getOrThrow(issueId)
-      : yield* pd.issues.getByNumber(issueNumber!);
+    // Resolve issue
+    const issue = yield* pd.issues.getOne({ byId: issueId, byNumber: issueNumber });
 
     // Apply typed updates via PlanDomainService
     const planDomainService = yield* PlanDomainService;
