@@ -35,7 +35,7 @@ export interface GetPlanResult {
  * Get the active plan for an issue.
  *
  * 1. Validate input schema
- * 2. Resolve issue from issueId or issueNumber
+ * 2. Resolve issue via specification pattern
  * 3. Fetch plan by issue ID
  * 4. Fetch tasks by plan ID
  */
@@ -46,22 +46,11 @@ export function getPlan(input: GetPlanInput) {
     const planDomainService = yield* PlanDomainService;
     const taskDomainService = yield* TaskDomainService;
 
-    // 1. Resolve issue ID
-    let resolvedIssueId = issueId;
-    if (!resolvedIssueId && issueNumber) {
-      const issue = yield* issueDomainService.findByNumber(issueNumber);
-      if (!issue) {
-        throw new Error(`Issue not found: #${issueNumber}`);
-      }
-      resolvedIssueId = issue.id;
-    }
-
-    if (!resolvedIssueId) {
-      throw new Error("Either issueId or issueNumber is required");
-    }
+    // 1. Resolve issue
+    const issue = yield* issueDomainService.getOne({ byId: issueId, byNumber: issueNumber });
 
     // 2. Fetch plan
-    const plan = yield* planDomainService.findByIssueId(resolvedIssueId);
+    const plan = yield* planDomainService.findByIssueId(issue.id);
     if (!plan) {
       throw new Error("No plan found for this issue");
     }

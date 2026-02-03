@@ -30,6 +30,7 @@ import { Effect, Service } from "@dev-workflow/effect";
 export interface IssueSpec {
   readonly byId?: string;
   readonly byNumber?: number;
+  readonly includeDeleted?: boolean;
 }
 
 export class IssueDomainService extends Service<IssueDomainService>()("issueDomainService") {
@@ -47,13 +48,14 @@ export class IssueDomainService extends Service<IssueDomainService>()("issueDoma
    */
   findOne(spec: IssueSpec): Effect<Issue | null> {
     const repo = this.repo;
+    const includeDeleted = spec.includeDeleted ?? false;
     return Effect.gen(function* () {
       if (spec.byId) {
-        const issue = yield* repo.findById(spec.byId);
+        const issue = yield* repo.findById(spec.byId, includeDeleted);
         if (issue) return issue;
       }
       if (spec.byNumber) {
-        const issue = yield* repo.findByNumber(spec.byNumber);
+        const issue = yield* repo.findByNumber(spec.byNumber, includeDeleted);
         if (issue) return issue;
       }
       return null;

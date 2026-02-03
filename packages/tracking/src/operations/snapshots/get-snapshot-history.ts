@@ -30,19 +30,9 @@ export function getSnapshotHistory(input: GetSnapshotHistoryInput) {
     const issueDomainService = yield* IssueDomainService;
     const versioningService = yield* VersioningService;
 
-    let resolvedIssueNumber = issueNumber;
-    if (!resolvedIssueNumber && issueId) {
-      const issue = yield* issueDomainService.findById(issueId);
-      if (!issue) {
-        throw new Error(`Issue not found: ${issueId}`);
-      }
-      resolvedIssueNumber = issue.number;
-    }
+    // Resolve issue to get its number
+    const issue = yield* issueDomainService.getOne({ byId: issueId, byNumber: issueNumber });
 
-    if (!resolvedIssueNumber) {
-      throw new Error("Either issueId or issueNumber is required");
-    }
-
-    return yield* versioningService.getSnapshotHistory(resolvedIssueNumber);
+    return yield* versioningService.getSnapshotHistory(issue.number);
   });
 }
