@@ -67,14 +67,7 @@ export {
   TaskServiceError,
   type AbandonTaskResult,
 } from "./domain/tasks/task-service.js";
-export { TaskManagementService } from "./domain/tasks/task-management-service.js";
-export {
-  TaskSessionService,
-  type TaskSession,
-  type StartTaskSessionRequest,
-  type CompleteTaskSessionRequest,
-  type TaskExecutionMode,
-} from "./domain/tasks/task-session-service.js";
+// TaskManagementService, TaskSessionService removed - use TaskDomainService instead
 export {
   matchTasks,
   type TaskDefinition,
@@ -181,7 +174,11 @@ export {
   type ProjectDomain,
 } from "./domain/domain-executor.js";
 export { IssueDomainService } from "./domain/issues/issue-domain-service.js";
-export { TaskDomainService } from "./domain/tasks/task-domain-service.js";
+export {
+  TaskDomainService,
+  type AddManualTaskRequest,
+  type TaskSession,
+} from "./domain/tasks/task-domain-service.js";
 export {
   PlanDomainService,
   type GeneratePlanRequest,

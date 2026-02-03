@@ -121,7 +121,7 @@ export class DomainExecutorFactory extends Service<DomainExecutorFactory>()("dom
   private buildServices(db: DbClient): DomainServices {
     return {
       issues: new IssueDomainService(db.issues),
-      tasks: new TaskDomainService(db.tasks, db.plans),
+      tasks: new TaskDomainService(db.tasks, db.plans, db.issues),
       plans: new PlanDomainService(db.plans, db.tasks, db.issues),
       milestones: new MilestoneDomainService(db.milestones, db.issues),
     };

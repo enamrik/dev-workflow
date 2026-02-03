@@ -8,14 +8,44 @@
 
 import type { Task, TaskStatus, PRStatus, TaskRepository } from "./task.js";
 import type { PlanRepository } from "../plans/plan.js";
+import type { IssueRepository } from "../issues/issue.js";
 import { EntityNotFoundError, BusinessRuleError } from "../errors.js";
-import { Effect } from "@dev-workflow/effect";
+import { Effect, Service } from "@dev-workflow/effect";
 
-export class TaskDomainService {
+// =============================================================================
+// Request / Response Types
+// =============================================================================
+
+export interface AddManualTaskRequest {
+  issueNumber: number;
+  title: string;
+  description: string;
+  acceptanceCriteria?: string[];
+  estimatedMinutes?: number;
+  insertAfterTaskId?: string;
+}
+
+export interface TaskSession {
+  task: Task;
+  sessionId: string;
+  startedAt: string;
+  resumed: boolean;
+  worktreePath?: string;
+  branchName?: string;
+}
+
+// =============================================================================
+// Service
+// =============================================================================
+
+export class TaskDomainService extends Service<TaskDomainService>()("taskDomainService") {
   constructor(
     private readonly repo: TaskRepository,
-    private readonly planRepo: PlanRepository
-  ) {}
+    private readonly planRepo: PlanRepository,
+    private readonly issueRepo: IssueRepository
+  ) {
+    super();
+  }
 
   // ============================================================================
   // Read Operations
@@ -248,5 +278,285 @@ export class TaskDomainService {
 
   clearWorktreeInfo(taskId: string): Effect<void> {
     return Effect.map(this.repo.clearWorktreeInfo(taskId), () => undefined as void);
+  }
+
+  // ============================================================================
+  // Manual Task Operations
+  // ============================================================================
+
+  /**
+   * Add a manual task to a plan.
+   *
+   * Manual tasks are protected from plan regeneration.
+   */
+  addManualTask(request: AddManualTaskRequest): Effect<Task> {
+    const self = this;
+    return Effect.gen(function* () {
+      const {
+        issueNumber,
+        title,
+        description,
+        acceptanceCriteria,
+        estimatedMinutes,
+        insertAfterTaskId,
+      } = request;
+
+      // Find the issue
+      const issue = yield* self.issueRepo.findByNumber(issueNumber);
+      if (!issue) {
+        throw new Error(`Issue not found: #${issueNumber}`);
+      }
+
+      // Find the plan for this issue
+      const plan = yield* self.planRepo.findByIssueId(issue.id);
+      if (!plan) {
+        throw new Error(`No plan exists for issue #${issueNumber}. Generate a plan first.`);
+      }
+
+      // Validate insertAfterTaskId if provided
+      if (insertAfterTaskId) {
+        const afterTask = yield* self.repo.findById(insertAfterTaskId);
+        if (!afterTask) {
+          throw new Error(`Task not found: ${insertAfterTaskId}`);
+        }
+        if (afterTask.planId !== plan.id) {
+          throw new Error(`Task ${insertAfterTaskId} does not belong to this plan`);
+        }
+      }
+
+      // Create the manual task
+      const task = yield* self.repo.create({
+        id: crypto.randomUUID(),
+        planId: plan.id,
+        title,
+        description,
+        acceptanceCriteria: acceptanceCriteria ?? [],
+        status: "BACKLOG",
+        type: "TASK",
+        source: "manual",
+        estimatedMinutes,
+        isDeleted: false,
+      });
+
+      return task;
+    });
+  }
+
+  /**
+   * Soft-delete a PLANNED task.
+   *
+   * Tasks past PLANNED status should use abandon instead.
+   */
+  deleteTask(taskId: string, deletedBy?: string): Effect<Task> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Use includeDeleted=true to distinguish "not found" from "already deleted"
+      const task = yield* self.repo.findById(taskId, true);
+      if (!task) {
+        throw new Error(`Task not found: ${taskId}`);
+      }
+
+      if (task.isDeleted) {
+        throw new Error(`Task is already deleted: ${taskId}`);
+      }
+
+      if (task.status !== "PLANNED") {
+        throw new Error(
+          `Cannot delete task with status ${task.status}. Tasks can only be deleted while in PLANNED status. ` +
+            `Use abandon_task instead to mark the task as abandoned.`
+        );
+      }
+
+      return yield* self.repo.softDelete(taskId, deletedBy);
+    });
+  }
+
+  /**
+   * Restore a soft-deleted task.
+   */
+  restoreTask(taskId: string): Effect<Task> {
+    const self = this;
+    return Effect.gen(function* () {
+      // IMPORTANT: use includeDeleted=true so we can find the deleted task
+      const task = yield* self.repo.findById(taskId, true);
+      if (!task) {
+        throw new Error(`Task not found: ${taskId}`);
+      }
+
+      if (!task.isDeleted) {
+        throw new Error(`Task is not deleted: ${taskId}`);
+      }
+
+      return yield* self.repo.restore(taskId);
+    });
+  }
+
+  /**
+   * Get tasks for an issue via issue→plan→tasks lookup.
+   */
+  getTasksForIssue(issueNumber: number, includeDeleted = false): Effect<Task[]> {
+    const self = this;
+    return Effect.gen(function* () {
+      const issue = yield* self.issueRepo.findByNumber(issueNumber);
+      if (!issue) {
+        throw new Error(`Issue not found: #${issueNumber}`);
+      }
+
+      const plan = yield* self.planRepo.findByIssueId(issue.id);
+      if (!plan) {
+        return [];
+      }
+
+      return yield* self.repo.findByPlanId(plan.id, includeDeleted);
+    });
+  }
+
+  // ============================================================================
+  // Session Management
+  // ============================================================================
+
+  /**
+   * Activate a plan by transitioning BACKLOG→READY for all tasks
+   * except the one being started.
+   */
+  activatePlan(planId: string, excludeTaskId: string, changedBy: string): Effect<Task[]> {
+    const self = this;
+    return Effect.gen(function* () {
+      const allPlanTasks = yield* self.repo.findByPlanId(planId);
+      const activated: Task[] = [];
+      for (const planTask of allPlanTasks) {
+        if (planTask.status === "BACKLOG" && planTask.id !== excludeTaskId) {
+          const updated = yield* self.repo.updateStatus(
+            planTask.id,
+            "READY",
+            changedBy,
+            "Plan activated - task moved from BACKLOG to READY"
+          );
+          activated.push(updated);
+        }
+      }
+      return activated;
+    });
+  }
+
+  /**
+   * Update session info (sessionId, startedAt, activityAt) for a task.
+   */
+  updateSessionInfo(
+    taskId: string,
+    sessionId: string,
+    startedAt?: string,
+    activityAt?: string
+  ): Effect<void> {
+    return Effect.map(
+      this.repo.updateSessionInfo(taskId, sessionId, startedAt, activityAt),
+      () => undefined as void
+    );
+  }
+
+  /**
+   * Update worktree info (path and branch) for a task.
+   */
+  updateWorktreeInfo(taskId: string, worktreePath: string, branchName: string): Effect<void> {
+    return Effect.map(
+      this.repo.updateWorktreeInfo(taskId, worktreePath, branchName),
+      () => undefined as void
+    );
+  }
+
+  /**
+   * Session heartbeat — validates session ownership and updates activity timestamp.
+   */
+  updateSessionActivity(taskId: string, sessionId: string): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.repo.findById(taskId);
+      if (!task) throw new Error(`Task not found: ${taskId}`);
+      if (task.sessionId !== sessionId) {
+        throw new Error(
+          `Task is not associated with session ${sessionId}. Current session: ${task.sessionId}`
+        );
+      }
+      const now = new Date().toISOString();
+      yield* self.repo.updateSessionInfo(taskId, sessionId, undefined, now);
+    });
+  }
+
+  /**
+   * Check if a task is available for work.
+   */
+  isTaskAvailable(taskId: string): Effect<boolean> {
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.repo.findById(taskId);
+      if (!task) return false;
+      return yield* self.checkTaskAvailability(task);
+    });
+  }
+
+  /**
+   * Get active session info for a task, or null if no active session.
+   */
+  getActiveSession(taskId: string): Effect<TaskSession | null> {
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.repo.findById(taskId);
+      if (!task || !task.sessionId || !task.sessionStartedAt) {
+        return null;
+      }
+      return {
+        task,
+        sessionId: task.sessionId,
+        startedAt: task.sessionStartedAt,
+        resumed: true,
+      };
+    });
+  }
+
+  /**
+   * Check if all dependency tasks are in terminal state.
+   */
+  areDependenciesSatisfied(task: Task): Effect<boolean> {
+    if (!task.dependsOn?.length) return Effect.succeed(true);
+    const self = this;
+    return Effect.gen(function* () {
+      const deps = yield* self.repo.findByIds(task.dependsOn!);
+      return deps.every((d) => d.isTerminal);
+    });
+  }
+
+  /**
+   * Get non-terminal blocking dependency tasks.
+   */
+  getBlockingDependencies(task: Task): Effect<Task[]> {
+    if (!task.dependsOn?.length) return Effect.succeed([]);
+    const self = this;
+    return Effect.gen(function* () {
+      const deps = yield* self.repo.findByIds(task.dependsOn!);
+      return deps.filter((d) => !d.isTerminal);
+    });
+  }
+
+  // ============================================================================
+  // Private Helpers
+  // ============================================================================
+
+  private checkTaskAvailability(task: Task): Effect<boolean> {
+    const self = this;
+    return Effect.gen(function* () {
+      // Check if parent issue is closed
+      const plan = yield* self.planRepo.findById(task.planId);
+      if (plan) {
+        const issue = yield* self.issueRepo.findById(plan.issueId);
+        if (issue && issue.isClosed) {
+          return false;
+        }
+      }
+      // Only BACKLOG and READY tasks are available for fresh starts
+      if (task.status === "BACKLOG" || task.status === "READY") {
+        return yield* self.areDependenciesSatisfied(task);
+      }
+      return false;
+    });
   }
 }

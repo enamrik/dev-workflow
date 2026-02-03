@@ -4,7 +4,7 @@
  * Idempotent - safe to call multiple times. Handles:
  * - Access control: queued tasks require matching worker
  * - Terminal state detection: returns graceful response for COMPLETED/ABANDONED
- * - Session management: delegates to TaskSessionService for fresh start/resume
+ * - Session management: start/resume via TaskDomainService + GitWorktreeService
  * - Conflict detection: warns about files modified by prior tasks
  * - External sync: syncs status and auto-assigns on fresh start
  * - Context enrichment: loads issue, plan, dependencies, dependents
@@ -12,11 +12,19 @@
 
 import { z } from "zod";
 import type { Task } from "../../domain/tasks/task.js";
-import type { ConflictWarning } from "../../conflict-detection-service.js";
+import {
+  ConflictDetectionService,
+  type ConflictWarning,
+} from "../../conflict-detection-service.js";
 import { TaskService } from "../../domain/tasks/task-service.js";
-import { TaskSessionService } from "../../domain/tasks/task-session-service.js";
+import { TaskDomainService, type TaskSession } from "../../domain/tasks/task-domain-service.js";
+import { DependencyNotSatisfiedError } from "../../domain/errors.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { IssueService } from "../../domain/issues/issue-service.js";
+import {
+  GitWorktreeService,
+  generateWorktreeNames,
+} from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import { WorkerQueueDbTag } from "@dev-workflow/dispatch/worker-queue-db.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
@@ -94,13 +102,15 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
   return Effect.gen(function* () {
     const { taskId, sessionId, mode, workerId } = validateInput(loadTaskSessionSchema, input);
     const taskService = yield* TaskService;
-    const taskSessionService = yield* TaskSessionService;
+    const taskDomainService = yield* TaskDomainService;
     const planDomainService = yield* PlanDomainService;
     const issueService = yield* IssueService;
+    const gitWorktreeService = yield* GitWorktreeService;
+    const conflictDetectionService = yield* ConflictDetectionService;
     const workerQueueDb = yield* WorkerQueueDbTag;
 
     // Check if task exists
-    const task = yield* taskService.findById(taskId);
+    const task = yield* taskDomainService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
@@ -132,51 +142,150 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
 
     // Terminal states - return gracefully with context (not an error)
     if (task.isTerminal) {
-      return yield* buildTerminalStateResponse(task, taskService, planDomainService, issueService);
+      return yield* buildTerminalStateResponse(
+        task,
+        taskDomainService,
+        planDomainService,
+        issueService
+      );
     }
 
-    // Delegate to idempotent startTaskSession (handles both fresh start and resume)
-    const result = yield* taskSessionService.startTaskSession({
-      taskId,
-      sessionId,
-      mode,
-    });
+    // =========================================================================
+    // Inline startTaskSession logic (idempotent fresh start / resume)
+    // =========================================================================
 
+    // Determine if this is a fresh start or resume
+    const isResume = (task.startedAt !== undefined && task.startedAt !== null) || task.isActive;
+    const now = new Date().toISOString();
+
+    // Get issue number for worktree naming
+    const taskPlan = yield* planDomainService.findById(task.planId);
+    const taskIssue = taskPlan ? yield* issueService.findById(taskPlan.issueId) : null;
+    const issueNumber = taskIssue?.number;
+    if (!issueNumber) {
+      throw new Error(`Could not resolve issue number for task: ${taskId}`);
+    }
+
+    // For fresh starts only: validate dependencies and run conflict detection
+    let conflictWarnings: ConflictWarning[] | undefined;
+    if (!isResume) {
+      // Check if dependencies are satisfied
+      const depsSatisfied = yield* taskDomainService.areDependenciesSatisfied(task);
+      if (!depsSatisfied) {
+        const blockingTasks = yield* taskDomainService.getBlockingDependencies(task);
+        const blockingDetails: {
+          id: string;
+          number: number;
+          title: string;
+          status: string;
+          issueNumber: number | null;
+        }[] = [];
+        for (const t of blockingTasks) {
+          const blockingPlan = yield* planDomainService.findById(t.planId);
+          const blockingIssue = blockingPlan
+            ? yield* issueService.findById(blockingPlan.issueId)
+            : null;
+          blockingDetails.push({
+            id: t.id,
+            number: t.number,
+            title: t.title,
+            status: t.status,
+            issueNumber: blockingIssue?.number ?? null,
+          });
+        }
+        throw new DependencyNotSatisfiedError(taskId, task.title, blockingDetails);
+      }
+
+      // Run conflict detection (non-blocking)
+      try {
+        const conflictResult = yield* conflictDetectionService.detectConflicts(taskId);
+        if (conflictResult.hasConflicts) {
+          conflictWarnings = conflictResult.warnings;
+        }
+      } catch {
+        // Conflict detection failures should not block task start
+      }
+    }
+
+    // Setup worktree/branch based on execution mode (only if doesn't exist)
+    let worktreePath: string | undefined = task.worktreePath;
+    let branchName: string | undefined = task.branchName;
+
+    if (mode === "isolated" && !worktreePath) {
+      const names = generateWorktreeNames(issueNumber, task.number, task.title);
+      branchName = names.branchName;
+      worktreePath = yield* Effect.catchAll(
+        gitWorktreeService.createWorktree(names.worktreePath, branchName),
+        (err) => Effect.promise(() => Promise.reject<string>(err))
+      );
+      yield* taskDomainService.updateWorktreeInfo(taskId, worktreePath, branchName);
+    } else if (mode === "branch" && !branchName) {
+      const names = generateWorktreeNames(issueNumber, task.number, task.title);
+      branchName = names.branchName;
+      yield* gitWorktreeService.run(["checkout", "-b", branchName]);
+      yield* taskDomainService.update(taskId, { branchName });
+    }
+    // mode === "main": no branch, no worktree - work directly on main
+
+    // Only for fresh starts: activate plan and transition status
+    if (!isResume) {
+      yield* taskDomainService.activatePlan(task.planId, taskId, sessionId);
+      yield* taskDomainService.start(taskId, sessionId);
+    }
+
+    // Always update session tracking (idempotent)
+    yield* taskDomainService.updateSessionInfo(taskId, sessionId, isResume ? undefined : now, now);
+
+    // Get final task state
+    const finalTask = yield* taskDomainService.findById(taskId);
+    if (!finalTask) {
+      throw new Error(`Failed to retrieve updated task: ${taskId}`);
+    }
+
+    const sessionResult: TaskSession & { conflictWarnings?: ConflictWarning[] } = {
+      task: finalTask,
+      sessionId,
+      startedAt: finalTask.startedAt ?? now,
+      resumed: isResume,
+      worktreePath,
+      branchName,
+      conflictWarnings,
+    };
+
+    // =========================================================================
     // Build response
+    // =========================================================================
+
     const response: LoadTaskSessionResult = {
       success: true,
       sessionId,
-      task: result.task,
-      resumed: result.resumed,
-      startedAt: result.startedAt,
+      task: sessionResult.task,
+      resumed: sessionResult.resumed,
+      startedAt: sessionResult.startedAt,
     };
 
-    // Include worktree info if available
-    if (result.worktreePath) {
-      response.worktreePath = result.worktreePath;
-      response.branchName = result.branchName;
+    if (sessionResult.worktreePath) {
+      response.worktreePath = sessionResult.worktreePath;
+      response.branchName = sessionResult.branchName;
     }
 
-    // Include conflict warnings if any were detected (only on fresh start)
-    if (result.conflictWarnings && result.conflictWarnings.length > 0) {
-      response.conflictWarnings = result.conflictWarnings;
-      const taskPlan = yield* planDomainService.findById(result.task.planId);
-      const taskIssue = taskPlan ? yield* issueService.findById(taskPlan.issueId) : null;
+    if (sessionResult.conflictWarnings && sessionResult.conflictWarnings.length > 0) {
+      response.conflictWarnings = sessionResult.conflictWarnings;
       response.conflictWarningMessage = formatConflictWarnings(
-        result.conflictWarnings,
+        sessionResult.conflictWarnings,
         taskIssue?.number
       );
     }
 
     // Sync to external project management provider
-    yield* taskService.syncTaskStatus(taskId, result.task.status);
+    yield* taskService.syncTaskStatus(taskId, sessionResult.task.status);
 
     // On fresh start only: auto-assign and sync siblings
-    if (!result.resumed) {
+    if (!sessionResult.resumed) {
       yield* taskService.assignIssue(taskId);
 
       // Sync sibling tasks that transitioned from BACKLOG to READY
-      const siblingTasks = yield* taskService.findByPlanId(result.task.planId);
+      const siblingTasks = yield* taskDomainService.findByPlanId(sessionResult.task.planId);
       for (const sibling of siblingTasks) {
         if (sibling.id !== taskId && sibling.status === "READY") {
           yield* taskService.syncTaskStatus(sibling.id, "READY");
@@ -187,8 +296,8 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
     // Load full context
     return yield* addTaskContext(
       response,
-      result.task,
-      taskService,
+      sessionResult.task,
+      taskDomainService,
       planDomainService,
       issueService
     );
@@ -202,9 +311,9 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
 /**
  * Find the next available task in a plan (READY or BACKLOG).
  */
-function findNextAvailableTaskInPlan(planId: string, taskService: TaskService) {
+function findNextAvailableTaskInPlan(planId: string, taskDomainService: TaskDomainService) {
   return Effect.gen(function* () {
-    const tasks = yield* taskService.findByPlanId(planId);
+    const tasks = yield* taskDomainService.findByPlanId(planId);
 
     // Prefer READY tasks, then BACKLOG
     const readyTask = tasks.find((t) => t.status === "READY" && !t.isDeleted);
@@ -236,7 +345,7 @@ function findNextAvailableTaskInPlan(planId: string, taskService: TaskService) {
  */
 function buildTerminalStateResponse(
   task: Task,
-  taskService: TaskService,
+  taskDomainService: TaskDomainService,
   planDomainService: PlanDomainService,
   issueService: IssueService
 ) {
@@ -246,13 +355,13 @@ function buildTerminalStateResponse(
     const issue = plan ? yield* issueService.findById(plan.issueId) : null;
 
     // Check if all tasks are complete
-    const allTasks = yield* taskService.findByPlanId(task.planId);
+    const allTasks = yield* taskDomainService.findByPlanId(task.planId);
     const activeTasks = allTasks.filter((t) => !t.isDeleted);
     const terminalStatuses = ["COMPLETED", "ABANDONED"];
     const allTasksComplete = activeTasks.every((t) => terminalStatuses.includes(t.status));
 
     // Find next available task in the plan
-    const nextTask = yield* findNextAvailableTaskInPlan(task.planId, taskService);
+    const nextTask = yield* findNextAvailableTaskInPlan(task.planId, taskDomainService);
 
     return {
       success: true,
@@ -278,7 +387,7 @@ function buildTerminalStateResponse(
 function addTaskContext(
   response: LoadTaskSessionResult,
   task: Task,
-  taskService: TaskService,
+  taskDomainService: TaskDomainService,
   planDomainService: PlanDomainService,
   issueService: IssueService
 ) {
@@ -295,7 +404,7 @@ function addTaskContext(
 
     // Load dependency information with issue numbers
     if (task.dependsOn?.length) {
-      const dependencies = yield* taskService.findByIds(task.dependsOn);
+      const dependencies = yield* taskDomainService.findByIds(task.dependsOn);
       const depResults = [];
       for (const d of dependencies) {
         const depPlan = yield* planDomainService.findById(d.planId);
@@ -312,7 +421,7 @@ function addTaskContext(
     }
 
     // Find tasks that depend on this one
-    const allPlanTasks = yield* taskService.findByPlanId(task.planId);
+    const allPlanTasks = yield* taskDomainService.findByPlanId(task.planId);
     const dependents = allPlanTasks.filter((t) => t.dependsOn?.includes(task.id));
     if (dependents.length > 0) {
       const depResults = [];

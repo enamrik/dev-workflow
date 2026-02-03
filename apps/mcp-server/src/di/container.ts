@@ -21,8 +21,7 @@ import {
   TypeService,
   NodeFileSystem,
   VersioningService,
-  TaskSessionService,
-  TaskManagementService,
+  TaskDomainService,
   NodeGitHubCLI,
   ProjectManagementRegistry,
   getProjectManagementService,
@@ -94,11 +93,10 @@ export interface McpCradle {
 
   // Application services
   versioningService: VersioningService;
-  taskManagementService: TaskManagementService;
   conflictDetectionService: ConflictDetectionService;
-  taskSessionService: TaskSessionService;
 
   // Domain services
+  taskDomainService: TaskDomainService;
   planDomainService: PlanDomainService;
   issueDomainService: IssueDomainService;
 
@@ -242,35 +240,16 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
       ({ dbClient }: { dbClient: DbClient }) => new VersioningService(dbClient)
     ).singleton(),
 
-    taskManagementService: asFunction(
-      ({ dbClient }: { dbClient: DbClient }) => new TaskManagementService(dbClient)
-    ).singleton(),
-
     conflictDetectionService: asFunction(
       ({ dbClient }: { dbClient: DbClient }) => new ConflictDetectionService(dbClient)
     ).singleton(),
 
-    taskSessionService: asFunction(
-      ({
-        dbClient,
-        gitWorktreeService,
-        conflictDetectionService,
-        trackDirectory,
-      }: {
-        dbClient: DbClient;
-        gitWorktreeService: GitWorktreeService;
-        conflictDetectionService: ConflictDetectionService;
-        trackDirectory: string;
-      }) =>
-        new TaskSessionService(
-          dbClient,
-          gitWorktreeService,
-          conflictDetectionService,
-          trackDirectory
-        )
+    // Domain services
+    taskDomainService: asFunction(
+      ({ dbClient }: { dbClient: DbClient }) =>
+        new TaskDomainService(dbClient.tasks, dbClient.plans, dbClient.issues)
     ).singleton(),
 
-    // Domain services
     planDomainService: asFunction(
       ({ dbClient }: { dbClient: DbClient }) =>
         new PlanDomainService(dbClient.plans, dbClient.tasks, dbClient.issues)
