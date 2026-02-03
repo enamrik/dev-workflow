@@ -2,12 +2,12 @@
  * assignIssueToMilestone - Assign an issue to a milestone
  *
  * Looks up both the issue and milestone by number, then assigns
- * the issue to the milestone via MilestoneService.
+ * the issue to the milestone via MilestoneDomainService.
  */
 
 import { z } from "zod";
-import { MilestoneService } from "../../domain/milestones/milestone-service.js";
-import { IssueService } from "../../domain/issues/issue-service.js";
+import { MilestoneDomainService } from "../../domain/milestones/milestone-domain-service.js";
+import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -39,13 +39,13 @@ export interface AssignIssueToMilestoneResult {
 export function assignIssueToMilestone(input: AssignIssueToMilestoneInput) {
   return Effect.gen(function* () {
     const { issueNumber, milestoneNumber } = validateInput(AssignIssueToMilestoneSchema, input);
-    const milestoneService = yield* MilestoneService;
-    const issueService = yield* IssueService;
+    const milestoneDomainService = yield* MilestoneDomainService;
+    const issueDomainService = yield* IssueDomainService;
 
-    const issue = yield* issueService.getIssueByNumber(issueNumber);
-    const milestone = yield* milestoneService.getMilestoneByNumber(milestoneNumber);
+    const issue = yield* issueDomainService.getIssueByNumber(issueNumber);
+    const milestone = yield* milestoneDomainService.getMilestoneByNumber(milestoneNumber);
 
-    yield* milestoneService.assignIssue(issue.id, milestone.id);
+    yield* milestoneDomainService.assignIssue(issue.id, milestone.id);
 
     return {
       message: `Assigned issue #${issue.number} to milestone M${milestone.number}: ${milestone.title}`,

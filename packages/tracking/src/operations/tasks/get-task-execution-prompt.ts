@@ -6,9 +6,9 @@
  */
 
 import { z } from "zod";
-import { TaskService } from "../../domain/tasks/task-service.js";
+import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
-import { IssueService } from "../../domain/issues/issue-service.js";
+import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -40,11 +40,11 @@ export interface GetTaskExecutionPromptResult {
 export function getTaskExecutionPrompt(input: GetTaskExecutionPromptInput) {
   return Effect.gen(function* () {
     const { taskId } = validateInput(getTaskExecutionPromptSchema, input);
-    const taskService = yield* TaskService;
+    const taskDomainService = yield* TaskDomainService;
     const planDomainService = yield* PlanDomainService;
-    const issueService = yield* IssueService;
+    const issueDomainService = yield* IssueDomainService;
 
-    const task = yield* taskService.findById(taskId);
+    const task = yield* taskDomainService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
@@ -55,7 +55,7 @@ export function getTaskExecutionPrompt(input: GetTaskExecutionPromptInput) {
       throw new Error(`Plan not found for task: ${taskId}`);
     }
 
-    const issue = yield* issueService.findById(plan.issueId);
+    const issue = yield* issueDomainService.findById(plan.issueId);
     if (!issue) {
       throw new Error(`Issue not found for plan: ${plan.id}`);
     }

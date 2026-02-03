@@ -5,7 +5,7 @@
  */
 
 import { z } from "zod";
-import { IssueService } from "../../domain/issues/issue-service.js";
+import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { VersioningService } from "../../domain/snapshots/versioning-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
@@ -27,12 +27,12 @@ export type GetSnapshotHistoryInput = z.infer<typeof GetSnapshotHistorySchema>;
 export function getSnapshotHistory(input: GetSnapshotHistoryInput) {
   return Effect.gen(function* () {
     const { issueId, issueNumber } = validateInput(GetSnapshotHistorySchema, input);
-    const issueService = yield* IssueService;
+    const issueDomainService = yield* IssueDomainService;
     const versioningService = yield* VersioningService;
 
     let resolvedIssueNumber = issueNumber;
     if (!resolvedIssueNumber && issueId) {
-      const issue = yield* issueService.findById(issueId);
+      const issue = yield* issueDomainService.findById(issueId);
       if (!issue) {
         throw new Error(`Issue not found: ${issueId}`);
       }

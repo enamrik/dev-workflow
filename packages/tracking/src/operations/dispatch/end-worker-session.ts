@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import { WorkerQueueDbTag } from "@dev-workflow/dispatch/worker-queue-db.js";
-import { TaskService } from "../../domain/tasks/task-service.js";
+import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -45,10 +45,10 @@ export function endWorkerSession(input: EndWorkerSessionInput) {
   return Effect.gen(function* () {
     const { workerId, taskId } = validateInput(EndWorkerSessionSchema, input);
     const workerQueueDb = yield* WorkerQueueDbTag;
-    const taskService = yield* TaskService;
+    const taskDomainService = yield* TaskDomainService;
 
     // 1. Verify task exists
-    const task = yield* taskService.findById(taskId);
+    const task = yield* taskDomainService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }

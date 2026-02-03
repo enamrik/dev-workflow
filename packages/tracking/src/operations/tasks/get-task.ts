@@ -7,8 +7,8 @@
 
 import { z } from "zod";
 import type { Task } from "../../domain/tasks/task.js";
-import { TaskService } from "../../domain/tasks/task-service.js";
-import { IssueService } from "../../domain/issues/issue-service.js";
+import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
+import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { WorkerQueueDbTag } from "@dev-workflow/dispatch/worker-queue-db.js";
 import type { WorkerQueueDb } from "@dev-workflow/dispatch/worker-queue-db.js";
@@ -132,18 +132,18 @@ function enrichTaskData(task: Task, workerQueueDb?: WorkerQueueDb): EnrichedTask
 export function getTask(input: GetTaskInput) {
   return Effect.gen(function* () {
     const { taskId, taskNumber, issueNumber } = validateInput(getTaskSchema, input);
-    const taskService = yield* TaskService;
+    const taskDomainService = yield* TaskDomainService;
     const workerQueueDb = yield* WorkerQueueDbTag;
 
     let task: Task | null = null;
 
     if (taskId) {
-      task = yield* taskService.findById(taskId);
+      task = yield* taskDomainService.findById(taskId);
     } else if (taskNumber !== undefined && issueNumber !== undefined) {
-      const issueService = yield* IssueService;
+      const issueDomainService = yield* IssueDomainService;
       const planDomainService = yield* PlanDomainService;
 
-      const issue = yield* issueService.findByNumber(issueNumber);
+      const issue = yield* issueDomainService.findByNumber(issueNumber);
       if (!issue) {
         throw new Error(`Issue not found: #${issueNumber}`);
       }
@@ -153,7 +153,7 @@ export function getTask(input: GetTaskInput) {
         throw new Error(`No plan found for issue #${issueNumber}`);
       }
 
-      const tasks = yield* taskService.findByPlanId(plan.id);
+      const tasks = yield* taskDomainService.findByPlanId(plan.id);
       task = tasks.find((t) => t.number === taskNumber) ?? null;
     }
 

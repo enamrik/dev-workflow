@@ -9,9 +9,9 @@
 import { z } from "zod";
 import type { ConflictWarning } from "../../conflict-detection-service.js";
 import { ConflictDetectionService } from "../../conflict-detection-service.js";
-import { TaskService } from "../../domain/tasks/task-service.js";
+import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
-import { IssueService } from "../../domain/issues/issue-service.js";
+import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -68,13 +68,13 @@ function formatConflictWarnings(warnings: ConflictWarning[], issueNumber?: numbe
 export function checkTaskConflicts(input: CheckTaskConflictsInput) {
   return Effect.gen(function* () {
     const { taskId } = validateInput(checkTaskConflictsSchema, input);
-    const taskService = yield* TaskService;
+    const taskDomainService = yield* TaskDomainService;
     const conflictDetectionService = yield* ConflictDetectionService;
     const planDomainService = yield* PlanDomainService;
-    const issueService = yield* IssueService;
+    const issueDomainService = yield* IssueDomainService;
 
     // Verify task exists
-    const task = yield* taskService.findById(taskId);
+    const task = yield* taskDomainService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
@@ -94,7 +94,7 @@ export function checkTaskConflicts(input: CheckTaskConflictsInput) {
     if (result.hasConflicts) {
       // Get issue number for #issue.task format in warning message
       const taskPlan = yield* planDomainService.findById(task.planId);
-      const taskIssue = taskPlan ? yield* issueService.findById(taskPlan.issueId) : null;
+      const taskIssue = taskPlan ? yield* issueDomainService.findById(taskPlan.issueId) : null;
       response.warningMessage = formatConflictWarnings(result.warnings, taskIssue?.number);
     } else {
       response.message = "No potential conflicts detected with prior tasks";

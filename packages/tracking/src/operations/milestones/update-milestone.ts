@@ -2,12 +2,12 @@
  * updateMilestone - Update milestone properties with validation
  *
  * Validates that status can only be set to "COMPLETED", validates date
- * formats and range, then delegates to MilestoneService.
+ * formats and range, then delegates to MilestoneDomainService.
  */
 
 import { z } from "zod";
-import type { MilestoneWithStatus } from "../../domain/milestones/milestone-service.js";
-import { MilestoneService } from "../../domain/milestones/milestone-service.js";
+import type { MilestoneWithStatus } from "../../domain/milestones/milestone-domain-service.js";
+import { MilestoneDomainService } from "../../domain/milestones/milestone-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -53,12 +53,12 @@ function validateDateFormat(date: string, fieldName: string): void {
  * 1. Validate input schema
  * 2. Validate status (only COMPLETED allowed)
  * 3. Validate date formats and range
- * 4. Update via MilestoneService and return with computed status
+ * 4. Update via MilestoneDomainService and return with computed status
  */
 export function updateMilestone(input: UpdateMilestoneInput) {
   return Effect.gen(function* () {
     const { milestoneNumber, updates } = validateInput(UpdateMilestoneSchema, input);
-    const milestoneService = yield* MilestoneService;
+    const milestoneDomainService = yield* MilestoneDomainService;
 
     // Validate status constraint
     if (updates.status && updates.status !== "COMPLETED") {
@@ -76,7 +76,7 @@ export function updateMilestone(input: UpdateMilestoneInput) {
     }
 
     // Look up milestone to validate date range
-    const existing = yield* milestoneService.getMilestoneByNumber(milestoneNumber);
+    const existing = yield* milestoneDomainService.getMilestoneByNumber(milestoneNumber);
 
     const newStartDate = updates.startDate ?? existing.startDate;
     const newEndDate = updates.endDate ?? existing.endDate;
@@ -85,8 +85,8 @@ export function updateMilestone(input: UpdateMilestoneInput) {
     }
 
     // Update and get computed status
-    yield* milestoneService.update(existing.id, updates);
-    const milestone = yield* milestoneService.getMilestone(existing.id);
+    yield* milestoneDomainService.update(existing.id, updates);
+    const milestone = yield* milestoneDomainService.getMilestone(existing.id);
 
     return {
       message: `Updated milestone M${milestone.number}: ${milestone.title}`,

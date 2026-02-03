@@ -7,7 +7,7 @@
  */
 
 import { z } from "zod";
-import { IssueService } from "../../domain/issues/issue-service.js";
+import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { TaskService } from "../../domain/tasks/task-service.js";
 import { EventBus } from "../../events/event-bus.js";
@@ -46,12 +46,12 @@ export interface MoveIssueToReadyResult {
 export function moveIssueToReady(input: MoveIssueToReadyInput) {
   return Effect.gen(function* () {
     const { issueNumber } = validateInput(MoveIssueToReadySchema, input);
-    const issueService = yield* IssueService;
+    const issueDomainService = yield* IssueDomainService;
     const planDomainService = yield* PlanDomainService;
     const taskService = yield* TaskService;
 
     // Resolve issue for event payload (need issueId)
-    const issue = yield* issueService.findByNumber(issueNumber);
+    const issue = yield* issueDomainService.findByNumber(issueNumber);
     if (!issue) {
       throw new Error(`Issue not found: #${issueNumber}`);
     }

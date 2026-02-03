@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { Effect } from "@dev-workflow/effect";
+import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { TaskService } from "../../domain/tasks/task-service.js";
 import { validateInput } from "../validation.js";
 
@@ -52,9 +53,10 @@ export interface SubmitForReviewResult {
 export function submitForReview(input: SubmitForReviewInput) {
   return Effect.gen(function* () {
     const { taskId, force } = validateInput(SubmitForReviewSchema, input);
+    const taskDomainService = yield* TaskDomainService;
     const taskService = yield* TaskService;
 
-    const task = yield* taskService.findById(taskId);
+    const task = yield* taskDomainService.findById(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }

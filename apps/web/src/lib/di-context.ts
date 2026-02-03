@@ -26,7 +26,7 @@ import {
   TaskService,
   PlanDomainService,
   IssueDomainService,
-  MilestoneService,
+  MilestoneDomainService,
   BoardQueryService,
   ProjectManagementService,
   NoOpProjectManagementClient,
@@ -69,8 +69,8 @@ export class WebDIContext {
   /** Domain service for issue operations */
   readonly issueDomainService: IssueDomainService;
 
-  /** Service for milestone operations */
-  readonly milestoneService: MilestoneService;
+  /** Domain service for milestone operations */
+  readonly milestoneDomainService: MilestoneDomainService;
 
   /** Service for computing issue status from task states */
   readonly issueStatusService: IssueStatusService;
@@ -105,7 +105,7 @@ export class WebDIContext {
     this.issueDomainService = new IssueDomainService(db.issues);
     this.taskService = new TaskService(db, projectManagement, null);
     this.issueService = new IssueService(db, this.taskService, projectManagement);
-    this.milestoneService = new MilestoneService(db);
+    this.milestoneDomainService = new MilestoneDomainService(db.milestones, db.issues);
 
     // Create status service with injected DbClient
     this.issueStatusService = new IssueStatusService(db);

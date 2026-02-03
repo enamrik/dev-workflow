@@ -16,6 +16,7 @@ import {
 import {
   PlanDomainService,
   IssueDomainService,
+  TaskDomainService,
   VersioningService,
   TypeService,
   IssueService,
@@ -60,6 +61,7 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<{
   // Create services with DbClient
   const planDomainService = new PlanDomainService(client.plans, client.tasks, client.issues);
   const issueDomainService = new IssueDomainService(client.issues);
+  const taskDomainService = new TaskDomainService(client.tasks, client.plans, client.issues);
   const versioningService = new VersioningService(client);
 
   // TypeService for type validation (backed by database - types are global)
@@ -76,6 +78,7 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<{
       issueService,
       planDomainService,
       issueDomainService,
+      taskDomainService,
       versioningService,
       taskService,
       typeService,

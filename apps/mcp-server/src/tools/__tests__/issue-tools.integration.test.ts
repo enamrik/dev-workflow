@@ -24,7 +24,7 @@ import {
   GitHubProjectManagementProvider,
   IssueService,
   TaskService,
-  MilestoneService,
+  MilestoneDomainService,
   TypeService,
   DomainExecutorFactory,
   DbSourceProvider,
@@ -95,7 +95,7 @@ async function createIssueToolContext(
 
   const taskService = new TaskService(client, projectManagement, null);
   const issueService = new IssueService(client, taskService, projectManagement);
-  const milestoneService = new MilestoneService(client);
+  const milestoneDomainService = new MilestoneDomainService(client.milestones, client.issues);
   const typeService = new TypeService(testDb.source.types);
 
   // Create DomainExecutorFactory for Effect-based operations
@@ -116,7 +116,7 @@ async function createIssueToolContext(
       planDomainService,
       issueDomainService,
       taskService,
-      milestoneService,
+      milestoneDomainService,
       workerQueueDb,
       templateService: mockTemplateService,
       projectManagementProvider: mockProvider,

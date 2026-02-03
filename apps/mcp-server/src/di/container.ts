@@ -30,7 +30,7 @@ import {
   ConflictDetectionService,
   IssueService,
   TaskService,
-  MilestoneService,
+  MilestoneDomainService,
   PlanDomainService,
   IssueDomainService,
   MergeService,
@@ -99,11 +99,11 @@ export interface McpCradle {
   taskDomainService: TaskDomainService;
   planDomainService: PlanDomainService;
   issueDomainService: IssueDomainService;
+  milestoneDomainService: MilestoneDomainService;
 
   // Entity services (Service Layer Pattern)
   taskService: TaskService;
   issueService: IssueService;
-  milestoneService: MilestoneService;
   mergeService: MergeService;
 }
 
@@ -259,6 +259,11 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
       ({ dbClient }: { dbClient: DbClient }) => new IssueDomainService(dbClient.issues)
     ).singleton(),
 
+    milestoneDomainService: asFunction(
+      ({ dbClient }: { dbClient: DbClient }) =>
+        new MilestoneDomainService(dbClient.milestones, dbClient.issues)
+    ).singleton(),
+
     // Entity services (Service Layer Pattern)
     taskService: asFunction(
       ({
@@ -296,10 +301,6 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
         taskService: TaskService;
         projectManagement: ProjectManagementService;
       }) => new IssueService(dbClient, taskService, projectManagement)
-    ).singleton(),
-
-    milestoneService: asFunction(
-      ({ dbClient }: { dbClient: DbClient }) => new MilestoneService(dbClient)
     ).singleton(),
 
     mergeService: asFunction(
