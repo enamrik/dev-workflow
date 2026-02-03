@@ -17,10 +17,12 @@ import type {
 } from "./issue.js";
 import { Issue } from "./issue.js";
 import { BusinessRuleError, EntityNotFoundError } from "../errors.js";
-import { Effect } from "@dev-workflow/effect";
+import { Effect, Service } from "@dev-workflow/effect";
 
-export class IssueDomainService {
-  constructor(private readonly repo: IssueRepository) {}
+export class IssueDomainService extends Service<IssueDomainService>()("issueDomainService") {
+  constructor(private readonly repo: IssueRepository) {
+    super();
+  }
 
   // ============================================================================
   // Read Operations

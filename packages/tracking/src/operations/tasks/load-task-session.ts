@@ -15,7 +15,7 @@ import type { Task } from "../../domain/tasks/task.js";
 import type { ConflictWarning } from "../../conflict-detection-service.js";
 import { TaskService } from "../../domain/tasks/task-service.js";
 import { TaskSessionService } from "../../domain/tasks/task-session-service.js";
-import { PlanService } from "../../domain/plans/plan-service.js";
+import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { IssueService } from "../../domain/issues/issue-service.js";
 import { WorkerQueueDbTag } from "@dev-workflow/dispatch/worker-queue-db.js";
 import { validateInput } from "../validation.js";
@@ -95,7 +95,7 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
     const { taskId, sessionId, mode, workerId } = validateInput(loadTaskSessionSchema, input);
     const taskService = yield* TaskService;
     const taskSessionService = yield* TaskSessionService;
-    const planService = yield* PlanService;
+    const planDomainService = yield* PlanDomainService;
     const issueService = yield* IssueService;
     const workerQueueDb = yield* WorkerQueueDbTag;
 
@@ -132,7 +132,7 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
 
     // Terminal states - return gracefully with context (not an error)
     if (task.isTerminal) {
-      return yield* buildTerminalStateResponse(task, taskService, planService, issueService);
+      return yield* buildTerminalStateResponse(task, taskService, planDomainService, issueService);
     }
 
     // Delegate to idempotent startTaskSession (handles both fresh start and resume)
@@ -160,7 +160,7 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
     // Include conflict warnings if any were detected (only on fresh start)
     if (result.conflictWarnings && result.conflictWarnings.length > 0) {
       response.conflictWarnings = result.conflictWarnings;
-      const taskPlan = yield* planService.findById(result.task.planId);
+      const taskPlan = yield* planDomainService.findById(result.task.planId);
       const taskIssue = taskPlan ? yield* issueService.findById(taskPlan.issueId) : null;
       response.conflictWarningMessage = formatConflictWarnings(
         result.conflictWarnings,
@@ -185,7 +185,13 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
     }
 
     // Load full context
-    return yield* addTaskContext(response, result.task, taskService, planService, issueService);
+    return yield* addTaskContext(
+      response,
+      result.task,
+      taskService,
+      planDomainService,
+      issueService
+    );
   });
 }
 
@@ -231,12 +237,12 @@ function findNextAvailableTaskInPlan(planId: string, taskService: TaskService) {
 function buildTerminalStateResponse(
   task: Task,
   taskService: TaskService,
-  planService: PlanService,
+  planDomainService: PlanDomainService,
   issueService: IssueService
 ) {
   return Effect.gen(function* () {
     // Get issue status
-    const plan = yield* planService.findById(task.planId);
+    const plan = yield* planDomainService.findById(task.planId);
     const issue = plan ? yield* issueService.findById(plan.issueId) : null;
 
     // Check if all tasks are complete
@@ -273,12 +279,12 @@ function addTaskContext(
   response: LoadTaskSessionResult,
   task: Task,
   taskService: TaskService,
-  planService: PlanService,
+  planDomainService: PlanDomainService,
   issueService: IssueService
 ) {
   return Effect.gen(function* () {
     // Get plan and issue
-    const plan = yield* planService.findById(task.planId);
+    const plan = yield* planDomainService.findById(task.planId);
     if (plan) {
       response.plan = plan;
       const issue = yield* issueService.findById(plan.issueId);
@@ -292,7 +298,7 @@ function addTaskContext(
       const dependencies = yield* taskService.findByIds(task.dependsOn);
       const depResults = [];
       for (const d of dependencies) {
-        const depPlan = yield* planService.findById(d.planId);
+        const depPlan = yield* planDomainService.findById(d.planId);
         const depIssue = depPlan ? yield* issueService.findById(depPlan.issueId) : null;
         depResults.push({
           id: d.id,
@@ -311,7 +317,7 @@ function addTaskContext(
     if (dependents.length > 0) {
       const depResults = [];
       for (const d of dependents) {
-        const depPlan = yield* planService.findById(d.planId);
+        const depPlan = yield* planDomainService.findById(d.planId);
         const depIssue = depPlan ? yield* issueService.findById(depPlan.issueId) : null;
         depResults.push({
           id: d.id,

@@ -6,7 +6,7 @@
 
 import {
   VersioningService,
-  PlanningService,
+  PlanDomainService,
   TaskManagementService,
   NoOpProjectManagementProvider,
   NoOpProjectManagementClient,
@@ -72,12 +72,12 @@ export function createClientForProject(testDb: TestDatabase, projectId: string):
  */
 export function createServices(client: DbClient) {
   const versioningService = new VersioningService(client);
-  const planningService = new PlanningService(client, versioningService);
+  const planDomainService = new PlanDomainService(client.plans, client.tasks, client.issues);
   const taskManagementService = new TaskManagementService(client);
 
   return {
     versioningService,
-    planningService,
+    planDomainService,
     taskManagementService,
   };
 }

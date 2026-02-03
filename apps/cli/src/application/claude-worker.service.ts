@@ -19,7 +19,7 @@ import { randomUUID } from "node:crypto";
 import {
   DbSourceProvider,
   ProjectsResolver,
-  DependencyService,
+  PlanDomainService,
   type DbSource,
   type Task,
 } from "@dev-workflow/tracking";
@@ -446,8 +446,8 @@ export class ClaudeWorkerService {
         const source = this.sourceProvider.getOrCreate(projectInfo.sourceInfo);
         const client = source.createClient(projectInfo.projectId);
 
-        // Create DependencyService for this project
-        const dependencyService = new DependencyService(client);
+        // Create PlanDomainService for dependency checking
+        const planDomainService = new PlanDomainService(client.plans, client.tasks, client.issues);
 
         // Find READY tasks
         const readyTasks = await Effect.runPromise(client.tasks.findMany({ status: "READY" }));
@@ -465,7 +465,7 @@ export class ClaudeWorkerService {
           }
 
           // Skip if dependencies are not satisfied
-          if (!(await dependencyService.areDependenciesSatisfied(task))) {
+          if (!(await Effect.runPromise(planDomainService.areDependenciesSatisfied(task)))) {
             continue;
           }
 

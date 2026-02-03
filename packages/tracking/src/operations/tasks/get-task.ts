@@ -9,7 +9,7 @@ import { z } from "zod";
 import type { Task } from "../../domain/tasks/task.js";
 import { TaskService } from "../../domain/tasks/task-service.js";
 import { IssueService } from "../../domain/issues/issue-service.js";
-import { PlanService } from "../../domain/plans/plan-service.js";
+import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { WorkerQueueDbTag } from "@dev-workflow/dispatch/worker-queue-db.js";
 import type { WorkerQueueDb } from "@dev-workflow/dispatch/worker-queue-db.js";
 import { validateInput } from "../validation.js";
@@ -141,14 +141,14 @@ export function getTask(input: GetTaskInput) {
       task = yield* taskService.findById(taskId);
     } else if (taskNumber !== undefined && issueNumber !== undefined) {
       const issueService = yield* IssueService;
-      const planService = yield* PlanService;
+      const planDomainService = yield* PlanDomainService;
 
       const issue = yield* issueService.findByNumber(issueNumber);
       if (!issue) {
         throw new Error(`Issue not found: #${issueNumber}`);
       }
 
-      const plan = yield* planService.findByIssueId(issue.id);
+      const plan = yield* planDomainService.findByIssueId(issue.id);
       if (!plan) {
         throw new Error(`No plan found for issue #${issueNumber}`);
       }

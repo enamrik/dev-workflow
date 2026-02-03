@@ -10,7 +10,7 @@ import { z } from "zod";
 import type { ConflictWarning } from "../../conflict-detection-service.js";
 import { ConflictDetectionService } from "../../conflict-detection-service.js";
 import { TaskService } from "../../domain/tasks/task-service.js";
-import { PlanService } from "../../domain/plans/plan-service.js";
+import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { IssueService } from "../../domain/issues/issue-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
@@ -70,7 +70,7 @@ export function checkTaskConflicts(input: CheckTaskConflictsInput) {
     const { taskId } = validateInput(checkTaskConflictsSchema, input);
     const taskService = yield* TaskService;
     const conflictDetectionService = yield* ConflictDetectionService;
-    const planService = yield* PlanService;
+    const planDomainService = yield* PlanDomainService;
     const issueService = yield* IssueService;
 
     // Verify task exists
@@ -93,7 +93,7 @@ export function checkTaskConflicts(input: CheckTaskConflictsInput) {
 
     if (result.hasConflicts) {
       // Get issue number for #issue.task format in warning message
-      const taskPlan = yield* planService.findById(task.planId);
+      const taskPlan = yield* planDomainService.findById(task.planId);
       const taskIssue = taskPlan ? yield* issueService.findById(taskPlan.issueId) : null;
       response.warningMessage = formatConflictWarnings(result.warnings, taskIssue?.number);
     } else {

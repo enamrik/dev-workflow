@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import { TaskService } from "../../domain/tasks/task-service.js";
-import { PlanService } from "../../domain/plans/plan-service.js";
+import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { IssueService } from "../../domain/issues/issue-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
@@ -41,7 +41,7 @@ export function getTaskExecutionPrompt(input: GetTaskExecutionPromptInput) {
   return Effect.gen(function* () {
     const { taskId } = validateInput(getTaskExecutionPromptSchema, input);
     const taskService = yield* TaskService;
-    const planService = yield* PlanService;
+    const planDomainService = yield* PlanDomainService;
     const issueService = yield* IssueService;
 
     const task = yield* taskService.findById(taskId);
@@ -50,7 +50,7 @@ export function getTaskExecutionPrompt(input: GetTaskExecutionPromptInput) {
     }
 
     // Get parent context
-    const plan = yield* planService.findById(task.planId);
+    const plan = yield* planDomainService.findById(task.planId);
     if (!plan) {
       throw new Error(`Plan not found for task: ${taskId}`);
     }

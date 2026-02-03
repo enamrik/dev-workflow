@@ -2,14 +2,17 @@
  * generatePlan - Generate a plan for an issue with tasks
  *
  * Validates task types and dependency references, normalizes task data,
- * then delegates to PlanningService for plan creation with smart matching.
+ * then delegates to PlanDomainService for plan creation with smart matching.
+ * Side effects (snapshots, events) are owned by this operation.
  */
 
 import { z } from "zod";
 import type { IssueType } from "../../domain/issues/issue.js";
 import { IssueService } from "../../domain/issues/issue-service.js";
-import { PlanningService } from "../../domain/plans/planning-service.js";
+import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
+import { VersioningService } from "../../domain/snapshots/versioning-service.js";
 import { TypeService } from "../../domain/types/type-service.js";
+import { EventBus } from "../../events/event-bus.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -58,14 +61,18 @@ export interface GeneratePlanResult {
  * 2. Resolve issue from issueId or issueNumber
  * 3. Validate task types against available types
  * 4. Validate dependsOn references
- * 5. Normalize tasks and delegate to PlanningService
+ * 5. Create pre-regeneration snapshot
+ * 6. Normalize tasks and delegate to PlanDomainService
+ * 7. Create post-regeneration snapshot
+ * 8. Emit plan:generated and task:created events
  */
 export function generatePlan(input: GeneratePlanInput) {
   return Effect.gen(function* () {
     const { issueId, issueNumber, summary, approach, tasks, estimatedComplexity, projectSlug } =
       validateInput(GeneratePlanSchema, input);
     const issueService = yield* IssueService;
-    const planningService = yield* PlanningService;
+    const planDomainService = yield* PlanDomainService;
+    const versioningService = yield* VersioningService;
     const typeService = yield* TypeService;
 
     // 1. Resolve issue from ID or number
@@ -135,8 +142,16 @@ export function generatePlan(input: GeneratePlanInput) {
       implementationPlan: t.implementationPlan,
     }));
 
-    // 5. Generate plan
-    const result = yield* planningService.generatePlan({
+    // 5. Side effect: pre-regeneration snapshot
+    yield* versioningService.createSnapshot(
+      issue.number,
+      "PLAN_REGENERATION",
+      "claude-agent",
+      "Pre-regeneration snapshot"
+    );
+
+    // 6. Domain logic: save plan
+    const result = yield* planDomainService.savePlan({
       issueId: issue.id,
       summary,
       approach,
@@ -144,6 +159,29 @@ export function generatePlan(input: GeneratePlanInput) {
       estimatedComplexity,
       generatedBy: "claude-agent",
     });
+
+    // 7. Side effect: post-regeneration snapshot
+    yield* versioningService.createSnapshot(
+      issue.number,
+      "PLAN_REGENERATION",
+      "claude-agent",
+      `Generated plan: ${summary}`
+    );
+
+    // 8. Side effects: events
+    const eventBus = EventBus.getInstance();
+    eventBus.emit("plan:generated", {
+      planId: result.plan.id,
+      issueId: issue.id,
+      issueNumber: issue.number,
+    });
+    for (const task of result.tasks) {
+      eventBus.emit("task:created", {
+        taskId: task.id,
+        planId: result.plan.id,
+        issueNumber: issue.number,
+      });
+    }
 
     return {
       ...result,

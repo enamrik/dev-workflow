@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import { IssueService } from "../../domain/issues/issue-service.js";
-import { PlanService } from "../../domain/plans/plan-service.js";
+import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { TaskService } from "../../domain/tasks/task-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
@@ -43,7 +43,7 @@ export function getPlan(input: GetPlanInput) {
   return Effect.gen(function* () {
     const { issueId, issueNumber } = validateInput(GetPlanSchema, input);
     const issueService = yield* IssueService;
-    const planService = yield* PlanService;
+    const planDomainService = yield* PlanDomainService;
     const taskService = yield* TaskService;
 
     // 1. Resolve issue ID
@@ -61,7 +61,7 @@ export function getPlan(input: GetPlanInput) {
     }
 
     // 2. Fetch plan
-    const plan = yield* planService.findByIssueId(resolvedIssueId);
+    const plan = yield* planDomainService.findByIssueId(resolvedIssueId);
     if (!plan) {
       throw new Error("No plan found for this issue");
     }

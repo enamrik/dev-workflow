@@ -10,7 +10,7 @@ import { z } from "zod";
 import { Effect } from "@dev-workflow/effect";
 import { TaskService } from "../../domain/tasks/task-service.js";
 import { IssueService } from "../../domain/issues/issue-service.js";
-import { PlanService } from "../../domain/plans/plan-service.js";
+import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { GitHubCLITag } from "../../project-sync/github/github-cli.js";
 import { GitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import type { PRStatus } from "../../domain/tasks/task.js";
@@ -85,7 +85,7 @@ export function createPR(input: CreatePRInput) {
     const { taskId, title, body, draft, baseBranch, force } = validateInput(CreatePRSchema, input);
     const taskService = yield* TaskService;
     const issueService = yield* IssueService;
-    const planService = yield* PlanService;
+    const planDomainService = yield* PlanDomainService;
     const githubCLI = yield* GitHubCLITag;
     const gitWorktreeService = yield* GitWorktreeService;
 
@@ -149,7 +149,7 @@ export function createPR(input: CreatePRInput) {
     }
 
     // Get issue info for PR title and linking
-    const plan = yield* planService.findById(task.planId);
+    const plan = yield* planDomainService.findById(task.planId);
     if (!plan) {
       throw new Error(`Plan not found for task: ${taskId}`);
     }

@@ -21,7 +21,6 @@ import {
   TypeService,
   NodeFileSystem,
   VersioningService,
-  PlanningService,
   TaskSessionService,
   TaskManagementService,
   NodeGitHubCLI,
@@ -33,7 +32,8 @@ import {
   IssueService,
   TaskService,
   MilestoneService,
-  PlanService,
+  PlanDomainService,
+  IssueDomainService,
   MergeService,
   ProjectManagementService,
   type FileSystem,
@@ -94,13 +94,15 @@ export interface McpCradle {
 
   // Application services
   versioningService: VersioningService;
-  planningService: PlanningService;
   taskManagementService: TaskManagementService;
   conflictDetectionService: ConflictDetectionService;
   taskSessionService: TaskSessionService;
 
+  // Domain services
+  planDomainService: PlanDomainService;
+  issueDomainService: IssueDomainService;
+
   // Entity services (Service Layer Pattern)
-  planService: PlanService;
   taskService: TaskService;
   issueService: IssueService;
   milestoneService: MilestoneService;
@@ -240,16 +242,6 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
       ({ dbClient }: { dbClient: DbClient }) => new VersioningService(dbClient)
     ).singleton(),
 
-    planningService: asFunction(
-      ({
-        dbClient,
-        versioningService,
-      }: {
-        dbClient: DbClient;
-        versioningService: VersioningService;
-      }) => new PlanningService(dbClient, versioningService)
-    ).singleton(),
-
     taskManagementService: asFunction(
       ({ dbClient }: { dbClient: DbClient }) => new TaskManagementService(dbClient)
     ).singleton(),
@@ -278,11 +270,17 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
         )
     ).singleton(),
 
-    // Entity services (Service Layer Pattern)
-    planService: asFunction(
-      ({ dbClient }: { dbClient: DbClient }) => new PlanService(dbClient)
+    // Domain services
+    planDomainService: asFunction(
+      ({ dbClient }: { dbClient: DbClient }) =>
+        new PlanDomainService(dbClient.plans, dbClient.tasks, dbClient.issues)
     ).singleton(),
 
+    issueDomainService: asFunction(
+      ({ dbClient }: { dbClient: DbClient }) => new IssueDomainService(dbClient.issues)
+    ).singleton(),
+
+    // Entity services (Service Layer Pattern)
     taskService: asFunction(
       ({
         dbClient,
