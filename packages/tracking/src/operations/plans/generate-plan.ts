@@ -1,20 +1,17 @@
 /**
  * generatePlan - Generate a plan for an issue with tasks
  *
- * Validates task types and dependency references, normalizes task data,
- * then delegates to PlanDomainService for plan creation with smart matching.
- * Side effects (snapshots, events) are owned by this operation.
+ * Thin orchestrator: resolves issue, delegates to PlanDomainService,
+ * then handles side effects (snapshot, events).
  */
 
-import { z } from "zod";
-import type { IssueType } from "../../domain/issues/issue.js";
 import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { VersioningService } from "../../domain/snapshots/versioning-service.js";
-import { TypeService } from "../../domain/types/type-service.js";
 import { EventBus } from "../../events/event-bus.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
+import { z } from "zod";
 
 // =============================================================================
 // Schema & Types
@@ -58,13 +55,10 @@ export interface GeneratePlanResult {
  * Generate a plan for an issue.
  *
  * 1. Validate input schema
- * 2. Resolve issue from issueId or issueNumber
- * 3. Validate task types against available types
- * 4. Validate dependsOn references
- * 5. Create pre-regeneration snapshot
- * 6. Normalize tasks and delegate to PlanDomainService
- * 7. Create post-regeneration snapshot
- * 8. Emit plan:generated and task:created events
+ * 2. Resolve issue via specification pattern
+ * 3. Delegate to PlanDomainService (type/dep validation + normalization inside)
+ * 4. Side effect: post-regeneration snapshot
+ * 5. Side effects: events
  */
 export function generatePlan(input: GeneratePlanInput) {
   return Effect.gen(function* () {
@@ -73,94 +67,21 @@ export function generatePlan(input: GeneratePlanInput) {
     const issueDomainService = yield* IssueDomainService;
     const planDomainService = yield* PlanDomainService;
     const versioningService = yield* VersioningService;
-    const typeService = yield* TypeService;
 
-    // 1. Resolve issue from ID or number
-    const issue = issueId
-      ? yield* issueDomainService.findById(issueId)
-      : issueNumber
-        ? yield* issueDomainService.findByNumber(issueNumber)
-        : null;
+    // 1. Resolve issue (specification pattern)
+    const issue = yield* issueDomainService.getOne({ byId: issueId, byNumber: issueNumber });
 
-    if (!issue) {
-      throw new Error(
-        issueId
-          ? `Issue not found: ${issueId}`
-          : issueNumber
-            ? `Issue not found: #${issueNumber}`
-            : "Either issueId or issueNumber is required"
-      );
-    }
-
-    // 2. Validate task types
-    const validTypes = yield* typeService.getTypes();
-    const validTypeNames = validTypes.map((t) => t.name);
-
-    for (const task of tasks) {
-      if (!task.type) {
-        throw new Error(
-          `Task '${task.id}' is missing required 'type' field. ` +
-            `Valid types: ${validTypeNames.join(", ")}. ` +
-            `Call list_types first to get available types.`
-        );
-      }
-
-      const isValid = yield* typeService.isValidType(task.type);
-      if (!isValid) {
-        throw new Error(
-          `Task '${task.id}' has invalid type '${task.type}'. ` +
-            `Valid types: ${validTypeNames.join(", ")}. ` +
-            `Call list_types first to get available types.`
-        );
-      }
-    }
-
-    // 3. Validate dependsOn references
-    const taskIds = new Set(tasks.map((t) => t.id));
-    for (const task of tasks) {
-      if (task.dependsOn) {
-        for (const depId of task.dependsOn) {
-          if (!taskIds.has(depId)) {
-            throw new Error(
-              `Task '${task.id}' references non-existent dependency '${depId}'. ` +
-                `Available task IDs: ${Array.from(taskIds).join(", ")}`
-            );
-          }
-        }
-      }
-    }
-
-    // 4. Normalize tasks
-    const normalizedTasks = tasks.map((t) => ({
-      id: t.id,
-      title: t.title,
-      description: t.description,
-      type: t.type as IssueType,
-      acceptanceCriteria: t.acceptanceCriteria ?? [],
-      estimatedMinutes: t.estimatedMinutes,
-      dependsOn: t.dependsOn,
-      implementationPlan: t.implementationPlan,
-    }));
-
-    // 5. Side effect: pre-regeneration snapshot
-    yield* versioningService.createSnapshot(
-      issue.number,
-      "PLAN_REGENERATION",
-      "claude-agent",
-      "Pre-regeneration snapshot"
-    );
-
-    // 6. Domain logic: save plan
+    // 2. Domain logic (type validation, dep validation, normalization all inside)
     const result = yield* planDomainService.savePlan({
       issueId: issue.id,
       summary,
       approach,
-      tasks: normalizedTasks,
+      tasks,
       estimatedComplexity,
       generatedBy: "claude-agent",
     });
 
-    // 7. Side effect: post-regeneration snapshot
+    // 3. Side effect: post-regeneration snapshot
     yield* versioningService.createSnapshot(
       issue.number,
       "PLAN_REGENERATION",
@@ -168,7 +89,7 @@ export function generatePlan(input: GeneratePlanInput) {
       `Generated plan: ${summary}`
     );
 
-    // 8. Side effects: events
+    // 4. Side effects: events
     const eventBus = EventBus.getInstance();
     eventBus.emit("plan:generated", {
       planId: result.plan.id,

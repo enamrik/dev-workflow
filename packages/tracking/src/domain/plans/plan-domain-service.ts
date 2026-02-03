@@ -10,9 +10,11 @@ import { Effect, Service } from "@dev-workflow/effect";
 import type { Plan, PlanRepository, PlanComplexity } from "./plan.js";
 import type { Task, TaskRepository } from "../tasks/task.js";
 import type { Issue, IssueRepository } from "../issues/issue.js";
+import type { IssueType } from "../issues/issue.js";
 import { matchTasks, type TaskDefinition } from "../tasks/task-matching.js";
 import { validateDAG } from "./dag-validation.js";
 import { EntityNotFoundError } from "../errors.js";
+import { TypeDomainService } from "../types/type-service.js";
 
 // =============================================================================
 // Types
@@ -23,11 +25,28 @@ export interface PlanWithTasks {
   tasks: Task[];
 }
 
+/**
+ * Raw task input — accepted by savePlan() before domain validation.
+ *
+ * `type` is a plain string (validated inside savePlan via TypeDomainService).
+ * `acceptanceCriteria` is optional (defaulted inside savePlan).
+ */
+export interface RawTaskInput {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  acceptanceCriteria?: string[];
+  estimatedMinutes?: number;
+  dependsOn?: string[];
+  implementationPlan?: string;
+}
+
 export interface GeneratePlanRequest {
   issueId: string;
   summary: string;
   approach: string;
-  tasks: TaskDefinition[];
+  tasks: RawTaskInput[];
   estimatedComplexity: PlanComplexity;
   generatedBy: string;
 }
@@ -62,7 +81,8 @@ export class PlanDomainService extends Service<PlanDomainService>()("planDomainS
   constructor(
     private readonly planRepo: PlanRepository,
     private readonly taskRepo: TaskRepository,
-    private readonly issueRepo: IssueRepository
+    private readonly issueRepo: IssueRepository,
+    private readonly typeDomainService: TypeDomainService
   ) {
     super();
   }
@@ -127,13 +147,45 @@ export class PlanDomainService extends Service<PlanDomainService>()("planDomainS
         issueId,
         summary,
         approach,
-        tasks: rawTaskDefs,
+        tasks: rawTasks,
         estimatedComplexity,
         generatedBy,
       } = request;
 
-      // 1. Normalize task IDs (convert simple IDs like "task-001" to UUIDs)
-      const newTaskDefs = self.normalizeTaskIds(rawTaskDefs);
+      // 1. Validate task types (domain invariant via TypeDomainService)
+      for (const task of rawTasks) {
+        yield* self.typeDomainService.validateTaskType(task.type);
+      }
+
+      // 2. Validate dependsOn references exist within the task set
+      const rawTaskIds = new Set(rawTasks.map((t) => t.id));
+      for (const task of rawTasks) {
+        if (task.dependsOn) {
+          for (const depId of task.dependsOn) {
+            if (!rawTaskIds.has(depId)) {
+              throw new Error(
+                `Task '${task.id}' references non-existent dependency '${depId}'. ` +
+                  `Available task IDs: ${Array.from(rawTaskIds).join(", ")}`
+              );
+            }
+          }
+        }
+      }
+
+      // 3. Normalize RawTaskInput[] → TaskDefinition[]
+      const taskDefs: TaskDefinition[] = rawTasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        type: t.type as IssueType,
+        acceptanceCriteria: t.acceptanceCriteria ?? [],
+        estimatedMinutes: t.estimatedMinutes,
+        dependsOn: t.dependsOn,
+        implementationPlan: t.implementationPlan,
+      }));
+
+      // 4. Normalize task IDs (convert simple IDs like "task-001" to UUIDs)
+      const newTaskDefs = self.normalizeTaskIds(taskDefs);
 
       // 2. Validate DAG before any database operations
       // Throws InvalidDependencyError or DAGCycleError if invalid

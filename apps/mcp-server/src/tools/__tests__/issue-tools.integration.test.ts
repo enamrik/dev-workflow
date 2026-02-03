@@ -25,7 +25,7 @@ import {
   IssueService,
   TaskService,
   MilestoneDomainService,
-  TypeService,
+  TypeDomainService,
   DomainExecutorFactory,
   DbSourceProvider,
   type DbClient,
@@ -85,8 +85,16 @@ async function createIssueToolContext(
     deleteTemplate: async () => {},
   } as unknown as TemplateService;
 
+  // TypeDomainService for type validation (backed by database - types are global)
+  const typeDomainService = new TypeDomainService(testDb.source.types);
+
   // Create services with DbClient
-  const planDomainService = new PlanDomainService(client.plans, client.tasks, client.issues);
+  const planDomainService = new PlanDomainService(
+    client.plans,
+    client.tasks,
+    client.issues,
+    typeDomainService
+  );
   const issueDomainService = new IssueDomainService(client.issues);
 
   // Mock GitHub services (disabled)
@@ -96,11 +104,10 @@ async function createIssueToolContext(
   const taskService = new TaskService(client, projectManagement, null);
   const issueService = new IssueService(client, taskService, projectManagement);
   const milestoneDomainService = new MilestoneDomainService(client.milestones, client.issues);
-  const typeService = new TypeService(testDb.source.types);
 
   // Create DomainExecutorFactory for Effect-based operations
   const sourceProvider = new DbSourceProvider();
-  const domainFactory = new DomainExecutorFactory(sourceProvider);
+  const domainFactory = new DomainExecutorFactory(sourceProvider, typeDomainService);
   // Mock forProject to use the test client directly (no config file in tests)
   const testDomain = {
     forProject: () => Effect.succeed(domainFactory.fromClient(client)),
@@ -121,7 +128,7 @@ async function createIssueToolContext(
       templateService: mockTemplateService,
       projectManagementProvider: mockProvider,
       githubCLI: mockGitHubCLI,
-      typeService,
+      typeDomainService,
     },
     client,
   };

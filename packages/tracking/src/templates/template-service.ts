@@ -21,7 +21,7 @@ import * as path from "node:path";
 import type { Template, TemplateDiscovery } from "../template.js";
 import type { FileSystem } from "../file-system/file-system.js";
 import { TemplateParser, TemplateParseError } from "./template-parser.js";
-import type { TypeService } from "../domain/types/type-service.js";
+import type { TypeDomainService } from "../domain/types/type-service.js";
 import { Effect, Service } from "@dev-workflow/effect";
 
 /**
@@ -96,7 +96,7 @@ export class TemplateService extends Service<TemplateService>()("templateService
   constructor(
     private readonly fileSystem: FileSystem,
     private readonly config: TemplateServiceConfig,
-    private readonly typeService?: TypeService
+    private readonly typeService?: TypeDomainService
   ) {
     super();
     this.parser = new TemplateParser();

@@ -20,6 +20,7 @@ import {
   DbSourceProvider,
   ProjectsResolver,
   PlanDomainService,
+  TypeDomainService,
   type DbSource,
   type Task,
 } from "@dev-workflow/tracking";
@@ -447,7 +448,13 @@ export class ClaudeWorkerService {
         const client = source.createClient(projectInfo.projectId);
 
         // Create PlanDomainService for dependency checking
-        const planDomainService = new PlanDomainService(client.plans, client.tasks, client.issues);
+        const typeDomainService = new TypeDomainService(source.types);
+        const planDomainService = new PlanDomainService(
+          client.plans,
+          client.tasks,
+          client.issues,
+          typeDomainService
+        );
 
         // Find READY tasks
         const readyTasks = await Effect.runPromise(client.tasks.findMany({ status: "READY" }));

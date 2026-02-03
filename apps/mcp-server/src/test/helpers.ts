@@ -8,11 +8,13 @@ import {
   VersioningService,
   PlanDomainService,
   TaskDomainService,
+  TypeDomainService,
   NoOpProjectManagementProvider,
   NoOpProjectManagementClient,
   ProjectManagementService,
   createTestContainer,
   type DbClient,
+  type DbSource,
   type IssueRepository,
   type Issue,
   type IssueType,
@@ -68,17 +70,24 @@ export function createClientForProject(testDb: TestDatabase, projectId: string):
 }
 
 /**
- * Create all services from a DbClient
+ * Create all services from a DbClient and DbSource
  */
-export function createServices(client: DbClient) {
+export function createServices(client: DbClient, source: DbSource) {
   const versioningService = new VersioningService(client);
-  const planDomainService = new PlanDomainService(client.plans, client.tasks, client.issues);
+  const typeDomainService = new TypeDomainService(source.types);
+  const planDomainService = new PlanDomainService(
+    client.plans,
+    client.tasks,
+    client.issues,
+    typeDomainService
+  );
   const taskDomainService = new TaskDomainService(client.tasks, client.plans, client.issues);
 
   return {
     versioningService,
     planDomainService,
     taskDomainService,
+    typeDomainService,
   };
 }
 

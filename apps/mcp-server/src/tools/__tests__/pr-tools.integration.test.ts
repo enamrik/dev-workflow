@@ -24,6 +24,7 @@ import {
   TaskDomainService,
   PlanDomainService,
   IssueDomainService,
+  TypeDomainService,
   ProjectManagementService,
   type ProjectManagementClient,
   type DbClient,
@@ -83,7 +84,13 @@ async function createPRToolContext(
   const projectManagement = createNoOpProjectManagementService();
 
   // Create services with DbClient
-  const planDomainService = new PlanDomainService(client.plans, client.tasks, client.issues);
+  const typeDomainService = new TypeDomainService(testDb.source.types);
+  const planDomainService = new PlanDomainService(
+    client.plans,
+    client.tasks,
+    client.issues,
+    typeDomainService
+  );
   const issueDomainService = new IssueDomainService(client.issues);
   const taskDomainService = new TaskDomainService(client.tasks, client.plans, client.issues);
   const taskService = new TaskService(client, projectManagement, gitWorktreeService);
@@ -788,7 +795,13 @@ describe("submit_for_review", () => {
       const projectManagement = new ProjectManagementService(mockClient);
 
       // Create services with DbClient
-      const planDomainService = new PlanDomainService(client.plans, client.tasks, client.issues);
+      const typeDomainService = new TypeDomainService(testDb.source.types);
+      const planDomainService = new PlanDomainService(
+        client.plans,
+        client.tasks,
+        client.issues,
+        typeDomainService
+      );
       const issueDomainService = new IssueDomainService(client.issues);
       const taskDomainService = new TaskDomainService(client.tasks, client.plans, client.issues);
       const taskService = new TaskService(client, projectManagement, mockGitWorktreeService);

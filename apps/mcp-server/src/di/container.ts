@@ -18,7 +18,7 @@ import {
   type Project,
   TemplateService,
   type TemplateServiceConfig,
-  TypeService,
+  TypeDomainService,
   NodeFileSystem,
   VersioningService,
   TaskDomainService,
@@ -89,7 +89,7 @@ export interface McpCradle {
   // Template and type services
   templateConfig: TemplateServiceConfig;
   templateService: TemplateService;
-  typeService: TypeService;
+  typeDomainService: TypeDomainService;
 
   // Application services
   versioningService: VersioningService;
@@ -165,8 +165,13 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
     // Core infrastructure (singletons)
     sourceProvider: asValue(sourceProvider),
     domain: asFunction(
-      ({ sourceProvider: sp }: { sourceProvider: DbSourceProvider }) =>
-        new DomainExecutorFactory(sp)
+      ({
+        sourceProvider: sp,
+        typeDomainService: tds,
+      }: {
+        sourceProvider: DbSourceProvider;
+        typeDomainService: TypeDomainService;
+      }) => new DomainExecutorFactory(sp, tds)
     ).singleton(),
     dbSource: asValue(dbSource),
     project: asValue(project),
@@ -219,20 +224,20 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
     workerQueueDb: asFunction(() => new GlobalDbWorkerQueueDb()).singleton(),
 
     // Type and template services
-    typeService: asFunction(
-      ({ dbSource: src }: { dbSource: DbSource }) => new TypeService(src.types)
+    typeDomainService: asFunction(
+      ({ dbSource: src }: { dbSource: DbSource }) => new TypeDomainService(src.types)
     ).singleton(),
 
     templateService: asFunction(
       ({
         fileSystem,
         templateConfig,
-        typeService,
+        typeDomainService,
       }: {
         fileSystem: FileSystem;
         templateConfig: TemplateServiceConfig;
-        typeService: TypeService;
-      }) => new TemplateService(fileSystem, templateConfig, typeService)
+        typeDomainService: TypeDomainService;
+      }) => new TemplateService(fileSystem, templateConfig, typeDomainService)
     ).singleton(),
 
     // Application services
@@ -251,8 +256,14 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
     ).singleton(),
 
     planDomainService: asFunction(
-      ({ dbClient }: { dbClient: DbClient }) =>
-        new PlanDomainService(dbClient.plans, dbClient.tasks, dbClient.issues)
+      ({
+        dbClient,
+        typeDomainService,
+      }: {
+        dbClient: DbClient;
+        typeDomainService: TypeDomainService;
+      }) =>
+        new PlanDomainService(dbClient.plans, dbClient.tasks, dbClient.issues, typeDomainService)
     ).singleton(),
 
     issueDomainService: asFunction(
@@ -272,14 +283,14 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
         gitWorktreeService,
         workerQueueDb,
         templateService,
-        typeService,
+        typeDomainService,
       }: {
         dbClient: DbClient;
         projectManagement: ProjectManagementService;
         gitWorktreeService: GitWorktreeService;
         workerQueueDb: WorkerQueueDb;
         templateService: TemplateService;
-        typeService: TypeService;
+        typeDomainService: TypeDomainService;
       }) =>
         new TaskService(
           dbClient,
@@ -287,7 +298,7 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
           gitWorktreeService,
           workerQueueDb,
           templateService,
-          typeService
+          typeDomainService
         )
     ).singleton(),
 

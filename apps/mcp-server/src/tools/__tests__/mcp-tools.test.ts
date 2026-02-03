@@ -118,6 +118,7 @@ async function generatePlanTool(
       id: string;
       title: string;
       description: string;
+      type: string;
       acceptanceCriteria: string[];
       estimatedMinutes?: number;
     }>;
@@ -344,7 +345,7 @@ describe("MCP Tool: generate_plan", () => {
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const services = createServices(testDb.client);
+    const services = createServices(testDb.client, testDb.source);
     planDomainService = services.planDomainService;
   });
 
@@ -364,9 +365,27 @@ describe("MCP Tool: generate_plan", () => {
       summary: "Test plan summary",
       approach: "Test approach",
       tasks: [
-        { id: crypto.randomUUID(), title: "Task 1", description: "Desc 1", acceptanceCriteria: [] },
-        { id: crypto.randomUUID(), title: "Task 2", description: "Desc 2", acceptanceCriteria: [] },
-        { id: crypto.randomUUID(), title: "Task 3", description: "Desc 3", acceptanceCriteria: [] },
+        {
+          id: crypto.randomUUID(),
+          title: "Task 1",
+          description: "Desc 1",
+          type: "TASK",
+          acceptanceCriteria: [],
+        },
+        {
+          id: crypto.randomUUID(),
+          title: "Task 2",
+          description: "Desc 2",
+          type: "TASK",
+          acceptanceCriteria: [],
+        },
+        {
+          id: crypto.randomUUID(),
+          title: "Task 3",
+          description: "Desc 3",
+          type: "TASK",
+          acceptanceCriteria: [],
+        },
       ],
       estimatedComplexity: "MEDIUM",
     });
@@ -392,7 +411,13 @@ describe("MCP Tool: generate_plan", () => {
       summary: "Test",
       approach: "Test",
       tasks: [
-        { id: crypto.randomUUID(), title: "Task", description: "Desc", acceptanceCriteria: [] },
+        {
+          id: crypto.randomUUID(),
+          title: "Task",
+          description: "Desc",
+          type: "TASK",
+          acceptanceCriteria: [],
+        },
       ],
       estimatedComplexity: "LOW",
     });
@@ -408,7 +433,7 @@ describe("MCP Tool: update_task_status", () => {
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const services = createServices(testDb.client);
+    const services = createServices(testDb.client, testDb.source);
     planDomainService = services.planDomainService;
   });
 
@@ -427,7 +452,13 @@ describe("MCP Tool: update_task_status", () => {
       summary: "Test",
       approach: "Test",
       tasks: [
-        { id: crypto.randomUUID(), title: "Task 1", description: "Desc 1", acceptanceCriteria: [] },
+        {
+          id: crypto.randomUUID(),
+          title: "Task 1",
+          description: "Desc 1",
+          type: "TASK",
+          acceptanceCriteria: [],
+        },
       ],
       estimatedComplexity: "LOW",
     });
@@ -465,7 +496,13 @@ describe("MCP Tool: update_task_status", () => {
       summary: "Test",
       approach: "Test",
       tasks: [
-        { id: crypto.randomUUID(), title: "Task 1", description: "Desc 1", acceptanceCriteria: [] },
+        {
+          id: crypto.randomUUID(),
+          title: "Task 1",
+          description: "Desc 1",
+          type: "TASK",
+          acceptanceCriteria: [],
+        },
       ],
       estimatedComplexity: "LOW",
     });
@@ -499,7 +536,7 @@ describe("MCP Tool: delete_task", () => {
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const services = createServices(testDb.client);
+    const services = createServices(testDb.client, testDb.source);
     planDomainService = services.planDomainService;
     taskDomainService = services.taskDomainService;
   });
@@ -523,6 +560,7 @@ describe("MCP Tool: delete_task", () => {
           id: crypto.randomUUID(),
           title: "Task to Delete",
           description: "Will be deleted",
+          type: "TASK",
           acceptanceCriteria: [],
         },
       ],
@@ -567,6 +605,7 @@ describe("MCP Tool: delete_task", () => {
           id: crypto.randomUUID(),
           title: "BACKLOG Task",
           description: "Cannot be deleted after activation",
+          type: "TASK",
           acceptanceCriteria: [],
         },
       ],
@@ -604,6 +643,7 @@ describe("MCP Tool: delete_task", () => {
           id: crypto.randomUUID(),
           title: "In Progress Task",
           description: "Working on it",
+          type: "TASK",
           acceptanceCriteria: [],
         },
       ],
@@ -634,7 +674,7 @@ describe("MCP Tool: view_snapshot", () => {
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const services = createServices(testDb.client);
+    const services = createServices(testDb.client, testDb.source);
     versioningService = services.versioningService;
   });
 
@@ -697,7 +737,7 @@ describe("MCP Tool: revert_to_snapshot", () => {
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const services = createServices(testDb.client);
+    const services = createServices(testDb.client, testDb.source);
     versioningService = services.versioningService;
   });
 
@@ -808,7 +848,7 @@ describe("MCP Tool: list_available_tasks", () => {
 
   beforeEach(() => {
     testDb = createTestDatabase();
-    const services = createServices(testDb.client);
+    const services = createServices(testDb.client, testDb.source);
     planDomainService = services.planDomainService;
     taskDomainService = services.taskDomainService;
   });
@@ -828,7 +868,13 @@ describe("MCP Tool: list_available_tasks", () => {
       summary: "Test plan",
       approach: "Test approach",
       tasks: [
-        { id: crypto.randomUUID(), title: "Task 1", description: "Desc", acceptanceCriteria: [] },
+        {
+          id: crypto.randomUUID(),
+          title: "Task 1",
+          description: "Desc",
+          type: "TASK",
+          acceptanceCriteria: [],
+        },
       ],
       estimatedComplexity: "LOW",
     });
@@ -858,7 +904,13 @@ describe("MCP Tool: list_available_tasks", () => {
       summary: "Test plan",
       approach: "Test approach",
       tasks: [
-        { id: crypto.randomUUID(), title: "Task 1", description: "Desc", acceptanceCriteria: [] },
+        {
+          id: crypto.randomUUID(),
+          title: "Task 1",
+          description: "Desc",
+          type: "TASK",
+          acceptanceCriteria: [],
+        },
       ],
       estimatedComplexity: "LOW",
     });
@@ -891,7 +943,13 @@ describe("MCP Tool: list_available_tasks", () => {
       summary: "Test plan",
       approach: "Test approach",
       tasks: [
-        { id: crypto.randomUUID(), title: "Task 1", description: "Desc", acceptanceCriteria: [] },
+        {
+          id: crypto.randomUUID(),
+          title: "Task 1",
+          description: "Desc",
+          type: "TASK",
+          acceptanceCriteria: [],
+        },
       ],
       estimatedComplexity: "LOW",
     });

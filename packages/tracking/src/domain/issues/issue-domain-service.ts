@@ -19,9 +19,63 @@ import { Issue } from "./issue.js";
 import { BusinessRuleError, EntityNotFoundError } from "../errors.js";
 import { Effect, Service } from "@dev-workflow/effect";
 
+// =============================================================================
+// Specification Types
+// =============================================================================
+
+/**
+ * Issue lookup specification — pass what you have, service figures out the rest.
+ * Fields are tried in order: byId first, then byNumber. Undefined fields are skipped.
+ */
+export interface IssueSpec {
+  readonly byId?: string;
+  readonly byNumber?: number;
+}
+
 export class IssueDomainService extends Service<IssueDomainService>()("issueDomainService") {
   constructor(private readonly repo: IssueRepository) {
     super();
+  }
+
+  // ============================================================================
+  // Specification-Based Lookups
+  // ============================================================================
+
+  /**
+   * Find an issue matching the specification.
+   * Tries byId first, then byNumber. Skips undefined fields.
+   */
+  findOne(spec: IssueSpec): Effect<Issue | null> {
+    const repo = this.repo;
+    return Effect.gen(function* () {
+      if (spec.byId) {
+        const issue = yield* repo.findById(spec.byId);
+        if (issue) return issue;
+      }
+      if (spec.byNumber) {
+        const issue = yield* repo.findByNumber(spec.byNumber);
+        if (issue) return issue;
+      }
+      return null;
+    });
+  }
+
+  /**
+   * Get an issue matching the specification.
+   * Throws EntityNotFoundError if no field matches.
+   */
+  getOne(spec: IssueSpec): Effect<Issue, EntityNotFoundError> {
+    const self = this;
+    return Effect.gen(function* () {
+      const issue = yield* self.findOne(spec);
+      if (!issue) {
+        const desc = [spec.byId, spec.byNumber ? `#${spec.byNumber}` : undefined]
+          .filter(Boolean)
+          .join(" or ");
+        return yield* Effect.fail(new EntityNotFoundError("Issue", desc || "no spec provided"));
+      }
+      return issue;
+    });
   }
 
   // ============================================================================

@@ -31,7 +31,7 @@ import type { GitWorktreeService } from "@dev-workflow/git/worktrees/git-worktre
 import type { DbClient } from "../../data-access/db-client.js";
 import type { WorkerQueueDb } from "@dev-workflow/dispatch/worker-queue-db.js";
 import type { TemplateService } from "../../templates/template-service.js";
-import type { TypeService } from "../types/type-service.js";
+import type { TypeDomainService } from "../types/type-service.js";
 import type { ProjectManagementService } from "../../project-sync/project-management-service.js";
 // Free functions isWorkable/isActive are deprecated - using Task class methods instead
 import { Effect, Service } from "@dev-workflow/effect";
@@ -128,7 +128,7 @@ export class TaskService extends Service<TaskService>()("taskService") {
     private readonly gitWorktreeService: GitWorktreeService | null,
     private readonly workerQueueDb?: WorkerQueueDb,
     private readonly templateService?: TemplateService,
-    private readonly typeService?: TypeService
+    private readonly typeDomainService?: TypeDomainService
   ) {
     super();
   }
@@ -1555,9 +1555,9 @@ export class TaskService extends Service<TaskService>()("taskService") {
       // Look up the remote label for this task type via TypeService
       let typeLabel: string | undefined;
 
-      if (self.typeService) {
+      if (self.typeDomainService) {
         try {
-          const typeDef = yield* self.typeService!.getTypeByName(taskType);
+          const typeDef = yield* self.typeDomainService!.getTypeByName(taskType);
           if (typeDef) {
             typeLabel = typeDef.remoteLabel;
           }

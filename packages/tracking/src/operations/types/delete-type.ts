@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { TypeService } from "../../domain/types/type-service.js";
+import { TypeDomainService } from "../../domain/types/type-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -34,8 +34,8 @@ export interface DeleteTypeResult {
 export function deleteType(input: DeleteTypeInput) {
   return Effect.gen(function* () {
     const { name } = validateInput(DeleteTypeSchema, input);
-    const typeService = yield* TypeService;
-    const type = typeService.deleteType(name);
+    const typeDomainService = yield* TypeDomainService;
+    const type = typeDomainService.deleteType(name);
 
     return {
       type: {
