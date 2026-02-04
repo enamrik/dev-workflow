@@ -9,7 +9,6 @@ import { z } from "zod";
 import { successResponse } from "./types.js";
 import { createMcpHandler } from "../di/bootstrap.js";
 import { Effect } from "@dev-workflow/effect";
-import { ProjectSlug } from "../di/project-slug.js";
 import {
   loadTaskSession,
   abandonTask,
@@ -132,8 +131,7 @@ export const handleAbandonTask = createMcpHandler({
   schema: AbandonTaskSchema,
   handler: (args) =>
     Effect.gen(function* () {
-      const projectSlug = yield* ProjectSlug;
-      return successResponse(yield* abandonTask({ ...args, projectSlug }));
+      return successResponse(yield* abandonTask(args));
     }),
 });
 

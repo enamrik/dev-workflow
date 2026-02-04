@@ -37,6 +37,7 @@ import {
   handleLogTaskProgress,
   handleGetTaskExecutionLog,
   handleLoadTaskSession,
+  handleAbandonTask,
   GetTaskSchema,
   ListAvailableTasksSchema,
   UpdateTaskSchema,
@@ -1174,6 +1175,168 @@ describe("Task Tools Integration", () => {
       expect(content.resumed).toBe(false); // Not resumed, fresh start
       expect(content.startedAt).toBeDefined();
       expect(content.task.status).toBe("IN_PROGRESS");
+    });
+  });
+
+  describe("handleAbandonTask - worktree cleanup", () => {
+    it("should clean up worktree when abandoning task with worktree", async () => {
+      const mockGitWorktreeService = new MockGitWorktreeService();
+
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
+        title: "Task with worktree",
+        status: "IN_PROGRESS",
+      });
+
+      await Effect.runPromise(
+        client.tasks.updateWorktreeInfo(
+          task.id,
+          "/tmp/worktree/issue-1-task-1",
+          "issue-1/task-1-test"
+        )
+      );
+
+      const abandonCtx = {
+        ...ctx,
+        gitWorktreeService: mockGitWorktreeService,
+      };
+
+      const result = await runMcpHandler(
+        handleAbandonTask,
+        { taskId: task.id, sessionId: "test-session", reason: "PR was closed" },
+        abandonCtx
+      );
+
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.task.status).toBe("ABANDONED");
+
+      const removeWorktreeCalls = mockGitWorktreeService.getCallsTo("removeWorktree");
+      expect(removeWorktreeCalls).toHaveLength(1);
+      expect(removeWorktreeCalls[0]!.args[0]).toBe("/tmp/worktree/issue-1-task-1");
+      expect(removeWorktreeCalls[0]!.args[1]).toBe(true);
+
+      const updatedTask = await Effect.runPromise(client.tasks.findById(task.id));
+      expect(updatedTask?.worktreePath).toBeUndefined();
+      expect(updatedTask?.branchName).toBeUndefined();
+    });
+
+    it("should clean up branch when abandoning task with branch only", async () => {
+      const mockGitWorktreeService = new MockGitWorktreeService();
+
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
+        title: "Task with branch",
+        status: "IN_PROGRESS",
+      });
+
+      await Effect.runPromise(
+        client.tasks.update(task.id, { branchName: "issue-1/task-1-branch-only" })
+      );
+
+      const abandonCtx = {
+        ...ctx,
+        gitWorktreeService: mockGitWorktreeService,
+      };
+
+      const result = await runMcpHandler(
+        handleAbandonTask,
+        { taskId: task.id, sessionId: "test-session", reason: "No longer needed" },
+        abandonCtx
+      );
+
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.task.status).toBe("ABANDONED");
+
+      const runCalls = mockGitWorktreeService.getCallsTo("run");
+      const checkoutCall = runCalls.find(
+        (c) => Array.isArray(c.args[0]) && (c.args[0] as string[])[0] === "checkout"
+      );
+      const branchDeleteCall = runCalls.find(
+        (c) =>
+          Array.isArray(c.args[0]) &&
+          (c.args[0] as string[])[0] === "branch" &&
+          (c.args[0] as string[])[1] === "-d"
+      );
+      expect(checkoutCall).toBeDefined();
+      expect(branchDeleteCall).toBeDefined();
+
+      const updatedTask = await Effect.runPromise(client.tasks.findById(task.id));
+      expect(updatedTask?.branchName).toBeUndefined();
+    });
+
+    it("should not attempt cleanup when task has no worktree or branch", async () => {
+      const mockGitWorktreeService = new MockGitWorktreeService();
+
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
+        title: "Main mode task",
+        status: "IN_PROGRESS",
+      });
+
+      const abandonCtx = {
+        ...ctx,
+        gitWorktreeService: mockGitWorktreeService,
+      };
+
+      const result = await runMcpHandler(
+        handleAbandonTask,
+        { taskId: task.id, sessionId: "test-session" },
+        abandonCtx
+      );
+
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.task.status).toBe("ABANDONED");
+
+      const allCalls = mockGitWorktreeService.getCalls();
+      expect(allCalls).toHaveLength(0);
+    });
+
+    it("should still abandon task even if worktree cleanup fails", async () => {
+      const mockGitWorktreeService = new MockGitWorktreeService({
+        errors: {
+          removeWorktree: new Error("Worktree removal failed"),
+        },
+      });
+
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
+        title: "Task with failing cleanup",
+        status: "IN_PROGRESS",
+      });
+
+      await Effect.runPromise(
+        client.tasks.updateWorktreeInfo(
+          task.id,
+          "/tmp/worktree/issue-1-task-1",
+          "issue-1/task-1-test"
+        )
+      );
+
+      const abandonCtx = {
+        ...ctx,
+        gitWorktreeService: mockGitWorktreeService,
+      };
+
+      const result = await runMcpHandler(
+        handleAbandonTask,
+        { taskId: task.id, sessionId: "test-session", reason: "Cleanup will fail" },
+        abandonCtx
+      );
+
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.task.status).toBe("ABANDONED");
+
+      const updatedTask = await Effect.runPromise(client.tasks.findById(task.id));
+      expect(updatedTask?.worktreePath).toBeUndefined();
+      expect(updatedTask?.branchName).toBeUndefined();
     });
   });
 });
