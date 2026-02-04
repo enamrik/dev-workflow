@@ -18,7 +18,12 @@ import {
 } from "@dev-workflow/git/track-directory-resolver.js";
 import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
 import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-queue-db.js";
-import { DbSourceProvider, ProjectsResolver, type ProjectConfig } from "@dev-workflow/tracking";
+import {
+  DbSourceProvider,
+  ProjectsResolver,
+  EventBus,
+  type ProjectConfig,
+} from "@dev-workflow/tracking";
 import { NodeFileSystem, type FileSystem } from "../infrastructure/file-system.js";
 import { NodeUserPrompt, type UserPrompt } from "../infrastructure/user-prompt.js";
 
@@ -53,6 +58,7 @@ export interface CliCradle {
   fileSystem: FileSystem;
   gitOps: GitOperations;
   sourceProvider: DbSourceProvider;
+  eventBus: EventBus;
 
   // Values (provided at runtime by middleware or computed)
   workingDirectory: string;
@@ -123,6 +129,7 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
     fileSystem: asClass(NodeFileSystem).singleton(),
     userPrompt: asClass(NodeUserPrompt).singleton(),
     gitOps: asClass(GitOperations).singleton(),
+    eventBus: asFunction(() => new EventBus()).singleton(),
     sourceProvider: asClass(DbSourceProvider)
       .singleton()
       .disposer((provider) => provider.closeAll()),

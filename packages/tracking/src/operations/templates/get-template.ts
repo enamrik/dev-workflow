@@ -9,6 +9,7 @@ import { z } from "zod";
 import { TemplateService } from "../../templates/template-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
+import { EntityNotFoundError } from "../../domain/errors.js";
 
 // =============================================================================
 // Schema & Types
@@ -49,7 +50,9 @@ export function getTemplate(input: GetTemplateInput) {
 
     if (!result) {
       const scopeLabel = scope ? `${scope} ` : "";
-      throw new Error(`Template '${filename}' not found in ${scopeLabel}${category} templates`);
+      return yield* Effect.fail(
+        new EntityNotFoundError("Template", `${filename} in ${scopeLabel}${category} templates`)
+      );
     }
 
     return {

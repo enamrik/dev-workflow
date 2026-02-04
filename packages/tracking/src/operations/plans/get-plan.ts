@@ -9,6 +9,7 @@ import { z } from "zod";
 import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
+import { EntityNotFoundError } from "../../domain/errors.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -46,16 +47,13 @@ export function getPlan(input: GetPlanInput) {
     const planDomainService = yield* PlanDomainService;
     const taskDomainService = yield* TaskDomainService;
 
-    // 1. Resolve issue
     const issue = yield* issueDomainService.getOne({ byId: issueId, byNumber: issueNumber });
 
-    // 2. Fetch plan
     const plan = yield* planDomainService.findByIssueId(issue.id);
     if (!plan) {
-      throw new Error("No plan found for this issue");
+      return yield* Effect.fail(new EntityNotFoundError("Plan", `for issue ${issue.id}`));
     }
 
-    // 3. Fetch tasks
     const tasks = yield* taskDomainService.findByPlanId(plan.id);
 
     return { plan, tasks } satisfies GetPlanResult;

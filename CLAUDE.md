@@ -238,6 +238,8 @@ if (dataSource.isRemote) {
 
 - Code should be self-documenting
 - Use comments for "why", not "what"
+- Only comment methods and classes — never comment call sites or inline code
+- If a line of code needs a comment to explain what it does, rename things until it doesn't
 - Document complex business rules
 - Keep comments up to date or delete them
 

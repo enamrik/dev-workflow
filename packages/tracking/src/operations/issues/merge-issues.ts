@@ -9,6 +9,7 @@ import { z } from "zod";
 import { MergeService, MergeValidationError } from "../../domain/issues/merge-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
+import { BusinessRuleError } from "../../domain/errors.js";
 
 // =============================================================================
 // Schema & Types
@@ -96,7 +97,7 @@ export function mergeIssues(input: MergeIssuesInput) {
       } satisfies MergeIssuesResult;
     } catch (error) {
       if (error instanceof MergeValidationError) {
-        throw new Error(error.message);
+        return yield* Effect.fail(new BusinessRuleError(error.message));
       }
       throw error;
     }

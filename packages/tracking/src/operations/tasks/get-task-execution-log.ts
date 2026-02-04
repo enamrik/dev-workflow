@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { DbClientTag } from "../../data-access/db-client.js";
+import { EntityNotFoundError } from "../../domain/errors.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -50,7 +51,7 @@ export function getTaskExecutionLog(input: GetTaskExecutionLogInput) {
     // Verify task exists
     const task = yield* taskDomainService.findById(taskId);
     if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
+      return yield* Effect.fail(new EntityNotFoundError("Task", taskId));
     }
 
     // Get all execution log entries for this task

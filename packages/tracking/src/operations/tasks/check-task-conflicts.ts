@@ -12,6 +12,7 @@ import { ConflictDetectionService } from "../../conflict-detection-service.js";
 import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
+import { EntityNotFoundError } from "../../domain/errors.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -76,7 +77,7 @@ export function checkTaskConflicts(input: CheckTaskConflictsInput) {
     // Verify task exists
     const task = yield* taskDomainService.findById(taskId);
     if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
+      return yield* Effect.fail(new EntityNotFoundError("Task", taskId));
     }
 
     // Run conflict detection

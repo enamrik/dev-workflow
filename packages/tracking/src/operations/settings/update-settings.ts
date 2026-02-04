@@ -7,6 +7,12 @@
 
 import { z } from "zod";
 import { Effect } from "@dev-workflow/effect";
+import {
+  EntityNotFoundError,
+  BusinessRuleError,
+  ValidationError,
+  AuthenticationError,
+} from "../../domain/errors.js";
 import { DbSourceTag } from "../../data-access/db-source.js";
 import { ProjectTag } from "../../domain/projects/project.js";
 import { GitHubCLITag } from "../../project-sync/github/github-cli.js";
@@ -150,7 +156,7 @@ export function updateSettings(input: UpdateSettingsInput) {
         return yield* listAvailableLabels(dbSource, project, providerRegistry, githubCLI);
 
       default:
-        throw new Error(`Unknown action: ${action}`);
+        return yield* Effect.fail(new ValidationError("action", `Unknown action: ${action}`));
     }
   });
 }
@@ -177,7 +183,7 @@ function getSettings(
     // Re-fetch project from database to get latest config
     const latestProject = yield* dbSource.projects.findById(project.id);
     if (!latestProject) {
-      throw new Error(`Project not found: ${project.id}`);
+      return yield* Effect.fail(new EntityNotFoundError("Project", project.id));
     }
 
     const isGitHubAuthenticated = yield* githubCLI.checkAuth();
@@ -239,14 +245,18 @@ function enableGitHub(
     // Step 1: Check gh CLI authentication
     const isAuthenticated = yield* githubCLI.checkAuth();
     if (!isAuthenticated) {
-      throw new Error("GitHub CLI (gh) is not authenticated. Run 'gh auth login' first.");
+      return yield* Effect.fail(
+        new AuthenticationError("GitHub CLI (gh) is not authenticated. Run 'gh auth login' first.")
+      );
     }
 
     // Step 2: Verify we're in a GitHub repository and get repo URL
     const isGitHubRepo = yield* githubCLI.checkCurrentRepository();
     if (!isGitHubRepo) {
-      throw new Error(
-        "Not in a GitHub repository. Ensure this directory is a git repo with a GitHub remote."
+      return yield* Effect.fail(
+        new BusinessRuleError(
+          "Not in a GitHub repository. Ensure this directory is a git repo with a GitHub remote."
+        )
       );
     }
 
@@ -255,9 +265,11 @@ function enableGitHub(
     if (github?.projectId) {
       const projectDetails = yield* githubCLI.getProjectDetails(github.projectId);
       if (!projectDetails) {
-        throw new Error(
-          `GitHub Project ${github.projectId} not found or not accessible. ` +
-            `Ensure the Project ID is correct (format: PVT_...).`
+        return yield* Effect.fail(
+          new EntityNotFoundError(
+            "GitHubProject",
+            `${github.projectId} (ensure the Project ID is correct, format: PVT_...)`
+          )
         );
       }
       projectUrl = projectDetails.url;
@@ -267,7 +279,7 @@ function enableGitHub(
     if (github?.assignee && github.assignee.length > 0) {
       const validationError = validateGitHubUsername(github.assignee);
       if (validationError) {
-        throw new Error(validationError);
+        return yield* Effect.fail(new ValidationError("assignee", validationError));
       }
     }
 
@@ -278,7 +290,7 @@ function enableGitHub(
         github.labels.typeLabels as Record<string, string>
       );
       if (typeValidationError) {
-        throw new Error(typeValidationError);
+        return yield* Effect.fail(new ValidationError("typeLabels", typeValidationError));
       }
     }
 
@@ -327,7 +339,7 @@ function disableGitHub(dbSource: DbSource, project: Project) {
     // Re-fetch project from database to get latest config
     const latestProject = yield* dbSource.projects.findById(project.id);
     if (!latestProject) {
-      throw new Error(`Project not found: ${project.id}`);
+      return yield* Effect.fail(new EntityNotFoundError("Project", project.id));
     }
 
     const currentSync = latestProject.syncConfig;
@@ -358,19 +370,23 @@ function configureGitHub(
 ) {
   return Effect.gen(function* () {
     if (!github) {
-      throw new Error("configure_github requires github configuration");
+      return yield* Effect.fail(
+        new ValidationError("github", "configure_github requires github configuration")
+      );
     }
 
     // Re-fetch project from database to get latest config
     const latestProject = yield* dbSource.projects.findById(project.id);
     if (!latestProject) {
-      throw new Error(`Project not found: ${project.id}`);
+      return yield* Effect.fail(new EntityNotFoundError("Project", project.id));
     }
 
     const currentSync = latestProject.syncConfig;
 
     if (!currentSync) {
-      throw new Error("GitHub issue sync is not enabled. Use enable_github action first.");
+      return yield* Effect.fail(
+        new BusinessRuleError("GitHub issue sync is not enabled. Use enable_github action first.")
+      );
     }
 
     // If projectId is being added/changed, validate it and get URL
@@ -378,7 +394,7 @@ function configureGitHub(
     if (github.projectId && github.projectId !== currentSync.projectId) {
       const projectDetails = yield* githubCLI.getProjectDetails(github.projectId);
       if (!projectDetails) {
-        throw new Error(`GitHub Project ${github.projectId} not found or not accessible.`);
+        return yield* Effect.fail(new EntityNotFoundError("GitHubProject", github.projectId));
       }
       projectUrl = projectDetails.url;
     }
@@ -387,7 +403,7 @@ function configureGitHub(
     if (github.assignee !== undefined && github.assignee.length > 0) {
       const validationError = validateGitHubUsername(github.assignee);
       if (validationError) {
-        throw new Error(validationError);
+        return yield* Effect.fail(new ValidationError("assignee", validationError));
       }
     }
 
@@ -398,7 +414,7 @@ function configureGitHub(
         github.labels.typeLabels as Record<string, string>
       );
       if (typeValidationError) {
-        throw new Error(typeValidationError);
+        return yield* Effect.fail(new ValidationError("typeLabels", typeValidationError));
       }
     }
 
@@ -460,13 +476,15 @@ function configureColumnMapping(
     // Re-fetch project from database to get latest config
     const latestProject = yield* dbSource.projects.findById(project.id);
     if (!latestProject) {
-      throw new Error(`Project not found: ${project.id}`);
+      return yield* Effect.fail(new EntityNotFoundError("Project", project.id));
     }
 
     const currentSync = latestProject.syncConfig;
 
     if (!currentSync) {
-      throw new Error("GitHub issue sync is not enabled. Use enable_github action first.");
+      return yield* Effect.fail(
+        new BusinessRuleError("GitHub issue sync is not enabled. Use enable_github action first.")
+      );
     }
 
     // Handle reset to defaults
@@ -543,13 +561,15 @@ function listAvailableLabels(
     // Re-fetch project from database to get latest config
     const latestProject = yield* dbSource.projects.findById(project.id);
     if (!latestProject) {
-      throw new Error(`Project not found: ${project.id}`);
+      return yield* Effect.fail(new EntityNotFoundError("Project", project.id));
     }
 
     const currentSync = latestProject.syncConfig;
 
     if (!currentSync?.enabled) {
-      throw new Error("GitHub issue sync is not enabled. Use enable_github action first.");
+      return yield* Effect.fail(
+        new BusinessRuleError("GitHub issue sync is not enabled. Use enable_github action first.")
+      );
     }
 
     // Create provider to query available labels
@@ -569,7 +589,7 @@ function listAvailableLabels(
     }
 
     if (result.error) {
-      throw new Error(result.error);
+      return yield* Effect.fail(new BusinessRuleError(result.error));
     }
 
     return {

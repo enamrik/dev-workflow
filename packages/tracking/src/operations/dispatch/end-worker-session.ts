@@ -10,6 +10,7 @@ import { WorkerQueueDbTag } from "@dev-workflow/dispatch/worker-queue-db.js";
 import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
+import { EntityNotFoundError, BusinessRuleError } from "../../domain/errors.js";
 
 // =============================================================================
 // Schema & Types
@@ -50,20 +51,22 @@ export function endWorkerSession(input: EndWorkerSessionInput) {
     // 1. Verify task exists
     const task = yield* taskDomainService.findById(taskId);
     if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
+      return yield* Effect.fail(new EntityNotFoundError("Task", taskId));
     }
 
     // 2. Find queue entry
     const queueEntry = workerQueueDb.findByTaskId(taskId);
     if (!queueEntry) {
-      throw new Error(`Task ${taskId} is not in the dispatch queue`);
+      return yield* Effect.fail(new EntityNotFoundError("QueueEntry", taskId));
     }
 
     // 3. Verify worker ownership
     if (queueEntry.workerId !== workerId) {
-      throw new Error(
-        `Worker ${workerId} does not own task ${taskId}. ` +
-          `Claimed by: ${queueEntry.workerId ?? "no one"}`
+      return yield* Effect.fail(
+        new BusinessRuleError(
+          `Worker ${workerId} does not own task ${taskId}. ` +
+            `Claimed by: ${queueEntry.workerId ?? "no one"}`
+        )
       );
     }
 
@@ -79,7 +82,9 @@ export function endWorkerSession(input: EndWorkerSessionInput) {
     // 5. Set claudeDone flag
     const updated = workerQueueDb.setClaudeDone(taskId, workerId);
     if (!updated) {
-      throw new Error(`Failed to set claudeDone for task ${taskId}`);
+      return yield* Effect.fail(
+        new BusinessRuleError(`Failed to set claudeDone for task ${taskId}`)
+      );
     }
 
     return {

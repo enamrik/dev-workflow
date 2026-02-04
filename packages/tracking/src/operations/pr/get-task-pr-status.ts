@@ -11,6 +11,7 @@ import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { GitHubCLITag } from "../../project-sync/github/github-cli.js";
 import type { PRStatus } from "../../domain/tasks/task.js";
 import { validateInput } from "../validation.js";
+import { EntityNotFoundError } from "../../domain/errors.js";
 
 // =============================================================================
 // Schema & Types
@@ -73,7 +74,7 @@ export function getTaskPRStatus(input: GetTaskPRStatusInput) {
 
     const task = yield* taskDomainService.findById(taskId);
     if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
+      return yield* Effect.fail(new EntityNotFoundError("Task", taskId));
     }
 
     if (!task.prNumber) {

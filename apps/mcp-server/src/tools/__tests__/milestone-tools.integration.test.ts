@@ -11,8 +11,6 @@ import type { AwilixContainer } from "awilix";
 import {
   MilestoneDomainService,
   IssueDomainService,
-  IssueService,
-  TaskService,
   type DbClient,
   type Project,
   CreateMilestoneOperationSchema as CreateMilestoneSchema,
@@ -25,11 +23,7 @@ import {
 } from "@dev-workflow/tracking";
 import { Effect } from "@dev-workflow/effect";
 import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
-import {
-  createClientForProject,
-  createTestIssue,
-  createNoOpProjectManagementService,
-} from "../../test/helpers.js";
+import { createClientForProject, createTestIssue } from "../../test/helpers.js";
 import {
   handleCreateMilestone,
   handleGetMilestone,
@@ -51,7 +45,6 @@ interface MilestoneTestCradle {
   project: Project;
   milestoneDomainService: MilestoneDomainService;
   issueDomainService: IssueDomainService;
-  issueService: IssueService;
 }
 
 describe("Milestone Tools Integration", () => {
@@ -83,9 +76,6 @@ describe("Milestone Tools Integration", () => {
     client = createClientForProject(testDb, project.id);
 
     // Create services with DbClient
-    const projectManagement = createNoOpProjectManagementService();
-    const taskService = new TaskService(client, projectManagement, null);
-    const issueService = new IssueService(client, taskService, projectManagement);
     const milestoneDomainService = new MilestoneDomainService(client.milestones, client.issues);
     const issueDomainService = new IssueDomainService(client.issues);
 
@@ -98,7 +88,6 @@ describe("Milestone Tools Integration", () => {
       project: asValue(project),
       milestoneDomainService: asValue(milestoneDomainService),
       issueDomainService: asValue(issueDomainService),
-      issueService: asValue(issueService),
     });
 
     // Bind handlers to test container - tests the full pipeline

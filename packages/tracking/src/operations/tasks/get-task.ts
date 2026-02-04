@@ -12,6 +12,7 @@ import { IssueDomainService } from "../../domain/issues/issue-domain-service.js"
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { WorkerQueueDbTag } from "@dev-workflow/dispatch/worker-queue-db.js";
 import type { WorkerQueueDb } from "@dev-workflow/dispatch/worker-queue-db.js";
+import { EntityNotFoundError } from "../../domain/errors.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -145,12 +146,12 @@ export function getTask(input: GetTaskInput) {
 
       const issue = yield* issueDomainService.findByNumber(issueNumber);
       if (!issue) {
-        throw new Error(`Issue not found: #${issueNumber}`);
+        return yield* Effect.fail(new EntityNotFoundError("Issue", `#${issueNumber}`));
       }
 
       const plan = yield* planDomainService.findByIssueId(issue.id);
       if (!plan) {
-        throw new Error(`No plan found for issue #${issueNumber}`);
+        return yield* Effect.fail(new EntityNotFoundError("Plan", `for issue #${issueNumber}`));
       }
 
       const tasks = yield* taskDomainService.findByPlanId(plan.id);
@@ -158,10 +159,8 @@ export function getTask(input: GetTaskInput) {
     }
 
     if (!task) {
-      throw new Error(
-        taskId
-          ? `Task not found: ${taskId}`
-          : `Task #${taskNumber} not found in issue #${issueNumber}`
+      return yield* Effect.fail(
+        new EntityNotFoundError("Task", taskId ? taskId : `#${taskNumber} in issue #${issueNumber}`)
       );
     }
 

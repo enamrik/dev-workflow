@@ -60,14 +60,8 @@ export { DEFAULT_TYPE_DEFINITIONS } from "./domain/types/type-definition.js";
 // =============================================================================
 // Services
 // =============================================================================
-export { IssueService, type CloseIssueResult } from "./domain/issues/issue-service.js";
 export { IssueStatusService, type TaskCounts } from "./domain/issues/issue-status-service.js";
-export {
-  TaskService,
-  TaskServiceError,
-  type AbandonTaskResult,
-} from "./domain/tasks/task-service.js";
-// TaskManagementService, TaskSessionService removed - use TaskDomainService instead
+// TaskService removed - use TaskDomainService + operation functions instead
 export {
   matchTasks,
   type TaskDefinition,
@@ -106,10 +100,11 @@ export { ProjectService } from "./domain/projects/project-service.js";
 // =============================================================================
 // Project Sync / External Providers
 // =============================================================================
-export type {
-  ProjectManagementProvider,
-  SyncState,
-  AvailableLabel,
+export {
+  syncStateFromExternalIssue,
+  type ProjectManagementProvider,
+  type SyncState,
+  type AvailableLabel,
 } from "./project-sync/project-management-provider.js";
 export {
   PROVIDER_DEFAULT_COLUMN_MAPPING as DEFAULT_COLUMN_MAPPING,
@@ -117,12 +112,22 @@ export {
   type ProjectManagementConfig,
 } from "./project-sync/project-management-config.js";
 export type { ProjectManagementClient } from "./project-sync/project-management-client.js";
-export { ProjectManagementService } from "./project-sync/project-management-service.js";
+export {
+  ProjectManagementService,
+  type TaskSyncEntry,
+} from "./project-sync/project-management-service.js";
 export {
   ProjectManagementRegistry,
   getProjectManagementProvider,
 } from "./project-sync/provider-registry.js";
 export { getProjectManagementService } from "./project-sync/provider-factory.js";
+export {
+  buildTaskBody,
+  buildTaskLabels,
+  buildDefaultTaskBody,
+  applyTaskPlaceholders,
+  appendFooter,
+} from "./project-sync/task-body-builder.js";
 export { GitHubCLI, NodeGitHubCLI } from "./project-sync/github/github-cli.js";
 export { GitHubProjectManagementProvider } from "./project-sync/github/github-project-management-provider.js";
 export { GitHubProjectManagementClient } from "./project-sync/github/github-project-management-client.js";

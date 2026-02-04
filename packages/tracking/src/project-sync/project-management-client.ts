@@ -8,7 +8,7 @@
  *
  * Architecture:
  * ```
- * TaskService / IssueService
+ * Operations / Domain Services
  *     ↓
  * ProjectManagementService (orchestration: null checks, timestamps, error handling)
  *     ↓

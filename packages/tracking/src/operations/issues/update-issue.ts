@@ -68,6 +68,7 @@ export function updateIssue(input: UpdateIssueInput) {
     );
     const domain = yield* DomainExecutorFactory;
     const pd = yield* domain.forProject(projectSlug);
+    const eventBus = yield* EventBus;
 
     // Resolve issue
     const issue = yield* pd.issues.getOne({ byId: issueId, byNumber: issueNumber });
@@ -92,8 +93,7 @@ export function updateIssue(input: UpdateIssueInput) {
       );
     }
 
-    // Side effect: emit event for real-time UI updates
-    EventBus.getInstance().emit("issue:updated", {
+    eventBus.emit("issue:updated", {
       issueId: issue.id,
       issueNumber: issue.number,
       fields: Object.keys(updates),

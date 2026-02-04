@@ -9,6 +9,7 @@ import { z } from "zod";
 import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
+import { EntityNotFoundError } from "../../domain/errors.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -46,18 +47,18 @@ export function getTaskExecutionPrompt(input: GetTaskExecutionPromptInput) {
 
     const task = yield* taskDomainService.findById(taskId);
     if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
+      return yield* Effect.fail(new EntityNotFoundError("Task", taskId));
     }
 
     // Get parent context
     const plan = yield* planDomainService.findById(task.planId);
     if (!plan) {
-      throw new Error(`Plan not found for task: ${taskId}`);
+      return yield* Effect.fail(new EntityNotFoundError("Plan", `for task ${taskId}`));
     }
 
     const issue = yield* issueDomainService.findById(plan.issueId);
     if (!issue) {
-      throw new Error(`Issue not found for plan: ${plan.id}`);
+      return yield* Effect.fail(new EntityNotFoundError("Issue", `for plan ${plan.id}`));
     }
 
     // Generate session ID for the subagent

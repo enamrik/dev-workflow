@@ -3,7 +3,7 @@
  *
  * Encapsulates business rules over TaskRepository and PlanRepository.
  * Handles status transition validation. No external sync — that belongs
- * in operations or the existing TaskService.
+ * in operations via ProjectManagementService.
  */
 
 import type { Task, TaskStatus, PRStatus, TaskRepository } from "./task.js";
@@ -294,7 +294,7 @@ export class TaskDomainService extends Service<TaskDomainService>()("taskDomainS
    *
    * Manual tasks are protected from plan regeneration.
    */
-  addManualTask(request: AddManualTaskRequest): Effect<Task> {
+  addManualTask(request: AddManualTaskRequest) {
     const self = this;
     return Effect.gen(function* () {
       const {
@@ -309,23 +309,25 @@ export class TaskDomainService extends Service<TaskDomainService>()("taskDomainS
       // Find the issue
       const issue = yield* self.issueRepo.findByNumber(issueNumber);
       if (!issue) {
-        throw new Error(`Issue not found: #${issueNumber}`);
+        return yield* Effect.fail(new EntityNotFoundError("Issue", `#${issueNumber}`));
       }
 
       // Find the plan for this issue
       const plan = yield* self.planRepo.findByIssueId(issue.id);
       if (!plan) {
-        throw new Error(`No plan exists for issue #${issueNumber}. Generate a plan first.`);
+        return yield* Effect.fail(new EntityNotFoundError("Plan", `issue:#${issueNumber}`));
       }
 
       // Validate insertAfterTaskId if provided
       if (insertAfterTaskId) {
         const afterTask = yield* self.repo.findById(insertAfterTaskId);
         if (!afterTask) {
-          throw new Error(`Task not found: ${insertAfterTaskId}`);
+          return yield* Effect.fail(new EntityNotFoundError("Task", insertAfterTaskId));
         }
         if (afterTask.planId !== plan.id) {
-          throw new Error(`Task ${insertAfterTaskId} does not belong to this plan`);
+          return yield* Effect.fail(
+            new BusinessRuleError(`Task ${insertAfterTaskId} does not belong to this plan`)
+          );
         }
       }
 
@@ -352,23 +354,25 @@ export class TaskDomainService extends Service<TaskDomainService>()("taskDomainS
    *
    * Tasks past PLANNED status should use abandon instead.
    */
-  deleteTask(taskId: string, deletedBy?: string): Effect<Task> {
+  deleteTask(taskId: string, deletedBy?: string) {
     const self = this;
     return Effect.gen(function* () {
       // Use includeDeleted=true to distinguish "not found" from "already deleted"
       const task = yield* self.repo.findById(taskId, true);
       if (!task) {
-        throw new Error(`Task not found: ${taskId}`);
+        return yield* Effect.fail(new EntityNotFoundError("Task", taskId));
       }
 
       if (task.isDeleted) {
-        throw new Error(`Task is already deleted: ${taskId}`);
+        return yield* Effect.fail(new BusinessRuleError(`Task is already deleted: ${taskId}`));
       }
 
       if (task.status !== "PLANNED") {
-        throw new Error(
-          `Cannot delete task with status ${task.status}. Tasks can only be deleted while in PLANNED status. ` +
-            `Use abandon_task instead to mark the task as abandoned.`
+        return yield* Effect.fail(
+          new BusinessRuleError(
+            `Cannot delete task with status ${task.status}. Tasks can only be deleted while in PLANNED status. ` +
+              `Use abandon_task instead to mark the task as abandoned.`
+          )
         );
       }
 
@@ -379,17 +383,17 @@ export class TaskDomainService extends Service<TaskDomainService>()("taskDomainS
   /**
    * Restore a soft-deleted task.
    */
-  restoreTask(taskId: string): Effect<Task> {
+  restoreTask(taskId: string) {
     const self = this;
     return Effect.gen(function* () {
       // IMPORTANT: use includeDeleted=true so we can find the deleted task
       const task = yield* self.repo.findById(taskId, true);
       if (!task) {
-        throw new Error(`Task not found: ${taskId}`);
+        return yield* Effect.fail(new EntityNotFoundError("Task", taskId));
       }
 
       if (!task.isDeleted) {
-        throw new Error(`Task is not deleted: ${taskId}`);
+        return yield* Effect.fail(new BusinessRuleError(`Task is not deleted: ${taskId}`));
       }
 
       return yield* self.repo.restore(taskId);
@@ -399,12 +403,12 @@ export class TaskDomainService extends Service<TaskDomainService>()("taskDomainS
   /**
    * Get tasks for an issue via issue→plan→tasks lookup.
    */
-  getTasksForIssue(issueNumber: number, includeDeleted = false): Effect<Task[]> {
+  getTasksForIssue(issueNumber: number, includeDeleted = false) {
     const self = this;
     return Effect.gen(function* () {
       const issue = yield* self.issueRepo.findByNumber(issueNumber);
       if (!issue) {
-        throw new Error(`Issue not found: #${issueNumber}`);
+        return yield* Effect.fail(new EntityNotFoundError("Issue", `#${issueNumber}`));
       }
 
       const plan = yield* self.planRepo.findByIssueId(issue.id);
@@ -472,14 +476,18 @@ export class TaskDomainService extends Service<TaskDomainService>()("taskDomainS
   /**
    * Session heartbeat — validates session ownership and updates activity timestamp.
    */
-  updateSessionActivity(taskId: string, sessionId: string): Effect<void> {
+  updateSessionActivity(taskId: string, sessionId: string) {
     const self = this;
     return Effect.gen(function* () {
       const task = yield* self.repo.findById(taskId);
-      if (!task) throw new Error(`Task not found: ${taskId}`);
+      if (!task) {
+        return yield* Effect.fail(new EntityNotFoundError("Task", taskId));
+      }
       if (task.sessionId !== sessionId) {
-        throw new Error(
-          `Task is not associated with session ${sessionId}. Current session: ${task.sessionId}`
+        return yield* Effect.fail(
+          new BusinessRuleError(
+            `Task is not associated with session ${sessionId}. Current session: ${task.sessionId}`
+          )
         );
       }
       const now = new Date().toISOString();

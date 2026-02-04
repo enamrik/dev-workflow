@@ -67,6 +67,7 @@ export function generatePlan(input: GeneratePlanInput) {
     const issueDomainService = yield* IssueDomainService;
     const planDomainService = yield* PlanDomainService;
     const versioningService = yield* VersioningService;
+    const eventBus = yield* EventBus;
 
     // 1. Resolve issue (specification pattern)
     const issue = yield* issueDomainService.getOne({ byId: issueId, byNumber: issueNumber });
@@ -89,8 +90,6 @@ export function generatePlan(input: GeneratePlanInput) {
       `Generated plan: ${summary}`
     );
 
-    // 4. Side effects: events
-    const eventBus = EventBus.getInstance();
     eventBus.emit("plan:generated", {
       planId: result.plan.id,
       issueId: issue.id,

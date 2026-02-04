@@ -10,6 +10,7 @@ import type { Plan } from "../plans/plan.js";
 import type { Task } from "../tasks/task.js";
 import type { DbClient } from "../../data-access/db-client.js";
 import { Effect, Service } from "@dev-workflow/effect";
+import { EntityNotFoundError } from "../errors.js";
 
 /**
  * Complete snapshot data for viewing historical state
@@ -65,13 +66,13 @@ export class VersioningService extends Service<VersioningService>()("versioningS
     snapshotType: SnapshotType,
     createdBy: string,
     notes?: string
-  ): Effect<Snapshot> {
+  ) {
     const self = this;
     return Effect.gen(function* () {
       // Get current live state
       const issue = yield* self.db.issues.findByNumber(issueNumber);
       if (!issue) {
-        throw new Error(`Issue not found: #${issueNumber}`);
+        return yield* Effect.fail(new EntityNotFoundError("Issue", `#${issueNumber}`));
       }
 
       const plan = yield* self.db.plans.findByIssueId(issue.id);
@@ -111,18 +112,15 @@ export class VersioningService extends Service<VersioningService>()("versioningS
    * @param notes - Optional notes about why reverting
    * @returns The new snapshot created after reverting
    */
-  revertToSnapshot(
-    issueNumber: number,
-    version: number,
-    createdBy: string,
-    notes?: string
-  ): Effect<Snapshot> {
+  revertToSnapshot(issueNumber: number, version: number, createdBy: string, notes?: string) {
     const self = this;
     return Effect.gen(function* () {
       // Find the target snapshot
       const targetSnapshot = yield* self.db.snapshots.findByVersion(issueNumber, version);
       if (!targetSnapshot) {
-        throw new Error(`Snapshot not found: issue #${issueNumber} version ${version}`);
+        return yield* Effect.fail(
+          new EntityNotFoundError("Snapshot", `issue:#${issueNumber}/v${version}`)
+        );
       }
 
       // Create backup snapshot of current state before reverting
@@ -136,7 +134,7 @@ export class VersioningService extends Service<VersioningService>()("versioningS
       // Get current issue
       const issue = yield* self.db.issues.findByNumber(issueNumber);
       if (!issue) {
-        throw new Error(`Issue not found: #${issueNumber}`);
+        return yield* Effect.fail(new EntityNotFoundError("Issue", `#${issueNumber}`));
       }
 
       // Restore issue state from snapshot
@@ -250,12 +248,14 @@ export class VersioningService extends Service<VersioningService>()("versioningS
    * @param version - Version number to view
    * @returns Snapshot data with captured state
    */
-  viewSnapshot(issueNumber: number, version: number): Effect<SnapshotData> {
+  viewSnapshot(issueNumber: number, version: number) {
     const self = this;
     return Effect.gen(function* () {
       const snapshot = yield* self.db.snapshots.findByVersion(issueNumber, version);
       if (!snapshot) {
-        throw new Error(`Snapshot not found: issue #${issueNumber} version ${version}`);
+        return yield* Effect.fail(
+          new EntityNotFoundError("Snapshot", `issue:#${issueNumber}/v${version}`)
+        );
       }
 
       return {

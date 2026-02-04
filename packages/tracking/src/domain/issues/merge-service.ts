@@ -105,7 +105,6 @@ export class MergeValidationError extends Error {
  * - Sync merge actions to GitHub (comments, close source in merge_into mode)
  */
 export class MergeService extends Service<MergeService>()("mergeService") {
-  private readonly eventBus: EventBus;
   private readonly db: DbClient;
 
   constructor(
@@ -115,7 +114,6 @@ export class MergeService extends Service<MergeService>()("mergeService") {
     private readonly githubCLI?: GitHubCLI
   ) {
     super();
-    this.eventBus = EventBus.getInstance();
     this.db = source.createClient(projectId);
   }
 
@@ -137,7 +135,7 @@ export class MergeService extends Service<MergeService>()("mergeService") {
    * @returns MergeResult with the resulting issue, plan, tasks, and warnings
    * @throws MergeValidationError if validation fails
    */
-  merge(request: MergeIssuesRequest): Effect<MergeResult> {
+  merge(request: MergeIssuesRequest) {
     const self = this;
     return Effect.gen(function* () {
       // Resolve issues from IDs or numbers
@@ -286,9 +284,11 @@ export class MergeService extends Service<MergeService>()("mergeService") {
     customTitle?: string,
     customDescription?: string,
     mergedBy?: string
-  ): Effect<MergeResult> {
+  ) {
     const self = this;
     return Effect.gen(function* () {
+      const eventBus = yield* EventBus;
+
       // Create snapshot before merge (using ISSUE_UPDATE as the snapshot type)
       yield* self.versioningService.createSnapshot(
         sourceIssue.number,
@@ -328,7 +328,7 @@ export class MergeService extends Service<MergeService>()("mergeService") {
       });
 
       // Emit issue created event
-      self.eventBus.emit("issue:created", {
+      eventBus.emit("issue:created", {
         issueId: newIssue.id,
         issueNumber: newIssue.number,
       });
@@ -358,7 +358,7 @@ export class MergeService extends Service<MergeService>()("mergeService") {
         });
 
         // Emit plan created event
-        self.eventBus.emit("plan:generated", {
+        eventBus.emit("plan:generated", {
           planId: resultPlan.id,
           issueId: newIssue.id,
           issueNumber: newIssue.number,
@@ -380,7 +380,7 @@ export class MergeService extends Service<MergeService>()("mergeService") {
 
         // Emit task created events
         for (const task of resultTasks) {
-          self.eventBus.emit("task:created", {
+          eventBus.emit("task:created", {
             taskId: task.id,
             planId: resultPlan.id,
             issueNumber: newIssue.number,
@@ -415,9 +415,11 @@ export class MergeService extends Service<MergeService>()("mergeService") {
     targetIssue: Issue,
     warnings: MergeWarning[],
     mergedBy?: string
-  ): Effect<MergeResult> {
+  ) {
     const self = this;
     return Effect.gen(function* () {
+      const eventBus = yield* EventBus;
+
       // Create snapshots before merge (using ISSUE_UPDATE as the snapshot type)
       yield* self.versioningService.createSnapshot(
         sourceIssue.number,
@@ -479,7 +481,7 @@ export class MergeService extends Service<MergeService>()("mergeService") {
 
           // Emit task created events
           for (const task of copiedTasks) {
-            self.eventBus.emit("task:created", {
+            eventBus.emit("task:created", {
               taskId: task.id,
               planId: targetPlan.id,
               issueNumber: updatedTarget.number,
@@ -499,13 +501,13 @@ export class MergeService extends Service<MergeService>()("mergeService") {
           resultTasks = yield* self.copyTasksToPlan(sourceTasks, resultPlan.id, sourceIssue.number);
 
           // Emit events
-          self.eventBus.emit("plan:generated", {
+          eventBus.emit("plan:generated", {
             planId: resultPlan.id,
             issueId: targetIssue.id,
             issueNumber: updatedTarget.number,
           });
           for (const task of resultTasks) {
-            self.eventBus.emit("task:created", {
+            eventBus.emit("task:created", {
               taskId: task.id,
               planId: resultPlan.id,
               issueNumber: updatedTarget.number,
@@ -521,7 +523,7 @@ export class MergeService extends Service<MergeService>()("mergeService") {
       yield* self.db.issues.delete(sourceIssue.id, mergedBy ?? "merge-service");
 
       // Emit event for target issue update
-      self.eventBus.emit("issue:updated", {
+      eventBus.emit("issue:updated", {
         issueId: updatedTarget.id,
         issueNumber: updatedTarget.number,
         fields: ["description", "acceptanceCriteria"],

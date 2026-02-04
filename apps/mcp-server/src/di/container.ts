@@ -28,13 +28,12 @@ import {
   getProjectManagementProvider,
   type ProjectManagementProvider,
   ConflictDetectionService,
-  IssueService,
-  TaskService,
   MilestoneDomainService,
   PlanDomainService,
   IssueDomainService,
   MergeService,
   ProjectManagementService,
+  EventBus,
   type FileSystem,
   type GitHubCLI,
 } from "@dev-workflow/tracking";
@@ -102,9 +101,10 @@ export interface McpCradle {
   milestoneDomainService: MilestoneDomainService;
 
   // Entity services (Service Layer Pattern)
-  taskService: TaskService;
-  issueService: IssueService;
   mergeService: MergeService;
+
+  // Events
+  eventBus: EventBus;
 }
 
 /**
@@ -275,45 +275,10 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
         new MilestoneDomainService(dbClient.milestones, dbClient.issues)
     ).singleton(),
 
+    // Events
+    eventBus: asValue(new EventBus()),
+
     // Entity services (Service Layer Pattern)
-    taskService: asFunction(
-      ({
-        dbClient,
-        projectManagement,
-        gitWorktreeService,
-        workerQueueDb,
-        templateService,
-        typeDomainService,
-      }: {
-        dbClient: DbClient;
-        projectManagement: ProjectManagementService;
-        gitWorktreeService: GitWorktreeService;
-        workerQueueDb: WorkerQueueDb;
-        templateService: TemplateService;
-        typeDomainService: TypeDomainService;
-      }) =>
-        new TaskService(
-          dbClient,
-          projectManagement,
-          gitWorktreeService,
-          workerQueueDb,
-          templateService,
-          typeDomainService
-        )
-    ).singleton(),
-
-    issueService: asFunction(
-      ({
-        dbClient,
-        taskService,
-        projectManagement,
-      }: {
-        dbClient: DbClient;
-        taskService: TaskService;
-        projectManagement: ProjectManagementService;
-      }) => new IssueService(dbClient, taskService, projectManagement)
-    ).singleton(),
-
     mergeService: asFunction(
       ({
         dbSource: src,
