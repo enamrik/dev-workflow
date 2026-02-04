@@ -13,7 +13,7 @@ import {
   CreateIssueSchema,
   UpdateIssueSchema,
   GetIssueSchema,
-  IssueTypeEnum,
+  IssueTypeSchema,
   IssuePriorityEnum,
 } from "../../tools/issue-tools.js";
 import { GeneratePlanSchema } from "../../tools/plan-tools.js";
@@ -213,18 +213,18 @@ describe("Schema Validation", () => {
       }
     });
 
-    it("should reject invalid type enum value", () => {
+    it("should accept custom type strings at schema level", () => {
       const input = {
-        title: "Invalid Type",
+        title: "Custom Type Issue",
         description: "Description",
-        type: "INVALID_TYPE",
+        type: "SPIKE",
       };
 
       const result = CreateIssueSchema.safeParse(input);
 
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.issues[0].path).toContain("type");
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.type).toBe("SPIKE");
       }
     });
 
@@ -628,12 +628,14 @@ describe("Schema Validation", () => {
   });
 
   describe("Enum Schemas", () => {
-    it("should validate IssueTypeEnum", () => {
-      expect(IssueTypeEnum.safeParse("FEATURE").success).toBe(true);
-      expect(IssueTypeEnum.safeParse("BUG").success).toBe(true);
-      expect(IssueTypeEnum.safeParse("ENHANCEMENT").success).toBe(true);
-      expect(IssueTypeEnum.safeParse("TASK").success).toBe(true);
-      expect(IssueTypeEnum.safeParse("INVALID").success).toBe(false);
+    it("should validate IssueTypeSchema accepts any string type", () => {
+      expect(IssueTypeSchema.safeParse("FEATURE").success).toBe(true);
+      expect(IssueTypeSchema.safeParse("BUG").success).toBe(true);
+      expect(IssueTypeSchema.safeParse("ENHANCEMENT").success).toBe(true);
+      expect(IssueTypeSchema.safeParse("TASK").success).toBe(true);
+      expect(IssueTypeSchema.safeParse("SPIKE").success).toBe(true);
+      expect(IssueTypeSchema.safeParse("CUSTOM_TYPE").success).toBe(true);
+      expect(IssueTypeSchema.safeParse(123).success).toBe(false);
     });
 
     it("should validate IssuePriorityEnum", () => {
@@ -678,7 +680,7 @@ describe("safeValidateArgs", () => {
     const input = {
       issueNumber: 1,
       updates: {
-        type: "INVALID_TYPE",
+        unknownField: "should be rejected by strict",
       },
     };
 
@@ -686,9 +688,7 @@ describe("safeValidateArgs", () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      // Error should include the path to the invalid field
-      expect(result.error).toContain("updates");
-      expect(result.error).toContain("type");
+      expect(result.error).toContain("unknownField");
     }
   });
 });
@@ -790,7 +790,7 @@ describe("Type inference", () => {
     // TypeScript knows these are the correct types
     const title: string = result.title;
     const description: string = result.description;
-    const type: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK" | undefined = result.type;
+    const type: string | undefined = result.type;
 
     expect(title).toBe("Test");
     expect(description).toBe("Description");

@@ -8,6 +8,8 @@
 import { z } from "zod";
 import type { Issue, IssueType, IssuePriority } from "../../domain/issues/issue.js";
 import { DomainExecutorFactory } from "../../domain/domain-executor.js";
+import { TypeDomainService } from "../../domain/types/type-service.js";
+import { BusinessRuleError } from "../../domain/errors.js";
 import { TemplateService } from "../../templates/template-service.js";
 import { EventBus } from "../../events/event-bus.js";
 import { validateInput } from "../validation.js";
@@ -67,7 +69,7 @@ export function createIssue(input: CreateIssueInput) {
 
     // Select template if requested and use metadata as defaults
     let templateUsed: string | undefined;
-    let finalType: IssueType | undefined = type as IssueType | undefined;
+    let finalType: IssueType | undefined = type;
     let finalPriority: IssuePriority = priority as IssuePriority;
 
     if (useTemplate) {
@@ -91,6 +93,19 @@ export function createIssue(input: CreateIssueInput) {
     }
 
     const resolvedType: IssueType = finalType || "FEATURE";
+
+    // Validate the resolved type against available types
+    if (type) {
+      const typeDomainService = yield* TypeDomainService;
+      const isValid = yield* typeDomainService.isValidType(resolvedType);
+      if (!isValid) {
+        const types = yield* typeDomainService.getTypes();
+        const availableNames = types.map((t) => t.name).join(", ");
+        return yield* Effect.fail(
+          new BusinessRuleError(`Invalid type: ${resolvedType}. Available types: ${availableNames}`)
+        );
+      }
+    }
 
     // Create issue in PLANNED status
     const issue = yield* pd.issues.create({
