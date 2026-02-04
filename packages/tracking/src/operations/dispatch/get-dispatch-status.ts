@@ -57,6 +57,7 @@ export function getDispatchStatus() {
     const workerQueueDb = yield* WorkerQueueDbTag;
     const threshold = DEFAULT_HEARTBEAT_THRESHOLD_SECONDS;
 
+    workerQueueDb.cleanupDeadWorkers();
     const workersWithHealth = workerQueueDb.findAllWorkersWithHealth(threshold);
     const workers: WorkerInfo[] = workersWithHealth.map((w) => ({
       id: w.id,

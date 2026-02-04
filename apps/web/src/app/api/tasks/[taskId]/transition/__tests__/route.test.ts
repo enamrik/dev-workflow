@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { Effect } from "@dev-workflow/effect";
 import { createTestContainer, createTestRequest, runTestEndpoint } from "@/lib/di/test-utils";
-import { EntityNotFoundError, Task } from "@dev-workflow/tracking";
+import { EntityNotFoundError, BusinessRuleError, Task } from "@dev-workflow/tracking";
 import { endpoint } from "../endpoint";
 
 describe("transitionTaskEndpoint", () => {
@@ -15,19 +15,16 @@ describe("transitionTaskEndpoint", () => {
         forProject: () =>
           Effect.succeed({
             tasks: {
-              getOrThrow: () =>
-                Effect.succeed(
-                  Task.from({
+              transitionTo: () =>
+                Effect.succeed({
+                  task: Task.from({
                     id: "task-1",
                     number: 1,
                     title: "Task One",
-                    status: "BACKLOG",
-                  } as Task)
-                ),
-              moveToReady: () =>
-                Effect.succeed(
-                  Task.from({ id: "task-1", number: 1, title: "Task One", status: "READY" } as Task)
-                ),
+                    status: "READY",
+                  } as Task),
+                  previousStatus: "BACKLOG",
+                }),
             },
           }),
       },
@@ -53,7 +50,7 @@ describe("transitionTaskEndpoint", () => {
         forProject: () =>
           Effect.succeed({
             tasks: {
-              getOrThrow: () => Effect.fail(new EntityNotFoundError("Task", "not-found")),
+              transitionTo: () => Effect.fail(new EntityNotFoundError("Task", "not-found")),
             },
           }),
       },
@@ -76,8 +73,8 @@ describe("transitionTaskEndpoint", () => {
         forProject: () =>
           Effect.succeed({
             tasks: {
-              getOrThrow: () =>
-                Effect.succeed(Task.from({ id: "task-1", status: "COMPLETED" } as Task)),
+              transitionTo: () =>
+                Effect.fail(new BusinessRuleError("Cannot transition from COMPLETED to READY")),
             },
           }),
       },

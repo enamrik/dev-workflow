@@ -134,17 +134,21 @@ export const Effect = {
     fn: () => Generator<Eff, AReturn, unknown>
   ): Effect<AReturn, ErrorOf<Eff>, DepsOf<Eff>> =>
     makeEffect(async (env) => {
-      const gen = fn();
-      let next = gen.next();
+      try {
+        const gen = fn();
+        let next = gen.next();
 
-      while (!next.done) {
-        const effect = next.value;
-        const result = await effect._run(env as DepsToRecord<DepsOf<Eff>>);
-        if (result._tag === "Left") return result as Either<never, ErrorOf<Eff>>;
-        next = gen.next(result.right);
+        while (!next.done) {
+          const effect = next.value;
+          const result = await effect._run(env as DepsToRecord<DepsOf<Eff>>);
+          if (result._tag === "Left") return result as Either<never, ErrorOf<Eff>>;
+          next = gen.next(result.right);
+        }
+
+        return { _tag: "Right", right: next.value };
+      } catch (error) {
+        return { _tag: "Left", left: error as ErrorOf<Eff> };
       }
-
-      return { _tag: "Right", right: next.value };
     }),
 
   map: <A, B, E, R>(self: Effect<A, E, R>, fn: (a: A) => B): Effect<B, E, R> =>

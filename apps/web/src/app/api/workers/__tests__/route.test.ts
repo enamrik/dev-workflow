@@ -30,6 +30,7 @@ const mockProject = {
 describe("listWorkersEndpoint", () => {
   it("returns worker data with enriched details", async () => {
     const mockWorkerQueueDb = {
+      cleanupDeadWorkers: () => 0,
       findAllWorkersWithHealth: () => [
         {
           id: "worker-1",
@@ -152,6 +153,7 @@ describe("listWorkersEndpoint", () => {
 
   it("returns empty arrays when no workers or queue entries", async () => {
     const mockWorkerQueueDb = {
+      cleanupDeadWorkers: () => 0,
       findAllWorkersWithHealth: () => [],
       findAllEntriesWithHealth: () => [],
       getQueueStats: () => ({ total: 0, unclaimed: 0, claimed: 0, stale: 0 }),

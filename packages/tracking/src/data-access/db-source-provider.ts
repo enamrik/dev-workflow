@@ -150,7 +150,7 @@ export class DbSourceProvider extends Service<DbSourceProvider>()("sourceProvide
     sqlite.pragma("foreign_keys = ON");
     const db = sqliteDrizzle(sqlite, { schema: sqliteSchema });
     const rawDrizzleDb = db as unknown as DrizzleDb;
-    const migrationsFolder = path.resolve(__dirname, "../../../drizzle");
+    const migrationsFolder = path.resolve(__dirname, "../../../database/drizzle");
 
     // Wrap to support async transaction callbacks.
     // better-sqlite3's native transaction() is synchronous and commits before
@@ -212,7 +212,7 @@ export class DbSourceProvider extends Service<DbSourceProvider>()("sourceProvide
     const sql = neon(driverPath);
     const db = pgDrizzle(sql, { schema: pgSchema });
     const drizzleDb = db as unknown as DrizzleDb;
-    const migrationsFolder = path.resolve(__dirname, "../../../drizzle-pg");
+    const migrationsFolder = path.resolve(__dirname, "../../../database/drizzle-pg");
 
     // Create global repositories
     const projects = new DrizzleProjectRepository(drizzleDb);
