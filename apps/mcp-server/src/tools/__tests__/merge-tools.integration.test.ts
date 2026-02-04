@@ -19,6 +19,7 @@ import {
   VersioningService,
   MockGitHubCLI,
   MergeService,
+  EventBus,
   type DbClient,
 } from "@dev-workflow/tracking";
 import { handleMergeIssues, MergeIssuesSchema } from "../../tools/merge-tools.js";
@@ -62,6 +63,7 @@ async function createMergeToolContext(testDb: TestDatabase): Promise<{
   return {
     ctx: {
       mergeService,
+      eventBus: new EventBus(),
     },
     client,
   };

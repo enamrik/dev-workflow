@@ -136,7 +136,7 @@ export class DirectToolExecutor {
     const cradle = this.container.cradle;
     console.log("Cradle keys:", Object.keys(cradle));
     console.log("templateService defined:", cradle.templateService !== undefined);
-    console.log("issueService defined:", cradle.issueService !== undefined);
+    console.log("issueDomainService defined:", cradle.issueDomainService !== undefined);
 
     this.tools = createToolsRegistry(this.container);
 

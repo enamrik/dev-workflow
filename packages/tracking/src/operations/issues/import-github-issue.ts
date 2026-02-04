@@ -157,6 +157,7 @@ export function importGitHubIssue(input: ImportGitHubIssueInput) {
     const domain = yield* DomainExecutorFactory;
     const pd = yield* domain.forProject(projectSlug);
     const githubCLI = yield* GitHubCLITag;
+    const eventBus = yield* EventBus;
 
     // Resolve issue number from URL or direct parameter
     let resolvedIssueNumber: number;
@@ -223,8 +224,6 @@ export function importGitHubIssue(input: ImportGitHubIssueInput) {
       sourceExternalId: String(resolvedIssueNumber),
     });
 
-    // Emit issue:created event for real-time UI updates
-    const eventBus = EventBus.getInstance();
     eventBus.emit("issue:created", {
       issueId: issue.id,
       issueNumber: issue.number,

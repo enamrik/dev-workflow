@@ -13,7 +13,7 @@ import type { Issue, IssueRepository } from "../issues/issue.js";
 import type { IssueType } from "../issues/issue.js";
 import { matchTasks, type TaskDefinition } from "../tasks/task-matching.js";
 import { validateDAG } from "./dag-validation.js";
-import { EntityNotFoundError } from "../errors.js";
+import { EntityNotFoundError, BusinessRuleError } from "../errors.js";
 import { TypeDomainService } from "../types/type-service.js";
 
 // =============================================================================
@@ -140,7 +140,7 @@ export class PlanDomainService extends Service<PlanDomainService>()("planDomainS
    * 7. Renumber tasks if issue is in planning state
    * 8. Return { plan, tasks }
    */
-  savePlan(request: GeneratePlanRequest): Effect<PlanWithTasks> {
+  savePlan(request: GeneratePlanRequest) {
     const self = this;
     return Effect.gen(function* () {
       const {
@@ -163,9 +163,11 @@ export class PlanDomainService extends Service<PlanDomainService>()("planDomainS
         if (task.dependsOn) {
           for (const depId of task.dependsOn) {
             if (!rawTaskIds.has(depId)) {
-              throw new Error(
-                `Task '${task.id}' references non-existent dependency '${depId}'. ` +
-                  `Available task IDs: ${Array.from(rawTaskIds).join(", ")}`
+              return yield* Effect.fail(
+                new BusinessRuleError(
+                  `Task '${task.id}' references non-existent dependency '${depId}'. ` +
+                    `Available task IDs: ${Array.from(rawTaskIds).join(", ")}`
+                )
               );
             }
           }
@@ -200,7 +202,7 @@ export class PlanDomainService extends Service<PlanDomainService>()("planDomainS
       // 3. Verify issue exists
       const issue = yield* self.issueRepo.findById(issueId);
       if (!issue) {
-        throw new Error(`Issue not found: ${issueId}`);
+        return yield* Effect.fail(new EntityNotFoundError("Issue", issueId));
       }
 
       // 4. Get existing plan and tasks (if any)
@@ -265,19 +267,19 @@ export class PlanDomainService extends Service<PlanDomainService>()("planDomainS
    *
    * Domain logic only -- no events.
    */
-  pauseIssue(issueNumber: number): Effect<{ count: number; tasks: Task[] }> {
+  pauseIssue(issueNumber: number) {
     const self = this;
     return Effect.gen(function* () {
       // Find the issue
       const issue = yield* self.issueRepo.findByNumber(issueNumber);
       if (!issue) {
-        throw new Error(`Issue not found: #${issueNumber}`);
+        return yield* Effect.fail(new EntityNotFoundError("Issue", `#${issueNumber}`));
       }
 
       // Find the plan for this issue
       const plan = yield* self.planRepo.findByIssueId(issue.id);
       if (!plan) {
-        throw new Error(`No plan exists for issue #${issueNumber}`);
+        return yield* Effect.fail(new EntityNotFoundError("Plan", `issue:#${issueNumber}`));
       }
 
       // Get all tasks for the plan
@@ -309,19 +311,19 @@ export class PlanDomainService extends Service<PlanDomainService>()("planDomainS
    *
    * Domain logic only -- no events.
    */
-  readyIssue(issueNumber: number): Effect<{ count: number; tasks: Task[] }> {
+  readyIssue(issueNumber: number) {
     const self = this;
     return Effect.gen(function* () {
       // Find the issue
       const issue = yield* self.issueRepo.findByNumber(issueNumber);
       if (!issue) {
-        throw new Error(`Issue not found: #${issueNumber}`);
+        return yield* Effect.fail(new EntityNotFoundError("Issue", `#${issueNumber}`));
       }
 
       // Find the plan for this issue
       const plan = yield* self.planRepo.findByIssueId(issue.id);
       if (!plan) {
-        throw new Error(`No plan exists for issue #${issueNumber}`);
+        return yield* Effect.fail(new EntityNotFoundError("Plan", `issue:#${issueNumber}`));
       }
 
       // Get all tasks for the plan
@@ -349,20 +351,68 @@ export class PlanDomainService extends Service<PlanDomainService>()("planDomainS
   }
 
   /**
+   * Activate a PLANNED issue by moving all PLANNED tasks to BACKLOG
+   * and transitioning the issue from PLANNED to OPEN.
+   *
+   * Domain logic only — no external sync.
+   */
+  activateIssue(issueNumber: number) {
+    const self = this;
+    return Effect.gen(function* () {
+      const issue = yield* self.issueRepo.findByNumber(issueNumber);
+      if (!issue) {
+        return yield* Effect.fail(new EntityNotFoundError("Issue", `#${issueNumber}`));
+      }
+
+      if (!issue.isInPlanning && issue.status !== "OPEN") {
+        return yield* Effect.fail(
+          new BusinessRuleError(
+            `Issue must be PLANNED or OPEN to activate. Current status: ${issue.status}`
+          )
+        );
+      }
+
+      const plan = yield* self.planRepo.findByIssueId(issue.id);
+      if (!plan) {
+        return yield* Effect.fail(new EntityNotFoundError("Plan", `issue:#${issueNumber}`));
+      }
+
+      const allTasks = yield* self.taskRepo.findByPlanId(plan.id, false);
+      const activatedTasks: Task[] = [];
+      for (const task of allTasks) {
+        if (task.status === "PLANNED") {
+          const updated = yield* self.taskRepo.updateStatus(
+            task.id,
+            "BACKLOG",
+            "system",
+            "Issue activated - task moved from PLANNED to BACKLOG"
+          );
+          activatedTasks.push(updated);
+        }
+      }
+
+      const issueTransitioned = issue.isInPlanning;
+      let updatedIssue = issue;
+      if (issueTransitioned) {
+        updatedIssue = yield* self.issueRepo.update(issue.id, { status: "OPEN" });
+      }
+
+      return { issue: updatedIssue, plan, activatedTasks, issueTransitioned };
+    });
+  }
+
+  /**
    * Update an issue and return current plan/tasks.
    *
    * Domain logic only -- no snapshots, no events.
    */
-  updateIssue(
-    issueId: string,
-    updates: IssueUpdates
-  ): Effect<{ issue: Issue; plan?: Plan; tasks: Task[] }> {
+  updateIssue(issueId: string, updates: IssueUpdates) {
     const self = this;
     return Effect.gen(function* () {
       // Verify issue exists
       const issue = yield* self.issueRepo.findById(issueId);
       if (!issue) {
-        throw new Error(`Issue not found: ${issueId}`);
+        return yield* Effect.fail(new EntityNotFoundError("Issue", issueId));
       }
 
       // Update the issue

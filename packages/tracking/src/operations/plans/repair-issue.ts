@@ -1,13 +1,23 @@
 /**
- * repairIssue - Repair GitHub sync state for all tasks in an issue
+ * repairIssue - Repair external sync state for all tasks in an issue
  *
- * Checks that GitHub sync is enabled, then repairs the sync state
+ * Checks that external sync is enabled, then repairs the sync state
  * for each task in the issue. Creates, links, or verifies external
  * issues as needed.
+ *
+ * Uses TaskDomainService for persistence and ProjectManagementService for
+ * external sync (provisionTaskSync handles body/label construction).
  */
 
 import { z } from "zod";
-import { TaskService } from "../../domain/tasks/task-service.js";
+import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
+import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
+import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
+import { ProjectManagementService } from "../../project-sync/project-management-service.js";
+import type { Issue } from "../../domain/issues/issue.js";
+import type { Task } from "../../domain/tasks/task.js";
+import { syncStateFromExternalIssue } from "../../project-sync/project-management-provider.js";
+import { EntityNotFoundError, BusinessRuleError } from "../../domain/errors.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -39,75 +49,279 @@ export interface RepairIssueResult {
 }
 
 // =============================================================================
+// Internal Types
+// =============================================================================
+
+interface TaskRepairEntry {
+  taskNumber: number;
+  action: "created" | "linked" | "verified" | "skipped";
+  githubIssueNumber?: number | null;
+  githubUrl?: string | null;
+  error?: string;
+}
+
+// =============================================================================
 // Operation
 // =============================================================================
 
 /**
- * Repair GitHub sync state for an issue.
+ * Repair external sync state for an issue.
  *
  * 1. Validate input
- * 2. Verify GitHub sync is enabled
- * 3. Call taskService.repairIssue to process all tasks
- * 4. Build summary from created/linked/verified/skipped counts
+ * 2. Verify external sync is enabled via ProjectManagementService
+ * 3. Load issue, plan, and tasks via domain services
+ * 4. Filter to workable/active tasks
+ * 5. For each task, run repair logic (verify, link, or create)
+ * 6. Build summary from created/linked/verified/skipped counts
  */
 export function repairIssue(input: RepairIssueInput) {
   return Effect.gen(function* () {
     const { issueNumber } = validateInput(RepairIssueSchema, input);
-    const taskService = yield* TaskService;
-
-    // 1. Verify sync is enabled (synchronous check)
-    if (!taskService.isSyncEnabled()) {
-      throw new Error("GitHub sync is not enabled for this project");
+    const issueDomainService = yield* IssueDomainService;
+    const taskDomainService = yield* TaskDomainService;
+    const planDomainService = yield* PlanDomainService;
+    const pm = yield* ProjectManagementService;
+    if (!pm.isEnabled()) {
+      return yield* Effect.fail(
+        new BusinessRuleError("GitHub sync is not enabled for this project")
+      );
     }
 
-    // 2. Repair issue
-    const result = yield* taskService.repairIssue(issueNumber);
-
-    if (!result.success && result.errors.length > 0) {
-      const errorMessages = result.errors.map((e) => e.error).join("; ");
-      throw new Error(`Sync completed with errors: ${errorMessages}`);
+    const issue = yield* issueDomainService.findByNumber(issueNumber);
+    if (!issue) {
+      return yield* Effect.fail(new EntityNotFoundError("Issue", `#${issueNumber}`));
     }
 
-    // 3. Build summary message
+    const plan = yield* planDomainService.findByIssueId(issue.id);
+    if (!plan) {
+      return yield* Effect.fail(new EntityNotFoundError("Plan", `for issue #${issueNumber}`));
+    }
+
+    const allTasks = yield* taskDomainService.findByPlanId(plan.id);
+
+    const tasksToSync = allTasks.filter((t) => t.isWorkable || t.isActive);
+
+    if (tasksToSync.length === 0) {
+      return {
+        message: `Issue #${issueNumber} sync complete: no tasks to sync`,
+        issueNumber,
+        tasksProcessed: 0,
+        created: [],
+        linked: [],
+        verified: [],
+        skipped: [],
+      } satisfies RepairIssueResult;
+    }
+
+    const created: TaskRepairEntry[] = [];
+    const linked: TaskRepairEntry[] = [];
+    const verified: TaskRepairEntry[] = [];
+    const skipped: TaskRepairEntry[] = [];
+    const errors: TaskRepairEntry[] = [];
+
+    for (const task of tasksToSync) {
+      try {
+        const repairResult = yield* repairSingleTask(
+          issue,
+          task,
+          tasksToSync.length,
+          pm,
+          taskDomainService
+        );
+
+        switch (repairResult.action) {
+          case "created":
+            created.push(repairResult);
+            break;
+          case "linked":
+            linked.push(repairResult);
+            break;
+          case "verified":
+            verified.push(repairResult);
+            break;
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        errors.push({
+          taskNumber: task.number,
+          action: "skipped",
+          error: errorMessage,
+        });
+      }
+    }
+
+    if (errors.length > 0) {
+      const errorMessages = errors.map((e) => e.error).join("; ");
+      return yield* Effect.fail(
+        new BusinessRuleError(`Sync completed with errors: ${errorMessages}`)
+      );
+    }
+
     const parts: string[] = [];
-    if (result.created.length > 0) {
-      parts.push(`${result.created.length} created`);
+    if (created.length > 0) {
+      parts.push(`${created.length} created`);
     }
-    if (result.linked.length > 0) {
-      parts.push(`${result.linked.length} linked`);
+    if (linked.length > 0) {
+      parts.push(`${linked.length} linked`);
     }
-    if (result.verified.length > 0) {
-      parts.push(`${result.verified.length} verified`);
+    if (verified.length > 0) {
+      parts.push(`${verified.length} verified`);
     }
-    if (result.skipped.length > 0) {
-      parts.push(`${result.skipped.length} skipped`);
+    if (skipped.length > 0) {
+      parts.push(`${skipped.length} skipped`);
     }
 
     const summary = parts.length > 0 ? parts.join(", ") : "no tasks to sync";
 
     return {
       message: `Issue #${issueNumber} sync complete: ${summary}`,
-      issueNumber: result.issueNumber,
-      tasksProcessed: result.tasksProcessed,
-      created: result.created.map((t) => ({
+      issueNumber,
+      tasksProcessed: tasksToSync.length,
+      created: created.map((t) => ({
         taskNumber: t.taskNumber,
         githubIssueNumber: t.githubIssueNumber ?? null,
         githubUrl: t.githubUrl ?? null,
       })),
-      linked: result.linked.map((t) => ({
+      linked: linked.map((t) => ({
         taskNumber: t.taskNumber,
         githubIssueNumber: t.githubIssueNumber ?? null,
         githubUrl: t.githubUrl ?? null,
       })),
-      verified: result.verified.map((t) => ({
+      verified: verified.map((t) => ({
         taskNumber: t.taskNumber,
         githubIssueNumber: t.githubIssueNumber ?? null,
         githubUrl: t.githubUrl ?? null,
       })),
-      skipped: result.skipped.map((t) => ({
+      skipped: skipped.map((t) => ({
         taskNumber: t.taskNumber,
         reason: t.error,
       })),
     } satisfies RepairIssueResult;
+  });
+}
+
+// =============================================================================
+// Per-Task Repair Logic
+// =============================================================================
+
+/**
+ * Repair sync state for a single task.
+ *
+ * Case 1: Task has syncState.externalId -> verify issue exists via pm.getIssue().
+ *   If exists, ensure project state. If deleted, clear sync state and fall through.
+ * Case 2: No sync -> search by title pattern "Task N.M:" via pm.searchIssues().
+ *   If found, link it to project.
+ * Case 3: No existing -> create new issue, then sync to correct column.
+ */
+function repairSingleTask(
+  issue: Issue,
+  task: Task,
+  totalTaskCount: number,
+  pm: ProjectManagementService,
+  taskDomainService: TaskDomainService
+) {
+  return Effect.gen(function* () {
+    if (task.syncState?.externalId) {
+      const existingIssue = yield* pm.getIssue(String(task.syncState.externalId));
+
+      if (existingIssue) {
+        yield* ensureProjectState(task, pm, taskDomainService);
+
+        return {
+          taskNumber: task.number,
+          action: "verified" as const,
+          githubIssueNumber: existingIssue.numericId ?? parseInt(existingIssue.id, 10),
+          githubUrl: existingIssue.url,
+        };
+      }
+
+      yield* taskDomainService.updateSyncState(task.id, {
+        externalId: null,
+        externalUrl: null,
+        externalNodeId: null,
+        syncStatus: "NOT_SYNCED",
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: "External issue was deleted, re-syncing",
+        remoteProjectId: null,
+      });
+    }
+
+    const searchPattern = `Task ${issue.number}.${task.number}:`;
+    const searchResults = yield* pm.searchIssues(searchPattern, "all", 5);
+    const matchingIssue = searchResults.find((gh) =>
+      gh.body.includes(`Task ${issue.number}.${task.number}: ${task.title}`)
+    );
+
+    if (matchingIssue) {
+      const parentSyncState = syncStateFromExternalIssue(matchingIssue);
+      const linked = yield* pm.linkToProject(parentSyncState, task.status, task.labels);
+      yield* taskDomainService.updateSyncState(task.id, linked ?? parentSyncState);
+
+      return {
+        taskNumber: task.number,
+        action: "linked" as const,
+        githubIssueNumber: matchingIssue.numericId ?? parseInt(matchingIssue.id, 10),
+        githubUrl: matchingIssue.url,
+      };
+    }
+
+    const syncState = yield* pm.provisionTaskSync({
+      issue,
+      task,
+      totalTaskCount,
+      targetStatus: task.status,
+    });
+
+    if (syncState) {
+      yield* taskDomainService.updateSyncState(task.id, syncState);
+      const statusSync = yield* pm.syncTaskStatus(syncState, task.status);
+      if (statusSync) {
+        yield* taskDomainService.updateSyncState(task.id, statusSync);
+      }
+    }
+
+    return {
+      taskNumber: task.number,
+      action: "created" as const,
+      githubIssueNumber: syncState?.externalId ? parseInt(syncState.externalId, 10) : undefined,
+      githubUrl: syncState?.externalUrl ?? undefined,
+    };
+  });
+}
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+/**
+ * Ensure a task's external issue is in the correct project state.
+ *
+ * If the task has no project item ID but has a node ID, link to project.
+ * If already has project item, sync status column and labels.
+ */
+function ensureProjectState(
+  task: Task,
+  pm: ProjectManagementService,
+  taskDomainService: TaskDomainService
+): Effect<void> {
+  return Effect.gen(function* () {
+    if (!task.syncState) return;
+
+    if (!task.syncState.remoteProjectId && task.syncState.externalNodeId) {
+      const linked = yield* pm.linkToProject(task.syncState, task.status, task.labels);
+      if (linked) {
+        yield* taskDomainService.updateSyncState(task.id, linked);
+      }
+    } else if (task.syncState.remoteProjectId) {
+      const statusSync = yield* pm.syncTaskStatus(task.syncState, task.status);
+      if (statusSync) {
+        yield* taskDomainService.updateSyncState(task.id, statusSync);
+      }
+
+      const labelSync = yield* pm.syncTaskLabels(task.syncState, task.labels);
+      if (labelSync) {
+        yield* taskDomainService.updateSyncState(task.id, labelSync);
+      }
+    }
   });
 }

@@ -18,6 +18,7 @@ import { DbSourceTag } from "../../data-access/db-source.js";
 import type { DbSource } from "../../data-access/db-source.js";
 import { ProjectTag } from "../../domain/projects/project.js";
 import type { Project } from "../../domain/projects/project.js";
+import { EntityNotFoundError, ValidationError } from "../../domain/errors.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -161,7 +162,7 @@ export function updateTask(input: UpdateTaskInput) {
 
     const task = yield* taskDomainService.findById(taskId);
     if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
+      return yield* Effect.fail(new EntityNotFoundError("Task", taskId));
     }
 
     // Build update object with only provided fields
@@ -183,7 +184,7 @@ export function updateTask(input: UpdateTaskInput) {
         githubCLI
       );
       if (validationError) {
-        throw new Error(`Label validation failed: ${validationError}`);
+        return yield* Effect.fail(new ValidationError("labels", validationError));
       }
 
       const currentLabels = task.labels ?? {};

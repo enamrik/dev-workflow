@@ -10,6 +10,7 @@ import { MilestoneDomainService } from "../../domain/milestones/milestone-domain
 import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
+import { BusinessRuleError } from "../../domain/errors.js";
 
 // =============================================================================
 // Schema & Types
@@ -45,7 +46,9 @@ export function removeIssueFromMilestone(input: RemoveIssueFromMilestoneInput) {
     const issue = yield* issueDomainService.getIssueByNumber(issueNumber);
 
     if (!issue.milestoneId) {
-      throw new Error(`Issue #${issue.number} is not assigned to any milestone`);
+      return yield* Effect.fail(
+        new BusinessRuleError(`Issue #${issue.number} is not assigned to any milestone`)
+      );
     }
 
     yield* milestoneDomainService.unassignIssue(issue.id);

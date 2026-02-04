@@ -7,6 +7,7 @@
 import { GitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import type { WorktreeInfo } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import { Effect } from "@dev-workflow/effect";
+import { BusinessRuleError } from "../../domain/errors.js";
 
 // =============================================================================
 // Types
@@ -32,7 +33,9 @@ export function listWorktrees() {
 
     const gitAvailable = yield* gitWorktreeService.checkGitAvailable();
     if (!gitAvailable) {
-      throw new Error("Not a git repository or git is not available");
+      return yield* Effect.fail(
+        new BusinessRuleError("Not a git repository or git is not available")
+      );
     }
 
     const worktrees = yield* gitWorktreeService.listWorktrees();

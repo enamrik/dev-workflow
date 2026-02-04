@@ -22,12 +22,11 @@ import {
   IssueDomainService,
   MockGitHubCLI,
   GitHubProjectManagementProvider,
-  IssueService,
-  TaskService,
   MilestoneDomainService,
   TypeDomainService,
   DomainExecutorFactory,
   DbSourceProvider,
+  EventBus,
   type DbClient,
 } from "@dev-workflow/tracking";
 import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-queue-db.js";
@@ -101,8 +100,6 @@ async function createIssueToolContext(
   const mockGitHubCLI = new MockGitHubCLI();
   const mockProvider = new GitHubProjectManagementProvider(mockGitHubCLI, null);
 
-  const taskService = new TaskService(client, projectManagement, null);
-  const issueService = new IssueService(client, taskService, projectManagement);
   const milestoneDomainService = new MilestoneDomainService(client.milestones, client.issues);
 
   // Create DomainExecutorFactory for Effect-based operations
@@ -119,16 +116,15 @@ async function createIssueToolContext(
       projectSlug: "test",
       domain: testDomain,
       projectManagement,
-      issueService,
       planDomainService,
       issueDomainService,
-      taskService,
       milestoneDomainService,
       workerQueueDb,
       templateService: mockTemplateService,
       projectManagementProvider: mockProvider,
       githubCLI: mockGitHubCLI,
       typeDomainService,
+      eventBus: new EventBus(),
     },
     client,
   };

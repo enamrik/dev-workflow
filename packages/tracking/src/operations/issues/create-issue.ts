@@ -63,6 +63,7 @@ export function createIssue(input: CreateIssueInput) {
 
     const domain = yield* DomainExecutorFactory;
     const pd = yield* domain.forProject(projectSlug);
+    const eventBus = yield* EventBus;
 
     // Select template if requested and use metadata as defaults
     let templateUsed: string | undefined;
@@ -104,8 +105,6 @@ export function createIssue(input: CreateIssueInput) {
       labels,
     });
 
-    // Emit issue:created event for real-time UI updates
-    const eventBus = EventBus.getInstance();
     eventBus.emit("issue:created", {
       issueId: issue.id,
       issueNumber: issue.number,

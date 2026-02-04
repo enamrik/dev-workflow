@@ -12,6 +12,7 @@ import { MilestoneDomainService } from "../../domain/milestones/milestone-domain
 import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
+import { ValidationError } from "../../domain/errors.js";
 
 // =============================================================================
 // Schema & Types
@@ -54,7 +55,9 @@ export function getMilestone(input: GetMilestoneInput) {
     const issueDomainService = yield* IssueDomainService;
 
     if (!id && milestoneNumber == null) {
-      throw new Error("Either id or milestoneNumber is required");
+      return yield* Effect.fail(
+        new ValidationError("id", "Either id or milestoneNumber is required")
+      );
     }
 
     let milestone: MilestoneWithStatus;

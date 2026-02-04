@@ -13,7 +13,6 @@ import { Effect } from "@dev-workflow/effect";
 import { createContainer, asValue, InjectionMode } from "awilix";
 import type { AwilixContainer } from "awilix";
 import {
-  TaskService,
   TaskDomainService,
   type DbClient,
   DispatchTaskOperationSchema as DispatchTaskSchema,
@@ -21,12 +20,7 @@ import {
 } from "@dev-workflow/tracking";
 import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-queue-db.js";
 import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
-import {
-  createTestIssue,
-  createTestPlan,
-  createTestTask,
-  createNoOpProjectManagementService,
-} from "../../test/helpers.js";
+import { createTestIssue, createTestPlan, createTestTask } from "../../test/helpers.js";
 import {
   handleDispatchTask,
   handleGetDispatchStatus,
@@ -39,7 +33,6 @@ import { createMcpTool } from "../../di/bootstrap.js";
  */
 interface DispatchTestCradle {
   workerQueueDb: GlobalDbWorkerQueueDb;
-  taskService: TaskService;
   taskDomainService: TaskDomainService;
   projectSlug: string;
 }
@@ -67,7 +60,6 @@ describe("Dispatch Tools Integration", () => {
     );
     workerQueueDb = new GlobalDbWorkerQueueDb(workerQueueDbPath);
 
-    const taskService = new TaskService(client, createNoOpProjectManagementService(), null);
     const taskDomainService = new TaskDomainService(client.tasks, client.plans, client.issues);
 
     // Create test container with dependencies + tool class
@@ -77,7 +69,6 @@ describe("Dispatch Tools Integration", () => {
 
     testContainer.register({
       workerQueueDb: asValue(workerQueueDb),
-      taskService: asValue(taskService),
       taskDomainService: asValue(taskDomainService),
       projectSlug: asValue("test-project"),
     });

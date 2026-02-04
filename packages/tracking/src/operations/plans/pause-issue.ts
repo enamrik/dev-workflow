@@ -10,6 +10,7 @@ import { z } from "zod";
 import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { EventBus } from "../../events/event-bus.js";
+import { EntityNotFoundError } from "../../domain/errors.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -46,18 +47,18 @@ export function pauseIssue(input: PauseIssueInput) {
     const { issueNumber } = validateInput(PauseIssueSchema, input);
     const issueDomainService = yield* IssueDomainService;
     const planDomainService = yield* PlanDomainService;
+    const eventBus = yield* EventBus;
 
-    // Resolve issue for event payload (need issueId)
     const issue = yield* issueDomainService.findByNumber(issueNumber);
     if (!issue) {
-      throw new Error(`Issue not found: #${issueNumber}`);
+      return yield* Effect.fail(new EntityNotFoundError("Issue", `#${issueNumber}`));
     }
 
     const result = yield* planDomainService.pauseIssue(issueNumber);
 
     // Side effect: emit event for real-time UI updates
     if (result.count > 0) {
-      EventBus.getInstance().emit("issue:paused", {
+      eventBus.emit("issue:paused", {
         issueId: issue.id,
         issueNumber,
         tasksMovedCount: result.count,

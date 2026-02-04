@@ -12,6 +12,7 @@ import { DEFAULT_HEARTBEAT_THRESHOLD_SECONDS } from "@dev-workflow/dispatch/work
 import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
+import { EntityNotFoundError, BusinessRuleError } from "../../domain/errors.js";
 
 // =============================================================================
 // Schema & Types
@@ -102,13 +103,15 @@ export function dispatchTask(input: DispatchTaskInput) {
     // 1. Verify task exists
     const task = yield* taskDomainService.findById(taskId);
     if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
+      return yield* Effect.fail(new EntityNotFoundError("Task", taskId));
     }
 
     // 2. Verify task is in a dispatchable state
     if (task.status !== "BACKLOG" && task.status !== "READY") {
-      throw new Error(
-        `Task cannot be dispatched: status is ${task.status}. Only BACKLOG or READY tasks can be dispatched.`
+      return yield* Effect.fail(
+        new BusinessRuleError(
+          `Task cannot be dispatched: status is ${task.status}. Only BACKLOG or READY tasks can be dispatched.`
+        )
       );
     }
 
@@ -134,7 +137,9 @@ export function dispatchTask(input: DispatchTaskInput) {
     // 5. Build result with fresh queue entry info
     const result = getQueueEntryWithWorker(workerQueueDb, taskId);
     if (!result) {
-      throw new Error("Failed to enqueue task: entry not found after enqueue");
+      return yield* Effect.fail(
+        new BusinessRuleError("Failed to enqueue task: entry not found after enqueue")
+      );
     }
 
     const workerSummary = workerQueueDb.getWorkerSummary(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);

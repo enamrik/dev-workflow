@@ -10,6 +10,7 @@ import type { MilestoneWithStatus } from "../../domain/milestones/milestone-doma
 import { MilestoneDomainService } from "../../domain/milestones/milestone-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
+import { ValidationError, BusinessRuleError } from "../../domain/errors.js";
 
 // =============================================================================
 // Schema & Types
@@ -62,8 +63,10 @@ export function updateMilestone(input: UpdateMilestoneInput) {
 
     // Validate status constraint
     if (updates.status && updates.status !== "COMPLETED") {
-      throw new Error(
-        `Cannot set status to ${updates.status}. Only COMPLETED can be set manually.`
+      return yield* Effect.fail(
+        new BusinessRuleError(
+          `Cannot set status to ${updates.status}. Only COMPLETED can be set manually.`
+        )
       );
     }
 
@@ -81,7 +84,9 @@ export function updateMilestone(input: UpdateMilestoneInput) {
     const newStartDate = updates.startDate ?? existing.startDate;
     const newEndDate = updates.endDate ?? existing.endDate;
     if (newStartDate > newEndDate) {
-      throw new Error("startDate must be before or equal to endDate");
+      return yield* Effect.fail(
+        new ValidationError("dateRange", "startDate must be before or equal to endDate")
+      );
     }
 
     // Update and get computed status

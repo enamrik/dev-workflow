@@ -10,9 +10,8 @@
 import { z } from "zod";
 import { Effect } from "@dev-workflow/effect";
 import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
-import { TaskService } from "../../domain/tasks/task-service.js";
 import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
-import { IssueService } from "../../domain/issues/issue-service.js";
+import { ProjectManagementService } from "../../project-sync/project-management-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { GitHubCLITag } from "../../project-sync/github/github-cli.js";
 import { GitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
@@ -20,6 +19,7 @@ import { DbClientTag } from "../../data-access/db-client.js";
 import type { GitHubCLI } from "../../project-sync/github/github-cli.js";
 import type { Task } from "../../domain/tasks/task.js";
 import { validateInput } from "../validation.js";
+import { EntityNotFoundError, BusinessRuleError } from "../../domain/errors.js";
 
 // =============================================================================
 // Schema & Types
@@ -75,7 +75,7 @@ function checkAndMaybeCloseIssue(
   taskDomainService: TaskDomainService,
   planDomainService: PlanDomainService,
   issueDomainService: IssueDomainService,
-  issueService: IssueService,
+  projectManagement: ProjectManagementService,
   planId: string,
   autoCloseIssue: boolean
 ) {
@@ -97,8 +97,16 @@ function checkAndMaybeCloseIssue(
 
     let issueClosed = false;
     if (autoCloseIssue && allTasksComplete && issue.status !== "CLOSED") {
-      // Keep IssueService for closeIssue (complex sync method)
-      yield* issueService.closeIssue(issue.id, true, "claude-code");
+      // Abandon incomplete tasks (defensive — should be none since allTasksComplete)
+      const incompleteTasks = yield* taskDomainService.getIncompleteTasksForIssue(issue.id);
+      for (const t of incompleteTasks) {
+        yield* taskDomainService.abandon(t.id, "Issue closed", "claude-code");
+      }
+      const updatedSync = yield* projectManagement.closeIssue(issue.syncState);
+      if (updatedSync) {
+        yield* issueDomainService.update(issue.id, { syncState: updatedSync });
+      }
+      yield* issueDomainService.update(issue.id, { status: "CLOSED" });
       issueClosed = true;
     }
 
@@ -113,7 +121,6 @@ function findNextAvailableTask(
   currentPlanId: string
 ) {
   return Effect.gen(function* () {
-    // Check same plan first
     const samePlanTasks = yield* taskDomainService.findByPlanId(currentPlanId);
     const readyTask = samePlanTasks.find((t) => t.status === "READY");
     if (readyTask) {
@@ -143,7 +150,6 @@ function findNextAvailableTask(
       };
     }
 
-    // Check other active issues
     const allIssues = yield* issueDomainService.findMany({});
     const activeIssues = allIssues.filter((i) => !i.isClosed && !i.isInPlanning);
 
@@ -176,32 +182,45 @@ function completeMainModeTask(
   force: boolean,
   autoCloseIssue: boolean,
   taskDomainService: TaskDomainService,
-  taskService: TaskService,
   planDomainService: PlanDomainService,
   issueDomainService: IssueDomainService,
-  issueService: IssueService
+  projectManagement: ProjectManagementService
 ) {
   return Effect.gen(function* () {
     if (task.status !== "IN_PROGRESS" && !force) {
-      throw new Error(
-        `Task must be IN_PROGRESS to complete (main mode). Current status: ${task.status}. ` +
-          "Use force=true to bypass this check if the task state has drifted."
+      return yield* Effect.fail(
+        new BusinessRuleError(
+          `Task must be IN_PROGRESS to complete (main mode). Current status: ${task.status}. ` +
+            "Use force=true to bypass this check if the task state has drifted."
+        )
       );
     }
 
-    // Complete task (includes GitHub sync) - keep TaskService for sync
-    yield* taskService.complete(taskId, {
+    yield* taskDomainService.complete(taskId, {
       changedBy: sessionId,
       notes: "Completed (main mode, no PR)",
       force,
     });
+
+    const closeSyncState = yield* projectManagement.closeIssue(task.syncState);
+    if (closeSyncState) {
+      yield* taskDomainService.updateSyncState(taskId, closeSyncState);
+    }
+    const statusSync = yield* projectManagement.syncTaskStatus(
+      closeSyncState ?? task.syncState,
+      "COMPLETED"
+    );
+    if (statusSync) {
+      yield* taskDomainService.updateSyncState(taskId, statusSync);
+    }
+
     yield* taskDomainService.clearSession(taskId);
 
     const issueStatus = yield* checkAndMaybeCloseIssue(
       taskDomainService,
       planDomainService,
       issueDomainService,
-      issueService,
+      projectManagement,
       task.planId,
       autoCloseIssue
     );
@@ -242,48 +261,51 @@ function completeBranchModeTask(
   hasWorktree: boolean,
   hasBranch: boolean,
   taskDomainService: TaskDomainService,
-  taskService: TaskService,
   planDomainService: PlanDomainService,
   issueDomainService: IssueDomainService,
-  issueService: IssueService,
+  projectManagement: ProjectManagementService,
   githubCLI: GitHubCLI,
   gitWorktreeService: GitWorktreeService
 ) {
   return Effect.gen(function* () {
     if (task.status !== "PR_REVIEW" && !force) {
-      throw new Error(
-        `Task must be in PR_REVIEW status to complete. Current status: ${task.status}. ` +
-          "Use submit_for_review first to create a PR, or use force=true to bypass this check."
+      return yield* Effect.fail(
+        new BusinessRuleError(
+          `Task must be in PR_REVIEW status to complete. Current status: ${task.status}. ` +
+            "Use submit_for_review first to create a PR, or use force=true to bypass this check."
+        )
       );
     }
 
     if (!task.prNumber && !force) {
-      throw new Error(
-        "Task does not have a PR. Use submit_for_review first to create a PR, " +
-          "or use force=true to complete without PR verification."
+      return yield* Effect.fail(
+        new BusinessRuleError(
+          "Task does not have a PR. Use submit_for_review first to create a PR, " +
+            "or use force=true to complete without PR verification."
+        )
       );
     }
 
-    // Check PR status - must be merged
     let prMerged = false;
     if (task.prNumber) {
       const pr = yield* githubCLI.getPR(task.prNumber);
       if (!pr) {
         if (!force) {
-          throw new Error(`PR #${task.prNumber} not found on GitHub.`);
+          return yield* Effect.fail(new EntityNotFoundError("PR", String(task.prNumber)));
         }
       } else if (!pr.merged) {
-        throw new Error(
-          `PR #${task.prNumber} is not merged yet. Current state: ${pr.state}. ` +
-            "Merge the PR on GitHub before completing the task. " +
-            "Note: force=true cannot bypass this check because the PR is confirmed unmerged."
+        return yield* Effect.fail(
+          new BusinessRuleError(
+            `PR #${task.prNumber} is not merged yet. Current state: ${pr.state}. ` +
+              "Merge the PR on GitHub before completing the task. " +
+              "Note: force=true cannot bypass this check because the PR is confirmed unmerged."
+          )
         );
       } else {
         prMerged = true;
       }
     }
 
-    // Pull main and cleanup
     try {
       const pullResult = yield* gitWorktreeService.run(["pull", "origin", "main"]);
       if (!pullResult.success) {
@@ -317,19 +339,31 @@ function completeBranchModeTask(
     const completionNote = force
       ? `Force completed${task.prNumber ? ` (PR #${task.prNumber})` : ""}`
       : `PR #${task.prNumber} merged`;
-    // Complete task (includes GitHub sync) - keep TaskService for sync
-    yield* taskService.complete(taskId, {
+    yield* taskDomainService.complete(taskId, {
       changedBy: sessionId,
       notes: completionNote,
       force,
     });
+
+    const closeSyncState = yield* projectManagement.closeIssue(task.syncState);
+    if (closeSyncState) {
+      yield* taskDomainService.updateSyncState(taskId, closeSyncState);
+    }
+    const statusSync = yield* projectManagement.syncTaskStatus(
+      closeSyncState ?? task.syncState,
+      "COMPLETED"
+    );
+    if (statusSync) {
+      yield* taskDomainService.updateSyncState(taskId, statusSync);
+    }
+
     yield* taskDomainService.clearSession(taskId);
 
     const issueStatus = yield* checkAndMaybeCloseIssue(
       taskDomainService,
       planDomainService,
       issueDomainService,
-      issueService,
+      projectManagement,
       task.planId,
       autoCloseIssue
     );
@@ -394,9 +428,8 @@ export function completeTask(input: CompleteTaskInput) {
       input
     );
     const taskDomainService = yield* TaskDomainService;
-    const taskService = yield* TaskService;
     const issueDomainService = yield* IssueDomainService;
-    const issueService = yield* IssueService;
+    const projectManagement = yield* ProjectManagementService;
     const planDomainService = yield* PlanDomainService;
     const githubCLI = yield* GitHubCLITag;
     const gitWorktreeService = yield* GitWorktreeService;
@@ -404,10 +437,9 @@ export function completeTask(input: CompleteTaskInput) {
 
     const task = yield* taskDomainService.findById(taskId);
     if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
+      return yield* Effect.fail(new EntityNotFoundError("Task", taskId));
     }
 
-    // Write the final log entry
     yield* dbClient.executionLogs.create({
       taskId,
       sessionId,
@@ -426,10 +458,9 @@ export function completeTask(input: CompleteTaskInput) {
         force,
         autoCloseIssue,
         taskDomainService,
-        taskService,
         planDomainService,
         issueDomainService,
-        issueService
+        projectManagement
       );
     }
 
@@ -442,10 +473,9 @@ export function completeTask(input: CompleteTaskInput) {
       hasWorktree,
       hasBranch,
       taskDomainService,
-      taskService,
       planDomainService,
       issueDomainService,
-      issueService,
+      projectManagement,
       githubCLI,
       gitWorktreeService
     );

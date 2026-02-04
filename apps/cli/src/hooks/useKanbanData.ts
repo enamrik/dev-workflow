@@ -3,10 +3,8 @@ import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-
 import {
   DbSourceProvider,
   BoardQueryService,
-  NoOpProjectManagementClient,
-  ProjectManagementService,
-  TaskService,
-  IssueService,
+  IssueDomainService,
+  TaskDomainService,
   type Project,
   type TaskStatus,
   type BoardTask,
@@ -326,8 +324,8 @@ export function useKanbanActions(
   // Keep services alive between renders
   const servicesRef = useRef<{
     sourceProvider: DbSourceProvider;
-    taskService: TaskService;
-    issueService: IssueService;
+    issueDomainService: IssueDomainService;
+    taskDomainService: TaskDomainService;
   } | null>(null);
 
   // Lazily initialize services
@@ -337,13 +335,10 @@ export function useKanbanActions(
       const source = sourceProvider.getOrCreate({ connectionString: dbPath });
       const client = source.createClient(projectId);
 
-      // Use NoOp client for CLI (no GitHub sync from board)
-      const projectManagement = new ProjectManagementService(new NoOpProjectManagementClient());
+      const taskDomainService = new TaskDomainService(client.tasks, client.plans, client.issues);
+      const issueDomainService = new IssueDomainService(client.issues);
 
-      const taskService = new TaskService(client, projectManagement, null);
-      const issueService = new IssueService(client, taskService, projectManagement);
-
-      servicesRef.current = { sourceProvider, taskService, issueService };
+      servicesRef.current = { sourceProvider, taskDomainService, issueDomainService };
     }
     return servicesRef.current;
   }, [dbPath, projectId]);
@@ -365,7 +360,7 @@ export function useKanbanActions(
         if (!services) {
           return { success: false, message: "Services not initialized" };
         }
-        await Effect.runPromise(services.taskService.moveToBacklog(taskId));
+        await Effect.runPromise(services.taskDomainService.moveToBacklog(taskId, "board-ui"));
         onActionComplete?.();
         return { success: true, message: "Task moved to backlog" };
       } catch (error) {
@@ -385,7 +380,7 @@ export function useKanbanActions(
         if (!services) {
           return { success: false, message: "Services not initialized" };
         }
-        await Effect.runPromise(services.taskService.moveToReady(taskId));
+        await Effect.runPromise(services.taskDomainService.moveToReady(taskId));
         onActionComplete?.();
         return { success: true, message: "Task moved to ready" };
       } catch (error) {
@@ -405,7 +400,7 @@ export function useKanbanActions(
         if (!services) {
           return { success: false, message: "Services not initialized" };
         }
-        await Effect.runPromise(services.taskService.start(taskId));
+        await Effect.runPromise(services.taskDomainService.start(taskId, "board-ui"));
         onActionComplete?.();
         return { success: true, message: "Task started" };
       } catch (error) {
@@ -425,7 +420,7 @@ export function useKanbanActions(
         if (!services) {
           return { success: false, message: "Services not initialized" };
         }
-        await Effect.runPromise(services.taskService.submitForReview(taskId));
+        await Effect.runPromise(services.taskDomainService.submitForReview(taskId));
         onActionComplete?.();
         return { success: true, message: "Task submitted for review" };
       } catch (error) {
@@ -445,7 +440,7 @@ export function useKanbanActions(
         if (!services) {
           return { success: false, message: "Services not initialized" };
         }
-        await Effect.runPromise(services.taskService.complete(taskId));
+        await Effect.runPromise(services.taskDomainService.complete(taskId));
         onActionComplete?.();
         return { success: true, message: "Task completed" };
       } catch (error) {
@@ -465,7 +460,7 @@ export function useKanbanActions(
         if (!services) {
           return { success: false, message: "Services not initialized" };
         }
-        await Effect.runPromise(services.taskService.abandonTask(taskId));
+        await Effect.runPromise(services.taskDomainService.abandon(taskId, "Abandoned from board"));
         onActionComplete?.();
         return { success: true, message: "Task abandoned" };
       } catch (error) {
@@ -485,7 +480,7 @@ export function useKanbanActions(
         if (!services) {
           return { success: false, message: "Services not initialized" };
         }
-        await Effect.runPromise(services.issueService.updateStatus(issueId, status));
+        await Effect.runPromise(services.issueDomainService.updateStatus(issueId, status));
         onActionComplete?.();
         return { success: true, message: `Issue status updated to ${status}` };
       } catch (error) {
@@ -505,7 +500,16 @@ export function useKanbanActions(
         if (!services) {
           return { success: false, message: "Services not initialized" };
         }
-        await Effect.runPromise(services.issueService.closeIssue(issueId, true)); // force=true to abandon incomplete tasks
+        // Abandon incomplete tasks, then close issue (no external sync from CLI board)
+        const incompleteTasks = await Effect.runPromise(
+          services.taskDomainService.getIncompleteTasksForIssue(issueId)
+        );
+        for (const task of incompleteTasks) {
+          await Effect.runPromise(services.taskDomainService.abandon(task.id, "Issue closed"));
+        }
+        await Effect.runPromise(
+          services.issueDomainService.update(issueId, { status: "CLOSED" as IssueStatus })
+        );
         onActionComplete?.();
         return { success: true, message: "Issue closed" };
       } catch (error) {
@@ -528,12 +532,12 @@ export function useKanbanActions(
 
         // Get all tasks for the issue and move BACKLOG ones to READY
         const tasks = await Effect.runPromise(
-          services.taskService.getIncompleteTasksForIssue(issueId)
+          services.taskDomainService.getIncompleteTasksForIssue(issueId)
         );
         let activated = 0;
         for (const task of tasks) {
           if (task.status === "BACKLOG") {
-            await Effect.runPromise(services.taskService.moveToReady(task.id));
+            await Effect.runPromise(services.taskDomainService.moveToReady(task.id));
             activated++;
           }
         }

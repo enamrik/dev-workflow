@@ -8,6 +8,7 @@
 import type { Task } from "./domain/tasks/task.js";
 import type { DbClient } from "./data-access/db-client.js";
 import { Effect, Service } from "@dev-workflow/effect";
+import { EntityNotFoundError } from "./domain/errors.js";
 
 /**
  * Information about a file that was modified by a prior task
@@ -62,12 +63,12 @@ export class ConflictDetectionService extends Service<ConflictDetectionService>(
    * @param taskId - The task to check for conflicts
    * @returns ConflictDetectionResult with warnings if conflicts found
    */
-  detectConflicts(taskId: string): Effect<ConflictDetectionResult> {
+  detectConflicts(taskId: string) {
     const self = this;
     return Effect.gen(function* () {
       const task = yield* self.db.tasks.findById(taskId);
       if (!task) {
-        throw new Error(`Task not found: ${taskId}`);
+        return yield* Effect.fail(new EntityNotFoundError("Task", taskId));
       }
 
       // Get all completed tasks in the same plan

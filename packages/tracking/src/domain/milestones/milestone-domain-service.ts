@@ -15,7 +15,7 @@ import type {
   UpdateMilestoneParams,
 } from "./milestone.js";
 import type { IssueRepository } from "../issues/issue.js";
-import { EntityNotFoundError } from "../errors.js";
+import { EntityNotFoundError, BusinessRuleError, ValidationError } from "../errors.js";
 
 export interface MilestoneWithStatus extends Milestone {
   readonly computedStatus: MilestoneStatus;
@@ -113,12 +113,12 @@ export class MilestoneDomainService extends Service<MilestoneDomainService>()(
    * Get a milestone by ID with computed status.
    * Throws EntityNotFoundError if not found.
    */
-  getMilestone(milestoneId: string): Effect<MilestoneWithStatus> {
+  getMilestone(milestoneId: string) {
     const self = this;
     return Effect.gen(function* () {
       const milestone = yield* self.repo.findById(milestoneId);
       if (!milestone) {
-        throw new EntityNotFoundError("Milestone", milestoneId);
+        return yield* Effect.fail(new EntityNotFoundError("Milestone", milestoneId));
       }
       return yield* self.withComputedStatus(milestone);
     });
@@ -128,12 +128,12 @@ export class MilestoneDomainService extends Service<MilestoneDomainService>()(
    * Get a milestone by number with computed status.
    * Throws EntityNotFoundError if not found.
    */
-  getMilestoneByNumber(number: number): Effect<MilestoneWithStatus> {
+  getMilestoneByNumber(number: number) {
     const self = this;
     return Effect.gen(function* () {
       const milestone = yield* self.repo.findByNumber(number);
       if (!milestone) {
-        throw new EntityNotFoundError("Milestone", `M${number}`);
+        return yield* Effect.fail(new EntityNotFoundError("Milestone", `M${number}`));
       }
       return yield* self.withComputedStatus(milestone);
     });
@@ -190,23 +190,23 @@ export class MilestoneDomainService extends Service<MilestoneDomainService>()(
     description?: string;
     startDate: string;
     endDate: string;
-  }): Effect<MilestoneWithStatus> {
+  }) {
     const self = this;
     return Effect.gen(function* () {
       // Validate date format
       const startCheck = Milestone.validateDate(data.startDate, "startDate");
       if (!startCheck.valid) {
-        throw new Error(startCheck.reason!);
+        return yield* Effect.fail(new ValidationError("startDate", startCheck.reason!));
       }
       const endCheck = Milestone.validateDate(data.endDate, "endDate");
       if (!endCheck.valid) {
-        throw new Error(endCheck.reason!);
+        return yield* Effect.fail(new ValidationError("endDate", endCheck.reason!));
       }
 
       // Validate date range
       const rangeCheck = Milestone.validateDateRange(data.startDate, data.endDate);
       if (!rangeCheck.valid) {
-        throw new Error(rangeCheck.reason!);
+        return yield* Effect.fail(new ValidationError("dateRange", rangeCheck.reason!));
       }
 
       const milestone = yield* self.repo.create({
@@ -236,19 +236,19 @@ export class MilestoneDomainService extends Service<MilestoneDomainService>()(
       endDate?: string;
       status?: MilestoneStatus;
     }
-  ): Effect<MilestoneWithStatus> {
+  ) {
     const self = this;
     return Effect.gen(function* () {
       const milestone = yield* self.repo.findById(milestoneId);
       if (!milestone) {
-        throw new EntityNotFoundError("Milestone", milestoneId);
+        return yield* Effect.fail(new EntityNotFoundError("Milestone", milestoneId));
       }
 
       // Validate status update
       if (updates.status) {
         const statusCheck = Milestone.canSetStatus(updates.status);
         if (!statusCheck.valid) {
-          throw new Error(statusCheck.reason!);
+          return yield* Effect.fail(new BusinessRuleError(statusCheck.reason!));
         }
       }
 
@@ -256,13 +256,13 @@ export class MilestoneDomainService extends Service<MilestoneDomainService>()(
       if (updates.startDate) {
         const check = Milestone.validateDate(updates.startDate, "startDate");
         if (!check.valid) {
-          throw new Error(check.reason!);
+          return yield* Effect.fail(new ValidationError("startDate", check.reason!));
         }
       }
       if (updates.endDate) {
         const check = Milestone.validateDate(updates.endDate, "endDate");
         if (!check.valid) {
-          throw new Error(check.reason!);
+          return yield* Effect.fail(new ValidationError("endDate", check.reason!));
         }
       }
 
@@ -271,7 +271,7 @@ export class MilestoneDomainService extends Service<MilestoneDomainService>()(
       const newEndDate = updates.endDate ?? milestone.endDate;
       const rangeCheck = Milestone.validateDateRange(newStartDate, newEndDate);
       if (!rangeCheck.valid) {
-        throw new Error(rangeCheck.reason!);
+        return yield* Effect.fail(new ValidationError("dateRange", rangeCheck.reason!));
       }
 
       const updated = yield* self.repo.update(milestoneId, updates);
@@ -284,12 +284,12 @@ export class MilestoneDomainService extends Service<MilestoneDomainService>()(
    *
    * @returns Number of issues that were unassigned
    */
-  deleteMilestone(milestoneId: string): Effect<number> {
+  deleteMilestone(milestoneId: string) {
     const self = this;
     return Effect.gen(function* () {
       const milestone = yield* self.repo.findById(milestoneId);
       if (!milestone) {
-        throw new EntityNotFoundError("Milestone", milestoneId);
+        return yield* Effect.fail(new EntityNotFoundError("Milestone", milestoneId));
       }
 
       // Unassign all issues from this milestone
@@ -308,12 +308,12 @@ export class MilestoneDomainService extends Service<MilestoneDomainService>()(
    * Assign an issue to a milestone.
    * Throws EntityNotFoundError if milestone not found.
    */
-  assignIssue(issueId: string, milestoneId: string): Effect<void> {
+  assignIssue(issueId: string, milestoneId: string) {
     const self = this;
     return Effect.gen(function* () {
       const milestone = yield* self.repo.findById(milestoneId);
       if (!milestone) {
-        throw new EntityNotFoundError("Milestone", milestoneId);
+        return yield* Effect.fail(new EntityNotFoundError("Milestone", milestoneId));
       }
 
       yield* self.issueRepo.update(issueId, { milestoneId });

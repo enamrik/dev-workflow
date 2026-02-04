@@ -9,7 +9,7 @@
 import { z } from "zod";
 import { Task } from "../../domain/tasks/task.js";
 import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
-import { IssueService } from "../../domain/issues/issue-service.js";
+import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
@@ -42,7 +42,7 @@ export function listAvailableTasks(input: ListAvailableTasksInput) {
   return Effect.gen(function* () {
     const { planId, issueNumber } = validateInput(listAvailableTasksSchema, input);
     const taskDomainService = yield* TaskDomainService;
-    const issueService = yield* IssueService;
+    const issueDomainService = yield* IssueDomainService;
     const planDomainService = yield* PlanDomainService;
 
     let tasks: Task[] = [];
@@ -50,7 +50,7 @@ export function listAvailableTasks(input: ListAvailableTasksInput) {
     if (planId) {
       tasks = yield* taskDomainService.findByPlanId(planId);
     } else if (issueNumber) {
-      const issue = yield* issueService.findByNumber(issueNumber);
+      const issue = yield* issueDomainService.findByNumber(issueNumber);
       if (issue) {
         const plan = yield* planDomainService.findByIssueId(issue.id);
         if (plan) {

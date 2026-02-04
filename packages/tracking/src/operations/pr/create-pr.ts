@@ -15,6 +15,7 @@ import { GitHubCLITag } from "../../project-sync/github/github-cli.js";
 import { GitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import type { PRStatus } from "../../domain/tasks/task.js";
 import { validateInput } from "../validation.js";
+import { EntityNotFoundError, BusinessRuleError } from "../../domain/errors.js";
 
 // =============================================================================
 // Schema & Types
@@ -91,26 +92,32 @@ export function createPR(input: CreatePRInput) {
 
     const task = yield* taskDomainService.findById(taskId);
     if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
+      return yield* Effect.fail(new EntityNotFoundError("Task", taskId));
     }
 
     if (task.status !== "IN_PROGRESS" && !force) {
-      throw new Error(
-        `Task must be IN_PROGRESS to create a PR. Current status: ${task.status}. ` +
-          "Use force=true to bypass this check if the task state has drifted."
+      return yield* Effect.fail(
+        new BusinessRuleError(
+          `Task must be IN_PROGRESS to create a PR. Current status: ${task.status}. ` +
+            "Use force=true to bypass this check if the task state has drifted."
+        )
       );
     }
 
     if (!task.branchName) {
-      throw new Error(
-        "Task does not have a branch. Task must have been started with a worktree or branch mode."
+      return yield* Effect.fail(
+        new BusinessRuleError(
+          "Task does not have a branch. Task must have been started with a worktree or branch mode."
+        )
       );
     }
 
     if (task.prNumber && !force) {
-      throw new Error(
-        `Task already has a PR: #${task.prNumber} (${task.prUrl}). ` +
-          "Use get_task_pr_status to check its state, or use force=true to create a new PR."
+      return yield* Effect.fail(
+        new BusinessRuleError(
+          `Task already has a PR: #${task.prNumber} (${task.prUrl}). ` +
+            "Use get_task_pr_status to check its state, or use force=true to create a new PR."
+        )
       );
     }
 
@@ -151,12 +158,12 @@ export function createPR(input: CreatePRInput) {
     // Get issue info for PR title and linking
     const plan = yield* planDomainService.findById(task.planId);
     if (!plan) {
-      throw new Error(`Plan not found for task: ${taskId}`);
+      return yield* Effect.fail(new EntityNotFoundError("Plan", task.planId));
     }
 
     const issue = yield* issueDomainService.findById(plan.issueId);
     if (!issue) {
-      throw new Error(`Issue not found for plan: ${plan.id}`);
+      return yield* Effect.fail(new EntityNotFoundError("Issue", plan.issueId));
     }
 
     // Push the branch to remote
@@ -166,11 +173,13 @@ export function createPR(input: CreatePRInput) {
         task.worktreePath ?? undefined
       );
       if (!pushResult.success) {
-        throw new Error(`Failed to push branch: ${pushResult.stderr || pushResult.stdout}`);
+        return yield* Effect.fail(
+          new BusinessRuleError(`Failed to push branch: ${pushResult.stderr || pushResult.stdout}`)
+        );
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to push branch: ${message}`);
+      return yield* Effect.fail(new BusinessRuleError(`Failed to push branch: ${message}`));
     }
 
     // Build PR title
@@ -236,7 +245,7 @@ export function createPR(input: CreatePRInput) {
       } satisfies CreatePRResult;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to create PR: ${message}`);
+      return yield* Effect.fail(new BusinessRuleError(`Failed to create PR: ${message}`));
     }
   });
 }

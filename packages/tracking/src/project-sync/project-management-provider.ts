@@ -55,6 +55,24 @@ export interface SyncState {
 }
 
 /**
+ * Create a SyncState from an ExternalIssue.
+ *
+ * Used when linking an existing external issue (imported or found by search)
+ * rather than creating a new one.
+ */
+export function syncStateFromExternalIssue(issue: ExternalIssue): SyncState {
+  return {
+    externalId: issue.numericId?.toString() ?? issue.id,
+    externalUrl: issue.url,
+    externalNodeId: issue.nodeId ?? null,
+    syncStatus: "SYNCED",
+    lastSyncedAt: new Date().toISOString(),
+    lastSyncError: null,
+    remoteProjectId: null,
+  };
+}
+
+/**
  * Result of a sync operation
  */
 export interface SyncResult {

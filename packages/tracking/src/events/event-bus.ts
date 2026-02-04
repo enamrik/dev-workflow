@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { Service } from "@dev-workflow/effect";
 import type {
   DomainEventType,
   DomainEvent,
@@ -18,8 +19,8 @@ export type DomainEventListener<T extends DomainEventType> = (event: DomainEvent
  * Uses Node's EventEmitter internally but provides type-safe API.
  *
  * Thread Safety: Node.js is single-threaded, so no locking needed.
- * The singleton pattern ensures all parts of the application share
- * the same event bus instance.
+ * The EventBus is registered in the DI container and shared via
+ * Effect service resolution (yield* EventBus).
  *
  * Usage:
  *   // In service (publish)
@@ -30,34 +31,14 @@ export type DomainEventListener<T extends DomainEventType> = (event: DomainEvent
  *     console.log(`Issue #${event.payload.issueNumber} created`);
  *   });
  */
-export class EventBus {
-  private static instance: EventBus | null = null;
+export class EventBus extends Service<EventBus>()("eventBus") {
   private readonly emitter: EventEmitter;
 
-  private constructor() {
+  constructor() {
+    super();
     this.emitter = new EventEmitter();
     // Allow many listeners for multi-subscriber scenarios
     this.emitter.setMaxListeners(100);
-  }
-
-  /**
-   * Get the singleton EventBus instance
-   */
-  static getInstance(): EventBus {
-    if (!EventBus.instance) {
-      EventBus.instance = new EventBus();
-    }
-    return EventBus.instance;
-  }
-
-  /**
-   * Reset the singleton (for testing only)
-   */
-  static resetInstance(): void {
-    if (EventBus.instance) {
-      EventBus.instance.emitter.removeAllListeners();
-      EventBus.instance = null;
-    }
   }
 
   /**

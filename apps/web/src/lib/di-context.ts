@@ -22,15 +22,11 @@ import {
   type DbSource,
   type ProjectInfo,
   IssueStatusService,
-  IssueService,
-  TaskService,
   PlanDomainService,
   IssueDomainService,
   MilestoneDomainService,
   TypeDomainService,
   BoardQueryService,
-  ProjectManagementService,
-  NoOpProjectManagementClient,
 } from "@dev-workflow/tracking";
 import { Effect } from "@dev-workflow/effect";
 
@@ -57,12 +53,6 @@ export class WebDIContext {
   // ============================================================================
   // Services (for mutations and orchestrated operations)
   // ============================================================================
-
-  /** Service for issue operations */
-  readonly issueService: IssueService;
-
-  /** Service for task operations */
-  readonly taskService: TaskService;
 
   /** Domain service for plan operations */
   readonly planDomainService: PlanDomainService;
@@ -99,9 +89,6 @@ export class WebDIContext {
     this.db = db;
 
     // Create services with injected DbClient
-    // Note: Web UI doesn't have GitHub sync or worktree service, so we use NoOp client
-    const noOpClient = new NoOpProjectManagementClient();
-    const projectManagement = new ProjectManagementService(noOpClient);
     const typeDomainService = new TypeDomainService(source.types);
     this.planDomainService = new PlanDomainService(
       db.plans,
@@ -110,8 +97,6 @@ export class WebDIContext {
       typeDomainService
     );
     this.issueDomainService = new IssueDomainService(db.issues);
-    this.taskService = new TaskService(db, projectManagement, null);
-    this.issueService = new IssueService(db, this.taskService, projectManagement);
     this.milestoneDomainService = new MilestoneDomainService(db.milestones, db.issues);
 
     // Create status service with injected DbClient

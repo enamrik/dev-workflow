@@ -20,6 +20,7 @@ import {
   ProjectManagementService,
   NoOpProjectManagementClient,
   TypeDomainService,
+  EventBus,
 } from "@dev-workflow/tracking";
 import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-queue-db.js";
 import { NodeGitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
@@ -57,6 +58,9 @@ export interface WebCradle {
 
   // Worktree service factory (for worktree endpoints)
   createWorktreeService: (gitRoot: string) => GitWorktreeService;
+
+  // Events
+  eventBus: EventBus;
 }
 
 // =============================================================================
@@ -100,6 +104,8 @@ export function buildWebContainer(): AwilixContainer<WebCradle> {
     workerQueueDb: asFunction(() => new GlobalDbWorkerQueueDb()).singleton(),
 
     createWorktreeService: asValue((gitRoot: string) => new NodeGitWorktreeService(gitRoot)),
+
+    eventBus: asValue(new EventBus()),
   });
 
   return container;

@@ -19,8 +19,7 @@ import {
   TaskDomainService,
   VersioningService,
   TypeDomainService,
-  IssueService,
-  TaskService,
+  EventBus,
   type DbClient,
 } from "@dev-workflow/tracking";
 import {
@@ -56,7 +55,6 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<{
 
   // Create a client scoped to this project
   const client = createClientForProject(testDb, project.id);
-  const projectManagement = createNoOpProjectManagementService();
 
   // TypeDomainService for type validation (backed by database - types are global)
   const typeDomainService = new TypeDomainService(testDb.source.types);
@@ -72,21 +70,17 @@ async function createPlanToolContext(testDb: TestDatabase): Promise<{
   const taskDomainService = new TaskDomainService(client.tasks, client.plans, client.issues);
   const versioningService = new VersioningService(client);
 
-  // Create services with DbClient
-  const taskService = new TaskService(client, projectManagement, null);
-  const issueService = new IssueService(client, taskService, projectManagement);
-
   return {
     ctx: {
       project,
       projectSlug: "test",
-      issueService,
       planDomainService,
       issueDomainService,
       taskDomainService,
       versioningService,
-      taskService,
       typeDomainService,
+      projectManagement: createNoOpProjectManagementService(),
+      eventBus: new EventBus(),
     },
     client,
   };
@@ -504,7 +498,7 @@ describe("Plan Tools Integration", () => {
 
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(false);
-      expect(content.error).toContain("No plan exists");
+      expect(content.error).toContain("Plan not found");
     });
   });
 });

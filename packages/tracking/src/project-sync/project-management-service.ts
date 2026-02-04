@@ -12,7 +12,7 @@
  *
  * Architecture:
  * ```
- * TaskService / IssueService
+ * Operations / Domain Services
  *     ↓
  * ProjectManagementService (this service - orchestration)
  *     ↓
@@ -26,21 +26,39 @@
  */
 
 import { Effect, Service } from "@dev-workflow/effect";
-import type { TaskStatus } from "../domain/tasks/task.js";
-import type {
-  SyncState,
-  CreateIssueParams,
-  ExternalIssue,
-  AuthResult,
-  RepositoryResult,
-  ProjectDetails,
-  ProjectStatusField,
-  ProjectField,
-  ProjectItemResult,
-  SetFieldResult,
-  AvailableLabelsResult,
+import type { Task, TaskStatus } from "../domain/tasks/task.js";
+import type { Issue } from "../domain/issues/issue.js";
+import { EntityNotFoundError } from "../domain/errors.js";
+import { TaskDomainService } from "../domain/tasks/task-domain-service.js";
+import {
+  syncStateFromExternalIssue,
+  type SyncState,
+  type CreateIssueParams,
+  type ExternalIssue,
+  type AuthResult,
+  type RepositoryResult,
+  type ProjectDetails,
+  type ProjectStatusField,
+  type ProjectField,
+  type ProjectItemResult,
+  type SetFieldResult,
+  type AvailableLabelsResult,
 } from "./project-management-provider.js";
 import type { ProjectManagementClient } from "./project-management-client.js";
+import { TemplateService } from "../templates/template-service.js";
+import { TypeDomainService } from "../domain/types/type-service.js";
+import { buildTaskBody, buildTaskLabels } from "./task-body-builder.js";
+
+// =============================================================================
+// Types
+// =============================================================================
+
+export interface TaskSyncEntry {
+  taskId: string;
+  taskNumber: number;
+  externalId: string | null;
+  externalUrl: string | null;
+}
 
 // =============================================================================
 // Service Implementation
@@ -53,7 +71,7 @@ import type { ProjectManagementClient } from "./project-management-client.js";
  * - Input: current SyncState (may be undefined)
  * - Output: updated SyncState (or null if nothing to sync)
  *
- * Example usage in TaskService:
+ * Example usage in operations:
  * ```typescript
  * const updatedState = await this.projectManagement.syncTaskStatus(task.syncState, newStatus);
  * if (updatedState) {
@@ -315,14 +333,8 @@ export class ProjectManagementService extends Service<ProjectManagementService>(
           }
         }
 
-        // 5. Return complete sync state
         return {
-          externalId: externalIssue.numericId?.toString() ?? externalIssue.id,
-          externalUrl: externalIssue.url,
-          externalNodeId: externalIssue.nodeId ?? null,
-          syncStatus: "SYNCED" as const,
-          lastSyncedAt: new Date().toISOString(),
-          lastSyncError: null,
+          ...syncStateFromExternalIssue(externalIssue),
           remoteProjectId,
         };
       } catch (error) {
@@ -594,6 +606,128 @@ export class ProjectManagementService extends Service<ProjectManagementService>(
           ...childSyncState,
           lastSyncError: errorMessage,
         };
+      }
+    });
+  }
+
+  // ===========================================================================
+  // High-Level Provisioning
+  // ===========================================================================
+
+  /**
+   * Provision external sync state for a task being activated.
+   *
+   * Encapsulates the 3-way sync strategy based on issue origin:
+   * - Imported issue, 1 task: link parent external issue to project board
+   * - Imported issue, N tasks: create sub-issue + link parent-child
+   * - Normal issue: create new external issue + project board setup
+   */
+  provisionTaskSync(params: {
+    issue: Issue;
+    task: Task;
+    totalTaskCount: number;
+    targetStatus: TaskStatus;
+  }) {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!self.isEnabled()) return null;
+
+      const { issue, task, totalTaskCount, targetStatus } = params;
+      const isImportedIssue = issue.sourceExternalId !== undefined;
+
+      if (isImportedIssue && totalTaskCount === 1) {
+        const parentIssue = yield* self.getIssue(issue.sourceExternalId!);
+        if (!parentIssue) {
+          return yield* Effect.fail(
+            new EntityNotFoundError("ExternalIssue", `#${issue.sourceExternalId}`)
+          );
+        }
+        const parentSyncState = syncStateFromExternalIssue(parentIssue);
+        const linked = yield* self.linkToProject(parentSyncState, targetStatus, task.labels);
+        return linked ?? parentSyncState;
+      }
+
+      const templateService = yield* TemplateService;
+      const typeDomainService = yield* TypeDomainService;
+      const body = yield* buildTaskBody(issue, task, templateService);
+      const labels = yield* buildTaskLabels(task.type, self, typeDomainService);
+
+      yield* self.ensureLabelsExist(labels);
+      const syncState = yield* self.createProjectItem(
+        { title: task.title, body, labels },
+        targetStatus,
+        task.labels
+      );
+
+      if (isImportedIssue && syncState?.externalId) {
+        const linkedState = yield* self.linkParentChild(issue.sourceExternalId!, syncState);
+        if (linkedState) return linkedState;
+      }
+
+      return syncState;
+    });
+  }
+
+  /**
+   * Provision and persist sync state for a batch of activated tasks.
+   *
+   * Iterates over tasks, provisions each via provisionTaskSync, and persists
+   * the resulting sync state via TaskDomainService. Returns per-task results
+   * for response formatting.
+   */
+  syncActivatedTasks(activation: { issue: Issue; activatedTasks: Task[] }, skipSync = false) {
+    const self = this;
+    return Effect.gen(function* () {
+      const taskDomainService = yield* TaskDomainService;
+      const results: TaskSyncEntry[] = [];
+
+      for (const task of activation.activatedTasks) {
+        const syncState =
+          !skipSync && self.isEnabled()
+            ? yield* self.provisionTaskSync({
+                issue: activation.issue,
+                task,
+                totalTaskCount: activation.activatedTasks.length,
+                targetStatus: "BACKLOG",
+              })
+            : null;
+
+        if (syncState) {
+          yield* taskDomainService.updateSyncState(task.id, syncState);
+        }
+
+        results.push({
+          taskId: task.id,
+          taskNumber: task.number,
+          externalId: syncState?.externalId ?? null,
+          externalUrl: syncState?.externalUrl ?? null,
+        });
+      }
+
+      return results;
+    });
+  }
+
+  /**
+   * Sync the external status for a batch of tasks that already have sync state.
+   *
+   * Iterates over tasks, fetches current sync state, and updates the external
+   * project board column to match the target status.
+   */
+  syncTaskStatuses(tasks: Task[], targetStatus: TaskStatus) {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!self.isEnabled()) return;
+
+      const taskDomainService = yield* TaskDomainService;
+      for (const task of tasks) {
+        const fullTask = yield* taskDomainService.findById(task.id);
+        if (fullTask?.syncState?.externalId) {
+          const statusSync = yield* self.syncTaskStatus(fullTask.syncState, targetStatus);
+          if (statusSync) {
+            yield* taskDomainService.updateSyncState(task.id, statusSync);
+          }
+        }
       }
     });
   }

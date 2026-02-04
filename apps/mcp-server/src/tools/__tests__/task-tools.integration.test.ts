@@ -15,19 +15,18 @@ import {
   createTestIssue,
   createTestPlan,
   createTestTask,
+  createNoOpProjectManagementService,
   runMcpHandler,
 } from "../../test/helpers.js";
 import {
   TaskDomainService,
   ConflictDetectionService,
-  IssueService,
-  TaskService,
   PlanDomainService,
   IssueDomainService,
   TypeDomainService,
   ProjectManagementService,
+  NoOpProjectManagementClient,
   type DbClient,
-  type ProjectManagementClient,
 } from "@dev-workflow/tracking";
 import { MockGitWorktreeService } from "@dev-workflow/git/worktrees/mock-git-worktree-service.js";
 import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-queue-db.js";
@@ -51,83 +50,10 @@ import {
 } from "../../tools/task-tools.js";
 
 /**
- * Tracking for mock service calls
+ * Tracking for mock service calls (used by auto-assignment tests)
  */
 interface MockServiceCalls {
   autoAssign: Array<{ externalId: string }>;
-}
-
-/**
- * Create a minimal mock client for testing
- */
-function createLocalMockClient(
-  calls?: MockServiceCalls,
-  config?: { enabled?: boolean; assignee?: string }
-): ProjectManagementClient {
-  const enabled = config?.enabled ?? true;
-  const assignee = config?.assignee;
-
-  return {
-    providerId: "mock",
-    displayName: "Mock Client",
-    // Configuration methods
-    isEnabled: () => enabled,
-    getAssignee: () => assignee ?? null,
-    getCustomLabels: () => [],
-    getColumnForStatus: () => "Backlog",
-    getProjectId: () => null,
-    getLabelFieldMapping: () => ({}),
-    // Auth/Validation
-    checkAuth: () => Effect.succeed({ authenticated: true }),
-    checkRepository: () => Effect.succeed({ accessible: true }),
-    // Issue operations
-    createIssue: () =>
-      Effect.succeed({
-        id: "1",
-        numericId: 1,
-        url: "https://example.com/1",
-        nodeId: "mock_1",
-        title: "Mock",
-        body: "",
-        state: "OPEN",
-        labels: [],
-      }),
-    closeIssue: () => Effect.succeed(undefined as void),
-    reopenIssue: () => Effect.succeed(undefined as void),
-    getIssue: () => Effect.succeed(null),
-    searchIssues: () => Effect.succeed([]),
-    ensureLabelsExist: () => Effect.succeed(undefined as void),
-    // Project operations
-    addToProject: () => Effect.succeed({ success: true, itemId: "mock_item" }),
-    moveToColumn: () => Effect.succeed(undefined as void),
-    checkProject: () => Effect.succeed(true),
-    getProjectDetails: () => Effect.succeed(null),
-    getProjectStatusField: () => Effect.succeed(null),
-    getProjectFields: () => Effect.succeed([]),
-    setProjectItemField: () => Effect.succeed({ success: true }),
-    clearProjectItemField: () => Effect.succeed({ success: true }),
-    getAvailableLabels: () => Effect.succeed({ supported: true, labels: [] }),
-    linkParentChild: () => Effect.succeed(undefined as void),
-    addComment: () => Effect.succeed(undefined as void),
-    assignIssue: (externalId: string) => {
-      // Only track calls if there's an assignee (like real client behavior)
-      if (calls && assignee) {
-        calls.autoAssign.push({ externalId });
-      }
-      return Effect.succeed(undefined as void);
-    },
-  };
-}
-
-/**
- * Create a mock ProjectManagementService for testing
- */
-function createLocalMockService(
-  calls?: MockServiceCalls,
-  config?: { enabled?: boolean; assignee?: string }
-): ProjectManagementService {
-  const mockClient = createLocalMockClient(calls, config);
-  return new ProjectManagementService(mockClient);
 }
 
 /**
@@ -168,7 +94,6 @@ async function createTaskToolContext(
 
   // Mock services
   const mockGitWorktreeService = new MockGitWorktreeService();
-  const projectManagement = createLocalMockService(options?.mockServiceCalls, options?.githubSync);
 
   const conflictDetectionService = new ConflictDetectionService(client);
   const taskDomainService = new TaskDomainService(client.tasks, client.plans, client.issues);
@@ -181,20 +106,34 @@ async function createTaskToolContext(
     typeDomainService
   );
   const issueDomainService = new IssueDomainService(client.issues);
-  const taskService = new TaskService(client, projectManagement, mockGitWorktreeService);
-  const issueService = new IssueService(client, taskService, projectManagement);
+
+  // Build project management service — tracking mock when mockServiceCalls provided, NoOp otherwise
+  let projectManagement: ProjectManagementService;
+  if (options?.mockServiceCalls && options?.githubSync?.assignee) {
+    const mockCalls = options.mockServiceCalls;
+    const assignee = options.githubSync.assignee;
+    const trackingClient = new NoOpProjectManagementClient();
+    trackingClient.getAssignee = () => assignee;
+    trackingClient.assignIssue = (externalId: string) => {
+      mockCalls.autoAssign.push({ externalId });
+      return Effect.succeed(undefined as void);
+    };
+    trackingClient.isEnabled = () => true;
+    projectManagement = new ProjectManagementService(trackingClient);
+  } else {
+    projectManagement = createNoOpProjectManagementService();
+  }
 
   return {
     ctx: {
       dbClient: client,
-      issueService,
       planDomainService,
       issueDomainService,
       taskDomainService,
-      taskService,
       workerQueueDb,
       conflictDetectionService,
       gitWorktreeService: mockGitWorktreeService,
+      projectManagement,
       projectId,
     },
     client,

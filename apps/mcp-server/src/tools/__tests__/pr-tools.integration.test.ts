@@ -19,8 +19,6 @@ import {
 import {
   MockGitHubCLI,
   type Project,
-  IssueService,
-  TaskService,
   TaskDomainService,
   PlanDomainService,
   IssueDomainService,
@@ -93,18 +91,15 @@ async function createPRToolContext(
   );
   const issueDomainService = new IssueDomainService(client.issues);
   const taskDomainService = new TaskDomainService(client.tasks, client.plans, client.issues);
-  const taskService = new TaskService(client, projectManagement, gitWorktreeService);
-  const issueService = new IssueService(client, taskService, projectManagement);
 
   return {
     ctx: {
       project: { ...createTestProject(), id: project.id },
       githubCLI,
-      issueService,
+      projectManagement,
       planDomainService,
       issueDomainService,
       taskDomainService,
-      taskService,
       gitWorktreeService,
       dbClient: client,
     },
@@ -804,17 +799,14 @@ describe("submit_for_review", () => {
       );
       const issueDomainService = new IssueDomainService(client.issues);
       const taskDomainService = new TaskDomainService(client.tasks, client.plans, client.issues);
-      const taskService = new TaskService(client, projectManagement, mockGitWorktreeService);
-      const issueService = new IssueService(client, taskService, projectManagement);
 
       const ctx: any = {
         project,
         githubCLI: mockGitHubCLI,
-        issueService,
+        projectManagement,
         planDomainService,
         issueDomainService,
         taskDomainService,
-        taskService,
         gitWorktreeService: mockGitWorktreeService,
         db: client,
       };
@@ -1256,6 +1248,9 @@ describe("complete_task", () => {
       );
 
       // Assert
+      if (result.isError) {
+        console.error("ERROR:", result.content[0].text);
+      }
       expect(result.isError).toBeFalsy();
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(true);

@@ -11,6 +11,7 @@ import type { MilestoneWithStatus } from "../../domain/milestones/milestone-doma
 import { MilestoneDomainService } from "../../domain/milestones/milestone-domain-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
+import { ValidationError } from "../../domain/errors.js";
 
 // =============================================================================
 // Schema & Types
@@ -46,12 +47,15 @@ export function createMilestone(input: CreateMilestoneInput) {
     const milestoneDomainService = yield* MilestoneDomainService;
 
     const startCheck = Milestone.validateDate(startDate, "startDate");
-    if (!startCheck.valid) throw new Error(startCheck.reason!);
+    if (!startCheck.valid)
+      return yield* Effect.fail(new ValidationError("startDate", startCheck.reason!));
     const endCheck = Milestone.validateDate(endDate, "endDate");
-    if (!endCheck.valid) throw new Error(endCheck.reason!);
+    if (!endCheck.valid)
+      return yield* Effect.fail(new ValidationError("endDate", endCheck.reason!));
 
     const rangeCheck = Milestone.validateDateRange(startDate, endDate);
-    if (!rangeCheck.valid) throw new Error(rangeCheck.reason!);
+    if (!rangeCheck.valid)
+      return yield* Effect.fail(new ValidationError("dateRange", rangeCheck.reason!));
 
     const milestone = yield* milestoneDomainService.createMilestone({
       title,

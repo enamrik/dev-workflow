@@ -237,7 +237,6 @@ export function createNoOpProvider(): ProjectManagementProvider {
  * Create a NoOp project management service for tests.
  *
  * This is useful when tests don't need real external sync behavior.
- * Use this when creating TaskService or IssueService instances.
  */
 export function createNoOpProjectManagementService(): ProjectManagementService {
   return new ProjectManagementService(new NoOpProjectManagementClient());
@@ -325,8 +324,8 @@ export function createMockProvider(
  * @example
  * ```typescript
  * const testScope = createTestScope(container, {
- *   issueService: () => mockIssueService,
- *   taskService: () => mockTaskService,
+ *   planDomainService: () => mockPlanDomainService,
+ *   taskDomainService: () => mockTaskDomainService,
  * });
  * const result = await handler(args, testScope.cradle);
  * ```

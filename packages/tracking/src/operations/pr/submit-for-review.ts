@@ -1,15 +1,16 @@
 /**
  * submitForReview - Submit a task for review
  *
- * Validates task state and delegates to TaskService.submitForReview()
- * to transition the task to PR_REVIEW status.
+ * Validates task state, transitions the task to PR_REVIEW status via
+ * TaskDomainService, and syncs the status to the external provider.
  */
 
 import { z } from "zod";
 import { Effect } from "@dev-workflow/effect";
 import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
-import { TaskService } from "../../domain/tasks/task-service.js";
+import { ProjectManagementService } from "../../project-sync/project-management-service.js";
 import { validateInput } from "../validation.js";
+import { EntityNotFoundError, BusinessRuleError } from "../../domain/errors.js";
 
 // =============================================================================
 // Schema & Types
@@ -47,36 +48,44 @@ export interface SubmitForReviewResult {
  * 2. Find task by ID
  * 3. Validate task is IN_PROGRESS (or force)
  * 4. Validate task has a PR (or force)
- * 5. Delegate to TaskService.submitForReview()
+ * 5. Update status via TaskDomainService and sync via ProjectManagementService
  * 6. Return updated status and PR info
  */
 export function submitForReview(input: SubmitForReviewInput) {
   return Effect.gen(function* () {
     const { taskId, force } = validateInput(SubmitForReviewSchema, input);
     const taskDomainService = yield* TaskDomainService;
-    const taskService = yield* TaskService;
 
     const task = yield* taskDomainService.findById(taskId);
     if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
+      return yield* Effect.fail(new EntityNotFoundError("Task", taskId));
     }
 
     if (task.status !== "IN_PROGRESS" && !force) {
-      throw new Error(
-        `Task must be IN_PROGRESS to submit for review. Current status: ${task.status}. ` +
-          "Use force=true to bypass this check if the task state has drifted."
+      return yield* Effect.fail(
+        new BusinessRuleError(
+          `Task must be IN_PROGRESS to submit for review. Current status: ${task.status}. ` +
+            "Use force=true to bypass this check if the task state has drifted."
+        )
       );
     }
 
     if (!task.prNumber && !force) {
-      throw new Error(
-        "Task does not have a PR. Use create_pr first to create a PR, " +
-          "or use force=true to bypass this check."
+      return yield* Effect.fail(
+        new BusinessRuleError(
+          "Task does not have a PR. Use create_pr first to create a PR, " +
+            "or use force=true to bypass this check."
+        )
       );
     }
 
-    // Update task status to PR_REVIEW (includes GitHub sync)
-    yield* taskService.submitForReview(taskId, { force });
+    const updatedTask = yield* taskDomainService.submitForReview(taskId, { force });
+
+    const pm = yield* ProjectManagementService;
+    const statusSync = yield* pm.syncTaskStatus(updatedTask.syncState, "PR_REVIEW");
+    if (statusSync) {
+      yield* taskDomainService.updateSyncState(updatedTask.id, statusSync);
+    }
 
     return {
       success: true,

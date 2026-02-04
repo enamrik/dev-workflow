@@ -21,6 +21,7 @@ import {
   DEFAULT_TYPE_DEFINITIONS,
 } from "./type-definition.js";
 import { Effect, Service } from "@dev-workflow/effect";
+import { ValidationError } from "../errors.js";
 
 /**
  * Type service error
@@ -160,16 +161,19 @@ export class TypeDomainService extends Service<TypeDomainService>()("typeDomainS
    * Used by PlanDomainService.savePlan() to enforce type invariants.
    * Throws a descriptive error with valid type list if invalid.
    */
-  validateTaskType(typeName: string): Effect<IssueType> {
+  validateTaskType(typeName: string) {
     const self = this;
     return Effect.gen(function* () {
       const types = yield* self.getTypes();
       const validNames = types.map((t) => t.name);
       if (!validNames.includes(typeName as IssueType)) {
-        throw new Error(
-          `Task has invalid type '${typeName}'. ` +
-            `Valid types: ${validNames.join(", ")}. ` +
-            `Call list_types first to get available types.`
+        return yield* Effect.fail(
+          new ValidationError(
+            "type",
+            `Task has invalid type '${typeName}'. ` +
+              `Valid types: ${validNames.join(", ")}. ` +
+              `Call list_types first to get available types.`
+          )
         );
       }
       return typeName as IssueType;
