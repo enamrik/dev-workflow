@@ -117,6 +117,7 @@ export class ClaudeWorkerService {
   private pollInterval: NodeJS.Timeout | null = null;
   private taskWatchInterval: NodeJS.Timeout | null = null;
   private isShuttingDown = false;
+  private resolveShutdown: (() => void) | null = null;
 
   private readonly config: Required<WorkerConfig>;
 
@@ -286,6 +287,13 @@ export class ClaudeWorkerService {
     } else {
       this.startPolling();
     }
+
+    // Keep the promise pending until shutdown completes.
+    // Without this, the caller (createCliCommand) would dispose the
+    // DI container while polling timers are still running.
+    await new Promise<void>((resolve) => {
+      this.resolveShutdown = resolve;
+    });
   }
 
   /**
@@ -344,6 +352,11 @@ export class ClaudeWorkerService {
     this.sourceProvider.closeAll();
 
     console.log("Shutdown complete");
+
+    // Resolve the pending start() promise so the caller can clean up
+    if (this.resolveShutdown) {
+      this.resolveShutdown();
+    }
   }
 
   // ==========================================================================
