@@ -36,12 +36,16 @@ const ColumnMappingSchema = z.object({
 });
 
 const GitHubLabelsConfigSchema = z.object({
-  typeLabels: z
+  typeMappings: z
     .record(z.string(), z.string())
     .optional()
     .describe(
       "Maps issue types to GitHub labels. Keys must be valid type names (call list_types to see available types). Example: { FEATURE: 'feature', BUG: 'bug' }"
     ),
+  typeLabels: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe("Deprecated: use typeMappings instead. Accepted for backwards compatibility."),
   customLabels: z
     .array(z.string())
     .optional()

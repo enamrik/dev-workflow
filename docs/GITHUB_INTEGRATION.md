@@ -162,16 +162,16 @@ Each task type maps to a GitHub label:
 
 All synced issues also get a `task` label to distinguish them from regular issues.
 
-### Custom Type Labels
+### Custom Type Mappings
 
-Override type-to-label mapping:
+Override type-to-label mapping (maps internal issue/task types to external labels):
 
 ```
 update_settings(
   action: "configure_github",
   github: {
     labels: {
-      typeLabels: {
+      typeMappings: {
         FEATURE: "type: feature",
         BUG: "type: bug"
       }

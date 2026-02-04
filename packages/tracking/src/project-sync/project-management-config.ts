@@ -22,12 +22,15 @@ export type { TaskStatus } from "../domain/tasks/task.js";
  */
 export interface LabelsConfig {
   /**
-   * Mapping from internal issue types to external label names
+   * Required mapping from internal issue/task types to external label names.
    *
-   * Keys are internal types (FEATURE, BUG, ENHANCEMENT, TASK)
-   * Values are the label names to use in the external system
+   * Keys are internal types (FEATURE, BUG, ENHANCEMENT, TASK, or custom types).
+   * Values are the label names to use in the external system.
+   *
+   * This is distinct from customLabels which are optional additional labels
+   * applied to all synced issues regardless of type.
    */
-  typeLabels: {
+  typeMappings: {
     FEATURE: string;
     BUG: string;
     ENHANCEMENT: string;
@@ -44,7 +47,7 @@ export interface LabelsConfig {
  * Default label configuration
  */
 export const DEFAULT_LABELS_CONFIG: LabelsConfig = {
-  typeLabels: {
+  typeMappings: {
     FEATURE: "feature",
     BUG: "bug",
     ENHANCEMENT: "enhancement",
