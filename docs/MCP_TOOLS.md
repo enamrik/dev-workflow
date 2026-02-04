@@ -801,13 +801,13 @@ Configure project settings including GitHub integration.
 
 **GitHub Configuration Options:**
 
-| Field                 | Type     | Description                                       |
-| --------------------- | -------- | ------------------------------------------------- |
-| `projectId`           | string   | GitHub Project ID (format: PVT\_...)              |
-| `assignee`            | string   | GitHub username for auto-assignment (no @ prefix) |
-| `labels.typeLabels`   | object   | Maps issue types to GitHub labels                 |
-| `labels.customLabels` | string[] | Additional labels for all synced issues           |
-| `columnMapping`       | object   | Maps task statuses to project board columns       |
+| Field                 | Type     | Description                                                         |
+| --------------------- | -------- | ------------------------------------------------------------------- |
+| `projectId`           | string   | GitHub Project ID (format: PVT\_...)                                |
+| `assignee`            | string   | GitHub username for auto-assignment (no @ prefix)                   |
+| `labels.typeMappings` | object   | Maps issue types to GitHub labels (required type-to-label mappings) |
+| `labels.customLabels` | string[] | Additional labels for all synced issues                             |
+| `columnMapping`       | object   | Maps task statuses to project board columns                         |
 
 **Default Column Mapping:**
 

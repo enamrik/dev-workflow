@@ -44,6 +44,7 @@ export const UpdateSettingsSchema = z.object({
       assignee: z.string().optional(),
       labels: z
         .object({
+          typeMappings: z.record(z.string(), z.string()).optional(),
           typeLabels: z.record(z.string(), z.string()).optional(),
           customLabels: z.array(z.string()).optional(),
         })
@@ -82,14 +83,23 @@ function validateGitHubUsername(username: string): string | null {
 }
 
 /**
- * Validate typeLabels keys against active types in the database
+ * Resolve typeMappings from input, preferring typeMappings over deprecated typeLabels
  */
-function validateTypeLabels(
+function resolveTypeMappings(
+  labels: { typeMappings?: Record<string, string>; typeLabels?: Record<string, string> } | undefined
+): Record<string, string> | undefined {
+  return labels?.typeMappings ?? labels?.typeLabels;
+}
+
+/**
+ * Validate typeMappings keys against active types in the database
+ */
+function validateTypeMappings(
   typeDomainService: TypeDomainService,
-  typeLabels: Record<string, string>
+  typeMappings: Record<string, string>
 ) {
   return Effect.gen(function* () {
-    const providedTypes = Object.keys(typeLabels);
+    const providedTypes = Object.keys(typeMappings);
     if (providedTypes.length === 0) {
       return null;
     }
@@ -105,7 +115,7 @@ function validateTypeLabels(
 
     const invalidList = invalidTypes.map((t) => `'${t}'`).join(", ");
     const validList = Array.from(validTypeNames).sort().join(", ");
-    return `Invalid type(s) in typeLabels: ${invalidList}. Valid types: ${validList}`;
+    return `Invalid type(s) in typeMappings: ${invalidList}. Valid types: ${validList}`;
   });
 }
 
@@ -283,14 +293,12 @@ function enableGitHub(
       }
     }
 
-    // Step 5: Validate typeLabels against active types if provided
-    if (github?.labels?.typeLabels) {
-      const typeValidationError = yield* validateTypeLabels(
-        typeDomainService,
-        github.labels.typeLabels as Record<string, string>
-      );
+    // Step 5: Validate typeMappings against active types if provided
+    const inputTypeMappings = resolveTypeMappings(github?.labels);
+    if (inputTypeMappings) {
+      const typeValidationError = yield* validateTypeMappings(typeDomainService, inputTypeMappings);
       if (typeValidationError) {
-        return yield* Effect.fail(new ValidationError("typeLabels", typeValidationError));
+        return yield* Effect.fail(new ValidationError("typeMappings", typeValidationError));
       }
     }
 
@@ -302,16 +310,16 @@ function enableGitHub(
       assignee: github?.assignee || undefined,
       labels: github?.labels
         ? {
-            typeLabels: {
-              FEATURE: github.labels.typeLabels?.FEATURE ?? "feature",
-              BUG: github.labels.typeLabels?.BUG ?? "bug",
-              ENHANCEMENT: github.labels.typeLabels?.ENHANCEMENT ?? "enhancement",
-              TASK: github.labels.typeLabels?.TASK ?? "task",
+            typeMappings: {
+              FEATURE: inputTypeMappings?.FEATURE ?? "feature",
+              BUG: inputTypeMappings?.BUG ?? "bug",
+              ENHANCEMENT: inputTypeMappings?.ENHANCEMENT ?? "enhancement",
+              TASK: inputTypeMappings?.TASK ?? "task",
             },
             customLabels: github.labels.customLabels,
           }
         : {
-            typeLabels: {
+            typeMappings: {
               FEATURE: "feature",
               BUG: "bug",
               ENHANCEMENT: "enhancement",
@@ -407,14 +415,15 @@ function configureGitHub(
       }
     }
 
-    // Validate typeLabels against active types if provided
-    if (github.labels?.typeLabels) {
-      const typeValidationError = yield* validateTypeLabels(
+    // Validate typeMappings against active types if provided
+    const configureTypeMappings = resolveTypeMappings(github.labels);
+    if (configureTypeMappings) {
+      const typeValidationError = yield* validateTypeMappings(
         typeDomainService,
-        github.labels.typeLabels as Record<string, string>
+        configureTypeMappings
       );
       if (typeValidationError) {
-        return yield* Effect.fail(new ValidationError("typeLabels", typeValidationError));
+        return yield* Effect.fail(new ValidationError("typeMappings", typeValidationError));
       }
     }
 
@@ -426,6 +435,9 @@ function configureGitHub(
           ? undefined
           : github.assignee;
 
+    // Read existing typeMappings (supports legacy typeLabels in stored config)
+    const existingMappings = currentSync.labels?.typeMappings;
+
     // Merge with existing config
     const updatedConfig: ProjectManagementConfig = {
       ...currentSync,
@@ -434,17 +446,14 @@ function configureGitHub(
       assignee,
       labels: github.labels
         ? {
-            typeLabels: {
-              FEATURE:
-                github.labels.typeLabels?.FEATURE ??
-                currentSync.labels?.typeLabels.FEATURE ??
-                "feature",
-              BUG: github.labels.typeLabels?.BUG ?? currentSync.labels?.typeLabels.BUG ?? "bug",
+            typeMappings: {
+              FEATURE: configureTypeMappings?.FEATURE ?? existingMappings?.FEATURE ?? "feature",
+              BUG: configureTypeMappings?.BUG ?? existingMappings?.BUG ?? "bug",
               ENHANCEMENT:
-                github.labels.typeLabels?.ENHANCEMENT ??
-                currentSync.labels?.typeLabels.ENHANCEMENT ??
+                configureTypeMappings?.ENHANCEMENT ??
+                existingMappings?.ENHANCEMENT ??
                 "enhancement",
-              TASK: github.labels.typeLabels?.TASK ?? currentSync.labels?.typeLabels.TASK ?? "task",
+              TASK: configureTypeMappings?.TASK ?? existingMappings?.TASK ?? "task",
             },
             customLabels: github.labels.customLabels ?? currentSync.labels?.customLabels,
           }

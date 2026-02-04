@@ -606,7 +606,7 @@ describe("Schema Validation", () => {
           assignee: "username",
           labels: {
             customLabels: ["custom-label"],
-            typeLabels: { FEATURE: "feature", BUG: "bug" },
+            typeMappings: { FEATURE: "feature", BUG: "bug" },
           },
         },
       };

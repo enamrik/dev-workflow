@@ -14,6 +14,28 @@ import type {
   UpdateProjectData,
 } from "./project.js";
 import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
+import type { ProjectManagementConfig } from "../../project-sync/project-management-config.js";
+
+/**
+ * Migrate stored syncConfig from legacy typeLabels to typeMappings.
+ *
+ * Existing configs may have labels.typeLabels in the JSON column.
+ * This normalizes them to labels.typeMappings on read so the rest
+ * of the codebase only deals with the new name.
+ */
+function migrateSyncConfig(config: ProjectManagementConfig | null): ProjectManagementConfig | null {
+  if (!config?.labels) return config;
+
+  const raw = config.labels as unknown as Record<string, unknown>;
+  if ("typeMappings" in raw) return config;
+  if (!("typeLabels" in raw)) return config;
+
+  const { typeLabels, ...rest } = raw;
+  return {
+    ...config,
+    labels: { ...rest, typeMappings: typeLabels } as ProjectManagementConfig["labels"],
+  };
+}
 
 /**
  * Generate a URL-safe slug from project name and git root hash
@@ -221,7 +243,7 @@ export class DrizzleProjectRepository implements ProjectRepository {
       gitRootHash: row.gitRootHash,
       name: row.name,
       slug: row.slug,
-      syncConfig: row.syncConfig ?? null,
+      syncConfig: migrateSyncConfig(row.syncConfig ?? null),
       isArchived: row.isArchived,
       archivedAt: row.archivedAt ?? null,
       createdAt: row.createdAt,

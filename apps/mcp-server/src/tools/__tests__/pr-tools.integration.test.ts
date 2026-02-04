@@ -731,7 +731,7 @@ describe("submit_for_review", () => {
             enabled: true,
             projectId: "PVT_test_project",
             labels: {
-              typeLabels: {
+              typeMappings: {
                 FEATURE: "feature",
                 BUG: "bug",
                 ENHANCEMENT: "enhancement",

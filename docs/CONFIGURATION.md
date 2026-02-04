@@ -242,13 +242,13 @@ The system auto-detects repository owner/repo from git remotes.
 
 ### Configuration Options
 
-| Setting               | Description                                                 |
-| --------------------- | ----------------------------------------------------------- |
-| `projectId`           | GitHub Project ID (format: `PVT_...`) for board integration |
-| `assignee`            | GitHub username to auto-assign when task enters IN_PROGRESS |
-| `labels.typeLabels`   | Map type names to GitHub labels                             |
-| `labels.customLabels` | Additional labels for all synced issues                     |
-| `columnMapping`       | Map task statuses to project board columns                  |
+| Setting               | Description                                                       |
+| --------------------- | ----------------------------------------------------------------- |
+| `projectId`           | GitHub Project ID (format: `PVT_...`) for board integration       |
+| `assignee`            | GitHub username to auto-assign when task enters IN_PROGRESS       |
+| `labels.typeMappings` | Map type names to GitHub labels (required type-to-label mappings) |
+| `labels.customLabels` | Additional labels for all synced issues                           |
+| `columnMapping`       | Map task statuses to project board columns                        |
 
 ### Column Mapping
 
@@ -278,22 +278,24 @@ update_settings
 | COMPLETED   | Done           |
 | ABANDONED   | Done           |
 
-### Type Label Mapping
+### Type Mappings
 
-Customize GitHub labels for each type:
+Customize how internal issue/task types map to GitHub labels. These are required mappings that determine which label is applied based on the type:
 
 ```
 update_settings
   action: "configure_github"
   github:
     labels:
-      typeLabels:
+      typeMappings:
         FEATURE: "type: feature"
         BUG: "type: bug"
         ENHANCEMENT: "type: enhancement"
         TASK: "type: task"
       customLabels: ["dev-workflow"]
 ```
+
+> **Note:** `typeMappings` are required type-to-label mappings. `customLabels` are optional additional labels applied to all synced issues regardless of type.
 
 ### Viewing Settings
 
