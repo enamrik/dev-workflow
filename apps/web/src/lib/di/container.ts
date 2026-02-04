@@ -56,6 +56,9 @@ export interface WebCradle {
   // Worker queue (for board + worker endpoints)
   workerQueueDb: WorkerQueueDb;
 
+  // Worktree service (for operations that yield GitWorktreeService)
+  gitWorktreeService: GitWorktreeService;
+
   // Worktree service factory (for worktree endpoints)
   createWorktreeService: (gitRoot: string) => GitWorktreeService;
 
@@ -102,6 +105,8 @@ export function buildWebContainer(): AwilixContainer<WebCradle> {
     ).singleton(),
 
     workerQueueDb: asFunction(() => new GlobalDbWorkerQueueDb()).singleton(),
+
+    gitWorktreeService: asFunction(() => new NodeGitWorktreeService(process.cwd())).singleton(),
 
     createWorktreeService: asValue((gitRoot: string) => new NodeGitWorktreeService(gitRoot)),
 
