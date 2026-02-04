@@ -75,7 +75,7 @@ export interface SnapshotTaskState {
  * Labels configuration for external sync
  */
 export interface LabelsConfig {
-  typeLabels: {
+  typeMappings: {
     FEATURE: string;
     BUG: string;
     ENHANCEMENT: string;
@@ -131,7 +131,7 @@ export interface GitHubSyncState {
  * Default label configuration
  */
 export const DEFAULT_LABELS_CONFIG: LabelsConfig = {
-  typeLabels: {
+  typeMappings: {
     FEATURE: "feature",
     BUG: "bug",
     ENHANCEMENT: "enhancement",

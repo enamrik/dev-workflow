@@ -604,19 +604,44 @@ describe("update_settings - list_available_labels", () => {
   });
 });
 
-describe("update_settings - typeLabels validation", () => {
+describe("update_settings - typeMappings validation", () => {
   let testDb: TestDatabase;
 
   beforeEach(() => {
     testDb = createTestDatabase();
   });
 
-  describe("enable_github with typeLabels", () => {
-    it("should accept valid typeLabels (uses default types when DB empty)", async () => {
+  describe("enable_github with typeMappings", () => {
+    it("should accept valid typeMappings (uses default types when DB empty)", async () => {
       // Arrange
       const ctx = await createSettingsTestContext(testDb);
 
       // Act - use default types (FEATURE, BUG, etc.)
+      const result = await ctx.updateSettings({
+        action: "enable_github",
+        github: {
+          labels: {
+            typeMappings: {
+              FEATURE: "feat",
+              BUG: "bug-fix",
+            },
+          },
+        },
+      });
+
+      // Assert
+      expect(result.isError).toBeFalsy();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.success).toBe(true);
+      expect(content.config.syncIssues.labels.typeMappings.FEATURE).toBe("feat");
+      expect(content.config.syncIssues.labels.typeMappings.BUG).toBe("bug-fix");
+    });
+
+    it("should accept legacy typeLabels for backwards compatibility", async () => {
+      // Arrange
+      const ctx = await createSettingsTestContext(testDb);
+
+      // Act - use deprecated typeLabels field
       const result = await ctx.updateSettings({
         action: "enable_github",
         github: {
@@ -629,15 +654,15 @@ describe("update_settings - typeLabels validation", () => {
         },
       });
 
-      // Assert
+      // Assert - should work and store as typeMappings
       expect(result.isError).toBeFalsy();
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(true);
-      expect(content.config.syncIssues.labels.typeLabels.FEATURE).toBe("feat");
-      expect(content.config.syncIssues.labels.typeLabels.BUG).toBe("bug-fix");
+      expect(content.config.syncIssues.labels.typeMappings.FEATURE).toBe("feat");
+      expect(content.config.syncIssues.labels.typeMappings.BUG).toBe("bug-fix");
     });
 
-    it("should reject invalid typeLabels", async () => {
+    it("should reject invalid typeMappings", async () => {
       // Arrange
       const ctx = await createSettingsTestContext(testDb);
 
@@ -646,7 +671,7 @@ describe("update_settings - typeLabels validation", () => {
         action: "enable_github",
         github: {
           labels: {
-            typeLabels: {
+            typeMappings: {
               FEATURE: "feat",
               INVALID_TYPE: "invalid",
             },
@@ -657,7 +682,7 @@ describe("update_settings - typeLabels validation", () => {
       // Assert
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
-      expect(content.error).toContain("Invalid type(s) in typeLabels");
+      expect(content.error).toContain("Invalid type(s) in typeMappings");
       expect(content.error).toContain("'INVALID_TYPE'");
       expect(content.error).toContain("Valid types:");
       expect(content.error).toContain("FEATURE");
@@ -672,7 +697,7 @@ describe("update_settings - typeLabels validation", () => {
         action: "enable_github",
         github: {
           labels: {
-            typeLabels: {
+            typeMappings: {
               SPKE: "spike-typo", // typo of SPIKE
               FEATUR: "feature-typo", // typo of FEATURE
             },
@@ -688,7 +713,7 @@ describe("update_settings - typeLabels validation", () => {
     });
   });
 
-  describe("configure_github with typeLabels", () => {
+  describe("configure_github with typeMappings", () => {
     let ctx: SettingsTestContext;
 
     beforeEach(async () => {
@@ -697,13 +722,13 @@ describe("update_settings - typeLabels validation", () => {
       await ctx.updateSettings({ action: "enable_github" });
     });
 
-    it("should accept valid typeLabels via configure_github", async () => {
+    it("should accept valid typeMappings via configure_github", async () => {
       // Act
       const result = await ctx.updateSettings({
         action: "configure_github",
         github: {
           labels: {
-            typeLabels: {
+            typeMappings: {
               TASK: "chore",
               ENHANCEMENT: "improvement",
             },
@@ -715,17 +740,17 @@ describe("update_settings - typeLabels validation", () => {
       expect(result.isError).toBeFalsy();
       const content = JSON.parse(result.content[0].text);
       expect(content.success).toBe(true);
-      expect(content.config.syncIssues.labels.typeLabels.TASK).toBe("chore");
-      expect(content.config.syncIssues.labels.typeLabels.ENHANCEMENT).toBe("improvement");
+      expect(content.config.syncIssues.labels.typeMappings.TASK).toBe("chore");
+      expect(content.config.syncIssues.labels.typeMappings.ENHANCEMENT).toBe("improvement");
     });
 
-    it("should reject invalid typeLabels via configure_github", async () => {
+    it("should reject invalid typeMappings via configure_github", async () => {
       // Act
       const result = await ctx.updateSettings({
         action: "configure_github",
         github: {
           labels: {
-            typeLabels: {
+            typeMappings: {
               NOT_A_TYPE: "invalid",
             },
           },
@@ -735,7 +760,7 @@ describe("update_settings - typeLabels validation", () => {
       // Assert
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
-      expect(content.error).toContain("Invalid type(s) in typeLabels");
+      expect(content.error).toContain("Invalid type(s) in typeMappings");
       expect(content.error).toContain("'NOT_A_TYPE'");
     });
 
@@ -758,7 +783,7 @@ describe("update_settings - typeLabels validation", () => {
         action: "configure_github",
         github: {
           labels: {
-            typeLabels: {
+            typeMappings: {
               CUSTOM: "custom-label",
             },
           },
@@ -790,7 +815,7 @@ describe("update_settings - typeLabels validation", () => {
         action: "configure_github",
         github: {
           labels: {
-            typeLabels: {
+            typeMappings: {
               FEATURE: "feature", // Not in DB when custom types are seeded
             },
           },
@@ -800,7 +825,7 @@ describe("update_settings - typeLabels validation", () => {
       // Assert - should reject since only CUSTOM exists in DB
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
-      expect(content.error).toContain("Invalid type(s) in typeLabels");
+      expect(content.error).toContain("Invalid type(s) in typeMappings");
       expect(content.error).toContain("'FEATURE'");
       expect(content.error).toContain("CUSTOM"); // Valid types should show CUSTOM
     });
@@ -811,7 +836,7 @@ describe("update_settings - typeLabels validation", () => {
         action: "configure_github",
         github: {
           labels: {
-            typeLabels: {
+            typeMappings: {
               FEATURE: "feat",
               BUG: "bug",
               ENHANCEMENT: "enhance",
@@ -858,7 +883,7 @@ describe("Settings Tool Schema Validation", () => {
           assignee: "username",
           labels: {
             customLabels: ["custom-label"],
-            typeLabels: { FEATURE: "feature", BUG: "bug" },
+            typeMappings: { FEATURE: "feature", BUG: "bug" },
           },
         },
       };
