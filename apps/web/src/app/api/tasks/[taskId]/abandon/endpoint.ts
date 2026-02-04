@@ -11,7 +11,6 @@ import { abandonTask } from "@dev-workflow/tracking";
 import { createApiEndpoint } from "@/lib/di/bootstrap";
 
 const BodySchema = z.object({
-  projectSlug: z.string().min(1),
   reason: z.string().optional(),
   abandonedBy: z.string().optional(),
 });

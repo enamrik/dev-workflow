@@ -1,14 +1,15 @@
 /**
- * abandonTask - Abandon a task with cleanup info
+ * abandonTask - Abandon a task with worktree/branch cleanup
  *
- * Uses domain service for the status transition. External cleanup
- * (worktree, PR, project board) is optional via context.
+ * Coordinates between GitWorktreeService (worktree/branch removal)
+ * and TaskDomainService (DB record cleanup, status transition).
  */
 
 import { z } from "zod";
 import type { Task } from "../../domain/tasks/task.js";
-import { DomainExecutorFactory } from "../../domain/domain-executor.js";
+import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { BusinessRuleError } from "../../domain/errors.js";
+import { GitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -17,7 +18,6 @@ import { Effect } from "@dev-workflow/effect";
 // =============================================================================
 
 export const abandonTaskSchema = z.object({
-  projectSlug: z.string().min(1),
   taskId: z.string().min(1),
   reason: z.string().optional(),
   abandonedBy: z.string().optional(),
@@ -41,23 +41,38 @@ export interface AbandonTaskResult {
 export function abandonTask(input: AbandonTaskInput) {
   return Effect.gen(function* () {
     const {
-      projectSlug,
       taskId,
       reason = "Task abandoned",
       abandonedBy = "system",
     } = validateInput(abandonTaskSchema, input);
-    const domain = yield* DomainExecutorFactory;
-    const { tasks } = yield* domain.forProject(projectSlug);
+    const taskDomainService = yield* TaskDomainService;
+    const gitWorktreeService = yield* GitWorktreeService;
 
-    const task = yield* tasks.getOrThrow(taskId);
+    const task = yield* taskDomainService.getOrThrow(taskId);
     if (task.isTerminal) {
       return yield* Effect.fail(
         new BusinessRuleError(`Task is already in terminal state: ${task.status}`)
       );
     }
 
+    if (task.worktreePath) {
+      yield* Effect.catchAll(gitWorktreeService.removeWorktree(task.worktreePath, true), () =>
+        Effect.succeed(console.warn(`Failed to cleanup worktree: ${task.worktreePath}`))
+      );
+      yield* taskDomainService.clearWorktreeInfo(taskId);
+    } else if (task.branchName) {
+      yield* Effect.catchAll(
+        Effect.gen(function* () {
+          yield* gitWorktreeService.run(["checkout", "main"]);
+          yield* gitWorktreeService.run(["branch", "-d", task.branchName!]);
+        }),
+        () => Effect.succeed(console.warn(`Failed to cleanup branch: ${task.branchName}`))
+      );
+      yield* taskDomainService.clearWorktreeInfo(taskId);
+    }
+
     const previousStatus = task.status;
-    const updatedTask = yield* tasks.abandon(taskId, reason, abandonedBy);
+    const updatedTask = yield* taskDomainService.abandon(taskId, reason, abandonedBy);
 
     return { task: updatedTask, previousStatus };
   });
