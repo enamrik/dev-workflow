@@ -956,10 +956,10 @@ describe("Issue Tool Schema Validation", () => {
       expect(result.success).toBe(false);
     });
 
-    it("should reject invalid type enum value", () => {
-      const input = { title: "Test", description: "Desc", type: "INVALID_TYPE" };
+    it("should accept custom type strings at schema level", () => {
+      const input = { title: "Test", description: "Desc", type: "SPIKE" };
       const result = CreateIssueSchema.safeParse(input);
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
     });
 
     it("should reject invalid priority enum value", () => {

@@ -6,7 +6,14 @@ import type { Effect } from "@dev-workflow/effect";
 import type { SyncState } from "../../project-sync/project-management-provider.js";
 import type { Task } from "../tasks/task.js";
 
-export type IssueType = "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK" | "SPIKE";
+/**
+ * Issue/task type identifier.
+ *
+ * Types are user-defined via `create_type` and stored in the database.
+ * This is a string alias (not a union) because the set of valid types
+ * is dynamic. Runtime validation is handled by TypeDomainService.
+ */
+export type IssueType = string;
 export type IssuePriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type IssueStatus = "PLANNED" | "OPEN" | "IN_PROGRESS" | "CLOSED";
 

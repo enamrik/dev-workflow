@@ -8,6 +8,7 @@
 import { z } from "zod";
 import type { Issue, IssueType, IssuePriority } from "../../domain/issues/issue.js";
 import { DomainExecutorFactory } from "../../domain/domain-executor.js";
+import { TypeDomainService } from "../../domain/types/type-service.js";
 import { TemplateService } from "../../templates/template-service.js";
 import { EventBus } from "../../events/event-bus.js";
 import { validateInput } from "../validation.js";
@@ -63,11 +64,12 @@ export function createIssue(input: CreateIssueInput) {
 
     const domain = yield* DomainExecutorFactory;
     const pd = yield* domain.forProject(projectSlug);
+    const typeDomainService = yield* TypeDomainService;
     const eventBus = yield* EventBus;
 
     // Select template if requested and use metadata as defaults
     let templateUsed: string | undefined;
-    let finalType: IssueType | undefined = type as IssueType | undefined;
+    let finalType: IssueType | undefined = type;
     let finalPriority: IssuePriority = priority as IssuePriority;
 
     if (useTemplate) {
@@ -91,6 +93,10 @@ export function createIssue(input: CreateIssueInput) {
     }
 
     const resolvedType: IssueType = finalType || "FEATURE";
+
+    if (type) {
+      yield* typeDomainService.validateType(resolvedType);
+    }
 
     // Create issue in PLANNED status
     const issue = yield* pd.issues.create({

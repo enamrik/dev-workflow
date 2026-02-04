@@ -37,13 +37,13 @@ import {
 // Shared Enums (used only by issue schemas)
 // =============================================================================
 
-const IssueTypeEnum = z.enum(["FEATURE", "BUG", "ENHANCEMENT", "TASK"]);
+const IssueTypeSchema = z.string();
 const IssuePriorityEnum = z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
 const TemplateCategoryEnum = z.enum(["issue", "task"]);
 const TemplateScopeEnum = z.enum(["local", "global", "all"]);
 const LabelsSchema = z.record(z.string(), z.string());
 
-export { IssueTypeEnum, IssuePriorityEnum };
+export { IssueTypeSchema, IssuePriorityEnum };
 
 // =============================================================================
 // create_issue
@@ -57,7 +57,7 @@ export const CreateIssueSchema = z.object({
     .optional()
     .default([])
     .describe("List of acceptance criteria"),
-  type: IssueTypeEnum.optional().describe("Issue type"),
+  type: IssueTypeSchema.optional().describe("Issue type"),
   priority: IssuePriorityEnum.optional().default("MEDIUM").describe("Issue priority"),
   useTemplate: z
     .boolean()
@@ -156,7 +156,7 @@ export const UpdateIssueSchema = z.object({
       title: z.string().optional(),
       description: z.string().optional(),
       acceptanceCriteria: z.array(z.string()).optional(),
-      type: IssueTypeEnum.optional(),
+      type: IssueTypeSchema.optional(),
       priority: IssuePriorityEnum.optional(),
       labels: LabelsSchema.optional().describe(
         "Update labels. Supports simple labels (empty value) and key-value pairs. Pass null to clear all labels."
