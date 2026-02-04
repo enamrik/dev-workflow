@@ -97,13 +97,13 @@ export function ConfirmDialog({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+        className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm"
         onClick={!isLoading ? onCancel : undefined}
         aria-hidden="true"
       />
       {/* Dialog */}
       <div
-        className="fixed z-50 left-4 right-4 top-1/2 -translate-y-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-md"
+        className="fixed z-[60] left-4 right-4 top-1/2 -translate-y-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-md"
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
