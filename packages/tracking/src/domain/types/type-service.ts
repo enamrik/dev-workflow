@@ -156,17 +156,39 @@ export class TypeDomainService extends Service<TypeDomainService>()("typeDomainS
   }
 
   /**
-   * Validate a task type name and return the typed IssueType.
+   * Validate a type name against available types.
+   *
+   * Returns the validated type name or fails with a ValidationError
+   * listing the valid types.
+   */
+  validateType(typeName: string) {
+    const self = this;
+    return Effect.gen(function* () {
+      const types = yield* self.getTypes();
+      const validNames = types.map((t) => t.name);
+      if (!validNames.includes(typeName)) {
+        return yield* Effect.fail(
+          new ValidationError(
+            "type",
+            `Invalid type '${typeName}'. Available types: ${validNames.join(", ")}`
+          )
+        );
+      }
+      return typeName;
+    });
+  }
+
+  /**
+   * Validate a task type name with plan-generation-specific error message.
    *
    * Used by PlanDomainService.savePlan() to enforce type invariants.
-   * Throws a descriptive error with valid type list if invalid.
    */
   validateTaskType(typeName: string) {
     const self = this;
     return Effect.gen(function* () {
       const types = yield* self.getTypes();
       const validNames = types.map((t) => t.name);
-      if (!validNames.includes(typeName as IssueType)) {
+      if (!validNames.includes(typeName)) {
         return yield* Effect.fail(
           new ValidationError(
             "type",
@@ -176,7 +198,7 @@ export class TypeDomainService extends Service<TypeDomainService>()("typeDomainS
           )
         );
       }
-      return typeName as IssueType;
+      return typeName;
     });
   }
 

@@ -13,7 +13,6 @@ import type { Task } from "../../domain/tasks/task.js";
 import { DomainExecutorFactory } from "../../domain/domain-executor.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { TypeDomainService } from "../../domain/types/type-service.js";
-import { BusinessRuleError } from "../../domain/errors.js";
 import { VersioningService } from "../../domain/snapshots/versioning-service.js";
 import { EventBus } from "../../events/event-bus.js";
 import { validateInput } from "../validation.js";
@@ -70,26 +69,16 @@ export function updateIssue(input: UpdateIssueInput) {
     );
     const domain = yield* DomainExecutorFactory;
     const pd = yield* domain.forProject(projectSlug);
+    const typeDomainService = yield* TypeDomainService;
+    const planDomainService = yield* PlanDomainService;
     const eventBus = yield* EventBus;
 
     // Resolve issue
     const issue = yield* pd.issues.getOne({ byId: issueId, byNumber: issueNumber });
 
-    // Validate the type against available types if provided
     if (updates.type) {
-      const typeDomainService = yield* TypeDomainService;
-      const isValid = yield* typeDomainService.isValidType(updates.type);
-      if (!isValid) {
-        const types = yield* typeDomainService.getTypes();
-        const availableNames = types.map((t) => t.name).join(", ");
-        return yield* Effect.fail(
-          new BusinessRuleError(`Invalid type: ${updates.type}. Available types: ${availableNames}`)
-        );
-      }
+      yield* typeDomainService.validateType(updates.type);
     }
-
-    // Apply typed updates via PlanDomainService
-    const planDomainService = yield* PlanDomainService;
     const typedUpdates = {
       ...updates,
       type: updates.type as IssueType | undefined,
