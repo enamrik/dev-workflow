@@ -28,7 +28,9 @@
 import { Effect, Service } from "@dev-workflow/effect";
 import type { Task, TaskStatus } from "../domain/tasks/task.js";
 import type { Issue } from "../domain/issues/issue.js";
-import { EntityNotFoundError } from "../domain/errors.js";
+import { EntityNotFoundError, BusinessRuleError } from "../domain/errors.js";
+import { IssueDomainService } from "../domain/issues/issue-domain-service.js";
+import { PlanDomainService } from "../domain/plans/plan-domain-service.js";
 import { TaskDomainService } from "../domain/tasks/task-domain-service.js";
 import {
   syncStateFromExternalIssue,
@@ -59,6 +61,38 @@ export interface TaskSyncEntry {
   externalId: string | null;
   externalUrl: string | null;
 }
+
+export interface RepairSyncEntry {
+  taskNumber: number;
+  githubIssueNumber: number | null;
+  githubUrl: string | null;
+}
+
+export interface RepairSkippedEntry {
+  taskNumber: number;
+  reason: string;
+}
+
+export interface RepairSyncResult {
+  message: string;
+  issueNumber: number;
+  tasksProcessed: number;
+  created: RepairSyncEntry[];
+  linked: RepairSyncEntry[];
+  verified: RepairSyncEntry[];
+  skipped: RepairSkippedEntry[];
+}
+
+type RepairTaskAction =
+  | { action: "created"; taskNumber: number; externalId: string | null; externalUrl: string | null }
+  | { action: "linked"; taskNumber: number; externalId: string | null; externalUrl: string | null }
+  | {
+      action: "verified";
+      taskNumber: number;
+      externalId: string | null;
+      externalUrl: string | null;
+    }
+  | { action: "skipped"; taskNumber: number; reason: string };
 
 // =============================================================================
 // Service Implementation
@@ -732,6 +766,107 @@ export class ProjectManagementService extends Service<ProjectManagementService>(
     });
   }
 
+  /**
+   * Repair external sync state for all workable/active tasks in an issue.
+   *
+   * For each task:
+   * - If it has an externalId, verify the external issue still exists
+   * - If no sync state, search by title pattern and link if found
+   * - Otherwise, create a new external issue via provisionTaskSync
+   */
+  repairIssueSyncState(issueNumber: number) {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!self.isEnabled()) {
+        return yield* Effect.fail(
+          new BusinessRuleError("GitHub sync is not enabled for this project")
+        );
+      }
+
+      const issueDomainService = yield* IssueDomainService;
+      const taskDomainService = yield* TaskDomainService;
+      const planDomainService = yield* PlanDomainService;
+
+      const issue = yield* issueDomainService.findByNumber(issueNumber);
+      if (!issue) {
+        return yield* Effect.fail(new EntityNotFoundError("Issue", `#${issueNumber}`));
+      }
+
+      const plan = yield* planDomainService.findByIssueId(issue.id);
+      if (!plan) {
+        return yield* Effect.fail(new EntityNotFoundError("Plan", `for issue #${issueNumber}`));
+      }
+
+      const allTasks = yield* taskDomainService.findByPlanId(plan.id);
+      const tasksToSync = allTasks.filter((t) => t.isWorkable || t.isActive);
+
+      const toGithubEntry = (e: {
+        taskNumber: number;
+        externalId: string | null;
+        externalUrl: string | null;
+      }): RepairSyncEntry => ({
+        taskNumber: e.taskNumber,
+        githubIssueNumber: e.externalId ? parseInt(e.externalId, 10) : null,
+        githubUrl: e.externalUrl,
+      });
+
+      const created: RepairSyncEntry[] = [];
+      const linked: RepairSyncEntry[] = [];
+      const verified: RepairSyncEntry[] = [];
+      const skipped: RepairSkippedEntry[] = [];
+
+      for (const task of tasksToSync) {
+        let entry: RepairTaskAction;
+        try {
+          entry = yield* self.repairSingleTaskSync(
+            issue,
+            task,
+            tasksToSync.length,
+            taskDomainService
+          );
+        } catch (error) {
+          entry = {
+            action: "skipped",
+            taskNumber: task.number,
+            reason: error instanceof Error ? error.message : String(error),
+          };
+        }
+
+        switch (entry.action) {
+          case "created":
+            created.push(toGithubEntry(entry));
+            break;
+          case "linked":
+            linked.push(toGithubEntry(entry));
+            break;
+          case "verified":
+            verified.push(toGithubEntry(entry));
+            break;
+          case "skipped":
+            skipped.push(entry);
+            break;
+        }
+      }
+
+      const parts = [
+        created.length > 0 ? `${created.length} created` : null,
+        linked.length > 0 ? `${linked.length} linked` : null,
+        verified.length > 0 ? `${verified.length} verified` : null,
+        skipped.length > 0 ? `${skipped.length} skipped` : null,
+      ].filter(Boolean);
+
+      return {
+        message: `Issue #${issueNumber} sync complete: ${parts.length > 0 ? parts.join(", ") : "no tasks to sync"}`,
+        issueNumber,
+        tasksProcessed: tasksToSync.length,
+        created,
+        linked,
+        verified,
+        skipped,
+      } satisfies RepairSyncResult;
+    });
+  }
+
   // ===========================================================================
   // Read Operations (delegate to client)
   // ===========================================================================
@@ -892,5 +1027,123 @@ export class ProjectManagementService extends Service<ProjectManagementService>(
    */
   linkIssues(parentRef: string, childRef: string): Effect<void> {
     return this.client.linkParentChild(parentRef, childRef);
+  }
+
+  // ===========================================================================
+  // Private: Repair Helpers
+  // ===========================================================================
+
+  /**
+   * Repair sync state for a single task.
+   *
+   * Case 1: Has externalId → verify external issue still exists.
+   *         If deleted, clear sync state and fall through to Case 2/3.
+   * Case 2: No sync → search by title pattern, link if found.
+   * Case 3: No match → create new external issue via provisionTaskSync.
+   */
+  private repairSingleTaskSync(
+    issue: Issue,
+    task: Task,
+    totalTaskCount: number,
+    taskDomainService: TaskDomainService
+  ) {
+    const self = this;
+    return Effect.gen(function* () {
+      if (task.syncState?.externalId) {
+        const existingIssue = yield* self.getIssue(String(task.syncState.externalId));
+
+        if (existingIssue) {
+          yield* self.ensureTaskProjectState(task, taskDomainService);
+
+          return {
+            action: "verified" as const,
+            taskNumber: task.number,
+            externalId: String(existingIssue.numericId ?? existingIssue.id),
+            externalUrl: existingIssue.url,
+          };
+        }
+
+        yield* taskDomainService.updateSyncState(task.id, {
+          externalId: null,
+          externalUrl: null,
+          externalNodeId: null,
+          syncStatus: "NOT_SYNCED",
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: "External issue was deleted, re-syncing",
+          remoteProjectId: null,
+        });
+      }
+
+      const searchPattern = `Task ${issue.number}.${task.number}:`;
+      const searchResults = yield* self.searchIssues(searchPattern, "all", 5);
+      const matchingIssue = searchResults.find((gh) =>
+        gh.body.includes(`Task ${issue.number}.${task.number}: ${task.title}`)
+      );
+
+      if (matchingIssue) {
+        const parentSyncState = syncStateFromExternalIssue(matchingIssue);
+        const linked = yield* self.linkToProject(parentSyncState, task.status, task.labels);
+        yield* taskDomainService.updateSyncState(task.id, linked ?? parentSyncState);
+
+        return {
+          action: "linked" as const,
+          taskNumber: task.number,
+          externalId: String(matchingIssue.numericId ?? matchingIssue.id),
+          externalUrl: matchingIssue.url,
+        };
+      }
+
+      const syncState = yield* self.provisionTaskSync({
+        issue,
+        task,
+        totalTaskCount,
+        targetStatus: task.status,
+      });
+
+      if (syncState) {
+        yield* taskDomainService.updateSyncState(task.id, syncState);
+        const statusSync = yield* self.syncTaskStatus(syncState, task.status);
+        if (statusSync) {
+          yield* taskDomainService.updateSyncState(task.id, statusSync);
+        }
+      }
+
+      return {
+        action: "created" as const,
+        taskNumber: task.number,
+        externalId: syncState?.externalId ?? null,
+        externalUrl: syncState?.externalUrl ?? null,
+      };
+    });
+  }
+
+  /**
+   * Ensure a task's external issue is in the correct project state.
+   *
+   * If the task has no project item but has a node ID, link to project.
+   * If already has project item, sync status column and labels.
+   */
+  private ensureTaskProjectState(task: Task, taskDomainService: TaskDomainService) {
+    const self = this;
+    return Effect.gen(function* () {
+      if (!task.syncState) return;
+
+      if (!task.syncState.remoteProjectId && task.syncState.externalNodeId) {
+        const linked = yield* self.linkToProject(task.syncState, task.status, task.labels);
+        if (linked) {
+          yield* taskDomainService.updateSyncState(task.id, linked);
+        }
+      } else if (task.syncState.remoteProjectId) {
+        const statusSync = yield* self.syncTaskStatus(task.syncState, task.status);
+        if (statusSync) {
+          yield* taskDomainService.updateSyncState(task.id, statusSync);
+        }
+
+        const labelSync = yield* self.syncTaskLabels(task.syncState, task.labels);
+        if (labelSync) {
+          yield* taskDomainService.updateSyncState(task.id, labelSync);
+        }
+      }
+    });
   }
 }
