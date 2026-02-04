@@ -250,6 +250,79 @@ export class TaskDomainService extends Service<TaskDomainService>()("taskDomainS
     });
   }
 
+  /**
+   * Generic status transition with validation, side-effects, and dispatch.
+   *
+   * Encapsulates:
+   * - PR_REVIEW guard (canSubmitForReview checks PR URL exists)
+   * - PLANNED → BACKLOG side-effect (activates parent issue)
+   * - Dispatch to the status-specific mutation method
+   */
+  transitionTo(
+    taskId: string,
+    toStatus: TaskStatus,
+    changedBy = "system"
+  ): Effect<{ task: Task; previousStatus: TaskStatus }, EntityNotFoundError | BusinessRuleError> {
+    const self = this;
+    return Effect.gen(function* () {
+      const task = yield* self.getOrThrow(taskId);
+      const previousStatus = task.status;
+
+      // PR_REVIEW requires a PR URL — canSubmitForReview checks both transition + PR
+      if (toStatus === "PR_REVIEW") {
+        const reviewCheck = task.canSubmitForReview();
+        if (!reviewCheck.allowed) {
+          return yield* Effect.fail(new BusinessRuleError(reviewCheck.reason!));
+        }
+      }
+
+      // Side-effect: PLANNED → BACKLOG activates the parent issue
+      if (task.status === "PLANNED" && toStatus === "BACKLOG") {
+        yield* self.activateParentIssueIfNeeded(task);
+      }
+
+      const updatedTask = yield* self.dispatchTransition(taskId, toStatus, changedBy);
+      return { task: updatedTask, previousStatus };
+    });
+  }
+
+  private activateParentIssueIfNeeded(task: Task): Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      const plan = yield* self.planRepo.findById(task.planId);
+      if (!plan) return;
+      const issue = yield* self.issueRepo.findById(plan.issueId);
+      if (issue && issue.isInPlanning) {
+        yield* self.issueRepo.update(issue.id, { status: "OPEN" });
+      }
+    });
+  }
+
+  private dispatchTransition(
+    taskId: string,
+    toStatus: TaskStatus,
+    changedBy: string
+  ): Effect<Task, EntityNotFoundError | BusinessRuleError> {
+    switch (toStatus) {
+      case "BACKLOG":
+        return this.moveToBacklog(taskId, changedBy);
+      case "READY":
+        return this.moveToReady(taskId, changedBy);
+      case "IN_PROGRESS":
+        return this.start(taskId, changedBy);
+      case "PR_REVIEW":
+        return this.submitForReview(taskId, { changedBy });
+      case "COMPLETED":
+        return this.complete(taskId, { changedBy });
+      case "ABANDONED":
+        return this.abandon(taskId, "Abandoned via transition", changedBy);
+      default:
+        return Effect.fail(
+          new BusinessRuleError(`Unsupported status transition to ${toStatus as string}`)
+        );
+    }
+  }
+
   // ============================================================================
   // Write Operations
   // ============================================================================
