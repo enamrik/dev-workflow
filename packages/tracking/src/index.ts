@@ -115,6 +115,7 @@ export type { ProjectManagementClient } from "./project-sync/project-management-
 export {
   ProjectManagementService,
   type TaskSyncEntry,
+  type SyncStateUpdate,
   type RepairSyncEntry,
   type RepairSkippedEntry,
   type RepairSyncResult,
