@@ -66,6 +66,7 @@ interface RouteContext {
 /**
  * Program struct returned by createApiEndpoint.
  * Contains the Effect function and optional middleware.
+ * All errors are handled — run always produces a NextResponse.
  */
 export interface WebProgram<R> {
   readonly run: (req: Request, params: Record<string, string>) => Effect<NextResponse, never, R>;
@@ -73,36 +74,21 @@ export interface WebProgram<R> {
 }
 
 // =============================================================================
-// Program Creator — Overloads
+// Program Creator
 // =============================================================================
 
 /**
  * Creates a WebProgram from an Effect handler.
  *
- * Two overloads:
- * 1. Without bodySchema — for GET endpoints
- * 2. With bodySchema — for POST/PUT/PATCH endpoints (auto-parses and validates body)
+ * When bodySchema is provided, the request body is parsed and validated
+ * before the handler runs (POST/PUT/PATCH). Without it, body is undefined (GET).
+ *
+ * Effect.gen converts thrown errors to Left values, so Effect.catchAll
+ * handles both Effect failures and thrown errors (e.g. parseSchema).
  */
-
-// Overload: No body (GET endpoints)
-export function createApiEndpoint<E, R>(config: {
-  handler: (req: Request, params: Record<string, string>) => Effect<NextResponse, E, R>;
-  middleware?: ContainerMiddleware;
-}): WebProgram<R>;
-
-// Overload: With body (POST/PUT/PATCH endpoints)
-export function createApiEndpoint<T, E, R>(config: {
-  bodySchema: ParseableSchema<T>;
-  handler: (req: Request, params: Record<string, string>, body: T) => Effect<NextResponse, E, R>;
-  middleware?: ContainerMiddleware;
-}): WebProgram<R>;
-
-// Implementation
-export function createApiEndpoint<T, E, R>(config: {
+export function createApiEndpoint<T = undefined, E = unknown, R = never>(config: {
   bodySchema?: ParseableSchema<T>;
-  handler:
-    | ((req: Request, params: Record<string, string>) => Effect<NextResponse, E, R>)
-    | ((req: Request, params: Record<string, string>, body: T) => Effect<NextResponse, E, R>);
+  handler: (req: Request, params: Record<string, string>, body: T) => Effect<NextResponse, E, R>;
   middleware?: ContainerMiddleware;
 }): WebProgram<R> {
   const { bodySchema, handler, middleware } = config;
@@ -110,27 +96,18 @@ export function createApiEndpoint<T, E, R>(config: {
   return {
     run: (req: Request, params: Record<string, string>) =>
       Effect.catchAll(
-        bodySchema
-          ? Effect.gen(function* () {
-              const raw: unknown = yield* Effect.tryPromise({
-                try: async () => await req.json(),
-                catch: (e) => (e instanceof Error ? e : new Error("Invalid JSON body")),
-              });
-              const body = parseSchema(bodySchema, raw);
-              return yield* (
-                handler as (
-                  req: Request,
-                  params: Record<string, string>,
-                  body: T
-                ) => Effect<NextResponse, E, R>
-              )(req, params, body);
-            })
-          : (
-              handler as (
-                req: Request,
-                params: Record<string, string>
-              ) => Effect<NextResponse, E, R>
-            )(req, params),
+        Effect.gen(function* () {
+          const body = bodySchema
+            ? parseSchema(
+                bodySchema,
+                yield* Effect.tryPromise({
+                  try: async () => await req.json(),
+                  catch: (e) => (e instanceof Error ? e : new Error("Invalid JSON body")),
+                })
+              )
+            : (undefined as T);
+          return yield* handler(req, params, body);
+        }),
         (error: unknown) => {
           const mapped = mapError(error);
           return Effect.succeed(NextResponse.json(mapped.body, { status: mapped.status }));

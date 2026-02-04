@@ -48,6 +48,7 @@ export function getWorkerData() {
     const sourceProvider = yield* DbSourceProvider;
     const workerQueueDb = yield* WorkerQueueDbTag;
 
+    workerQueueDb.cleanupDeadWorkers();
     const workers = workerQueueDb.findAllWorkersWithHealth();
     const queueEntries = workerQueueDb.findAllEntriesWithHealth();
     const stats = workerQueueDb.getQueueStats();
