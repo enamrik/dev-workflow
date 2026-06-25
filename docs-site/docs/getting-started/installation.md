@@ -4,53 +4,31 @@ sidebar_position: 1
 
 # Installation
 
-This guide covers how to install dev-workflow and its dependencies.
+## Quick Install (Recommended)
 
-## Prerequisites
+Run the install script:
 
-Before installing dev-workflow, ensure you have:
+```bash
+curl -fsSL https://enamrik.github.io/dev-workflow/install.sh | bash
+```
+
+This checks prerequisites, installs the CLI, and verifies optional dependencies.
+
+## Manual Installation
+
+### Prerequisites
 
 | Requirement | Version | Purpose |
 |-------------|---------|---------|
 | **Node.js** | >= 20.0 | Runtime environment |
-| **pnpm** | >= 8.0 | Package manager |
 | **Git** | Any recent | Version control |
-| **Claude Code** | Latest | AI integration (optional but recommended) |
+| **Claude Code** | Latest | AI integration (optional) |
 | **GitHub CLI** | Latest | GitHub sync (optional) |
 
-### Check Prerequisites
-
-```bash
-# Check Node.js version
-node --version  # Should be >= 20.0
-
-# Check pnpm version
-pnpm --version  # Should be >= 8.0
-
-# Check Git
-git --version
-
-# Check Claude Code (optional)
-claude --version
-
-# Check GitHub CLI (optional)
-gh --version
-```
-
-## Installation Methods
-
-### npm (Recommended)
-
-Install dev-workflow globally:
+### npm Install
 
 ```bash
 npm install -g @dev-workflow/cli
-```
-
-Or with pnpm:
-
-```bash
-pnpm add -g @dev-workflow/cli
 ```
 
 ### From Source
