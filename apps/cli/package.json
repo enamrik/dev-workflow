@@ -40,5 +40,21 @@
   },
   "engines": {
     "node": ">=20.0.0"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kravariere/dev-workflow.git",
+    "directory": "apps/cli"
+  },
+  "keywords": [
+    "ai",
+    "workflow",
+    "development",
+    "cli",
+    "mcp",
+    "claude"
+  ]
 }
