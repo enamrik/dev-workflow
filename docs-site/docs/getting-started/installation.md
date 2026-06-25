@@ -65,6 +65,20 @@ pnpm build
 pnpm link --global
 ```
 
+## Check Dependencies
+
+After installing, verify all dependencies are set up correctly:
+
+```bash
+dev-workflow setup
+```
+
+This checks Node.js, Git, better-sqlite3, Claude CLI, and GitHub CLI. If anything is missing, run with `--fix` to attempt automatic installation:
+
+```bash
+dev-workflow setup --fix
+```
+
 ## Initialize in a Project
 
 After installation, initialize dev-workflow in your git repository:
@@ -94,18 +108,6 @@ dev-workflow --help
 
 # List workers (should show no workers initially)
 dev-workflow workers
-```
-
-## Installing Dependencies Automatically
-
-dev-workflow includes a setup command that checks and installs dependencies:
-
-```bash
-# Check all dependencies
-dev-workflow setup
-
-# Attempt to install missing dependencies
-dev-workflow setup --fix
 ```
 
 ## Updating
