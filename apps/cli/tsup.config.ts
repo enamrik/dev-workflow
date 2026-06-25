@@ -21,7 +21,7 @@ export default defineConfig({
   // The published artifact's bin is a platform wrapper that runs `node cli.js`, so the
   // bundle needs no shebang.
   shims: true, // __dirname/__filename/import.meta.url for bundled CJS deps
-  clean: true,
+  clean: false, // keep tsc dist (package subpath exports); tsup adds the bundle alongside
   splitting: false,
   sourcemap: false,
   // Ship data files (not inlined by the bundler) beside cli.js: Drizzle migrations

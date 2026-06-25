@@ -18,7 +18,7 @@ export default defineConfig({
     js: "import { createRequire as __cjsCreateRequire } from 'node:module'; const require = __cjsCreateRequire(import.meta.url);",
   },
   shims: true, // __dirname/__filename/import.meta.url for bundled CJS deps
-  clean: true,
+  clean: false, // keep tsc dist (package subpath exports); tsup adds the bundle alongside
   splitting: false,
   sourcemap: false,
 });
