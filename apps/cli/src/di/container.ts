@@ -41,6 +41,7 @@ import { UICommand } from "../commands/ui-command.js";
 import { WorkerCommand } from "../commands/worker-command.js";
 import { ClaudeConfigCommand } from "../commands/claude-config-command.js";
 import { MCPCommand } from "../commands/mcp-command.js";
+import { SetupCommand } from "../commands/setup-command.js";
 
 /**
  * Cradle interface defining all available dependencies in the CLI container.
@@ -84,6 +85,7 @@ export interface CliCradle {
   workerCommand: WorkerCommand;
   claudeConfigCommand: ClaudeConfigCommand;
   mcpCommand: MCPCommand;
+  setupCommand: SetupCommand;
 }
 
 /**
@@ -258,6 +260,8 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
     mcpCommand: asFunction(({ cliRoot }: { cliRoot: string }) => {
       return new MCPCommand(cliRoot);
     }).scoped(),
+
+    setupCommand: asClass(SetupCommand).scoped(),
   });
 
   return container;

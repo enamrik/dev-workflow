@@ -17,6 +17,7 @@ import { runUI, runUIInstall, runUIUninstall } from "./commands/ui-command-def.j
 import { runWorkers, runClaudeWorker } from "./commands/worker-command-def.js";
 import { runMCP } from "./commands/mcp-command-def.js";
 import { runCleanClaudeConfig } from "./commands/claude-config-command-def.js";
+import { runSetup } from "./commands/setup-command-def.js";
 
 const program = new Command();
 
@@ -73,6 +74,14 @@ program
   .option("--dry-run", "Show what would be removed without making changes")
   .action(async (options: { dryRun?: boolean }) => {
     await runCleanClaudeConfig(options);
+  });
+
+program
+  .command("setup")
+  .description("Check and optionally install external dependencies")
+  .option("--fix", "Attempt to install missing dependencies")
+  .action(async (options: { fix?: boolean }) => {
+    await runSetup(options);
   });
 
 program.parse(process.argv);
