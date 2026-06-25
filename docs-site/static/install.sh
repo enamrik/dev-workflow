@@ -1,87 +1,75 @@
-#!/bin/bash
-set -e
-
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+#!/bin/sh
+# dev-workflow installer (macOS / Linux)
+# Downloads a self-contained, per-platform artifact from GitHub Releases — no npm registry
+# access required (works behind corporate npm proxies). Usage:
+#   curl -fsSL https://enamrik.github.io/dev-workflow/install.sh | sh
+set -eu
 
 REPO="enamrik/dev-workflow"
+INSTALL_DIR="${DWF_INSTALL_DIR:-$HOME/.dev-workflow}"
+BIN_DIR="${DWF_BIN_DIR:-$HOME/.local/bin}"
 
-echo -e "${BLUE}Installing dev-workflow...${NC}"
-echo ""
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
+info() { printf "%b%s%b\n" "$BLUE" "$1" "$NC"; }
+ok() { printf "%b✓%b %s\n" "$GREEN" "$NC" "$1"; }
+warn() { printf "%b⚠%b %s\n" "$YELLOW" "$NC" "$1"; }
+die() { printf "%bError:%b %s\n" "$RED" "$NC" "$1" >&2; exit 1; }
 
-# Check Node.js
-if ! command -v node &> /dev/null; then
-    echo -e "${RED}Error: Node.js is not installed${NC}"
-    echo "Install Node.js 20+ from https://nodejs.org"
-    exit 1
+info "Installing dev-workflow..."
+
+# Node.js is required to run the CLI (a Node app); we don't install deps via npm.
+command -v node >/dev/null 2>&1 || die "Node.js 20+ is required. Install from https://nodejs.org"
+NODE_MAJOR=$(node -v | sed 's/v\([0-9]*\).*/\1/')
+[ "$NODE_MAJOR" -ge 20 ] || die "Node.js 20+ required (found $(node -v))"
+ok "Node.js $(node -v)"
+
+# Detect platform → artifact slug.
+OS=$(uname -s); ARCH=$(uname -m)
+case "$OS" in
+  Darwin) os=darwin ;;
+  Linux) os=linux ;;
+  *) die "Unsupported OS: $OS (use install.ps1 on Windows)" ;;
+esac
+case "$ARCH" in
+  arm64|aarch64) arch=arm64 ;;
+  x86_64|amd64) arch=x64 ;;
+  *) die "Unsupported architecture: $ARCH" ;;
+esac
+SLUG="${os}-${arch}"
+ASSET="dev-workflow-${SLUG}.tar.gz"
+URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
+ok "Platform ${SLUG}"
+
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+info "Downloading ${ASSET}..."
+curl -fsSL "$URL" -o "$TMP/$ASSET" || die "Download failed: $URL"
+# Verify checksum when published alongside the asset.
+if curl -fsSL "${URL}.sha256" -o "$TMP/$ASSET.sha256" 2>/dev/null; then
+  EXPECTED=$(awk '{print $1}' "$TMP/$ASSET.sha256")
+  if command -v shasum >/dev/null 2>&1; then ACTUAL=$(shasum -a 256 "$TMP/$ASSET" | awk '{print $1}')
+  else ACTUAL=$(sha256sum "$TMP/$ASSET" | awk '{print $1}'); fi
+  [ "$EXPECTED" = "$ACTUAL" ] || die "Checksum mismatch for $ASSET"
+  ok "Checksum verified"
 fi
 
-NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-if [ "$NODE_VERSION" -lt 20 ]; then
-    echo -e "${RED}Error: Node.js 20+ required (found v${NODE_VERSION})${NC}"
-    echo "Update Node.js from https://nodejs.org"
-    exit 1
-fi
-echo -e "${GREEN}✓${NC} Node.js $(node -v)"
+# Extract, replacing any prior install.
+info "Installing to ${INSTALL_DIR}..."
+rm -rf "$INSTALL_DIR"
+mkdir -p "$INSTALL_DIR"
+tar -xzf "$TMP/$ASSET" -C "$INSTALL_DIR"
 
-# Check Git
-if ! command -v git &> /dev/null; then
-    echo -e "${RED}Error: Git is not installed${NC}"
-    exit 1
-fi
-echo -e "${GREEN}✓${NC} Git $(git --version | cut -d' ' -f3)"
+# Link the bin onto PATH.
+mkdir -p "$BIN_DIR"
+ln -sf "$INSTALL_DIR/dev-workflow/bin/dev-workflow" "$BIN_DIR/dev-workflow"
+ok "Linked $BIN_DIR/dev-workflow"
 
-# Download and install from GitHub Releases
-echo ""
-echo "Downloading latest release..."
-
-DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/dev-workflow-cli.tgz"
-TMP_DIR=$(mktemp -d)
-TMP_FILE="$TMP_DIR/dev-workflow-cli.tgz"
-
-if ! curl -fsSL "$DOWNLOAD_URL" -o "$TMP_FILE"; then
-    echo -e "${RED}Error: Failed to download release${NC}"
-    echo "Check if a release exists at: https://github.com/${REPO}/releases"
-    rm -rf "$TMP_DIR"
-    exit 1
+if ! command -v dev-workflow >/dev/null 2>&1; then
+  warn "$BIN_DIR is not on your PATH. Add it:"
+  printf '  export PATH="%s:$PATH"\n' "$BIN_DIR"
 fi
 
-echo "Installing globally..."
-npm install -g "$TMP_FILE"
-rm -rf "$TMP_DIR"
-
-# Verify installation
-if ! command -v dev-workflow &> /dev/null; then
-    echo -e "${RED}Error: Installation failed${NC}"
-    exit 1
-fi
-echo -e "${GREEN}✓${NC} dev-workflow $(dev-workflow --version 2>/dev/null || echo 'installed')"
-
-# Check optional dependencies
-echo ""
-echo "Checking optional dependencies..."
-
-if command -v claude &> /dev/null; then
-    echo -e "${GREEN}✓${NC} Claude CLI installed"
-else
-    echo -e "${YELLOW}⚠${NC} Claude CLI not found"
-    echo "  Install: npm i -g @anthropic-ai/claude-code"
-fi
-
-if command -v gh &> /dev/null; then
-    echo -e "${GREEN}✓${NC} GitHub CLI installed"
-else
-    echo -e "${YELLOW}⚠${NC} GitHub CLI not found"
-    echo "  Install: https://cli.github.com"
-fi
-
-echo ""
-echo -e "${GREEN}Installation complete!${NC}"
-echo ""
+printf "\n%bInstallation complete!%b\n\n" "$GREEN" "$NC"
 echo "Next steps:"
 echo "  1. cd into your git repository"
 echo "  2. Run: dev-workflow init"

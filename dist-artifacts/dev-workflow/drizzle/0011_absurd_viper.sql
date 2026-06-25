@@ -1,0 +1,1 @@
+ALTER TABLE `issues` ADD `source_github_issue_number` integer;

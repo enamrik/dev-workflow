@@ -1,0 +1,1 @@
+ALTER TABLE `tasks` ADD `submitted_for_review_at` text;

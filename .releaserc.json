@@ -5,7 +5,9 @@
     "@semantic-release/release-notes-generator",
     ["@semantic-release/github", {
       "assets": [
-        {"path": "apps/cli/*.tgz", "name": "dev-workflow-cli.tgz", "label": "CLI Package"}
+        {"path": "dist-artifacts/dev-workflow-*.tar.gz", "label": "${name}"},
+        {"path": "dist-artifacts/dev-workflow-*.zip", "label": "${name}"},
+        {"path": "dist-artifacts/dev-workflow-*.sha256", "label": "${name}"}
       ]
     }]
   ]
