@@ -40,18 +40,19 @@ echo ""
 echo "Downloading latest release..."
 
 DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/dev-workflow-cli.tgz"
-TMP_FILE=$(mktemp)
+TMP_DIR=$(mktemp -d)
+TMP_FILE="$TMP_DIR/dev-workflow-cli.tgz"
 
 if ! curl -fsSL "$DOWNLOAD_URL" -o "$TMP_FILE"; then
     echo -e "${RED}Error: Failed to download release${NC}"
     echo "Check if a release exists at: https://github.com/${REPO}/releases"
-    rm -f "$TMP_FILE"
+    rm -rf "$TMP_DIR"
     exit 1
 fi
 
 echo "Installing globally..."
 npm install -g "$TMP_FILE"
-rm -f "$TMP_FILE"
+rm -rf "$TMP_DIR"
 
 # Verify installation
 if ! command -v dev-workflow &> /dev/null; then
