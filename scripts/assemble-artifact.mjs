@@ -15,6 +15,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -42,10 +43,11 @@ function requireExists(p, hint) {
 function main() {
   const { slug, isWindows } = target();
   const cliDist = path.join(repoRoot, "apps/cli/dist");
+  const mcpDist = path.join(repoRoot, "apps/mcp-server/dist");
   const webOut = path.join(repoRoot, "apps/web/out");
 
   requireExists(path.join(cliDist, "cli.js"), "build apps/cli with tsup first");
-  requireExists(path.join(cliDist, "mcp-server.js"), "build apps/mcp-server with tsup first");
+  requireExists(path.join(mcpDist, "mcp-server.js"), "build apps/mcp-server with tsup first");
   requireExists(webOut, "build apps/web (next build → out/) first");
 
   const outDir = path.join(repoRoot, "dist-artifacts");
@@ -54,11 +56,13 @@ function main() {
   fs.mkdirSync(path.join(stage, "bin"), { recursive: true });
   fs.mkdirSync(path.join(stage, "node_modules"), { recursive: true });
 
-  // Bundles + data files (drizzle/skills/templates already placed beside cli.js by tsup).
-  for (const item of ["cli.js", "mcp-server.js", "drizzle", "skills", "templates"]) {
+  // CLI bundle + data files (drizzle/skills/templates placed beside cli.js by tsup).
+  for (const item of ["cli.js", "drizzle", "skills", "templates"]) {
     requireExists(path.join(cliDist, item), "re-run the CLI tsup build");
     copy(path.join(cliDist, item), path.join(stage, item));
   }
+  // MCP server bundle (sourced from its own dist — independent of CLI build order).
+  copy(path.join(mcpDist, "mcp-server.js"), path.join(stage, "mcp-server.js"));
   // Static SPA served by the embedded server (UIService assetsDir = <root>/ui).
   copy(webOut, path.join(stage, "ui"));
 
@@ -97,13 +101,7 @@ function main() {
     execFileSync("tar", ["-czf", archive, "-C", outDir, PKG_NAME]);
   }
 
-  const hash = execFileSync(
-    process.platform === "darwin" ? "shasum" : "sha256sum",
-    process.platform === "darwin" ? ["-a", "256", archive] : [archive],
-    { encoding: "utf8" }
-  )
-    .trim()
-    .split(/\s+/)[0];
+  const hash = createHash("sha256").update(fs.readFileSync(archive)).digest("hex");
   fs.writeFileSync(`${archive}.sha256`, `${hash}  ${path.basename(archive)}\n`);
 
   console.log(`✓ ${path.relative(repoRoot, archive)}  (${slug})`);
