@@ -5,6 +5,7 @@
  * Separate from the main tracking database (workflow.db).
  */
 
+import * as fs from "node:fs";
 import * as path from "node:path";
 import Database from "better-sqlite3";
 import { drizzle, BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
@@ -45,6 +46,13 @@ export class GlobalDbWorkerQueueDb implements WorkerQueueDb {
 
   constructor(dbPath?: string) {
     const actualPath = dbPath ?? getWorkerQueueDbPath();
+
+    // Ensure parent directory exists before creating database
+    const parentDir = path.dirname(actualPath);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
+
     this.sqlite = new Database(actualPath);
     this.sqlite.pragma("foreign_keys = ON");
     this.db = drizzle(this.sqlite);
