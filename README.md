@@ -12,7 +12,7 @@ AI-driven development workflow system that integrates with Claude Code to automa
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | **Issue Tracking**     | Create, update, search, merge issues; soft delete with restore; flexible templates; custom types with GitHub label mapping |
 | **Planning**           | Generate implementation plans with tasks; automatic task dependencies; complexity estimation; SPIKE handling for research  |
-| **Task Execution**     | 3 execution modes (isolated/branch/main); session ownership; conflict detection; progress logging                          |
+| **Task Execution**     | Isolated worktree execution; session ownership; conflict detection; progress logging                                        |
 | **PR Workflow**        | Create PRs with issue linking; submit for review; automatic status sync; complete after merge                              |
 | **GitHub Integration** | Two-way sync with GitHub Issues; GitHub Projects column mapping; import existing issues; sub-issue creation                |
 | **Milestones**         | Time-bounded planning; automatic status computation; issue assignment; deadline tracking                                   |
@@ -81,7 +81,7 @@ Once initialized, interact with dev-workflow through Claude Code:
 
 ### Workflows
 
-- **[Task Execution Guide](docs/TASK_EXECUTION.md)** - 3 modes, lifecycle, PR workflow
+- **[Task Execution Guide](docs/TASK_EXECUTION.md)** - Lifecycle, PR workflow, session management
 - **[GitHub Integration](docs/GITHUB_INTEGRATION.md)** - Sync, Projects, imports, configuration
 - **[Background Workers](docs/WORKERS.md)** - Dispatch queue and parallel execution
 

@@ -28,12 +28,8 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { drizzle as sqliteDrizzle } from "drizzle-orm/better-sqlite3";
 import { migrate as sqliteMigrate } from "drizzle-orm/better-sqlite3/migrator";
-import { neon } from "@neondatabase/serverless";
-import { drizzle as pgDrizzle } from "drizzle-orm/neon-http";
-import { migrate as pgMigrate } from "drizzle-orm/neon-http/migrator";
 
 import * as sqliteSchema from "@dev-workflow/database/schema.js";
-import * as pgSchema from "@dev-workflow/database/schema-pg.js";
 
 import type { DbSource } from "./db-source.js";
 import type { DbClient } from "./db-client.js";
@@ -56,26 +52,12 @@ const __dirname = path.dirname(__filename);
  * Connection info for a data source.
  *
  * Connection string schemes:
- * - sqlite:./relative/path - SQLite with relative path
  * - sqlite:///absolute/path - SQLite with absolute path
  * - sqlite::memory: - SQLite in-memory
- * - postgres:// or postgresql:// - PostgreSQL via Neon
  */
 export interface SourceInfo {
   /** Raw connection string */
   readonly connectionString: string;
-}
-
-// =============================================================================
-// Types
-// =============================================================================
-
-type ConnectionType = "sqlite" | "postgres";
-
-interface ParsedConnection {
-  type: ConnectionType;
-  /** What the driver needs (absolute path or full URL) */
-  driverPath: string;
 }
 
 // =============================================================================
@@ -120,25 +102,13 @@ export class DbSourceProvider extends Service<DbSourceProvider>()("sourceProvide
     this.sources.clear();
   }
 
-  /**
-   * Check if a connection string is for a remote database
-   */
-  static isRemote(connectionString: string): boolean {
-    return connectionString.startsWith("postgres");
-  }
-
   // ===========================================================================
   // Private - Source Creation
   // ===========================================================================
 
   private createSource(connectionString: string): DbSource {
-    const { type, driverPath } = this.parseConnectionString(connectionString);
-
-    if (type === "sqlite") {
-      return this.createSqliteSource(driverPath);
-    } else {
-      return this.createPostgresSource(driverPath);
-    }
+    const driverPath = this.parseConnectionString(connectionString);
+    return this.createSqliteSource(driverPath);
   }
 
   // ===========================================================================
@@ -205,46 +175,6 @@ export class DbSourceProvider extends Service<DbSourceProvider>()("sourceProvide
   }
 
   // ===========================================================================
-  // Private - PostgreSQL
-  // ===========================================================================
-
-  private createPostgresSource(driverPath: string): DbSource {
-    const sql = neon(driverPath);
-    const db = pgDrizzle(sql, { schema: pgSchema });
-    const drizzleDb = db as unknown as DrizzleDb;
-    const migrationsFolder = path.resolve(__dirname, "../../../database/drizzle-pg");
-
-    // Create global repositories
-    const projects = new DrizzleProjectRepository(drizzleDb);
-    const types = new DrizzleTypeRepository(drizzleDb);
-    const globalSettings = new DrizzleGlobalSettingsRepository(drizzleDb);
-
-    return {
-      provision: async () => {
-        // Run migrations (async for postgres)
-        await pgMigrate(db, { migrationsFolder });
-
-        // Seed default types if they don't exist
-        this.seedDefaultTypes(types);
-      },
-
-      projects,
-      types,
-      globalSettings,
-
-      getDb: () => drizzleDb,
-
-      createClient: (projectId: string): DbClient => {
-        return new DrizzleDbClient(drizzleDb, projectId);
-      },
-
-      close: () => {
-        // Neon HTTP is stateless, no close needed
-      },
-    };
-  }
-
-  // ===========================================================================
   // Private - Helpers
   // ===========================================================================
 
@@ -270,32 +200,26 @@ export class DbSourceProvider extends Service<DbSourceProvider>()("sourceProvide
   }
 
   /**
-   * Parse raw connection string into type and driver-ready path.
+   * Parse raw connection string into driver-ready path.
    * Connection strings must use absolute paths.
    */
-  private parseConnectionString(raw: string): ParsedConnection {
-    // postgres:// or postgresql://
-    if (raw.startsWith("postgres")) {
-      return { type: "postgres", driverPath: raw };
-    }
-
+  private parseConnectionString(raw: string): string {
     // sqlite:///absolute/path (3 slashes)
     if (raw.startsWith("sqlite:///")) {
       let absolutePath = raw.slice(9); // "sqlite://" is 9 chars
       if (absolutePath.startsWith("~")) {
         absolutePath = path.join(os.homedir(), absolutePath.slice(1));
       }
-      return { type: "sqlite", driverPath: absolutePath };
+      return absolutePath;
     }
 
     // sqlite::memory:
     if (raw === "sqlite::memory:") {
-      return { type: "sqlite", driverPath: ":memory:" };
+      return ":memory:";
     }
 
     throw new Error(
-      `Invalid connection string: ${raw}. ` +
-        `Expected sqlite:///absolute/path, sqlite::memory:, or postgres://...`
+      `Invalid connection string: ${raw}. Expected sqlite:///absolute/path or sqlite::memory:`
     );
   }
 }

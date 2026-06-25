@@ -1,14 +1,12 @@
 /**
- * moveIssueToReady - Move BACKLOG tasks to READY and sync status to external provider
+ * moveIssueToReady - Move BACKLOG tasks to READY
  *
- * Delegates domain transitions to PlanDomainService.readyIssue() and
- * external sync to ProjectManagementService.syncTaskStatuses().
+ * Delegates domain transitions to PlanDomainService.readyIssue().
  */
 
 import { z } from "zod";
 import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
-import { ProjectManagementService } from "../../project-sync/project-management-service.js";
 import { EventBus } from "../../events/event-bus.js";
 import { EntityNotFoundError } from "../../domain/errors.js";
 import { validateInput } from "../validation.js";
@@ -41,7 +39,6 @@ export function moveIssueToReady(input: MoveIssueToReadyInput) {
     const { issueNumber } = validateInput(MoveIssueToReadySchema, input);
     const issueDomainService = yield* IssueDomainService;
     const planDomainService = yield* PlanDomainService;
-    const pmService = yield* ProjectManagementService;
     const eventBus = yield* EventBus;
 
     const issue = yield* issueDomainService.findByNumber(issueNumber);
@@ -50,7 +47,6 @@ export function moveIssueToReady(input: MoveIssueToReadyInput) {
     }
 
     const result = yield* planDomainService.readyIssue(issueNumber);
-    yield* pmService.syncTaskStatuses(result.tasks, "READY");
 
     if (result.count > 0) {
       eventBus.emit("issue:readied", {

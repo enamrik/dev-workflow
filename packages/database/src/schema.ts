@@ -360,6 +360,8 @@ export type {
   ColumnMapping,
   ProjectManagementConfig,
   GitHubSyncState,
+  SyncState,
+  SyncStatus,
 } from "./types.js";
 
 export { DEFAULT_LABELS_CONFIG, DEFAULT_COLUMN_MAPPING } from "./types.js";
@@ -413,46 +415,6 @@ export const projects = sqliteTable("projects", {
   updatedAt: text("updated_at").notNull(),
 });
 
-/**
- * S3 backup configuration stored as JSON
- *
- * Uses AWS credential chain (profiles, env vars, IAM roles) by default.
- * Explicit credentials are optional for custom S3-compatible services.
- */
-export interface S3BackupConfig {
-  bucket: string;
-  region: string;
-  profile?: string; // AWS profile name from ~/.aws/credentials (optional, uses default chain)
-  endpoint?: string; // Optional custom endpoint for S3-compatible services (R2, MinIO)
-  // Explicit credentials (optional, for non-AWS S3-compatible services)
-  accessKeyId?: string;
-  secretAccessKey?: string;
-}
-
-/**
- * Backup configuration stored as JSON
- */
-export interface BackupConfig {
-  provider: "s3";
-  s3: S3BackupConfig;
-  retentionCount: number; // Number of backups to keep (default: 20)
-}
-
-/**
- * Database configuration for remote database support
- *
- * Stored in global settings. Can be overridden by TRACK_DATABASE_URL env var.
- */
-export interface DatabaseConfig {
-  /** Database provider type */
-  provider: "sqlite" | "neon";
-
-  /** Connection string (for remote databases) */
-  connectionString?: string;
-
-  /** When the configuration was set */
-  configuredAt: string;
-}
 
 /**
  * Global settings table schema

@@ -1,22 +1,18 @@
 /**
  * completeTask - Complete a task after PR merge
  *
- * Multi-path logic: handles main mode (no branch/PR) and branch mode
- * (worktree or branch with PR verification). Validates PR merged status,
- * cleans up worktrees/branches, writes execution log, and optionally
- * closes the parent issue.
+ * Validates PR merged status, cleans up worktrees, writes execution log,
+ * and optionally closes the parent issue.
  */
 
 import { z } from "zod";
 import { Effect } from "@dev-workflow/effect";
 import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
-import { ProjectManagementService } from "../../project-sync/project-management-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
-import { GitHubCLITag } from "../../project-sync/github/github-cli.js";
+import { GitHubCLI } from "@dev-workflow/git/github/github-cli.js";
 import { GitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import { DbClientTag } from "../../data-access/db-client.js";
-import type { GitHubCLI } from "../../project-sync/github/github-cli.js";
 import type { Task } from "../../domain/tasks/task.js";
 import { validateInput } from "../validation.js";
 import { EntityNotFoundError, BusinessRuleError } from "../../domain/errors.js";
@@ -52,7 +48,6 @@ export interface CompleteTaskResult {
   task: {
     id: string;
     status: string;
-    mode: "main" | "isolated" | "branch";
   };
   pr?: {
     number: number;
@@ -75,7 +70,6 @@ function checkAndMaybeCloseIssue(
   taskDomainService: TaskDomainService,
   planDomainService: PlanDomainService,
   issueDomainService: IssueDomainService,
-  projectManagement: ProjectManagementService,
   planId: string,
   autoCloseIssue: boolean
 ) {
@@ -101,10 +95,6 @@ function checkAndMaybeCloseIssue(
       const incompleteTasks = yield* taskDomainService.getIncompleteTasksForIssue(issue.id);
       for (const t of incompleteTasks) {
         yield* taskDomainService.abandon(t.id, "Issue closed", "claude-code");
-      }
-      const updatedSync = yield* projectManagement.closeIssue(issue.syncState);
-      if (updatedSync) {
-        yield* issueDomainService.update(issue.id, { syncState: updatedSync });
       }
       yield* issueDomainService.update(issue.id, { status: "CLOSED" });
       issueClosed = true;
@@ -175,7 +165,7 @@ function findNextAvailableTask(
   });
 }
 
-function completeMainModeTask(
+function completeIsolatedModeTask(
   task: Task,
   taskId: string,
   sessionId: string,
@@ -184,86 +174,6 @@ function completeMainModeTask(
   taskDomainService: TaskDomainService,
   planDomainService: PlanDomainService,
   issueDomainService: IssueDomainService,
-  projectManagement: ProjectManagementService
-) {
-  return Effect.gen(function* () {
-    if (task.status !== "IN_PROGRESS" && !force) {
-      return yield* Effect.fail(
-        new BusinessRuleError(
-          `Task must be IN_PROGRESS to complete (main mode). Current status: ${task.status}. ` +
-            "Use force=true to bypass this check if the task state has drifted."
-        )
-      );
-    }
-
-    yield* taskDomainService.complete(taskId, {
-      changedBy: sessionId,
-      notes: "Completed (main mode, no PR)",
-      force,
-    });
-
-    const closeSyncState = yield* projectManagement.closeIssue(task.syncState);
-    if (closeSyncState) {
-      yield* taskDomainService.updateSyncState(taskId, closeSyncState);
-    }
-    const statusSync = yield* projectManagement.syncTaskStatus(
-      closeSyncState ?? task.syncState,
-      "COMPLETED"
-    );
-    if (statusSync) {
-      yield* taskDomainService.updateSyncState(taskId, statusSync);
-    }
-
-    yield* taskDomainService.clearSession(taskId);
-
-    const issueStatus = yield* checkAndMaybeCloseIssue(
-      taskDomainService,
-      planDomainService,
-      issueDomainService,
-      projectManagement,
-      task.planId,
-      autoCloseIssue
-    );
-    const nextTask = yield* findNextAvailableTask(
-      taskDomainService,
-      planDomainService,
-      issueDomainService,
-      task.planId
-    );
-
-    let message = "Task completed (main mode, no PR review).";
-    if (issueStatus.issueClosed) {
-      message += ` Issue #${issueStatus.issueNumber} has been closed.`;
-    }
-
-    return {
-      success: true,
-      task: {
-        id: taskId,
-        status: "COMPLETED",
-        mode: "main" as const,
-      },
-      nextTask,
-      allTasksComplete: issueStatus.allTasksComplete,
-      issueClosed: issueStatus.issueClosed,
-      issueNumber: issueStatus.issueNumber,
-      message,
-    } satisfies CompleteTaskResult;
-  });
-}
-
-function completeBranchModeTask(
-  task: Task,
-  taskId: string,
-  sessionId: string,
-  force: boolean,
-  autoCloseIssue: boolean,
-  hasWorktree: boolean,
-  hasBranch: boolean,
-  taskDomainService: TaskDomainService,
-  planDomainService: PlanDomainService,
-  issueDomainService: IssueDomainService,
-  projectManagement: ProjectManagementService,
   githubCLI: GitHubCLI,
   gitWorktreeService: GitWorktreeService
 ) {
@@ -315,21 +225,14 @@ function completeBranchModeTask(
       console.warn("Failed to pull main, continuing with cleanup");
     }
 
-    if (hasWorktree) {
+    // Clean up worktree (all tasks use isolated mode with worktrees)
+    if (task.worktreePath) {
       try {
-        yield* gitWorktreeService.removeWorktree(task.worktreePath!, true);
+        yield* gitWorktreeService.removeWorktree(task.worktreePath, true);
       } catch {
         console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
       }
       yield* taskDomainService.clearWorktreeInfo(taskId);
-    } else if (hasBranch) {
-      try {
-        yield* gitWorktreeService.run(["checkout", "main"]);
-        yield* gitWorktreeService.run(["branch", "-d", task.branchName!]);
-      } catch {
-        console.warn(`Failed to cleanup branch: ${task.branchName}`);
-      }
-      yield* taskDomainService.update(taskId, { branchName: undefined });
     }
 
     if (prMerged && task.prNumber) {
@@ -345,25 +248,12 @@ function completeBranchModeTask(
       force,
     });
 
-    const closeSyncState = yield* projectManagement.closeIssue(task.syncState);
-    if (closeSyncState) {
-      yield* taskDomainService.updateSyncState(taskId, closeSyncState);
-    }
-    const statusSync = yield* projectManagement.syncTaskStatus(
-      closeSyncState ?? task.syncState,
-      "COMPLETED"
-    );
-    if (statusSync) {
-      yield* taskDomainService.updateSyncState(taskId, statusSync);
-    }
-
     yield* taskDomainService.clearSession(taskId);
 
     const issueStatus = yield* checkAndMaybeCloseIssue(
       taskDomainService,
       planDomainService,
       issueDomainService,
-      projectManagement,
       task.planId,
       autoCloseIssue
     );
@@ -375,8 +265,8 @@ function completeBranchModeTask(
     );
 
     let message = force
-      ? `Task force-completed.${task.prNumber ? ` PR #${task.prNumber} status: ${prMerged ? "merged" : "not verified"}.` : ""} ${hasWorktree ? "Worktree" : "Branch"} cleaned up.`
-      : `Task completed. PR #${task.prNumber} was merged, ${hasWorktree ? "worktree" : "branch"} cleaned up.`;
+      ? `Task force-completed.${task.prNumber ? ` PR #${task.prNumber} status: ${prMerged ? "merged" : "not verified"}.` : ""} Worktree cleaned up.`
+      : `Task completed. PR #${task.prNumber} was merged, worktree cleaned up.`;
 
     if (issueStatus.issueClosed) {
       message += ` Issue #${issueStatus.issueNumber} has been closed.`;
@@ -387,7 +277,6 @@ function completeBranchModeTask(
       task: {
         id: taskId,
         status: "COMPLETED",
-        mode: hasWorktree ? "isolated" : "branch",
       },
       pr: task.prNumber
         ? {
@@ -415,11 +304,9 @@ function completeBranchModeTask(
  *
  * 1. Validate input and resolve services
  * 2. Find task and write final execution log entry
- * 3. Determine mode (main vs branch)
- * 4. Main mode: validate IN_PROGRESS, complete directly
- * 5. Branch mode: verify PR merged, cleanup worktree/branch, complete
- * 6. Optionally close parent issue if all tasks terminal
- * 7. Find next available task
+ * 3. Verify PR merged, cleanup worktree, complete
+ * 4. Optionally close parent issue if all tasks terminal
+ * 5. Find next available task
  */
 export function completeTask(input: CompleteTaskInput) {
   return Effect.gen(function* () {
@@ -429,9 +316,8 @@ export function completeTask(input: CompleteTaskInput) {
     );
     const taskDomainService = yield* TaskDomainService;
     const issueDomainService = yield* IssueDomainService;
-    const projectManagement = yield* ProjectManagementService;
     const planDomainService = yield* PlanDomainService;
-    const githubCLI = yield* GitHubCLITag;
+    const githubCLI = yield* GitHubCLI;
     const gitWorktreeService = yield* GitWorktreeService;
     const dbClient = yield* DbClientTag;
 
@@ -446,36 +332,15 @@ export function completeTask(input: CompleteTaskInput) {
       message: finalLogEntry.trim(),
     });
 
-    const hasWorktree = !!task.worktreePath;
-    const hasBranch = !!task.branchName;
-    const isMainMode = !hasBranch;
-
-    if (isMainMode) {
-      return yield* completeMainModeTask(
-        task,
-        taskId,
-        sessionId,
-        force,
-        autoCloseIssue,
-        taskDomainService,
-        planDomainService,
-        issueDomainService,
-        projectManagement
-      );
-    }
-
-    return yield* completeBranchModeTask(
+    return yield* completeIsolatedModeTask(
       task,
       taskId,
       sessionId,
       force,
       autoCloseIssue,
-      hasWorktree,
-      hasBranch,
       taskDomainService,
       planDomainService,
       issueDomainService,
-      projectManagement,
       githubCLI,
       gitWorktreeService
     );

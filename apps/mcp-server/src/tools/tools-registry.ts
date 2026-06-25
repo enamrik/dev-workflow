@@ -26,7 +26,6 @@ import {
   handleGetProjectStats,
   handleSearchIssues,
   handleGetWorkQueue,
-  handleImportGitHubIssue,
 } from "./issue-tools.js";
 
 import {
@@ -35,7 +34,6 @@ import {
   handlePauseIssue,
   handleMoveIssueToReady,
   handleMoveIssueToBacklog,
-  handleSyncIssue,
 } from "./plan-tools.js";
 
 import {
@@ -56,8 +54,6 @@ import {
   handleRevertToSnapshot,
   handleViewSnapshot,
 } from "./snapshot-tools.js";
-
-import { handleUpdateSettings } from "./settings-tools.js";
 
 import {
   handleCreateMilestone,
@@ -123,7 +119,6 @@ export function createToolsRegistry(container: McpContainer): ToolsRegistry {
     get_project_stats: createMcpTool(handleGetProjectStats, container),
     search_issues: createMcpTool(handleSearchIssues, container),
     get_work_queue: createMcpTool(handleGetWorkQueue, container),
-    import_github_issue: createMcpTool(handleImportGitHubIssue, container),
 
     // Plan tools
     generate_plan: createMcpTool(handleGeneratePlan, container),
@@ -131,7 +126,6 @@ export function createToolsRegistry(container: McpContainer): ToolsRegistry {
     pause_issue: createMcpTool(handlePauseIssue, container),
     move_issue_to_ready: createMcpTool(handleMoveIssueToReady, container),
     move_issue_to_backlog: createMcpTool(handleMoveIssueToBacklog, container),
-    sync_issue: createMcpTool(handleSyncIssue, container),
 
     // Task tools
     load_task_session: createMcpTool(handleLoadTaskSession, container),
@@ -149,9 +143,6 @@ export function createToolsRegistry(container: McpContainer): ToolsRegistry {
     get_snapshot_history: createMcpTool(handleGetSnapshotHistory, container),
     revert_to_snapshot: createMcpTool(handleRevertToSnapshot, container),
     view_snapshot: createMcpTool(handleViewSnapshot, container),
-
-    // Settings tools
-    update_settings: createMcpTool(handleUpdateSettings, container),
 
     // Milestone tools
     create_milestone: createMcpTool(handleCreateMilestone, container),

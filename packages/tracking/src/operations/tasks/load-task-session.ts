@@ -6,7 +6,6 @@
  * - Terminal state detection: returns graceful response for COMPLETED/ABANDONED
  * - Session management: start/resume via TaskDomainService + GitWorktreeService
  * - Conflict detection: warns about files modified by prior tasks
- * - External sync: syncs status and auto-assigns on fresh start
  * - Context enrichment: loads issue, plan, dependencies, dependents
  */
 
@@ -24,7 +23,6 @@ import {
 } from "../../domain/errors.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
-import { ProjectManagementService } from "../../project-sync/project-management-service.js";
 import {
   GitWorktreeService,
   generateWorktreeNames,
@@ -40,7 +38,6 @@ import { Effect } from "@dev-workflow/effect";
 export const loadTaskSessionSchema = z.object({
   taskId: z.string().min(1),
   sessionId: z.string().min(1),
-  mode: z.enum(["isolated", "branch", "main"]).optional().default("isolated"),
   workerId: z.string().min(1).optional(),
 });
 
@@ -104,7 +101,7 @@ function formatTaskRequirements(implementationPlan: string): string {
 
 export function loadTaskSession(input: LoadTaskSessionInput) {
   return Effect.gen(function* () {
-    const { taskId, sessionId, mode, workerId } = validateInput(loadTaskSessionSchema, input);
+    const { taskId, sessionId, workerId } = validateInput(loadTaskSessionSchema, input);
     const taskDomainService = yield* TaskDomainService;
     const planDomainService = yield* PlanDomainService;
     const issueDomainService = yield* IssueDomainService;
@@ -135,15 +132,6 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
           )
         );
       }
-    }
-
-    if (workerId && mode !== "isolated") {
-      return yield* Effect.fail(
-        new BusinessRuleError(
-          `Workers MUST use isolated mode. Got mode="${mode}" with workerId="${workerId}". ` +
-            `Workers are not allowed to use branch or main modes.`
-        )
-      );
     }
 
     if (task.isTerminal) {
@@ -206,7 +194,8 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
     let worktreePath: string | undefined = task.worktreePath;
     let branchName: string | undefined = task.branchName;
 
-    if (mode === "isolated" && !worktreePath) {
+    // Always use isolated mode (worktree-based execution)
+    if (!worktreePath) {
       const names = generateWorktreeNames(issueNumber, task.number, task.title);
       branchName = names.branchName;
       worktreePath = yield* Effect.catchAll(
@@ -214,11 +203,6 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
         (err) => Effect.promise(() => Promise.reject<string>(err))
       );
       yield* taskDomainService.updateWorktreeInfo(taskId, worktreePath, branchName);
-    } else if (mode === "branch" && !branchName) {
-      const names = generateWorktreeNames(issueNumber, task.number, task.title);
-      branchName = names.branchName;
-      yield* gitWorktreeService.run(["checkout", "-b", branchName]);
-      yield* taskDomainService.update(taskId, { branchName });
     }
 
     if (!isResume) {
@@ -262,38 +246,6 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
         sessionResult.conflictWarnings,
         taskIssue?.number
       );
-    }
-
-    const pm = yield* ProjectManagementService;
-    if (sessionResult.task.syncState?.externalId) {
-      const statusSync = yield* pm.syncTaskStatus(
-        sessionResult.task.syncState,
-        sessionResult.task.status
-      );
-      if (statusSync) {
-        yield* taskDomainService.updateSyncState(taskId, statusSync);
-      }
-    }
-
-    if (!sessionResult.resumed) {
-      if (sessionResult.task.syncState?.externalId) {
-        const assignSync = yield* pm.autoAssign(sessionResult.task.syncState);
-        if (assignSync) {
-          yield* taskDomainService.updateSyncState(taskId, assignSync);
-        }
-      }
-
-      const siblingTasks = yield* taskDomainService.findByPlanId(sessionResult.task.planId);
-      for (const sibling of siblingTasks) {
-        if (sibling.id !== taskId && sibling.status === "READY") {
-          if (sibling.syncState?.externalId) {
-            const siblingSync = yield* pm.syncTaskStatus(sibling.syncState, "READY");
-            if (siblingSync) {
-              yield* taskDomainService.updateSyncState(sibling.id, siblingSync);
-            }
-          }
-        }
-      }
     }
 
     return yield* addTaskContext(

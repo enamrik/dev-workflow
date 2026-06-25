@@ -197,7 +197,6 @@ export class DependencyNotSatisfiedError extends Error {
  * - READY → BACKLOG (when issue is paused)
  * - BACKLOG/READY → IN_PROGRESS (when task is started)
  * - IN_PROGRESS → PR_REVIEW (when task is submitted for review)
- * - IN_PROGRESS → COMPLETED (direct completion, main mode only)
  * - PR_REVIEW → COMPLETED (after PR is merged)
  * - Any → ABANDONED (when task is abandoned)
  */

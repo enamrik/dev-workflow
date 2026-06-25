@@ -9,7 +9,7 @@ import * as path from "node:path";
 import { Effect } from "@dev-workflow/effect";
 import type { Project, UpdateProjectData } from "./project.js";
 import type { DbSource } from "../../data-access/db-source.js";
-import type { ProjectManagementConfig } from "../../project-sync/project-management-config.js";
+import type { ProjectManagementConfig } from "@dev-workflow/database/schema.js";
 import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
 
 /**

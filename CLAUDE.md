@@ -226,6 +226,19 @@ if (dataSource.isRemote) {
 - Classes: nouns (User, Issue, Plan)
 - Methods: verbs (create, update, delete)
 - Booleans: is/has/can prefix (isOpen, hasChildren, canClose)
+- **NEVER use `Impl` suffix** - Name classes after what makes them distinct
+
+```typescript
+// ❌ BAD - Lazy, meaningless name
+class TaskStatusCheckerImpl implements TaskStatusChecker {}
+
+// ✅ GOOD - Name describes the implementation strategy
+class TableDrivenTaskStatusChecker implements TaskStatusChecker {}
+
+// ✅ GOOD - Name describes the backing store
+class SqliteIssueRepository implements IssueRepository {}
+class InMemoryIssueRepository implements IssueRepository {}
+```
 
 #### Functions
 

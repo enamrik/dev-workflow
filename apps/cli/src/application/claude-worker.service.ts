@@ -597,8 +597,7 @@ Use the dwf-worker-task skill to load the task session and work through the COMP
 
 1. Load the task with load_task_session
    - **CRITICAL: You MUST pass workerId="${workerId}" to load_task_session**
-   - Workers are required to use isolated mode (the default) and must pass their workerId
-   - The MCP tool will reject your call if you pass workerId with any mode other than "isolated"
+   - This validates that you own the task in the dispatch queue
 2. Implement the task according to its description and acceptance criteria
 3. Create a PR when implementation is done
 4. Submit for review

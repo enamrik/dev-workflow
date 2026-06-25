@@ -14,7 +14,6 @@ import type { TrackDirectoryResolver } from "@dev-workflow/git/track-directory-r
 import type { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
 import type { DbSourceProvider, DbSource } from "@dev-workflow/tracking";
 import { InstallService } from "../../application/install.service.js";
-import { ArchiveService } from "../../application/archive.service.js";
 import { InitCommand } from "../init-command.js";
 
 // Mock console methods - these are at module level
@@ -146,36 +145,15 @@ function setupTestContainer(options: { isWorktree?: boolean } = {}): CliContaine
         );
       }
     ).scoped(),
-
-    archiveService: asFunction(
-      ({
-        fileSystem,
-        workingDirectory,
-        trackDirectoryResolver,
-        sourceProvider,
-        gitOps,
-        installService,
-      }) => {
-        return new ArchiveService(
-          fileSystem as FileSystem,
-          workingDirectory as string,
-          trackDirectoryResolver as TrackDirectoryResolver,
-          sourceProvider as DbSourceProvider,
-          gitOps as GitOperations,
-          installService as InstallService
-        );
-      }
-    ).scoped(),
   });
 
   // Register the command with injected dependencies
   container.register({
-    initCommand: asFunction(({ gitOps, workingDirectory, installService, archiveService }) => {
+    initCommand: asFunction(({ gitOps, workingDirectory, installService }) => {
       return new InitCommand(
         gitOps as GitOperations,
         workingDirectory as string,
-        installService as InstallService,
-        archiveService as ArchiveService
+        installService as InstallService
       );
     }).scoped(),
   });
@@ -200,56 +178,6 @@ describe("InitCommand", () => {
 
       await expect(command.execute()).rejects.toThrow("process.exit(1)");
       expect(mockConsoleError).toHaveBeenCalledWith("❌ Cannot run init from a git worktree.");
-    });
-
-    it("should exit when --local and --url are both provided", async () => {
-      const container = setupTestContainer();
-
-      const command = container.cradle.initCommand;
-
-      await expect(
-        command.execute({ local: true, url: "postgresql://localhost/db" })
-      ).rejects.toThrow("process.exit(1)");
-      expect(mockConsoleError).toHaveBeenCalledWith("❌ Cannot use --local and --url together.");
-    });
-
-    it("should exit when --url has invalid format", async () => {
-      const container = setupTestContainer();
-
-      const command = container.cradle.initCommand;
-
-      await expect(command.execute({ url: "mysql://localhost/db" })).rejects.toThrow(
-        "process.exit(1)"
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith("❌ Invalid connection string format.");
-    });
-
-    it("should accept valid postgresql:// URL and not fail on validation", async () => {
-      const container = setupTestContainer();
-
-      const command = container.cradle.initCommand;
-      // This will fail later in the flow (e.g., database connection), but NOT on URL validation
-      try {
-        await command.execute({ url: "postgresql://localhost/db" });
-      } catch {
-        // May throw for other reasons (database, etc.) - we just check URL validation didn't fail
-      }
-
-      expect(mockConsoleError).not.toHaveBeenCalledWith("❌ Invalid connection string format.");
-    });
-
-    it("should accept valid postgres:// URL and not fail on validation", async () => {
-      const container = setupTestContainer();
-
-      const command = container.cradle.initCommand;
-      // This will fail later in the flow (e.g., database connection), but NOT on URL validation
-      try {
-        await command.execute({ url: "postgres://localhost/db" });
-      } catch {
-        // May throw for other reasons (database, etc.) - we just check URL validation didn't fail
-      }
-
-      expect(mockConsoleError).not.toHaveBeenCalledWith("❌ Invalid connection string format.");
     });
 
     it("should verify gitOps.isWorktree is called with working directory", async () => {

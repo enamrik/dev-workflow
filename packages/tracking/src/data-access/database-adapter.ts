@@ -1,12 +1,11 @@
 /**
- * Unified interface for SQLite database adapters
- * Supports both native (better-sqlite3) and WASM (sql.js) backends
+ * Interface for SQLite database adapter using better-sqlite3
  */
 export interface DatabaseAdapter {
   exec(sql: string): void;
   prepare<T = any>(sql: string): PreparedStatement<T>;
   close(): void;
-  readonly type: "native" | "wasm";
+  readonly type: "native";
 }
 
 export interface PreparedStatement<T = any> {

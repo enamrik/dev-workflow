@@ -98,52 +98,6 @@ export {
 export { ProjectService } from "./domain/projects/project-service.js";
 
 // =============================================================================
-// Project Sync / External Providers
-// =============================================================================
-export {
-  syncStateFromExternalIssue,
-  type ProjectManagementProvider,
-  type SyncState,
-  type AvailableLabel,
-} from "./project-sync/project-management-provider.js";
-export {
-  PROVIDER_DEFAULT_COLUMN_MAPPING as DEFAULT_COLUMN_MAPPING,
-  type ColumnMapping,
-  type ProjectManagementConfig,
-} from "./project-sync/project-management-config.js";
-export type { ProjectManagementClient } from "./project-sync/project-management-client.js";
-export {
-  ProjectManagementService,
-  type TaskSyncEntry,
-  type SyncStateUpdate,
-  type RepairSyncEntry,
-  type RepairSkippedEntry,
-  type RepairSyncResult,
-} from "./project-sync/project-management-service.js";
-export {
-  ProjectManagementRegistry,
-  getProjectManagementProvider,
-} from "./project-sync/provider-registry.js";
-export { getProjectManagementService } from "./project-sync/provider-factory.js";
-export {
-  buildTaskBody,
-  buildTaskLabels,
-  buildDefaultTaskBody,
-  applyTaskPlaceholders,
-  appendFooter,
-} from "./project-sync/task-body-builder.js";
-export { GitHubCLI, NodeGitHubCLI } from "./project-sync/github/github-cli.js";
-export { GitHubProjectManagementProvider } from "./project-sync/github/github-project-management-provider.js";
-export { GitHubProjectManagementClient } from "./project-sync/github/github-project-management-client.js";
-export { NoOpProjectManagementProvider } from "./project-sync/noop-project-management-provider.js";
-export { NoOpProjectManagementClient } from "./project-sync/noop-project-management-client.js";
-export {
-  MockGitHubCLI,
-  type MockGitHubCLIConfig,
-  type MockGitHubCLICall,
-} from "./project-sync/github/mock-github-cli.js";
-
-// =============================================================================
 // Templates
 // =============================================================================
 export { TemplateService, type TemplateServiceConfig } from "./templates/template-service.js";
@@ -376,19 +330,6 @@ export {
   type MoveIssueToBacklogResult,
 } from "./operations/plans/move-issue-to-backlog.js";
 export {
-  repairIssue,
-  RepairIssueSchema as RepairIssueOperationSchema,
-  type RepairIssueInput,
-  type RepairIssueResult,
-} from "./operations/plans/repair-issue.js";
-
-export {
-  updateSettings,
-  UpdateSettingsSchema,
-  type UpdateSettingsInput,
-} from "./operations/settings/update-settings.js";
-
-export {
   createIssue,
   CreateIssueSchema,
   type CreateIssueInput,
@@ -430,12 +371,6 @@ export {
   type GetWorkQueueInput,
   type GetWorkQueueResult,
 } from "./operations/issues/get-work-queue.js";
-export {
-  importGitHubIssue,
-  ImportGitHubIssueSchema,
-  type ImportGitHubIssueInput,
-  type ImportGitHubIssueResult,
-} from "./operations/issues/import-github-issue.js";
 
 export {
   loadTaskSession,
@@ -562,8 +497,6 @@ export {
 export { DbSourceTag } from "./data-access/db-source.js";
 export { DbClientTag } from "./data-access/db-client.js";
 export { ProjectTag } from "./domain/projects/project.js";
-export { GitHubCLITag } from "./project-sync/github/github-cli.js";
-export { ProjectManagementProviderTag } from "./project-sync/project-management-provider.js";
 
 // =============================================================================
 // DI / Infrastructure
@@ -603,20 +536,6 @@ export { DrizzleSnapshotRepository } from "./domain/snapshots/snapshot-repositor
 // =============================================================================
 export type { GlobalSettingsRepository } from "./domain/global-settings-repository.js";
 export { DrizzleGlobalSettingsRepository } from "./domain/global-settings-repository.js";
-
-// =============================================================================
-// Backup
-// =============================================================================
-export { BackupService } from "./backup-service.js";
-export type {
-  BackupResult,
-  BackupProvider,
-  BackupMetadata,
-  RestoreResult,
-  ValidationResult,
-  CreateBucketResult,
-} from "./backup.js";
-export { S3BackupProvider } from "./backup/s3-backup-provider.js";
 
 // =============================================================================
 // Execution Log

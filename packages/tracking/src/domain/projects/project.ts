@@ -8,7 +8,7 @@
  * now lives in ~/.track/<slug>/config.json. See project-config-resolver.ts.
  */
 
-import type { ProjectManagementConfig } from "../../project-sync/project-management-config.js";
+import type { ProjectManagementConfig } from "@dev-workflow/database/schema.js";
 import { type Effect, Service } from "@dev-workflow/effect";
 
 /**
@@ -58,8 +58,6 @@ export interface UpdateProjectData {
  *
  * Unlike other repositories, this is NOT scoped to a project
  * since it manages projects themselves.
- *
- * All methods are async to support both sync (SQLite) and async (PostgreSQL) backends.
  */
 export interface ProjectRepository {
   /**
@@ -101,10 +99,9 @@ export interface ProjectRepository {
   /**
    * Find all projects
    *
-   * @param includeArchived - If true, include archived projects (default: false)
-   * @returns Array of projects
+   * @returns Array of all projects
    */
-  findAll(includeArchived?: boolean): Effect<Project[]>;
+  findAll(): Effect<Project[]>;
 
   /**
    * Update a project's properties
@@ -114,22 +111,6 @@ export interface ProjectRepository {
    * @returns The updated project
    */
   update(id: string, data: UpdateProjectData): Effect<Project>;
-
-  /**
-   * Archive a project (soft delete - hides from UI but preserves data)
-   *
-   * @param id - Project UUID
-   * @returns The archived project
-   */
-  archive(id: string): Effect<Project>;
-
-  /**
-   * Unarchive a project (restore from archived state)
-   *
-   * @param id - Project UUID
-   * @returns The unarchived project
-   */
-  unarchive(id: string): Effect<Project>;
 
   /**
    * Hard delete a project and ALL associated data
@@ -147,15 +128,4 @@ export interface ProjectRepository {
    * @param id - Project UUID
    */
   hardDelete(id: string): Effect<void>;
-
-  /**
-   * Delete a project (soft delete via archive is preferred)
-   *
-   * WARNING: This will orphan any issues associated with this project.
-   * Consider using archive() instead.
-   *
-   * @param id - Project UUID
-   * @deprecated Use archive() or hardDelete() instead
-   */
-  delete(id: string): Effect<void>;
 }

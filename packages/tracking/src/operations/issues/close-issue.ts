@@ -1,7 +1,7 @@
 /**
  * closeIssue - Close an issue and optionally abandon incomplete tasks
  *
- * Orchestrates domain services + external sync.
+ * Orchestrates domain services.
  * Uses transaction when abandoning multiple tasks.
  */
 
@@ -9,8 +9,6 @@ import { z } from "zod";
 import type { Issue } from "../../domain/issues/issue.js";
 import type { Task } from "../../domain/tasks/task.js";
 import { DomainExecutorFactory } from "../../domain/domain-executor.js";
-import { ProjectManagementService } from "../../project-sync/project-management-service.js";
-import { GitHubCLITag } from "../../project-sync/github/github-cli.js";
 import { BusinessRuleError } from "../../domain/errors.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
@@ -30,8 +28,6 @@ export type CloseIssueInput = z.infer<typeof CloseIssueSchema>;
 export interface CloseIssueResult {
   issue: Issue;
   abandonedTasks: Task[];
-  externalIssueClosed: boolean;
-  parentGitHubIssueClosed: string | undefined;
 }
 
 // =============================================================================
@@ -45,8 +41,6 @@ export interface CloseIssueResult {
  * 2. Check issue exists and is not already closed
  * 3. Check for incomplete tasks (error unless force=true)
  * 4. Force mode: abandon incomplete tasks + close issue (transaction)
- * 5. External sync (close synced issue after commit)
- * 6. Close parent GitHub issue if this was an imported issue
  */
 export function closeIssue(input: CloseIssueInput) {
   return Effect.gen(function* () {
@@ -60,8 +54,6 @@ export function closeIssue(input: CloseIssueInput) {
       return {
         issue,
         abandonedTasks: [],
-        externalIssueClosed: false,
-        parentGitHubIssueClosed: undefined,
       };
     }
 
@@ -90,23 +82,6 @@ export function closeIssue(input: CloseIssueInput) {
       })
     );
 
-    // 4. External sync (close the synced issue)
-    const projectManagement = yield* ProjectManagementService;
-    const updatedSyncState = yield* projectManagement.closeIssue(issue.syncState);
-    let externalIssueClosed = false;
-    if (updatedSyncState) {
-      yield* pd.issues.update(issue.id, { syncState: updatedSyncState });
-    }
-    externalIssueClosed = !!issue.syncState?.externalId;
-
-    // 5. For imported issues, also close the parent GitHub issue
-    let parentGitHubIssueClosed: string | undefined;
-    if (result.issue.sourceExternalId) {
-      const githubCLI = yield* GitHubCLITag;
-      yield* githubCLI.closeIssue(Number(result.issue.sourceExternalId));
-      parentGitHubIssueClosed = result.issue.sourceExternalId;
-    }
-
-    return { ...result, externalIssueClosed, parentGitHubIssueClosed };
+    return result;
   });
 }

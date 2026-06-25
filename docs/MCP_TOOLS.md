@@ -401,18 +401,13 @@ Repair GitHub sync state for an issue.
 
 Load a task for execution with full context.
 
-| Parameter   | Type   | Required | Description                                                |
-| ----------- | ------ | -------- | ---------------------------------------------------------- |
-| `taskId`    | string | Yes      | Task UUID                                                  |
-| `sessionId` | string | Yes      | Claude session ID                                          |
-| `mode`      | enum   | No       | `isolated` (default), `branch`, or `main`                  |
-| `workerId`  | string | No       | Worker UUID (required for workers, enforces isolated mode) |
+| Parameter   | Type   | Required | Description                                                       |
+| ----------- | ------ | -------- | ----------------------------------------------------------------- |
+| `taskId`    | string | Yes      | Task UUID                                                         |
+| `sessionId` | string | Yes      | Claude session ID                                                 |
+| `workerId`  | string | No       | Worker UUID (required for workers, used for task queue validation)|
 
-**Modes:**
-
-- `isolated`: Creates worktree + branch for parallel work (default)
-- `branch`: Creates branch only, checks out in main repo
-- `main`: Works directly on main, skips PR review
+**Behavior:** Creates a git worktree and branch for isolated parallel work.
 
 **Returns:** Full context including task, issue, plan, worktree info, dependencies, and task requirements.
 
@@ -431,7 +426,7 @@ Abandon the current task.
 | `reason`    | string  | No       | Reason for abandonment              |
 | `force`     | boolean | No       | Bypass session ownership validation |
 
-**Behavior:** Marks task as ABANDONED. For isolated/branch modes, cleans up worktree and branch.
+**Behavior:** Marks task as ABANDONED. Cleans up worktree and branch.
 
 ---
 
@@ -630,17 +625,12 @@ Complete a task after PR is merged.
 | `force`          | boolean | No       | Bypass state validation                      |
 | `autoCloseIssue` | boolean | No       | Close parent issue if all tasks are complete |
 
-**For Branch/Isolated Modes:**
+**Behavior:**
 
 - Verifies PR is merged
 - Pulls main
-- Cleans up worktree/branch
+- Cleans up worktree and branch
 - Transitions to COMPLETED
-
-**For Main Mode:**
-
-- Completes directly from IN_PROGRESS
-- Skips PR verification
 
 **Returns:** Includes `allTasksComplete` boolean and `nextTask` suggestion.
 

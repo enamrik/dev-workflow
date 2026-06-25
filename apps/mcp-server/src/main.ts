@@ -12,8 +12,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 // Import DI container and types
-import { createMcpContainer, type McpContainer, type McpCradle } from "./di/container.js";
-import { ProjectManagementRegistry } from "@dev-workflow/tracking";
+import { createMcpContainer, type McpContainer } from "./di/container.js";
 
 // Import tool definitions and registry
 import {
@@ -21,7 +20,6 @@ import {
   planToolDefinitions,
   taskToolDefinitions,
   snapshotToolDefinitions,
-  settingsToolDefinitions,
   milestoneToolDefinitions,
   worktreeToolDefinitions,
   prToolDefinitions,
@@ -70,7 +68,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     ...planToolDefinitions,
     ...taskToolDefinitions,
     ...snapshotToolDefinitions,
-    ...settingsToolDefinitions,
     ...milestoneToolDefinitions,
     ...worktreeToolDefinitions,
     ...prToolDefinitions,
@@ -92,28 +89,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
 
   return tool(args ?? {});
 });
-
-/**
- * Log provider status for startup diagnostics.
- */
-function logProviderStatus(cradle: McpCradle): void {
-  const providerRegistry = ProjectManagementRegistry.getInstance();
-  const providerDeps = { githubCLI: cradle.githubCLI };
-
-  if (cradle.project.syncConfig?.enabled) {
-    const providerId = cradle.projectManagement.getProviderId();
-    const providerInfo = providerRegistry.tryGet(providerId);
-    const displayName = providerInfo?.displayName ?? providerId;
-    console.error(`External sync enabled: ${displayName} provider (repository auto-detected)`);
-  } else {
-    const availableProviders = providerRegistry.list(providerDeps);
-    const providerNames = availableProviders
-      .filter((p) => p.available)
-      .map((p) => p.displayName)
-      .join(", ");
-    console.error(`External sync not configured (available providers: ${providerNames})`);
-  }
-}
 
 /**
  * Initialize all services and start the server
@@ -145,7 +120,6 @@ async function main() {
 
   // Log startup info
   console.error(`Project: ${cradle.project.name} (${cradle.project.id.slice(0, 8)}...)`);
-  logProviderStatus(cradle);
 
   // Start server with stdio transport
   const transport = new StdioServerTransport();

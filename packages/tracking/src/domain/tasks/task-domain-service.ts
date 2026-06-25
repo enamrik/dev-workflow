@@ -9,7 +9,7 @@
 import type { Task, TaskStatus, PRStatus, TaskRepository } from "./task.js";
 import type { PlanRepository } from "../plans/plan.js";
 import type { IssueRepository } from "../issues/issue.js";
-import type { SyncState } from "../../project-sync/project-management-provider.js";
+import type { SyncState } from "@dev-workflow/database/schema.js";
 import { EntityNotFoundError, BusinessRuleError } from "../errors.js";
 import { Effect, Service } from "@dev-workflow/effect";
 

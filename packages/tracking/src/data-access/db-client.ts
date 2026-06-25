@@ -53,9 +53,6 @@ export interface DbClient {
 
   /**
    * Close the database connection.
-   *
-   * SQLite: Closes the underlying better-sqlite3 connection.
-   * PostgreSQL (Neon): No-op since Neon HTTP is stateless.
    */
   close(): void;
 }

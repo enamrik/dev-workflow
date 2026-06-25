@@ -122,8 +122,9 @@ export class DirectToolExecutor {
     this.projectSlug = resolver.getProjectId();
 
     // 6. Run dev-workflow init (creates config, database, etc.)
+    // TRACK_DIR env var points init to test directory instead of ~/.track
     const cliPath = join(__dirname, "../../../../apps/cli/dist/main.js");
-    execSync(`node ${cliPath} init --local`, {
+    execSync(`node ${cliPath} init`, {
       cwd: this.testDir,
       stdio: "pipe",
       env: { ...process.env, TRACK_DIR: this.trackDir },
@@ -254,15 +255,10 @@ export class DirectToolExecutor {
     return this.callTool("get_task", { taskId: args.task_id });
   }
 
-  async loadTaskSession(args: {
-    task_id: string;
-    session_id: string;
-    mode?: "isolated" | "branch" | "main";
-  }): Promise<ToolResult> {
+  async loadTaskSession(args: { task_id: string; session_id: string }): Promise<ToolResult> {
     return this.callTool("load_task_session", {
       taskId: args.task_id,
       sessionId: args.session_id,
-      mode: args.mode,
     });
   }
 

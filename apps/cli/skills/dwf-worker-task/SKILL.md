@@ -40,7 +40,7 @@ This constraint is **per-session**, not system-wide. Multiple Claude sessions CA
 
 A task is only "complete" when it reaches a terminal state:
 
-- **COMPLETED** - Work done, PR merged (or committed on main mode)
+- **COMPLETED** - Work done, PR merged
 - **ABANDONED** - Work stopped, reason documented
 
 **How to check:** If you started a task earlier in this conversation (you called `load_task_session`), check if that task is still IN_PROGRESS or PR_REVIEW before starting a new one. If you haven't started any task in this conversation, you're free to start one - even if other tasks show as IN_PROGRESS (they belong to other sessions).
@@ -65,37 +65,15 @@ load_task_session({
 });
 ```
 
-The MCP tool enforces that workers use isolated mode. If you provide a `workerId` with any mode other than `"isolated"` (the default), the tool will reject the call.
-
-This prevents workers from accidentally using branch or main modes, which would interfere with parallel execution.
+The MCP tool validates that workers pass their `workerId` for task queue validation.
 
 ## Task Lifecycle
 
-Tasks flow: PLANNED → BACKLOG → READY → IN_PROGRESS → PR_REVIEW → COMPLETED (or ABANDONED from any state). Main mode skips PR_REVIEW. See Status Transitions table below for details.
+Tasks flow: PLANNED → BACKLOG → READY → IN_PROGRESS → PR_REVIEW → COMPLETED (or ABANDONED from any state). See Status Transitions table below for details.
 
 ### SPIKE Task Detection
 
 **Before starting implementation, check `task.type`.** If `SPIKE`, follow the SPIKE Execution Mode below instead of normal implementation flow. SPIKE tasks focus on investigation and discussion, not coding.
-
-### Execution Modes
-
-**1. Isolated Mode (default)**
-
-- Creates a git worktree + branch for parallel work
-- Full PR workflow: submit for review → merge → complete
-- Best for: feature work, parallel tasks, changes that need review
-
-**2. Branch Mode**
-
-- Creates a branch only, checks out in main repo
-- Full PR workflow: submit for review → merge → complete
-- Best for: sequential work, when worktrees aren't needed
-
-**3. Main Mode**
-
-- Works directly on main branch, no branch created
-- Skips PR workflow, completes directly
-- Best for: trivial fixes, documentation, config changes
 
 ### SPIKE Execution Mode
 
@@ -111,7 +89,7 @@ Option B: [approach] - Pros: ... / Cons: ... / Effort: ...
 Recommendation: [option] because [rationale]
 ```
 
-**4. Complete** - No code written → main mode, complete directly. Prototype written → PR as normal.
+**4. Complete** - No code written → use `force=true` to complete directly. Prototype written → PR as normal.
 
 **Example:**
 
@@ -135,9 +113,9 @@ Once I understand your requirements, I'll research and present a comparison.
 | BACKLOG     | IN_PROGRESS | `load_task_session` (also moves other BACKLOG → READY)                                                  |
 | READY       | IN_PROGRESS | `load_task_session`                                                                                     |
 | READY       | BACKLOG     | `pause_issue` (moves all READY tasks)                                                                   |
-| IN_PROGRESS | IN_PROGRESS | `create_pr` (creates PR, status unchanged - isolated/branch modes)                                      |
-| IN_PROGRESS | PR_REVIEW   | `submit_for_review` (after PR exists - isolated/branch modes)                                           |
-| IN_PROGRESS | COMPLETED   | `complete_task` (main mode only)                                                                        |
+| IN_PROGRESS | IN_PROGRESS | `create_pr` (creates PR, status unchanged)                                                              |
+| IN_PROGRESS | PR_REVIEW   | `submit_for_review` (after PR exists)                                                                   |
+| IN_PROGRESS | COMPLETED   | `complete_task` with `force=true` (for SPIKE tasks with no code changes)                                |
 | PR_REVIEW   | COMPLETED   | `complete_task` (after PR merged)                                                                       |
 | Any         | ABANDONED   | `abandon_task`                                                                                          |
 | COMPLETED   | (terminal)  | `end_worker_session` (workers only - signals worker process to terminate)                               |
@@ -166,14 +144,8 @@ Once I understand your requirements, I'll research and present a comparison.
      - This transitions all PLANNED tasks to BACKLOG and creates GitHub issues (unless user requests `skipGitHubSync: true`)
    - **If task is BACKLOG or READY:** Proceed with starting
 
-4. **Determine execution mode:**
-   - **ALWAYS use `isolated` mode** unless the user explicitly requests otherwise
-   - Only use `branch` if user explicitly says "branch mode", "no worktree", etc.
-   - Only use `main` if user explicitly says "on main", "main mode", "skip PR", etc.
-   - **NEVER autonomously choose a non-default mode** based on task complexity or size
-
-5. **Load the task session:**
-   - Call `load_task_session` with task ID, session ID, and mode
+4. **Load the task session:**
+   - Call `load_task_session` with task ID and session ID
    - This returns full context: task, issue, plan, worktree info
    - Response includes `resumed: boolean` - check this field:
      - `resumed: false` → Fresh start (BACKLOG/READY task)
@@ -181,22 +153,20 @@ Once I understand your requirements, I'll research and present a comparison.
    - **If task is already COMPLETED or ABANDONED:** Response returns success with terminal state info (no error). Check `task.status` - if terminal, skip to "Terminal Task Recovery" below.
    - Review title, description, and acceptance criteria from the response
 
-6. **If resuming (`resumed: true`):**
+5. **If resuming (`resumed: true`):**
    - Call `get_task_execution_log` to read previous session's progress
    - Review the logged entries to understand what was already done
    - Summarize the previous progress to the user before continuing
    - Check `git status` in the worktree to see uncommitted changes
    - Continue from where the previous session left off
 
-7. **Present task to user:**
+6. **Present task to user:**
    - Show what needs to be implemented
    - Show acceptance criteria as a checklist
-   - For isolated mode: show worktree path and branch name
-   - For branch mode: show branch name
-   - For main mode: note that PR will be skipped
+   - Show worktree path and branch name
    - Offer to begin implementation
 
-### To Create a PR and Submit for Review (Isolated/Branch Modes)
+### To Create a PR and Submit for Review
 
 After implementing the task, create a PR and optionally submit for review.
 
@@ -276,30 +246,6 @@ When user needs to push more changes (e.g., review feedback):
 
 **IMPORTANT: `complete_task` requires a `finalLogEntry` parameter** - a summary of what was accomplished. This ensures every completed task has documentation of the work done.
 
-**For Main Mode (no PR):**
-
-1. **Summarize work done:**
-   - List the key changes made
-   - Review acceptance criteria
-
-2. **Ask for confirmation:**
-   - Present summary to user
-   - Ask: "Should I mark this task as complete?"
-   - Wait for explicit user approval
-
-3. **Run validation and commit:**
-   - Run tests/linting
-   - Create git commit
-
-4. **Complete the task:**
-   - Call `complete_task` with task ID, session ID, and `finalLogEntry`
-   - **Workers:** Also pass `autoCloseIssue: true` to auto-close the issue if this is the last task
-   - The `finalLogEntry` should summarize what was accomplished (files changed, features added, etc.)
-   - Task transitions directly to COMPLETED
-   - See "Auto-Closing Issues" below for behavior differences between workers and interactive sessions
-
-**For Isolated/Branch Modes (with PR):**
-
 > **⚠️ CRITICAL:** Task MUST be in PR_REVIEW before completing.
 > If still IN_PROGRESS → call `submit_for_review` first.
 
@@ -351,11 +297,11 @@ end_worker_session({
 
 1. **Confirm abandonment:**
    - Ask user for the reason
-   - Confirm they want to abandon (work will be lost for isolated/branch modes)
+   - Confirm they want to abandon (work will be lost)
 
 2. **Abandon the session:**
    - Call `abandon_task` with task ID, session ID, and reason
-   - For isolated/branch modes: worktree and branch will be deleted
+   - Worktree and branch will be deleted
 
 3. **Report and suggest:**
    - Show task is now ABANDONED
@@ -389,9 +335,9 @@ When `load_task_session` returns a task in COMPLETED or ABANDONED state, the res
 
 **Workers:** If task is already terminal, call `end_worker_session()` immediately - nothing to do.
 
-## CRITICAL: Worktree Path (Isolated Mode)
+## CRITICAL: Worktree Path
 
-When a task is started in isolated mode, `load_task_session` returns a `worktreePath`. You MUST use this path for ALL file operations during the task:
+When a task is started, `load_task_session` returns a `worktreePath`. You MUST use this path for ALL file operations during the task:
 
 - **Read/Edit/Write tools**: Always use the full worktree path (e.g., `/Users/.../.track/project/worktrees/issue-N-task-N/path/to/file`)
 - **Bash commands**: Always `cd` to the worktree path or use absolute paths within the worktree
@@ -445,7 +391,7 @@ PR #42: MERGED
 Task COMPLETED. Next task available: "Add session management"
 ```
 
-**Main mode:** Summarize → confirm → commit → `complete_task` → COMPLETED
+**SPIKE with no code changes:** Summarize → confirm → `complete_task` with `force=true` → COMPLETED
 
 ## Error Handling
 
@@ -493,7 +439,7 @@ Any manual workaround (direct database updates, `gh` CLI, etc.) creates **corrup
 | Task not found                   | Call `list_available_tasks` to show available              |
 | Task in progress (other session) | Wait, or force mode if session stale                       |
 | No tasks available               | Check plan or create new tasks                             |
-| Create PR failed - no branch     | Main mode; complete directly instead                       |
+| Create PR failed - no branch     | Check worktree setup; abandon and retry if needed          |
 | Create PR failed - wrong status  | Force mode if state drifted                                |
 | Submit failed - no PR            | Call `create_pr` first; force mode if PR exists externally |
 | Submit failed - wrong status     | Force mode if state drifted                                |

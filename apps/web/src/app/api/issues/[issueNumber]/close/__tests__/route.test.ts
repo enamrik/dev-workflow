@@ -31,9 +31,6 @@ describe("closeIssueEndpoint", () => {
             transaction: (fn: Function) => fn({ issues: issuesMock, tasks: tasksMock }),
           }),
       },
-      projectManagement: {
-        closeIssue: () => Effect.succeed(null),
-      },
     });
 
     const req = createTestRequest("POST", "/api/issues/42/close", {
@@ -124,9 +121,6 @@ describe("closeIssueEndpoint", () => {
             transaction: (fn: Function) => fn({ issues: issuesMock, tasks: tasksMock }),
           }),
       },
-      projectManagement: {
-        closeIssue: () => Effect.succeed(null),
-      },
     });
 
     const req = createTestRequest("POST", "/api/issues/42/close", {
@@ -140,6 +134,5 @@ describe("closeIssueEndpoint", () => {
     expect(result.status).toBe(200);
     const body = await result.json();
     expect(body.abandonedTasks).toHaveLength(2);
-    expect(body.externalIssueClosed).toBe(true);
   });
 });

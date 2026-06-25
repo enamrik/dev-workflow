@@ -9,23 +9,15 @@ import { Service } from "@dev-workflow/effect";
 import type { UninitCommand } from "../commands/uninit-command.js";
 import type { InitCommand } from "../commands/init-command.js";
 import type { UpdateCommand } from "../commands/update-command.js";
-import type { ArchiveCommand, UnarchiveCommand, NukeCommand } from "../commands/archive-command.js";
 import type { UICommand } from "../commands/ui-command.js";
 import type { WorkerCommand } from "../commands/worker-command.js";
-import type { BackupCommand } from "../commands/backup-command.js";
-import type { DatabaseCommand } from "../commands/database-command.js";
 import type { ClaudeConfigCommand } from "../commands/claude-config-command.js";
 import type { MCPCommand } from "../commands/mcp-command.js";
 
 export class UninitCommandTag extends Service<UninitCommand>()("uninitCommand") {}
 export class InitCommandTag extends Service<InitCommand>()("initCommand") {}
 export class UpdateCommandTag extends Service<UpdateCommand>()("updateCommand") {}
-export class ArchiveCommandTag extends Service<ArchiveCommand>()("archiveCommand") {}
-export class UnarchiveCommandTag extends Service<UnarchiveCommand>()("unarchiveCommand") {}
-export class NukeCommandTag extends Service<NukeCommand>()("nukeCommand") {}
 export class UICommandTag extends Service<UICommand>()("uiCommand") {}
 export class WorkerCommandTag extends Service<WorkerCommand>()("workerCommand") {}
-export class BackupCommandTag extends Service<BackupCommand>()("backupCommand") {}
-export class DatabaseCommandTag extends Service<DatabaseCommand>()("databaseCommand") {}
 export class ClaudeConfigCommandTag extends Service<ClaudeConfigCommand>()("claudeConfigCommand") {}
 export class MCPCommandTag extends Service<MCPCommand>()("mcpCommand") {}

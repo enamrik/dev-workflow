@@ -23,29 +23,16 @@ import {
 } from "@dev-workflow/tracking";
 
 // =============================================================================
-// Local Enums
-// =============================================================================
-
-const ExecutionModeEnum = z.enum(["isolated", "branch", "main"]);
-
-// =============================================================================
 // Schemas
 // =============================================================================
 
 export const LoadTaskSessionSchema = z.object({
   taskId: z.string().describe("Task UUID"),
   sessionId: z.string().describe("Claude session ID"),
-  mode: ExecutionModeEnum.optional()
-    .default("isolated")
-    .describe(
-      "Execution mode. ALWAYS use 'isolated' (default) unless user explicitly requests otherwise. 'branch': only if user says 'branch mode' or 'no worktree'. 'main': only if user explicitly says 'on main', 'main mode', or 'skip PR'."
-    ),
   workerId: z
     .string()
     .optional()
-    .describe(
-      "Worker UUID. When provided, enforces isolated mode - fails if mode is not 'isolated'. Workers MUST pass their workerId to prevent accidental use of non-isolated modes."
-    ),
+    .describe("Worker UUID. Workers MUST pass their workerId for task queue validation."),
 });
 
 export const AbandonTaskSchema = z.object({

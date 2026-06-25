@@ -3,7 +3,7 @@
  */
 
 import type { Effect } from "@dev-workflow/effect";
-import type { SyncState } from "../../project-sync/project-management-provider.js";
+import type { SyncState } from "@dev-workflow/database/schema.js";
 import type { Task } from "../tasks/task.js";
 
 export type IssueType = "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK" | "SPIKE";

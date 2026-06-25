@@ -36,14 +36,14 @@ export class InstallService {
 
   /**
    * Validate connection string format.
-   * Expected: sqlite:///path or postgres://...
+   * Expected: sqlite:///path
    */
   private validateConnectionString(connectionString: string): void {
-    if (connectionString.startsWith("postgres") || connectionString.startsWith("sqlite:")) {
+    if (connectionString.startsWith("sqlite:")) {
       return;
     }
     throw new InstallError(
-      `Invalid connection string format: ${connectionString}. Expected sqlite:///path or postgres://...`
+      `Invalid connection string format: ${connectionString}. Expected sqlite:///path`
     );
   }
 
@@ -60,12 +60,6 @@ export class InstallService {
     throw new InstallError(`Cannot extract path from connection string: ${connectionString}`);
   }
 
-  /**
-   * Check if a connection string is for a remote database.
-   */
-  private isRemoteConnectionString(connectionString: string): boolean {
-    return connectionString.startsWith("postgres");
-  }
 
   /**
    * Register the project in the database.
@@ -78,13 +72,6 @@ export class InstallService {
    */
   async registerProject(connectionString: string): Promise<Project> {
     this.validateConnectionString(connectionString);
-
-    if (this.isRemoteConnectionString(connectionString)) {
-      throw new InstallError(
-        "Remote database support for project registration is not yet implemented. " +
-          "Use a local SQLite database for now."
-      );
-    }
 
     const source = this.sourceProvider.getOrCreate({ connectionString });
     const projectService = new ProjectService(source, this.gitOps);
@@ -249,13 +236,6 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
     this.validateConnectionString(connectionString);
 
     try {
-      if (this.isRemoteConnectionString(connectionString)) {
-        throw new InstallError(
-          "Remote database initialization is not yet implemented. " +
-            "Use a local SQLite database for now."
-        );
-      }
-
       const dbPath = this.getDbFilePath(connectionString);
 
       // Ensure parent directory exists for SQLite
@@ -429,14 +409,9 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
   async findExistingProject(connectionString: string): Promise<Project | null> {
     this.validateConnectionString(connectionString);
 
-    // Remote database check not yet implemented
-    if (this.isRemoteConnectionString(connectionString)) {
-      return null;
-    }
-
     const dbPath = this.getDbFilePath(connectionString);
 
-    // Check if database file exists (only applicable for SQLite)
+    // Check if database file exists
     const dbExists = await this.fileSystem.exists(dbPath);
     if (!dbExists) {
       return null;
@@ -536,11 +511,6 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
     this.validateConnectionString(connectionString);
 
     try {
-      // Skip for remote databases - will be handled differently
-      if (this.isRemoteConnectionString(connectionString)) {
-        return { seeded: 0, existing: 0 };
-      }
-
       const source = this.sourceProvider.getOrCreate({ connectionString });
 
       // Convert DEFAULT_TYPE_DEFINITIONS to CreateTypeData format

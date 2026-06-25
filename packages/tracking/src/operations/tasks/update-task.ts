@@ -2,23 +2,14 @@
  * updateTask - Update a task's properties
  *
  * Updates task fields including title, description, acceptance criteria,
- * implementation plan, estimated minutes, and labels. Labels are validated
- * against available labels from the project management provider and merged
+ * implementation plan, estimated minutes, and labels. Labels are merged
  * with existing labels (null values remove labels).
  */
 
 import { z } from "zod";
 import type { Task } from "../../domain/tasks/task.js";
-import type { AvailableLabel } from "../../project-sync/project-management-provider.js";
 import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
-import { ProjectManagementRegistry } from "../../project-sync/provider-registry.js";
-import { GitHubCLITag } from "../../project-sync/github/github-cli.js";
-import type { GitHubCLI } from "../../project-sync/github/github-cli.js";
-import { DbSourceTag } from "../../data-access/db-source.js";
-import type { DbSource } from "../../data-access/db-source.js";
-import { ProjectTag } from "../../domain/projects/project.js";
-import type { Project } from "../../domain/projects/project.js";
-import { EntityNotFoundError, ValidationError } from "../../domain/errors.js";
+import { EntityNotFoundError } from "../../domain/errors.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -48,74 +39,6 @@ export interface UpdateTaskResult {
 }
 
 // =============================================================================
-// Helpers
-// =============================================================================
-
-function validateLabels(
-  labels: Record<string, string | null>,
-  providerRegistry: ProjectManagementRegistry | null,
-  project: Project | null,
-  dbSource: DbSource | null,
-  githubCLI: GitHubCLI | null
-): Effect<string | null> {
-  return Effect.gen(function* () {
-    // Skip validation if provider context is not available
-    if (!providerRegistry || !project || !dbSource || !githubCLI) {
-      return null; // Graceful degradation - no validation
-    }
-
-    // Re-fetch project to get latest config
-    const latestProject = yield* dbSource.projects.findById(project.id);
-    if (!latestProject) {
-      return null; // Project not found - graceful degradation
-    }
-
-    // Get available labels from provider
-    const provider = providerRegistry.createProvider(latestProject, {
-      githubCLI,
-    });
-
-    const result = yield* provider.getAvailableLabels();
-
-    if (!result.supported || result.error) {
-      return null; // Provider doesn't support labels or errored - no validation
-    }
-
-    // Build lookup map for efficient validation
-    const availableLabelsMap = new Map<string, AvailableLabel>();
-    for (const label of result.labels) {
-      availableLabelsMap.set(label.name.toLowerCase(), label);
-    }
-
-    // Validate each label being set (ignore null values - those are removals)
-    const errors: string[] = [];
-    for (const [name, value] of Object.entries(labels)) {
-      if (value === null) continue; // Removal - no validation needed
-
-      const availableLabel = availableLabelsMap.get(name.toLowerCase());
-
-      if (!availableLabel) {
-        const availableNames = result.labels.map((l) => l.name).join(", ");
-        errors.push(`Unknown label "${name}". Available labels: ${availableNames}`);
-        continue;
-      }
-
-      // Check if value is valid (if label has constrained values)
-      if (availableLabel.validValues !== null && value !== "") {
-        const validValuesLower = availableLabel.validValues.map((v) => v.toLowerCase());
-        if (!validValuesLower.includes(value.toLowerCase())) {
-          errors.push(
-            `Invalid value "${value}" for label "${name}". Valid values: ${availableLabel.validValues.join(", ")}`
-          );
-        }
-      }
-    }
-
-    return errors.length > 0 ? errors.join("; ") : null;
-  });
-}
-
-// =============================================================================
 // Operation
 // =============================================================================
 
@@ -133,33 +56,6 @@ export function updateTask(input: UpdateTaskInput) {
 
     const taskDomainService = yield* TaskDomainService;
 
-    // These are nullable dependencies - try to resolve, fall back to null
-    let providerRegistry: ProjectManagementRegistry | null = null;
-    let project: Project | null = null;
-    let dbSource: DbSource | null = null;
-    let githubCLI: GitHubCLI | null = null;
-
-    try {
-      providerRegistry = yield* ProjectManagementRegistry;
-    } catch {
-      // Optional dependency
-    }
-    try {
-      project = yield* ProjectTag;
-    } catch {
-      // Optional dependency
-    }
-    try {
-      dbSource = yield* DbSourceTag;
-    } catch {
-      // Optional dependency
-    }
-    try {
-      githubCLI = yield* GitHubCLITag;
-    } catch {
-      // Optional dependency
-    }
-
     const task = yield* taskDomainService.findById(taskId);
     if (!task) {
       return yield* Effect.fail(new EntityNotFoundError("Task", taskId));
@@ -173,20 +69,8 @@ export function updateTask(input: UpdateTaskInput) {
     if (implementationPlan !== undefined) updates.implementationPlan = implementationPlan;
     if (estimatedMinutes !== undefined) updates.estimatedMinutes = estimatedMinutes;
 
-    // Handle labels - validate and merge with existing, null values remove labels
+    // Handle labels - merge with existing, null values remove labels
     if (labels !== undefined) {
-      // Validate labels against available labels from provider
-      const validationError = yield* validateLabels(
-        labels,
-        providerRegistry,
-        project,
-        dbSource,
-        githubCLI
-      );
-      if (validationError) {
-        return yield* Effect.fail(new ValidationError("labels", validationError));
-      }
-
       const currentLabels = task.labels ?? {};
       const mergedLabels: Record<string, string> = { ...currentLabels };
 

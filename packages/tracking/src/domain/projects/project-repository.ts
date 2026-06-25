@@ -14,7 +14,7 @@ import type {
   UpdateProjectData,
 } from "./project.js";
 import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
-import type { ProjectManagementConfig } from "../../project-sync/project-management-config.js";
+import type { ProjectManagementConfig } from "@dev-workflow/database/schema.js";
 
 /**
  * Migrate stored syncConfig from legacy typeLabels to typeMappings.
@@ -128,11 +128,9 @@ export class DrizzleProjectRepository implements ProjectRepository {
     });
   }
 
-  findAll(includeArchived: boolean = false): Effect<Project[]> {
+  findAll(): Effect<Project[]> {
     return Effect.promise(async () => {
-      const results = includeArchived
-        ? this.db.select().from(projects).all()
-        : this.db.select().from(projects).where(eq(projects.isArchived, false)).all();
+      const results = this.db.select().from(projects).all();
       return results.map((row) => this.mapRowToProject(row));
     });
   }
@@ -157,60 +155,6 @@ export class DrizzleProjectRepository implements ProjectRepository {
       }
 
       return updated;
-    });
-  }
-
-  delete(id: string): Effect<void> {
-    return Effect.promise(async () => {
-      this.db.delete(projects).where(eq(projects.id, id)).run();
-    });
-  }
-
-  archive(id: string): Effect<Project> {
-    const self = this;
-    return Effect.gen(function* () {
-      const now = new Date().toISOString();
-
-      self.db
-        .update(projects)
-        .set({
-          isArchived: true,
-          archivedAt: now,
-          updatedAt: now,
-        })
-        .where(eq(projects.id, id))
-        .run();
-
-      const archived = yield* self.findById(id);
-      if (!archived) {
-        throw new Error(`Failed to archive project: ${id}`);
-      }
-
-      return archived;
-    });
-  }
-
-  unarchive(id: string): Effect<Project> {
-    const self = this;
-    return Effect.gen(function* () {
-      const now = new Date().toISOString();
-
-      self.db
-        .update(projects)
-        .set({
-          isArchived: false,
-          archivedAt: null,
-          updatedAt: now,
-        })
-        .where(eq(projects.id, id))
-        .run();
-
-      const unarchived = yield* self.findById(id);
-      if (!unarchived) {
-        throw new Error(`Failed to unarchive project: ${id}`);
-      }
-
-      return unarchived;
     });
   }
 

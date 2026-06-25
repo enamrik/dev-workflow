@@ -24,7 +24,6 @@ import {
   getProjectStats,
   searchIssues,
   getWorkQueue,
-  importGitHubIssue,
   listTemplates,
   getTemplate,
   createTemplate,
@@ -270,29 +269,6 @@ export const handleGetWorkQueue = createMcpHandler({
     Effect.gen(function* () {
       const projectSlug = yield* ProjectSlug;
       return successResponse(yield* getWorkQueue({ ...args, projectSlug }));
-    }),
-});
-
-// =============================================================================
-// import_github_issue
-// =============================================================================
-
-export const ImportGitHubIssueSchema = z.object({
-  githubIssueNumber: z.number().optional().describe("GitHub issue number to import (e.g., 42)"),
-  githubIssueUrl: z
-    .string()
-    .optional()
-    .describe(
-      "GitHub issue URL to import (e.g., https://github.com/owner/repo/issues/42). Alternative to githubIssueNumber."
-    ),
-});
-
-export const handleImportGitHubIssue = createMcpHandler({
-  schema: ImportGitHubIssueSchema,
-  handler: (args) =>
-    Effect.gen(function* () {
-      const projectSlug = yield* ProjectSlug;
-      return successResponse(yield* importGitHubIssue({ ...args, projectSlug }));
     }),
 });
 

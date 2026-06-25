@@ -74,12 +74,11 @@ describe("E2E: Task Completion", () => {
     const taskBefore = taskBeforeResult.data as { status: string };
     expect(taskBefore.status).toBe("READY");
 
-    // 6. Load task session (starts work on task)
+    // 6. Load task session (starts work on task, creates worktree)
     const sessionId = randomUUID();
     const loadResult = await executor.loadTaskSession({
       task_id: taskId,
       session_id: sessionId,
-      mode: "main", // Use main mode for simplicity (no worktree/PR)
     });
 
     if (!loadResult.success) {
@@ -93,12 +92,12 @@ describe("E2E: Task Completion", () => {
     const taskDuring = taskDuringResult.data as { status: string };
     expect(taskDuring.status).toBe("IN_PROGRESS");
 
-    // 8. Complete the task
+    // 8. Complete the task (force=true to skip PR verification in test)
     const completeResult = await executor.completeTask({
       task_id: taskId,
       session_id: sessionId,
       final_log_entry: "Task completed successfully in test",
-      force: true, // Use force since we're in main mode without a PR
+      force: true,
     });
 
     if (!completeResult.success) {
@@ -169,12 +168,11 @@ describe("E2E: Task Completion", () => {
     await executor.moveIssueToBacklog({ issue_number: 2 });
     await executor.moveIssueToReady({ issue_number: 2 });
 
-    // 4. Load task session
+    // 4. Load task session (creates worktree)
     const sessionId = randomUUID();
     const loadResult = await executor.loadTaskSession({
       task_id: taskId,
       session_id: sessionId,
-      mode: "main",
     });
     expect(loadResult.success).toBe(true);
 

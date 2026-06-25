@@ -2,15 +2,11 @@
 
 > This guide is part of the [dev-workflow documentation](../README.md).
 
-This guide covers task execution modes, the complete task lifecycle, PR workflow, and session management.
+This guide covers task execution, the complete task lifecycle, PR workflow, and session management.
 
-## Execution Modes
+## Git Isolation
 
-dev-workflow supports three execution modes for tasks. The mode determines how git isolation works and whether a PR is created.
-
-### Isolated Mode (Default)
-
-**Creates a git worktree and branch for fully parallel work.**
+Tasks execute in git worktrees for fully parallel work.
 
 ```
 main repo                  worktree
@@ -26,60 +22,8 @@ main branch  ────┐        issue-5/task-1-add-oauth
 | **Isolation**     | Fully isolated - changes don't affect main repo          |
 | **Parallel work** | Multiple tasks can run simultaneously                    |
 | **PR workflow**   | Full workflow: create PR → review → merge → complete     |
-| **Best for**      | Feature work, parallel execution, changes needing review |
 
 **Critical:** All file operations must use the worktree path returned by `load_task_session`. Never use the main repo path during task execution.
-
-### Branch Mode
-
-**Creates a branch but works in the main repository.**
-
-```
-main repo
-─────────
-main branch
-    └── issue-5/task-1-add-oauth (checked out)
-```
-
-| Aspect            | Details                                              |
-| ----------------- | ---------------------------------------------------- |
-| **Git setup**     | Branch only, no worktree                             |
-| **Isolation**     | Partial - same working directory as main             |
-| **Parallel work** | Not supported - only one task at a time in repo      |
-| **PR workflow**   | Full workflow: create PR → review → merge → complete |
-| **Best for**      | Sequential work when worktrees aren't needed         |
-
-**Use when:** User explicitly says "branch mode", "no worktree", or similar.
-
-### Main Mode
-
-**Works directly on the main branch with no PR.**
-
-```
-main repo
-─────────
-main branch (direct commits)
-```
-
-| Aspect            | Details                                        |
-| ----------------- | ---------------------------------------------- |
-| **Git setup**     | No branch created                              |
-| **Isolation**     | None - commits go directly to main             |
-| **Parallel work** | Not supported                                  |
-| **PR workflow**   | Skipped - task completes directly after commit |
-| **Best for**      | Trivial fixes, documentation, config changes   |
-
-**Use when:** User explicitly says "on main", "main mode", "skip PR", or similar.
-
-### Mode Comparison
-
-| Feature            | Isolated             | Branch          | Main            |
-| ------------------ | -------------------- | --------------- | --------------- |
-| Git isolation      | Worktree + branch    | Branch          | None            |
-| Parallel execution | Yes                  | No              | No              |
-| PR required        | Yes                  | Yes             | No              |
-| Code review        | Yes                  | Yes             | No              |
-| When to use        | Default for all work | Sequential work | Trivial changes |
 
 ---
 
@@ -114,7 +58,6 @@ PLANNED → BACKLOG → READY → IN_PROGRESS → PR_REVIEW → COMPLETED
 | READY       | IN_PROGRESS | `load_task_session`     | Task was waiting for dependencies         |
 | READY       | BACKLOG     | `pause_issue`           | Deactivates issue for later               |
 | IN_PROGRESS | PR_REVIEW   | `submit_for_review`     | After `create_pr`                         |
-| IN_PROGRESS | COMPLETED   | `complete_task`         | Main mode only (no PR)                    |
 | PR_REVIEW   | COMPLETED   | `complete_task`         | After PR is merged                        |
 | Any         | ABANDONED   | `abandon_task`          | Work stopped                              |
 
@@ -149,7 +92,7 @@ Tasks can depend on other tasks. Dependencies affect when a task becomes READY.
 
 ## PR Workflow
 
-For isolated and branch modes, tasks go through a PR workflow before completion.
+Tasks go through a PR workflow before completion.
 
 ### Step 1: Create the PR
 
@@ -208,14 +151,6 @@ complete_task({
 5. Marks task COMPLETED
 
 **Result:** Task is COMPLETED. Returns `allTasksComplete: true/false` to indicate if the parent issue can be closed.
-
-### Main Mode: Direct Completion
-
-For main mode, skip PR steps:
-
-1. Implement the task
-2. Commit changes directly to main
-3. Call `complete_task` - transitions directly to COMPLETED
 
 ---
 
@@ -417,11 +352,6 @@ load_task_session({
 });
 ```
 
-The MCP tool enforces:
-
-- Workers must use isolated mode
-- Workers cannot accidentally use branch or main modes
-
 ### Terminal Action
 
 Workers must call `end_worker_session` as their final action:
@@ -457,7 +387,7 @@ See [Background Workers Guide](WORKERS.md) for worker setup and management.
 | -------------------------------- | ---------------------------- | ------------------------------------------------------ |
 | Task not found                   | UUID from summarized session | Use `get_task(issueNumber, taskNumber)` to get real ID |
 | Task in progress (other session) | Another session owns task    | Wait, or use force mode if session stale               |
-| Create PR failed - no branch     | Using main mode              | Complete directly, no PR needed                        |
+| Create PR failed - no branch     | Worktree not created         | Start task with `load_task_session` first              |
 | Submit failed - no PR            | `create_pr` not called       | Create PR first                                        |
 | Complete failed - PR not merged  | PR still open                | Merge the PR on GitHub                                 |
 | Complete failed - wrong status   | State drift                  | Use force mode after confirming                        |
@@ -478,7 +408,7 @@ If MCP tools return "not found" errors for data that should exist:
 
 | Concept               | Key Points                                                      |
 | --------------------- | --------------------------------------------------------------- |
-| **Execution modes**   | Isolated (default), Branch, Main                                |
+| **Git isolation**     | Worktree + branch for each task                                 |
 | **Task lifecycle**    | PLANNED → BACKLOG → READY → IN_PROGRESS → PR_REVIEW → COMPLETED |
 | **PR workflow**       | `create_pr` → `submit_for_review` → merge → `complete_task`     |
 | **Session ownership** | One task per session, 1 hour timeout                            |
