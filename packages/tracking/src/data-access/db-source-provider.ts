@@ -23,13 +23,13 @@
 import { Service } from "@dev-workflow/effect";
 import * as path from "node:path";
 import * as os from "node:os";
-import { fileURLToPath } from "node:url";
 
-import Database from "better-sqlite3";
 import { drizzle as sqliteDrizzle } from "drizzle-orm/better-sqlite3";
 import { migrate as sqliteMigrate } from "drizzle-orm/better-sqlite3/migrator";
 
 import * as sqliteSchema from "@dev-workflow/database/schema.js";
+import { resolveMigrationsFolder } from "@dev-workflow/database/migrations-folder.js";
+import { openSqliteDatabase } from "@dev-workflow/database/open-database.js";
 
 import type { DbSource } from "./db-source.js";
 import type { DbClient } from "./db-client.js";
@@ -40,9 +40,6 @@ import { DrizzleProjectRepository } from "../domain/projects/project-repository.
 import { DrizzleTypeRepository } from "../domain/types/type-repository.js";
 import { DrizzleGlobalSettingsRepository } from "../domain/global-settings-repository.js";
 import { DEFAULT_TYPE_DEFINITIONS } from "../domain/types/type-definition.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // =============================================================================
 // SourceInfo
@@ -116,11 +113,11 @@ export class DbSourceProvider extends Service<DbSourceProvider>()("sourceProvide
   // ===========================================================================
 
   private createSqliteSource(driverPath: string): DbSource {
-    const sqlite = new Database(driverPath);
+    const sqlite = openSqliteDatabase(driverPath);
     sqlite.pragma("foreign_keys = ON");
     const db = sqliteDrizzle(sqlite, { schema: sqliteSchema });
     const rawDrizzleDb = db as unknown as DrizzleDb;
-    const migrationsFolder = path.resolve(__dirname, "../../../database/drizzle");
+    const migrationsFolder = resolveMigrationsFolder();
 
     // Wrap to support async transaction callbacks.
     // better-sqlite3's native transaction() is synchronous and commits before

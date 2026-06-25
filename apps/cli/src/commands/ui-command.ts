@@ -9,7 +9,10 @@ import { execSync } from "node:child_process";
 import { UIService } from "../application/ui.service.js";
 
 export class UICommand {
-  constructor(private readonly cliPath: string) {}
+  constructor(
+    private readonly cliPath: string,
+    private readonly uiService: UIService
+  ) {}
 
   /**
    * Start web UI for dev-workflow (shows all projects).
@@ -21,7 +24,7 @@ export class UICommand {
       // If PORT is explicitly set, always start on that port (for E2E tests, parallel instances)
       const explicitPort = process.env["PORT"];
       if (explicitPort) {
-        await UIService.startMultiProject();
+        await this.uiService.startMultiProject();
         return;
       }
 
@@ -37,7 +40,7 @@ export class UICommand {
       }
 
       // Server not running, start it
-      await UIService.startMultiProject();
+      await this.uiService.startMultiProject();
     } catch (error) {
       console.error("Error starting UI:", error);
       process.exit(1);

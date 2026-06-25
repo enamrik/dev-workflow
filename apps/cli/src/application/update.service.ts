@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { execSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
-import Database from "better-sqlite3";
+import { openSqliteDatabase } from "@dev-workflow/database/open-database.js";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
   DbSourceProvider,
@@ -16,7 +16,6 @@ import {
   resolveGlobalTrackDir,
 } from "@dev-workflow/git/track-directory-resolver.js";
 import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
-import { UIService } from "./ui.service.js";
 
 export class UpdateError extends Error {
   constructor(
@@ -107,7 +106,7 @@ export class UpdateService {
 
     // Use better-sqlite3 directly for this one-time migration
     // since we need raw SQL access across project scopes
-    const db = new Database(dbPath);
+    const db = openSqliteDatabase(dbPath);
 
     try {
       // Update issues with old projectId to use new project.id
@@ -419,15 +418,19 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
   }
 
   /**
-   * Restart UI daemon if running
-   * (So it picks up any schema/code changes)
+   * Notify the user to restart the UI server if one is running.
+   *
+   * The UI now runs as an in-process foreground server (no PM2 daemon), so it
+   * cannot be restarted automatically. If a server is listening on the saved
+   * port, advise the user to restart it to pick up schema/code changes.
    */
   async restartUIDaemonIfRunning(): Promise<void> {
-    const isRunning = await UIService.isDaemonRunning();
-    if (isRunning) {
-      console.log("🔄 Restarting UI daemon...");
-      await UIService.restartDaemon();
-      console.log("✓ UI daemon restarted");
+    const { getSavedDaemonPort, isPortInUse } = await import(
+      "../infrastructure/port-manager.js"
+    );
+    const savedPort = getSavedDaemonPort();
+    if (savedPort && (await isPortInUse(savedPort))) {
+      console.log("ℹ️  A dev-workflow UI server is running. Restart it (Ctrl+C, then 'dev-workflow ui') to pick up changes.");
     }
   }
 

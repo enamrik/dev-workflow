@@ -11,7 +11,14 @@
  */
 
 import * as path from "node:path";
-import { createContainer, asClass, asFunction, InjectionMode, type AwilixContainer } from "awilix";
+import {
+  createContainer,
+  asClass,
+  asFunction,
+  asValue,
+  InjectionMode,
+  type AwilixContainer,
+} from "awilix";
 import {
   TrackDirectoryResolver,
   createTrackDirectoryResolver,
@@ -32,6 +39,7 @@ import { UninstallService } from "../application/uninstall.service.js";
 import { InstallService } from "../application/install.service.js";
 import { UpdateService } from "../application/update.service.js";
 import { ClaudeConfigService } from "../application/claude-config.service.js";
+import { UIService } from "../application/ui.service.js";
 
 // Commands
 import { UninitCommand } from "../commands/uninit-command.js";
@@ -58,7 +66,6 @@ export interface CliCradle {
   // Values (provided at runtime by middleware or computed)
   workingDirectory: string;
   packageRoot: string;
-  cliRoot: string;
   cliPath: string;
 
   // Optional values (registered by middleware for specific commands)
@@ -75,7 +82,11 @@ export interface CliCradle {
   installService: InstallService;
   updateService: UpdateService;
   claudeConfigService: ClaudeConfigService;
+  uiService: UIService;
   userPrompt: UserPrompt;
+
+  // The container itself (for services that need to register/run sub-systems)
+  container: AwilixContainer<CliCradle>;
 
   // Commands
   uninitCommand: UninitCommand;
@@ -123,9 +134,6 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
       .disposer((provider) => provider.closeAll()),
 
     // Computed values from packageRoot
-    cliRoot: asFunction(({ packageRoot }: { packageRoot: string }) => {
-      return packageRoot;
-    }).singleton(),
     cliPath: asFunction(({ packageRoot }: { packageRoot: string }) => {
       return path.join(packageRoot, "dist/main.js");
     }).singleton(),
@@ -210,6 +218,22 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
 
     claudeConfigService: asFunction(() => new ClaudeConfigService()).scoped(),
 
+    uiService: asFunction(
+      ({
+        fileSystem,
+        trackDirectoryResolver,
+        container: c,
+        packageRoot,
+      }: {
+        fileSystem: FileSystem;
+        trackDirectoryResolver: TrackDirectoryResolver;
+        container: AwilixContainer<CliCradle>;
+        packageRoot: string;
+      }) => {
+        return new UIService(fileSystem, trackDirectoryResolver, c, packageRoot);
+      }
+    ).scoped(),
+
     // Commands
     uninitCommand: asFunction(({ uninstallService }: { uninstallService: UninstallService }) => {
       return new UninitCommand(uninstallService);
@@ -233,9 +257,11 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
       return new UpdateCommand(updateService);
     }).scoped(),
 
-    uiCommand: asFunction(({ cliPath }: { cliPath: string }) => {
-      return new UICommand(cliPath);
-    }).scoped(),
+    uiCommand: asFunction(
+      ({ cliPath, uiService }: { cliPath: string; uiService: UIService }) => {
+        return new UICommand(cliPath, uiService);
+      }
+    ).scoped(),
 
     workerCommand: asFunction(
       ({
@@ -257,11 +283,15 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
       }
     ).scoped(),
 
-    mcpCommand: asFunction(({ cliRoot }: { cliRoot: string }) => {
-      return new MCPCommand(cliRoot);
-    }).scoped(),
+    mcpCommand: asClass(MCPCommand).scoped(),
 
     setupCommand: asClass(SetupCommand).scoped(),
+  });
+
+  // Self-reference so services (e.g. UIService) can boot sub-systems that need
+  // to resolve service tags against this container at runtime.
+  container.register({
+    container: asValue(container),
   });
 
   return container;

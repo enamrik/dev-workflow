@@ -4,13 +4,10 @@
  * Low-level SQLite operations that don't fit in the DbClient interface.
  */
 
-import * as path from "node:path";
-import { createRequire } from "node:module";
-import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-
-const require = createRequire(import.meta.url);
+import { resolveMigrationsFolder } from "@dev-workflow/database/migrations-folder.js";
+import { openSqliteDatabase } from "@dev-workflow/database/open-database.js";
 
 /**
  * Checkpoint a SQLite database's WAL (Write-Ahead Log).
@@ -21,7 +18,7 @@ const require = createRequire(import.meta.url);
  * @param dbPath - Path to the SQLite database file
  */
 export function checkpointSqliteDatabase(dbPath: string): void {
-  const db = new Database(dbPath);
+  const db = openSqliteDatabase(dbPath);
   try {
     db.pragma("wal_checkpoint(TRUNCATE)");
   } finally {
@@ -38,14 +35,11 @@ export function checkpointSqliteDatabase(dbPath: string): void {
  * @param dbPath - Path to the SQLite database file
  */
 export function runSqliteMigrations(dbPath: string): void {
-  const db = new Database(dbPath);
+  const db = openSqliteDatabase(dbPath);
   db.pragma("foreign_keys = ON");
 
   const drizzleDb = drizzle(db);
-  // Resolve the database package and find the drizzle migrations folder
-  const databasePackage = require.resolve("@dev-workflow/database/schema.js");
-  const migrationsFolder = path.join(path.dirname(databasePackage), "drizzle");
-  migrate(drizzleDb, { migrationsFolder });
+  migrate(drizzleDb, { migrationsFolder: resolveMigrationsFolder() });
 
   db.close();
 }

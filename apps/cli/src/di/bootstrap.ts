@@ -42,6 +42,8 @@
  * ```
  */
 
+import * as nodePath from "node:path";
+import { fileURLToPath } from "node:url";
 import { asValue, type AwilixContainer } from "awilix";
 import {
   ProjectConfigError,
@@ -343,8 +345,13 @@ export function createTestCliCommand<TOpts>(
  * Get the CLI package root directory.
  */
 function getDefaultPackageRoot(): string {
-  const url = new URL(import.meta.url);
-  const currentFile = url.pathname;
-  const distDir = currentFile.substring(0, currentFile.lastIndexOf("/di/"));
-  return distDir.substring(0, distDir.lastIndexOf("/dist"));
+  const dir = nodePath.dirname(fileURLToPath(import.meta.url));
+  // Dev (tsc) layout: <root>/dist/di/bootstrap.js → packageRoot is <root> (parent of dist),
+  // where skills/ and templates/ live. Detect the "/dist/" segment and strip from there.
+  const distSeg = `${nodePath.sep}dist${nodePath.sep}`;
+  const distIdx = dir.lastIndexOf(distSeg);
+  if (distIdx !== -1) return dir.slice(0, distIdx);
+  // Bundled layout (tsup): cli.js sits in the artifact dir with skills/ + templates/
+  // shipped alongside it, so the package root is simply the bundle's directory.
+  return dir;
 }
