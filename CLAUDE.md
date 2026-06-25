@@ -1,5 +1,34 @@
 # dev-workflow Coding Standards
 
+# ⚠️ THE MANDATORIES — Always Active
+
+## 1. Plan Agent Before Non-Trivial Work
+
+**Non-trivial work starts with a `Plan` subagent, not with code.** Diving straight into implementation is how an agent under-reads: it skips the existing abstractions, never loads the patterns, duplicates what already exists — or gets halfway in, hits a surprise, and starts *patching its first idea* instead of pausing to rethink. The Plan agent front-loads the reading so the implementation is the right shape from line one.
+
+- **When:** anything past a trivial one-liner / mechanical edit — a new feature, a refactor, a change to unfamiliar code or spanning more than ~1–2 files. Skip only for truly mechanical edits (a flag, a typo, a version/pin bump).
+- **How — prompt it to do the homework you'd otherwise skip.** Spawn a `Plan` subagent and require it to: (1) **load the relevant skills** (`abstraction-first`, the path-scoped patterns) + this file's rules; (2) **read the actual code in scope deeply** — the domain concept, the class that already owns it, the call sites; (3) name the existing abstraction the change extends (the 60-80% rule: find the class, don't sprinkle loose helpers); (4) return a step-by-step plan that **cites the specific files/types it builds on**, the end-state shape, and what it could **not** determine. A plan that cites no real code it read isn't a plan — send it back.
+- **Then build from the plan**, not from your first guess.
+- **The forcing rule (pairs with #2):** if mid-implementation you discover the plan was wrong — you didn't understand enough, the design doesn't fit, you're about to patch around a surprise — **STOP. Do not patch forward.** Re-plan (re-run the Plan agent with what you learned, or pause and redesign). Panic-patching a half-understood design is the exact failure this mandate exists to prevent.
+
+Plan (front) and the Adversarial Review agent (#2, before push) are bookends: plan so you build it right; review so you catch what slipped.
+
+## 2. Adversarial Review Agent Before Every PR
+
+**No PR opens or updates without first spawning a critical-review subagent over the diff.** `make prep` is the mechanical gate; the review agent is the **judgment** gate — it catches what green tests cannot: wrong-but-compiling logic, code paths the author never read, scope mismatches, half-finished removals, "the test passes because it doesn't cover the bug."
+
+- **When — the trigger is the PUSH, not the commit.** Commit locally as often as you like with no review. The review is mandatory **before any `git push` of behavior-changing commits to a PR branch** (and before `gh pr create`) — run it once `make prep` is green, over everything the push will land (`git log origin/<branch>..HEAD`). If you notice a push already happened without one, run it immediately after and act on the findings. Skip only for pure doc/comment pushes; the user can also ask for one mid-work anytime.
+- **Re-run on every change — a review covers only the commits it saw.** A prior review does NOT carry over to commits added after it. Every push re-runs the agent over the *new* range since the last reviewed sha; if you amended/rebased or added commits, the review is stale and must run again. The rule of thumb: the sha at `HEAD` when you push must be a sha a review has actually examined.
+- **How:** launch a `general-purpose` subagent with the commit range, the *intent*, and an explicit focus list (every invariant relied on, call site moved, removal claimed complete). The charge: **explore the changes and see whether you created any bugs, didn't read enough code to make the right change and implementation, or missed something important.** Tell it to be adversarial, to state what it checked and found clean, and what it could **not** verify — green tests are not proof. Run it in the background.
+- **Triage — you own the findings.** Verify each against the code yourself (the agent and its fixes can be wrong). Fix every blocker/major before the PR; add a regression test per real bug (if the suite missed it, the suite has a hole); write down anything deferred with the reason.
+- **Also triage the PR's AI/bot reviews (Copilot, Claude review, ANY automated reviewer) — mandatory.** Before any merge (and after each push that draws fresh bot comments), fetch every automated review comment — line comments (`gh api repos/<owner>/<repo>/pulls/<n>/comments --paginate`), review submission bodies (`.../pulls/<n>/reviews --paginate`), and PR-level comments (`.../issues/<n>/comments --paginate`) — and triage each like an agent finding: verify against the **current** code, fix the real ones, dismiss the rest with a reason. **Beware stale comments** pinned to a superseded sha — check `HEAD`.
+- **Reply to every finding** so the human can resolve it: "fixed in `<sha>` + how" or a one-line "not worth fixing because …". Line comments are resolvable threads — reply in-thread (`gh api -X POST .../pulls/<n>/comments -f body=... -F in_reply_to=<comment_id>`); review bodies and PR-level comments are not threaded — address those in a normal PR comment.
+- **Loop until the reviewers are quiet.** Each push spawns a fresh AI review; re-fetch and re-triage after every push until a fetch returns no new or unanswered comments. A green-CI PR with unread or unanswered AI comments is NOT reviewed — do not merge.
+
+This is not "when I have doubts." The review you skip is the one that ships the bug.
+
+---
+
 ## Core Architecture
 
 **OOP + SOLID + DDD.** Classes encapsulate behavior. Depend on abstractions. Rich domain models with business logic in entities.

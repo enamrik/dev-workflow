@@ -58,7 +58,6 @@ export interface CliCradle {
   // Values (provided at runtime by middleware or computed)
   workingDirectory: string;
   packageRoot: string;
-  cliRoot: string;
   cliPath: string;
 
   // Optional values (registered by middleware for specific commands)
@@ -123,9 +122,6 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
       .disposer((provider) => provider.closeAll()),
 
     // Computed values from packageRoot
-    cliRoot: asFunction(({ packageRoot }: { packageRoot: string }) => {
-      return packageRoot;
-    }).singleton(),
     cliPath: asFunction(({ packageRoot }: { packageRoot: string }) => {
       return path.join(packageRoot, "dist/main.js");
     }).singleton(),
@@ -257,9 +253,7 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
       }
     ).scoped(),
 
-    mcpCommand: asFunction(({ cliRoot }: { cliRoot: string }) => {
-      return new MCPCommand(cliRoot);
-    }).scoped(),
+    mcpCommand: asClass(MCPCommand).scoped(),
 
     setupCommand: asClass(SetupCommand).scoped(),
   });

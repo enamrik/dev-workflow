@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
+import * as fs from "node:fs";
 import * as path from "node:path";
-import { createRequire } from "node:module";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
   getDaemonPort,
@@ -8,9 +8,8 @@ import {
   clearDaemonPort,
   isPortInUse,
 } from "../infrastructure/port-manager.js";
+import { bundledPackageDir } from "../infrastructure/bundled-package.js";
 import { TrackDirectoryResolver } from "@dev-workflow/git/track-directory-resolver.js";
-
-const require = createRequire(import.meta.url);
 
 export class UIError extends Error {
   constructor(
@@ -20,15 +19,6 @@ export class UIError extends Error {
     super(message);
     this.name = "UIError";
   }
-}
-
-/**
- * Get the path to the web package
- */
-function getWebPath(): string {
-  // Resolve from this package's node_modules
-  const webPackage = require.resolve("@dev-workflow/web/package.json");
-  return path.dirname(webPackage);
 }
 
 /**
@@ -68,15 +58,19 @@ export class UIService {
       // Save the port so clients can find us
       saveDaemonPort(port);
 
-      const webPath = getWebPath();
+      const webPath = bundledPackageDir("@dev-workflow/web");
+      // In a published install the web app is a Next standalone build under standalone/apps/web;
+      // in local dev bundledPackageDir resolves to apps/web itself.
+      const standaloneApp = path.join(webPath, "standalone", "apps", "web");
+      const appDir = fs.existsSync(standaloneApp) ? standaloneApp : webPath;
       const url = `http://127.0.0.1:${port}`;
 
       console.log(`🚀 Starting dev-workflow UI at ${url}`);
-      console.log(`   Using Next.js from: ${webPath}`);
+      console.log(`   Using Next.js from: ${appDir}`);
 
       // Spawn the custom server (includes WebSocket support)
       const nextProcess = spawn("node", ["dist/server.js"], {
-        cwd: webPath,
+        cwd: appDir,
         stdio: ["ignore", "pipe", "pipe"],
         env: {
           ...process.env,
