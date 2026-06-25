@@ -593,22 +593,46 @@ export class ClaudeWorkerService {
 
 Start working on task #${issueNumber}.${taskNumber} (ID: ${taskId}).
 
-Use the dwf-worker-task skill to load the task session and work through the COMPLETE task lifecycle:
+## Agent-First Workflow
+
+**USE AGENTS AGGRESSIVELY.** Spawn Task agents to parallelize work and catch issues early:
+
+### At Task Start (REQUIRED)
+Before writing ANY code, spawn a **Plan agent** to:
+- Analyze the task requirements and acceptance criteria
+- Research the codebase for relevant patterns, existing implementations
+- Identify files to modify, dependencies, potential risks
+- Propose an implementation approach
+
+### During Implementation
+When discoveries diverge from the plan (new complexity, unexpected patterns):
+- Spawn a **Research agent** to investigate the new finding
+- Update your approach based on findings before continuing
+- Don't barrel forward with a broken mental model
+
+### Before PR Submission (REQUIRED)
+Spawn an **Adversarial Review agent** to:
+- Review all changes as a skeptical code reviewer
+- Check for edge cases, error handling, security issues
+- Verify acceptance criteria are actually met
+- Identify anything that might fail in review
+
+## Task Lifecycle
+
+Use the dwf-worker-task skill to work through the lifecycle:
 
 1. Load the task with load_task_session
    - **CRITICAL: You MUST pass workerId="${workerId}" to load_task_session**
-   - This validates that you own the task in the dispatch queue
-2. Implement the task according to its description and acceptance criteria
-3. Create a PR when implementation is done
-4. Submit for review
-5. WAIT for the PR to be merged (check with get_task_pr_status)
-6. Once PR is merged, call complete_task with a finalLogEntry summary
-7. After task completion, check if all tasks for issue #${issueNumber} are complete
-8. If all tasks are complete, ask the user if they want to close the issue
+2. Spawn Plan agent to research and plan approach
+3. Implement the task according to plan
+4. Spawn Adversarial Review agent before PR
+5. Create PR and submit for review
+6. WAIT for the PR to be merged (check with get_task_pr_status)
+7. Once merged, call complete_task with a finalLogEntry summary
 
 **REMINDER: When calling load_task_session, include workerId="${workerId}"**
 
-Follow the skill instructions fully, including asking the user questions when the skill indicates you should (e.g., confirming approaches, validating work, offering next steps). The user is monitoring this worker session and can respond to your prompts.
+The user is monitoring this worker session and can respond to your prompts.
 
 A task is only complete when it reaches COMPLETED status (PR merged and complete_task called), not when it enters PR_REVIEW.`;
   }
