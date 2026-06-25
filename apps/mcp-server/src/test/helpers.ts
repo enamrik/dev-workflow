@@ -9,9 +9,6 @@ import {
   PlanDomainService,
   TaskDomainService,
   TypeDomainService,
-  NoOpProjectManagementProvider,
-  NoOpProjectManagementClient,
-  ProjectManagementService,
   createTestContainer,
   type DbClient,
   type DbSource,
@@ -27,7 +24,6 @@ import {
   type Task,
   type TaskStatus,
   type TaskSource,
-  type ProjectManagementProvider,
 } from "@dev-workflow/tracking";
 import { Effect } from "@dev-workflow/effect";
 import { type ToolResponse, errorResponse } from "../tools/types.js";
@@ -219,99 +215,6 @@ export async function createTestScenario(
   }
 
   return { issue, plan, tasks, manualTasks };
-}
-
-/**
- * Create a NoOp project management provider for tests.
- *
- * This is useful when tests don't need real external sync behavior
- * but require a non-null provider.
- *
- * @deprecated Use createNoOpProjectManagementService instead
- */
-export function createNoOpProvider(): ProjectManagementProvider {
-  return new NoOpProjectManagementProvider();
-}
-
-/**
- * Create a NoOp project management service for tests.
- *
- * This is useful when tests don't need real external sync behavior.
- */
-export function createNoOpProjectManagementService(): ProjectManagementService {
-  return new ProjectManagementService(new NoOpProjectManagementClient());
-}
-
-/**
- * Create a mock project management provider for tests.
- *
- * Includes all required methods with default mock implementations.
- * Override specific methods as needed in your test.
- */
-export function createMockProvider(
-  overrides: Partial<ProjectManagementProvider> = {}
-): ProjectManagementProvider {
-  const base: ProjectManagementProvider = {
-    providerId: "mock",
-    displayName: "Mock Provider",
-    // Configuration methods
-    isEnabled: () => true,
-    hasProjectBoard: () => false,
-    getAssignee: () => undefined,
-    getCustomLabels: () => [],
-    getColumnForStatus: () => "Backlog",
-    getProjectId: () => undefined,
-    getLabelFieldMapping: () => undefined,
-    // High-level operations
-    moveItemToStatusColumn: () => Effect.succeed(undefined as void),
-    assignIssueToConfiguredUser: () => Effect.succeed(undefined as void),
-    // Auth/Validation
-    checkAuth: () => Effect.succeed({ authenticated: true }),
-    checkRepository: () => Effect.succeed({ accessible: true }),
-    // Issue operations
-    createIssue: () =>
-      Effect.succeed({
-        id: "mock-1",
-        numericId: 1,
-        url: "https://example.com/1",
-        nodeId: "mock_node_1",
-        title: "Mock Issue",
-        body: "",
-        state: "OPEN",
-        labels: [],
-      }),
-    updateIssue: () =>
-      Effect.succeed({
-        id: "mock-1",
-        numericId: 1,
-        url: "https://example.com/1",
-        nodeId: "mock_node_1",
-        title: "Mock Issue",
-        body: "",
-        state: "OPEN",
-        labels: [],
-      }),
-    closeIssue: () => Effect.succeed(undefined as void),
-    closeIssueByTask: () => Effect.succeed(undefined as void),
-    reopenIssue: () => Effect.succeed(undefined as void),
-    getIssue: () => Effect.succeed(null),
-    searchIssues: () => Effect.succeed([]),
-    ensureLabelsExist: () => Effect.succeed(undefined as void),
-    // Project operations
-    addToProject: () => Effect.succeed({ success: true, itemId: "mock_item" }),
-    moveToColumn: () => Effect.succeed(undefined as void),
-    checkProject: () => Effect.succeed(true),
-    getProjectDetails: () => Effect.succeed(null),
-    getProjectStatusField: () => Effect.succeed(null),
-    getProjectFields: () => Effect.succeed([]),
-    setProjectItemField: () => Effect.succeed({ success: true }),
-    clearProjectItemField: () => Effect.succeed({ success: true }),
-    getAvailableLabels: () => Effect.succeed({ supported: false, labels: [] }),
-    linkParentChild: () => Effect.succeed(undefined as void),
-    addComment: () => Effect.succeed(undefined as void),
-    assignIssue: () => Effect.succeed(undefined as void),
-  };
-  return { ...base, ...overrides };
 }
 
 /**

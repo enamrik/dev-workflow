@@ -3,7 +3,7 @@
  */
 
 import type { Effect } from "@dev-workflow/effect";
-import type { SyncState } from "../../project-sync/project-management-provider.js";
+import type { SyncState } from "@dev-workflow/database/schema.js";
 import type { IssueType } from "../issues/issue.js";
 
 export type TaskStatus =
@@ -25,7 +25,6 @@ export type TaskStatus =
  * - READY → BACKLOG: Issue paused
  * - BACKLOG/READY → IN_PROGRESS: Task started
  * - IN_PROGRESS → PR_REVIEW: Task submitted for review
- * - IN_PROGRESS → COMPLETED: Direct completion (main mode)
  * - PR_REVIEW → COMPLETED: PR merged
  * - Any → ABANDONED: Task abandoned
  */

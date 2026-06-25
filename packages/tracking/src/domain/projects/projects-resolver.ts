@@ -16,7 +16,7 @@ import * as fs from "node:fs/promises";
 import { resolveGlobalTrackDir } from "@dev-workflow/git/track-directory-resolver.js";
 import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
 import type { SourceInfo } from "../../data-access/db-source-provider.js";
-import type { ProjectManagementConfig } from "../../project-sync/project-management-config.js";
+import type { ProjectManagementConfig } from "@dev-workflow/database/schema.js";
 
 // Re-export for convenience
 export type { SourceInfo } from "../../data-access/db-source-provider.js";
@@ -31,10 +31,7 @@ export type { SourceInfo } from "../../data-access/db-source-provider.js";
  * This config file is the bridge between a git repo and its database.
  * It contains machine-specific paths that shouldn't be in the database.
  *
- * Connection string formats:
- * - "sqlite:///home/user/.track/workflow.db" → global/absolute SQLite
- * - "sqlite:///path/to/project/.track/workflow.db" → local SQLite
- * - "postgresql://..." → Neon/PostgreSQL
+ * Connection string format: "sqlite:///home/user/.track/workflow.db"
  */
 export interface ProjectConfig {
   /**
@@ -49,11 +46,7 @@ export interface ProjectConfig {
   readonly name: string;
 
   /**
-   * Database connection string
-   *
-   * Formats:
-   * - "sqlite:///absolute/path/workflow.db" → absolute path
-   * - "postgresql://user:pass@host/db" → Neon PostgreSQL
+   * Database connection string (sqlite:///absolute/path/workflow.db)
    */
   readonly database: string;
 
@@ -482,34 +475,9 @@ export async function loadAllConfigs(): Promise<ProjectConfig[]> {
 // =============================================================================
 
 /**
- * Extract host prefix from a PostgreSQL connection string
- */
-function extractHostPrefix(connectionString: string): string {
-  try {
-    const url = new URL(connectionString);
-    const host = url.hostname;
-    const firstSegment = host.split(".")[0];
-    return firstSegment ?? host;
-  } catch {
-    let hash = 0;
-    for (let i = 0; i < connectionString.length; i++) {
-      const char = connectionString.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash;
-    }
-    return Math.abs(hash).toString(36);
-  }
-}
-
-/**
  * Create a display ID for a source (for UI grouping)
  */
 function createDisplayId(connectionString: string, slug: string): string {
-  if (connectionString.startsWith("postgresql://") || connectionString.startsWith("postgres://")) {
-    const hostPrefix = extractHostPrefix(connectionString);
-    return `remote:${hostPrefix}`;
-  }
-
   // Global database at ~/.track/workflow.db
   if (connectionString.includes("/.track/workflow.db")) {
     return "global";
@@ -523,11 +491,6 @@ function createDisplayId(connectionString: string, slug: string): string {
  * Generate display name for a source
  */
 function getDisplayName(displayId: string): string {
-  if (displayId.startsWith("remote:")) {
-    const hostPrefix = displayId.replace("remote:", "");
-    return `Remote (${hostPrefix})`;
-  }
-
   if (displayId === "global") {
     return "Global";
   }
@@ -672,12 +635,11 @@ export class ProjectsResolver extends Service<ProjectsResolver>()("projectsResol
         projects: s.projects.sort((a, b) => a.slug.localeCompare(b.slug)),
       }));
 
-      // Sort: global first, then local, then remote
+      // Sort: global first, then local
       return sources.sort((a, b) => {
         const order = (id: string): number => {
           if (id === "global") return 0;
-          if (id.startsWith("local:")) return 1;
-          return 2;
+          return 1;
         };
         return order(a.id) - order(b.id);
       });

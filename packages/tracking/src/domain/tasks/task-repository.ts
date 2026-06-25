@@ -17,7 +17,7 @@ import {
   type CreateTaskParams,
   type UpdateTaskParams,
 } from "./task.js";
-import type { SyncState, SyncStatus } from "../../project-sync/project-management-provider.js";
+import type { SyncState, SyncStatus } from "@dev-workflow/database/schema.js";
 import { InvalidStatusTransitionError } from "../errors.js";
 import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
 import { Effect } from "@dev-workflow/effect";
@@ -835,13 +835,13 @@ export class DrizzleTaskRepository implements TaskRepository {
 
     return {
       // Convert to string in case it was stored as integer from old schema
-      externalId: row.externalId != null ? String(row.externalId) : null,
-      externalUrl: row.externalUrl ?? null,
-      externalNodeId: row.externalNodeId ?? null,
+      externalId: row.externalId != null ? String(row.externalId) : undefined,
+      externalUrl: row.externalUrl ?? undefined,
+      externalNodeId: row.externalNodeId ?? undefined,
       syncStatus: row.syncStatus as SyncStatus,
-      lastSyncedAt: row.lastSyncedAt ?? null,
-      lastSyncError: row.lastSyncError ?? null,
-      remoteProjectId: row.remoteProjectId ?? null,
+      lastSyncedAt: row.lastSyncedAt ?? undefined,
+      lastSyncError: row.lastSyncError ?? undefined,
+      remoteProjectId: row.remoteProjectId ?? undefined,
     };
   }
 

@@ -22,25 +22,19 @@ import {
   NodeFileSystem,
   VersioningService,
   TaskDomainService,
-  NodeGitHubCLI,
-  ProjectManagementRegistry,
-  getProjectManagementService,
-  getProjectManagementProvider,
-  type ProjectManagementProvider,
   ConflictDetectionService,
   MilestoneDomainService,
   PlanDomainService,
   IssueDomainService,
   MergeService,
-  ProjectManagementService,
   EventBus,
   type FileSystem,
-  type GitHubCLI,
 } from "@dev-workflow/tracking";
 import {
   NodeGitWorktreeService,
   type GitWorktreeService,
 } from "@dev-workflow/git/worktrees/git-worktree-service.js";
+import { NodeGitHubCLI, type GitHubCLI } from "@dev-workflow/git/github/github-cli.js";
 import { resolveGlobalTrackDir } from "@dev-workflow/git/track-directory-resolver.js";
 import type { WorkerQueueDb } from "@dev-workflow/dispatch/worker-queue-db.js";
 import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-queue-db.js";
@@ -78,11 +72,8 @@ export interface McpCradle {
   projectRoot: string;
 
   // External integrations
-  githubCLI: GitHubCLI;
-  providerRegistry: ProjectManagementRegistry;
-  projectManagement: ProjectManagementService;
-  projectManagementProvider: ProjectManagementProvider;
   gitWorktreeService: GitWorktreeService;
+  githubCLI: GitHubCLI;
   workerQueueDb: WorkerQueueDb;
 
   // Template and type services
@@ -200,25 +191,12 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
     ).singleton(),
 
     // External integrations
-    githubCLI: asFunction(() => new NodeGitHubCLI()).singleton(),
-    providerRegistry: asFunction(() => ProjectManagementRegistry.getInstance()).singleton(),
-
-    projectManagement: asFunction(
-      ({ project: proj, githubCLI: cli }: { project: Project; githubCLI: GitHubCLI }) => {
-        const providerDeps = { githubCLI: cli };
-        return getProjectManagementService(proj, providerDeps);
-      }
-    ).singleton(),
-
-    projectManagementProvider: asFunction(
-      ({ project: proj, githubCLI: cli }: { project: Project; githubCLI: GitHubCLI }) => {
-        const providerDeps = { githubCLI: cli };
-        return getProjectManagementProvider(proj, providerDeps);
-      }
-    ).singleton(),
-
     gitWorktreeService: asFunction(
       ({ projectRoot }: { projectRoot: string }) => new NodeGitWorktreeService(projectRoot)
+    ).singleton(),
+
+    githubCLI: asFunction(
+      ({ projectRoot }: { projectRoot: string }) => new NodeGitHubCLI(projectRoot)
     ).singleton(),
 
     workerQueueDb: asFunction(() => new GlobalDbWorkerQueueDb()).singleton(),
@@ -284,13 +262,11 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
         dbSource: src,
         versioningService,
         config: cfg,
-        githubCLI: cli,
       }: {
         dbSource: DbSource;
         versioningService: VersioningService;
         config: McpConfig;
-        githubCLI: GitHubCLI;
-      }) => new MergeService(src, versioningService, cfg.projectId, cli)
+      }) => new MergeService(src, versioningService, cfg.projectId)
     ).singleton(),
   });
 

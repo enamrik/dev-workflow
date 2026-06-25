@@ -31,20 +31,14 @@ import { NodeUserPrompt, type UserPrompt } from "../infrastructure/user-prompt.j
 import { UninstallService } from "../application/uninstall.service.js";
 import { InstallService } from "../application/install.service.js";
 import { UpdateService } from "../application/update.service.js";
-import { ArchiveService } from "../application/archive.service.js";
-import { BackupConfigService } from "../application/backup.service.js";
-import { DatabaseConfigService } from "../application/database.service.js";
 import { ClaudeConfigService } from "../application/claude-config.service.js";
 
 // Commands
 import { UninitCommand } from "../commands/uninit-command.js";
 import { InitCommand } from "../commands/init-command.js";
 import { UpdateCommand } from "../commands/update-command.js";
-import { ArchiveCommand, UnarchiveCommand, NukeCommand } from "../commands/archive-command.js";
 import { UICommand } from "../commands/ui-command.js";
 import { WorkerCommand } from "../commands/worker-command.js";
-import { BackupCommand } from "../commands/backup-command.js";
-import { DatabaseCommand } from "../commands/database-command.js";
 import { ClaudeConfigCommand } from "../commands/claude-config-command.js";
 import { MCPCommand } from "../commands/mcp-command.js";
 
@@ -79,9 +73,6 @@ export interface CliCradle {
   uninstallService: UninstallService;
   installService: InstallService;
   updateService: UpdateService;
-  archiveService: ArchiveService;
-  backupService: BackupConfigService;
-  databaseService: DatabaseConfigService;
   claudeConfigService: ClaudeConfigService;
   userPrompt: UserPrompt;
 
@@ -89,13 +80,8 @@ export interface CliCradle {
   uninitCommand: UninitCommand;
   initCommand: InitCommand;
   updateCommand: UpdateCommand;
-  archiveCommand: ArchiveCommand;
-  unarchiveCommand: UnarchiveCommand;
-  nukeCommand: NukeCommand;
   uiCommand: UICommand;
   workerCommand: WorkerCommand;
-  backupCommand: BackupCommand;
-  databaseCommand: DatabaseCommand;
   claudeConfigCommand: ClaudeConfigCommand;
   mcpCommand: MCPCommand;
 }
@@ -220,42 +206,6 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
       }
     ).scoped(),
 
-    archiveService: asFunction(
-      ({
-        fileSystem,
-        workingDirectory,
-        trackDirectoryResolver,
-        sourceProvider,
-        gitOps,
-        installService,
-      }: {
-        fileSystem: FileSystem;
-        workingDirectory: string;
-        trackDirectoryResolver: TrackDirectoryResolver;
-        sourceProvider: DbSourceProvider;
-        gitOps: GitOperations;
-        installService: InstallService;
-      }) => {
-        return new ArchiveService(
-          fileSystem,
-          workingDirectory,
-          trackDirectoryResolver,
-          sourceProvider,
-          gitOps,
-          installService
-        );
-      }
-    ).scoped(),
-
-    // Services with no constructor dependencies
-    backupService: asFunction(() => new BackupConfigService())
-      .scoped()
-      .disposer((service) => service.close()),
-
-    databaseService: asFunction(() => new DatabaseConfigService())
-      .scoped()
-      .disposer((service) => service.close()),
-
     claudeConfigService: asFunction(() => new ClaudeConfigService()).scoped(),
 
     // Commands
@@ -268,54 +218,18 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
         gitOps,
         workingDirectory,
         installService,
-        archiveService,
       }: {
         gitOps: GitOperations;
         workingDirectory: string;
         installService: InstallService;
-        archiveService: ArchiveService;
       }) => {
-        return new InitCommand(gitOps, workingDirectory, installService, archiveService);
+        return new InitCommand(gitOps, workingDirectory, installService);
       }
     ).scoped(),
 
     updateCommand: asFunction(({ updateService }: { updateService: UpdateService }) => {
       return new UpdateCommand(updateService);
     }).scoped(),
-
-    archiveCommand: asFunction(({ archiveService }: { archiveService: ArchiveService }) => {
-      return new ArchiveCommand(archiveService);
-    }).scoped(),
-
-    unarchiveCommand: asFunction(
-      ({
-        archiveService,
-        gitOps,
-        workingDirectory,
-      }: {
-        archiveService: ArchiveService;
-        gitOps: GitOperations;
-        workingDirectory: string;
-      }) => {
-        return new UnarchiveCommand(archiveService, gitOps, workingDirectory);
-      }
-    ).scoped(),
-
-    nukeCommand: asFunction(
-      ({
-        archiveService,
-        databaseService,
-        trackDirectoryResolver,
-        userPrompt,
-      }: {
-        archiveService: ArchiveService;
-        databaseService: DatabaseConfigService;
-        trackDirectoryResolver: TrackDirectoryResolver;
-        userPrompt: UserPrompt;
-      }) => {
-        return new NukeCommand(archiveService, databaseService, trackDirectoryResolver, userPrompt);
-      }
-    ).scoped(),
 
     uiCommand: asFunction(({ cliPath }: { cliPath: string }) => {
       return new UICommand(cliPath);
@@ -332,16 +246,6 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
         projectsResolver: ProjectsResolver;
       }) => {
         return new WorkerCommand(workerQueueDb, sourceProvider, projectsResolver);
-      }
-    ).scoped(),
-
-    backupCommand: asFunction(({ backupService }: { backupService: BackupConfigService }) => {
-      return new BackupCommand(backupService);
-    }).scoped(),
-
-    databaseCommand: asFunction(
-      ({ databaseService }: { databaseService: DatabaseConfigService }) => {
-        return new DatabaseCommand(databaseService);
       }
     ).scoped(),
 

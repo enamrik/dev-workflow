@@ -42,3 +42,4 @@ data/
 
 # Vite temp files
 vite.config.ts.timestamp-*
+.worktrees/

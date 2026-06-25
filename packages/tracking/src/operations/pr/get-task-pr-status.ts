@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { Effect } from "@dev-workflow/effect";
 import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
-import { GitHubCLITag } from "../../project-sync/github/github-cli.js";
+import { GitHubCLI } from "@dev-workflow/git/github/github-cli.js";
 import type { PRStatus } from "../../domain/tasks/task.js";
 import { validateInput } from "../validation.js";
 import { EntityNotFoundError } from "../../domain/errors.js";
@@ -33,7 +33,6 @@ export interface GetTaskPRStatusResult {
     status?: PRStatus | null;
     isDraft?: boolean;
     merged?: boolean;
-    mergeable?: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
     headBranch?: string;
     baseBranch?: string;
   };
@@ -70,7 +69,7 @@ export function getTaskPRStatus(input: GetTaskPRStatusInput) {
   return Effect.gen(function* () {
     const { taskId } = validateInput(GetTaskPRStatusSchema, input);
     const taskDomainService = yield* TaskDomainService;
-    const githubCLI = yield* GitHubCLITag;
+    const githubCLI = yield* GitHubCLI;
 
     const task = yield* taskDomainService.findById(taskId);
     if (!task) {
@@ -116,7 +115,6 @@ export function getTaskPRStatus(input: GetTaskPRStatusInput) {
           status: prStatus,
           isDraft: pr.isDraft,
           merged: pr.merged,
-          mergeable: pr.mergeable,
           headBranch: pr.headBranch,
           baseBranch: pr.baseBranch,
         },

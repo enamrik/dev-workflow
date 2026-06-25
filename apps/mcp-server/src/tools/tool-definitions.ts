@@ -25,7 +25,6 @@ import {
   GetProjectStatsSchema,
   SearchIssuesSchema,
   GetWorkQueueSchema,
-  ImportGitHubIssueSchema,
 } from "./issue-tools.js";
 
 import {
@@ -34,7 +33,6 @@ import {
   PauseIssueSchema,
   MoveIssueToReadySchema,
   MoveIssueToBacklogSchema,
-  SyncIssueSchema,
 } from "./plan-tools.js";
 
 import {
@@ -55,8 +53,6 @@ import {
   RevertToSnapshotSchema,
   ViewSnapshotSchema,
 } from "./snapshot-tools.js";
-
-import { UpdateSettingsSchema } from "./settings-tools.js";
 
 import {
   CreateMilestoneSchema,
@@ -157,7 +153,6 @@ export const issueToolDefinitions = [
   createToolDefinition(
     "close_issue",
     "Close an issue. Validates all tasks are in terminal state (COMPLETED or ABANDONED). " +
-      "Syncs to GitHub if the issue has a linked GitHub issue. " +
       "Use force=true to bypass task state validation when issue state has drifted.",
     CloseIssueSchema
   ),
@@ -182,13 +177,6 @@ export const issueToolDefinitions = [
     "get_work_queue",
     "Get prioritized work queue: top 3 issues and top 3 tasks to work on next. Also includes issues that need planning (PLANNED status without a plan). Considers status, priority, milestone deadlines, and task readiness.",
     GetWorkQueueSchema
-  ),
-  createToolDefinition(
-    "import_github_issue",
-    "Import an existing GitHub issue into dev-workflow. Creates a dev-workflow issue from the GitHub issue's title and description. " +
-      "Does NOT create tasks - use generate_plan after import. Does NOT modify the original GitHub issue. " +
-      "The imported issue stores sourceGitHubIssueNumber to track the link.",
-    ImportGitHubIssueSchema
   ),
 ];
 
@@ -215,13 +203,8 @@ export const planToolDefinitions = [
   ),
   createToolDefinition(
     "move_issue_to_backlog",
-    "Move a PLANNED issue to OPEN and activate all PLANNED tasks to BACKLOG. Creates GitHub issues for each task (if GitHub sync is enabled). This confirms the plan is finalized and makes tasks available for work. User must confirm the plan before calling this tool.",
+    "Move a PLANNED issue to OPEN and activate all PLANNED tasks to BACKLOG. This confirms the plan is finalized and makes tasks available for work. User must confirm the plan before calling this tool.",
     MoveIssueToBacklogSchema
-  ),
-  createToolDefinition(
-    "sync_issue",
-    "Repair GitHub sync state for an issue. Creates missing GitHub issues for tasks, links existing GitHub issues found by title search, and verifies already-synced tasks. Idempotent: safe to run multiple times. Use this to recover from partial syncs or errors during move_issue_to_backlog. Respects imported vs non-imported issue logic.",
-    SyncIssueSchema
   ),
 ];
 
@@ -234,8 +217,7 @@ export const taskToolDefinitions = [
     "load_task_session",
     "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Load a task for execution. " +
       "Returns full context (task, issue, plan) and starts/resumes the session. " +
-      "Idempotent: if task is already IN_PROGRESS, returns context without restarting. " +
-      "ALWAYS use 'isolated' mode (default) unless user explicitly requests otherwise.",
+      "Idempotent: if task is already IN_PROGRESS, returns context without restarting.",
     LoadTaskSessionSchema
   ),
   createToolDefinition(
@@ -305,18 +287,6 @@ export const snapshotToolDefinitions = [
     "view_snapshot",
     "View the complete state of an issue at a specific version (time travel, read-only).",
     ViewSnapshotSchema
-  ),
-];
-
-// =============================================================================
-// Settings Tool Definitions
-// =============================================================================
-
-export const settingsToolDefinitions = [
-  createToolDefinition(
-    "update_settings",
-    "Configure project settings including GitHub issue sync. Repository owner/repo are auto-detected from git remotes. Validates gh CLI auth and repository access before enabling.",
-    UpdateSettingsSchema
   ),
 ];
 

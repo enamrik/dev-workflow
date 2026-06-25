@@ -16,7 +16,6 @@ import {
   pauseIssue,
   moveIssueToReady,
   moveIssueToBacklog,
-  repairIssue,
 } from "@dev-workflow/tracking";
 
 // =============================================================================
@@ -40,7 +39,7 @@ export const TaskDefinitionSchema = z.object({
   type: z
     .string()
     .describe(
-      "Task type (FEATURE, BUG, ENHANCEMENT, TASK, or custom). REQUIRED. Call list_types first to get valid values. Type determines the GitHub label applied when task is synced."
+      "Task type (FEATURE, BUG, ENHANCEMENT, TASK, or custom). REQUIRED. Call list_types first to get valid values."
     ),
   acceptanceCriteria: z.array(z.string()).optional(),
   estimatedMinutes: z.number().optional(),
@@ -48,7 +47,7 @@ export const TaskDefinitionSchema = z.object({
     .string()
     .optional()
     .describe(
-      "Technical implementation details for task execution (e.g., specific patterns to use, file locations). This is for Claude's execution context and is NOT synced to GitHub issues."
+      "Technical implementation details for task execution (e.g., specific patterns to use, file locations)."
     ),
   dependsOn: z
     .array(z.string())
@@ -91,16 +90,6 @@ export const MoveIssueToReadySchema = z.object({
 });
 
 export const MoveIssueToBacklogSchema = z.object({
-  issueNumber: z.number().describe("Issue number (e.g., 123 for #123)"),
-  skipGitHubSync: z
-    .boolean()
-    .optional()
-    .describe(
-      "Skip GitHub issue creation even if GitHub sync is enabled. Tasks will still transition to BACKLOG but without creating GitHub issues. Useful for internal issues that don't need GitHub visibility. Default: false."
-    ),
-});
-
-export const SyncIssueSchema = z.object({
   issueNumber: z.number().describe("Issue number (e.g., 123 for #123)"),
 });
 
@@ -146,13 +135,5 @@ export const handleMoveIssueToBacklog = createMcpHandler({
   handler: (args) =>
     Effect.gen(function* () {
       return successResponse(yield* moveIssueToBacklog(args));
-    }),
-});
-
-export const handleSyncIssue = createMcpHandler({
-  schema: SyncIssueSchema,
-  handler: (args) =>
-    Effect.gen(function* () {
-      return successResponse(yield* repairIssue(args));
     }),
 });

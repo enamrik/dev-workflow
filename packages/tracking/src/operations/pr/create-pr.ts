@@ -2,8 +2,7 @@
  * createPR - Create a GitHub PR for a task
  *
  * Validates task state, pushes branch to remote, creates PR on GitHub,
- * links to GitHub issues (adds "Closes" or "Part of" links), and
- * updates task with PR metadata.
+ * and updates task with PR metadata.
  */
 
 import { z } from "zod";
@@ -11,7 +10,7 @@ import { Effect } from "@dev-workflow/effect";
 import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
 import { IssueDomainService } from "../../domain/issues/issue-domain-service.js";
 import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
-import { GitHubCLITag } from "../../project-sync/github/github-cli.js";
+import { GitHubCLI } from "@dev-workflow/git/github/github-cli.js";
 import { GitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import type { PRStatus } from "../../domain/tasks/task.js";
 import { validateInput } from "../validation.js";
@@ -50,8 +49,6 @@ export interface CreatePRResult {
     baseBranch: string;
   };
   message: string;
-  linkedToTaskGitHubIssue?: string | null;
-  linkedToParentGitHubIssue?: string | null;
 }
 
 // =============================================================================
@@ -75,9 +72,9 @@ function mapGitHubStateToPRStatus(state: "OPEN" | "CLOSED" | "MERGED", isDraft: 
  * 1. Validate input and resolve services
  * 2. Validate task state (IN_PROGRESS, has branch, no existing PR)
  * 3. Check for existing PR on the branch (adopt if found)
- * 4. Get issue info for PR title and linking
+ * 4. Get issue info for PR title
  * 5. Push branch to remote
- * 6. Build PR title and body with GitHub issue linking
+ * 6. Build PR title and body
  * 7. Create PR on GitHub
  * 8. Update task with PR metadata
  */
@@ -87,7 +84,7 @@ export function createPR(input: CreatePRInput) {
     const taskDomainService = yield* TaskDomainService;
     const issueDomainService = yield* IssueDomainService;
     const planDomainService = yield* PlanDomainService;
-    const githubCLI = yield* GitHubCLITag;
+    const githubCLI = yield* GitHubCLI;
     const gitWorktreeService = yield* GitWorktreeService;
 
     const task = yield* taskDomainService.findById(taskId);
@@ -107,7 +104,7 @@ export function createPR(input: CreatePRInput) {
     if (!task.branchName) {
       return yield* Effect.fail(
         new BusinessRuleError(
-          "Task does not have a branch. Task must have been started with a worktree or branch mode."
+          "Task does not have a branch. Start the task with load_task_session first."
         )
       );
     }
@@ -155,7 +152,7 @@ export function createPR(input: CreatePRInput) {
       // Ignore errors when checking for existing PR
     }
 
-    // Get issue info for PR title and linking
+    // Get issue info for PR title
     const plan = yield* planDomainService.findById(task.planId);
     if (!plan) {
       return yield* Effect.fail(new EntityNotFoundError("Plan", task.planId));
@@ -186,26 +183,12 @@ export function createPR(input: CreatePRInput) {
     let prTitle: string;
     if (title) {
       prTitle = title;
-    } else if (task.syncState?.externalId) {
-      prTitle = `[#${task.syncState.externalId}] ${task.title}`;
     } else {
       prTitle = task.title;
     }
 
-    // Build PR body with GitHub issue linking
+    // Build PR body
     let prBody = body ?? task.description;
-
-    const footerLines: string[] = [];
-    if (task.syncState?.externalId) {
-      footerLines.push(`Closes #${task.syncState.externalId}`);
-    }
-    if (issue.syncState?.externalId && issue.sourceExternalId) {
-      footerLines.push(`Part of #${issue.syncState.externalId}`);
-    }
-
-    if (footerLines.length > 0) {
-      prBody += "\n\n---\n" + footerLines.join("\n");
-    }
     prBody += `\n\nTask ${issue.number}.${task.number}: ${task.title}`;
 
     const targetBranch = baseBranch ?? "main";
@@ -236,12 +219,6 @@ export function createPR(input: CreatePRInput) {
           `Created PR #${pr.number}: ${pr.url}. ` +
           `Task status unchanged (${task.status}). ` +
           `Use submit_for_review to transition to PR_REVIEW when ready.`,
-        linkedToTaskGitHubIssue: task.syncState?.externalId
-          ? `#${task.syncState.externalId}`
-          : null,
-        linkedToParentGitHubIssue: issue.syncState?.externalId
-          ? `#${issue.syncState.externalId}`
-          : null,
       } satisfies CreatePRResult;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

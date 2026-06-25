@@ -1,17 +1,12 @@
 /**
- * DrizzleDb - Dialect-agnostic interfaces for Drizzle ORM
+ * DrizzleDb - Interfaces for Drizzle ORM
  *
- * These interfaces abstract over BetterSQLite3Database and NeonHttpDatabase,
- * allowing single repository implementations that work with both SQLite and PostgreSQL.
- *
- * IMPORTANT: Drizzle's TypeScript types are deeply dialect-specific. These interfaces
- * use `any` strategically to allow the same repository code to work with both backends.
- * Type safety comes from the table definitions (sqliteTable/pgTable) and Drizzle's
- * query builder, not from this abstraction layer.
+ * These interfaces wrap BetterSQLite3Database to provide a clean API
+ * for repository implementations.
  *
  * Usage:
  * ```typescript
- * // At instantiation, cast the dialect-specific db to DrizzleDb
+ * // At instantiation, cast the db to DrizzleDb
  * const db: DrizzleDb = drizzle(adapter, { schema }) as unknown as DrizzleDb;
  *
  * // Repositories use DrizzleDb
@@ -35,7 +30,7 @@ import type { SQL } from "drizzle-orm";
 export interface MutationResult {
   /** Number of rows affected */
   changes: number;
-  /** Last inserted row ID (SQLite) or undefined (PostgreSQL) */
+  /** Last inserted row ID */
   lastInsertRowid?: number | bigint;
 }
 
@@ -104,11 +99,9 @@ export interface DrizzleDeleteBuilder {
 // =============================================================================
 
 /**
- * Dialect-agnostic Drizzle database interface.
+ * Drizzle database interface.
  *
- * Both BetterSQLite3Database and NeonHttpDatabase can be cast to this interface,
- * allowing repositories to work with either backend.
- *
+ * BetterSQLite3Database can be cast to this interface.
  * The `any` types allow flexibility while the actual Drizzle runtime
  * ensures correctness through the schema definitions.
  */
@@ -137,10 +130,7 @@ export interface DrizzleDb {
    * Execute operations within a database transaction.
    *
    * The callback receives a DrizzleDb bound to the transaction.
-   * For SQLite, all operations on the connection are in the transaction.
-   * For PostgreSQL, the tx object is a separate transaction-scoped executor.
-   *
-   * Supports async callbacks for both SQLite and PostgreSQL backends.
+   * All operations on the connection are in the transaction.
    */
   transaction<T>(fn: (tx: DrizzleDb) => Promise<T>): Promise<T>;
 }

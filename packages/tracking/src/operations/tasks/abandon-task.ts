@@ -55,18 +55,10 @@ export function abandonTask(input: AbandonTaskInput) {
       );
     }
 
+    // Clean up worktree (all tasks use isolated mode with worktrees)
     if (task.worktreePath) {
       yield* Effect.catchAll(gitWorktreeService.removeWorktree(task.worktreePath, true), () =>
         Effect.succeed(console.warn(`Failed to cleanup worktree: ${task.worktreePath}`))
-      );
-      yield* taskDomainService.clearWorktreeInfo(taskId);
-    } else if (task.branchName) {
-      yield* Effect.catchAll(
-        Effect.gen(function* () {
-          yield* gitWorktreeService.run(["checkout", "main"]);
-          yield* gitWorktreeService.run(["branch", "-d", task.branchName!]);
-        }),
-        () => Effect.succeed(console.warn(`Failed to cleanup branch: ${task.branchName}`))
       );
       yield* taskDomainService.clearWorktreeInfo(taskId);
     }

@@ -1,12 +1,11 @@
 /**
  * InitCommand - Initialize dev-workflow in a repository
  *
- * Handles fresh installation, repair/re-init, and auto-unarchive flows.
+ * Handles fresh installation and repair/re-init flows.
  * Receives all dependencies via constructor injection.
  */
 
 import * as fs from "node:fs";
-import * as path from "node:path";
 import {
   TrackDirectoryResolver,
   getGlobalDatabasePath,
@@ -14,26 +13,21 @@ import {
 import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
 import { writeConfig, resolveConfig, type Project } from "@dev-workflow/tracking";
 import { InstallService } from "../application/install.service.js";
-import { ArchiveService } from "../application/archive.service.js";
-import { DatabaseConfigService } from "../application/database.service.js";
 
-export interface InitOptions {
-  local?: boolean;
-  url?: string;
-}
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface InitOptions {}
 
 export class InitCommand {
   constructor(
     private readonly gitOps: GitOperations,
     private readonly workingDirectory: string,
-    private readonly installService: InstallService,
-    private readonly archiveService: ArchiveService
+    private readonly installService: InstallService
   ) {}
 
   /**
    * Initialize dev-workflow in the current repository.
    */
-  async execute(options: InitOptions = {}): Promise<void> {
+  async execute(_options: InitOptions = {}): Promise<void> {
     // Check for git repository and at least one commit
     if (!this.gitOps.isGitRepository(this.workingDirectory)) {
       console.error("❌ Not a git repository. dev-workflow requires git.");
@@ -55,41 +49,20 @@ export class InitCommand {
       process.exit(1);
     }
 
-    // Validate mutually exclusive options
-    if (options.local && options.url) {
-      console.error("❌ Cannot use --local and --url together.");
-      console.error("   Use --local for local SQLite database.");
-      console.error("   Use --url for remote PostgreSQL database.");
-      process.exit(1);
-    }
-
-    // Validate --url format
-    if (options.url) {
-      if (!options.url.startsWith("postgresql://") && !options.url.startsWith("postgres://")) {
-        console.error("❌ Invalid connection string format.");
-        console.error("   Expected: postgresql://user:password@host/database");
-        process.exit(1);
-      }
-    }
-
     // Create resolver to get global track directory path
     const resolver = new TrackDirectoryResolver(this.workingDirectory);
     const gitRoot = this.gitOps.findGitRoot(this.workingDirectory);
     const slug = resolver.getProjectId();
 
-    // Determine database connection string based on options
-    let databaseConnectionString = this.getDatabaseConnectionString(options, gitRoot);
+    // Always use global database
+    const databaseConnectionString = `sqlite://${getGlobalDatabasePath()}`;
 
     // Check if this project was previously initialized
     const existingSlug = this.gitOps.readSlugFromGitConfig(gitRoot);
-    let existingConfig: Awaited<ReturnType<typeof resolveConfig>> | null = null;
 
     if (existingSlug) {
       try {
-        existingConfig = await resolveConfig(existingSlug);
-        if (!options.url && !options.local) {
-          databaseConnectionString = existingConfig.database;
-        }
+        await resolveConfig(existingSlug);
       } catch {
         // Config doesn't exist or is invalid - will be recreated
       }
@@ -99,12 +72,6 @@ export class InitCommand {
     const existingProject = await this.installService.findExistingProject(databaseConnectionString);
     const trackDir = resolver.getTrackDirectory();
     const trackDirExists = fs.existsSync(trackDir);
-
-    // Check if project is archived - auto-unarchive if so
-    if (existingProject && existingProject.isArchived) {
-      await this.handleArchivedProject(existingProject, resolver);
-      return;
-    }
 
     // Determine mode: fresh install or repair/re-init
     if (existingProject) {
@@ -120,42 +87,7 @@ export class InitCommand {
     }
 
     // Fresh install mode
-    await this.handleFreshInstall(gitRoot, slug, databaseConnectionString, options, trackDir);
-  }
-
-  private getDatabaseConnectionString(options: InitOptions, gitRoot: string): string {
-    if (options.url) {
-      return options.url;
-    } else if (options.local) {
-      const localDbPath = path.resolve(gitRoot, ".track/workflow.db");
-      return `sqlite://${localDbPath}`;
-    } else {
-      return `sqlite://${getGlobalDatabasePath()}`;
-    }
-  }
-
-  private async handleArchivedProject(
-    existingProject: Project,
-    _resolver: TrackDirectoryResolver
-  ): Promise<void> {
-    console.log("📦 Detected archived project, restoring...");
-    console.log(`   Project: ${existingProject.name} (${existingProject.id.slice(0, 8)}...)\n`);
-
-    try {
-      await this.archiveService.unarchive(existingProject);
-
-      console.log("✓ Marked project as unarchived");
-      console.log("✓ Restored local config");
-      console.log("✓ Installed skills");
-      console.log("✓ Registered MCP server");
-
-      console.log("\n✨ Project restored successfully!");
-      console.log("\nYour issues, plans, and tasks are ready to use.");
-      console.log("Restart Claude Code to pick up the new configuration.");
-    } catch (error) {
-      console.error("Error during unarchive:", error);
-      process.exit(1);
-    }
+    await this.handleFreshInstall(gitRoot, slug, databaseConnectionString, trackDir);
   }
 
   private async handleRepairMode(
@@ -229,20 +161,11 @@ export class InitCommand {
     gitRoot: string,
     slug: string,
     databaseConnectionString: string,
-    options: InitOptions,
     trackDir: string
   ): Promise<void> {
     try {
       console.log("🚀 Initializing dev-workflow...");
-      if (options.local) {
-        console.log("   Mode: local database (./.track/workflow.db)");
-      } else if (options.url) {
-        console.log(
-          `   Mode: remote database (${DatabaseConfigService.maskPassword(options.url)})`
-        );
-      } else {
-        console.log(`   Mode: global database (${getGlobalDatabasePath()})`);
-      }
+      console.log(`   Database: ${getGlobalDatabasePath()}`);
       console.log();
 
       await this.installService.initializeDatabase(databaseConnectionString);

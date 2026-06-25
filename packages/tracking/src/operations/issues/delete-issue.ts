@@ -4,7 +4,6 @@
  * Only PLANNED issues can be deleted. Once work has begun, use closeIssue instead.
  * Performs cascading cleanup:
  * - Worktree and branch removal for all tasks
- * - External issue closure (provider handles sync check)
  * - Dispatch queue cleanup
  * - Cascade soft-delete of all tasks
  */
@@ -12,7 +11,6 @@
 import { z } from "zod";
 import type { Issue } from "../../domain/issues/issue.js";
 import { DomainExecutorFactory } from "../../domain/domain-executor.js";
-import { ProjectManagementService } from "../../project-sync/project-management-service.js";
 import { GitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import { WorkerQueueDbTag } from "@dev-workflow/dispatch/worker-queue-db.js";
 import { BusinessRuleError } from "../../domain/errors.js";
@@ -46,9 +44,8 @@ export interface DeleteIssueResult {
  * 1. Validate input and resolve project domain
  * 2. Check issue is in PLANNED status
  * 3. Clean up worktrees and branches for all tasks
- * 4. Close external issues via provider
- * 5. Soft-delete the issue
- * 6. Cascade soft-delete to tasks and clean dispatch queue
+ * 4. Soft-delete the issue
+ * 5. Cascade soft-delete to tasks and clean dispatch queue
  */
 export function deleteIssue(input: DeleteIssueInput) {
   return Effect.gen(function* () {
@@ -121,17 +118,6 @@ export function deleteIssue(input: DeleteIssueInput) {
           yield* pd.tasks.update(task.id, { branchName: undefined });
         }
       }
-    }
-
-    // Close external issues via provider
-    const projectManagement = yield* ProjectManagementService;
-    for (const task of tasks) {
-      if (task.syncState?.externalId) {
-        yield* projectManagement.closeIssue(task.syncState);
-      }
-    }
-    if (issue.syncState?.externalId) {
-      yield* projectManagement.closeIssue(issue.syncState);
     }
 
     // Soft-delete the issue

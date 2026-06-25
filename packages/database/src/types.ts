@@ -110,11 +110,31 @@ export interface ProjectManagementConfig {
 }
 
 // =============================================================================
-// GitHub Sync State JSON Column Types
+// External Sync State Types
 // =============================================================================
 
 /**
- * GitHub sync state stored on issues
+ * Sync status for external issue tracking
+ */
+export type SyncStatus = "PENDING" | "SYNCED" | "ERROR";
+
+/**
+ * External sync state stored on issues/tasks
+ * Maps to externalId, externalUrl, externalNodeId, projectItemId columns
+ */
+export interface SyncState {
+  externalId?: string;
+  externalUrl?: string;
+  externalNodeId?: string;
+  projectItemId?: string;
+  lastSyncedAt?: string;
+  syncStatus?: SyncStatus;
+  lastSyncError?: string;
+  remoteProjectId?: string;
+}
+
+/**
+ * GitHub sync state stored on issues (legacy - alias for SyncState)
  */
 export interface GitHubSyncState {
   githubIssueNumber?: number;

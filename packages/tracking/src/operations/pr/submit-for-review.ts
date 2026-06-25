@@ -1,14 +1,13 @@
 /**
  * submitForReview - Submit a task for review
  *
- * Validates task state, transitions the task to PR_REVIEW status via
- * TaskDomainService, and syncs the status to the external provider.
+ * Validates task state and transitions the task to PR_REVIEW status via
+ * TaskDomainService.
  */
 
 import { z } from "zod";
 import { Effect } from "@dev-workflow/effect";
 import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
-import { ProjectManagementService } from "../../project-sync/project-management-service.js";
 import { validateInput } from "../validation.js";
 import { EntityNotFoundError, BusinessRuleError } from "../../domain/errors.js";
 
@@ -48,7 +47,7 @@ export interface SubmitForReviewResult {
  * 2. Find task by ID
  * 3. Validate task is IN_PROGRESS (or force)
  * 4. Validate task has a PR (or force)
- * 5. Update status via TaskDomainService and sync via ProjectManagementService
+ * 5. Update status via TaskDomainService
  * 6. Return updated status and PR info
  */
 export function submitForReview(input: SubmitForReviewInput) {
@@ -79,13 +78,7 @@ export function submitForReview(input: SubmitForReviewInput) {
       );
     }
 
-    const updatedTask = yield* taskDomainService.submitForReview(taskId, { force });
-
-    const pm = yield* ProjectManagementService;
-    const statusSync = yield* pm.syncTaskStatus(updatedTask.syncState, "PR_REVIEW");
-    if (statusSync) {
-      yield* taskDomainService.updateSyncState(updatedTask.id, statusSync);
-    }
+    yield* taskDomainService.submitForReview(taskId, { force });
 
     return {
       success: true,

@@ -13,7 +13,6 @@ import type { Issue } from "./issue.js";
 import type { Plan } from "../plans/plan.js";
 import type { Task, TaskStatus } from "../tasks/task.js";
 import type { VersioningService } from "../snapshots/versioning-service.js";
-import type { GitHubCLI } from "../../project-sync/github/github-cli.js";
 import type { DbClient } from "../../data-access/db-client.js";
 import type { DbSource } from "../../data-access/db-source.js";
 import { EventBus } from "../../events/event-bus.js";
@@ -102,30 +101,17 @@ export class MergeValidationError extends Error {
  * - Merge plans and tasks while preserving state
  * - Detect and warn about in-progress work
  * - Soft-delete source issue in merge_into mode
- * - Sync merge actions to GitHub (comments, close source in merge_into mode)
  */
 export class MergeService extends Service<MergeService>()("mergeService") {
   private readonly db: DbClient;
 
   constructor(
-    private readonly source: DbSource,
+    source: DbSource,
     private readonly versioningService: VersioningService,
-    private readonly projectId: string,
-    private readonly githubCLI?: GitHubCLI
+    projectId: string
   ) {
     super();
     this.db = source.createClient(projectId);
-  }
-
-  /**
-   * Check if GitHub sync is enabled for this project
-   */
-  private isGitHubSyncEnabled(): Effect<boolean> {
-    const self = this;
-    return Effect.gen(function* () {
-      const project = yield* self.source.projects.findById(self.projectId);
-      return project?.syncConfig?.enabled ?? false;
-    });
   }
 
   /**
@@ -184,9 +170,6 @@ export class MergeService extends Service<MergeService>()("mergeService") {
       } else {
         result = yield* self.executeMergeInto(sourceIssue, targetIssue, warnings, request.mergedBy);
       }
-
-      // Sync merge to GitHub (comments, close source in merge_into mode)
-      yield* self.syncMergeToGitHub(sourceIssue, targetIssue, result, request.mode);
 
       return result;
     });
@@ -695,96 +678,5 @@ export class MergeService extends Service<MergeService>()("mergeService") {
     const i1 = c1 ? order.indexOf(c1) : 0;
     const i2 = c2 ? order.indexOf(c2) : 0;
     return i1 >= i2 ? (c1 ?? "MEDIUM") : (c2 ?? "MEDIUM");
-  }
-
-  /**
-   * Sync merge operation to GitHub
-   *
-   * - Adds comments to source GitHub issues about the merge
-   * - In merge_into mode, closes the source GitHub issue
-   *
-   * This is best-effort: if GitHub sync fails, the merge still succeeds
-   * (the local merge is the source of truth)
-   */
-  private syncMergeToGitHub(
-    sourceIssue: Issue,
-    targetIssue: Issue,
-    result: MergeResult,
-    mode: MergeMode
-  ): Effect<void> {
-    const self = this;
-    return Effect.gen(function* () {
-      // Skip if GitHub sync is not enabled or no CLI available
-      if (!(yield* self.isGitHubSyncEnabled()) || !self.githubCLI) {
-        return;
-      }
-
-      const resultIssueNumber = result.resultIssue.number;
-
-      // Comment on source issue's GitHub issue (if it has one)
-      if (sourceIssue.syncState?.externalId) {
-        const comment = self.buildMergeComment(sourceIssue.number, resultIssueNumber, mode);
-        const issueNumber = parseInt(sourceIssue.syncState.externalId, 10);
-
-        // Best-effort: log but don't fail the merge if GitHub sync fails
-        yield* Effect.catchAll(
-          mode === "merge_into"
-            ? self.githubCLI.closeIssueWithComment(issueNumber, comment)
-            : self.githubCLI.commentOnIssue(issueNumber, comment),
-          (error) => {
-            console.warn(
-              `Failed to sync merge to GitHub issue #${sourceIssue.syncState?.externalId}:`,
-              error
-            );
-            return Effect.succeed(undefined as void);
-          }
-        );
-      }
-
-      // Comment on target issue's GitHub issue (if it has one and mode is merge_into)
-      // Note: In create_new mode, we commented on both source issues above
-      // In merge_into mode, target issue continues, so add a note about the merge
-      if (mode === "merge_into" && targetIssue.syncState?.externalId) {
-        const comment = `**Merged:** Issue #${sourceIssue.number} has been merged into this issue.`;
-        const issueNumber = parseInt(targetIssue.syncState.externalId, 10);
-
-        yield* Effect.catchAll(self.githubCLI.commentOnIssue(issueNumber, comment), (error) => {
-          console.warn(
-            `Failed to comment on target GitHub issue #${targetIssue.syncState?.externalId}:`,
-            error
-          );
-          return Effect.succeed(undefined as void);
-        });
-      }
-
-      // For create_new mode, also comment on target's GitHub issue
-      if (mode === "create_new" && targetIssue.syncState?.externalId) {
-        const comment = self.buildMergeComment(targetIssue.number, resultIssueNumber, mode);
-        const issueNumber = parseInt(targetIssue.syncState.externalId, 10);
-
-        yield* Effect.catchAll(self.githubCLI.commentOnIssue(issueNumber, comment), (error) => {
-          console.warn(
-            `Failed to comment on GitHub issue #${targetIssue.syncState?.externalId}:`,
-            error
-          );
-          return Effect.succeed(undefined as void);
-        });
-      }
-    });
-  }
-
-  /**
-   * Build a merge comment for GitHub
-   */
-  private buildMergeComment(
-    localIssueNumber: number,
-    resultIssueNumber: number,
-    mode: MergeMode
-  ): string {
-    if (mode === "merge_into") {
-      return `🔀 **Merged:** This issue (#${localIssueNumber}) has been merged into issue #${resultIssueNumber}.`;
-    } else {
-      return `🔀 **Merged:** This issue (#${localIssueNumber}) was combined with another issue to create issue #${resultIssueNumber}.`;
-    }
   }
 }

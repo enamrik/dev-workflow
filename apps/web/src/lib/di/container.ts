@@ -17,8 +17,6 @@ import {
   ProjectsResolver,
   DbSourceProvider,
   DomainExecutorFactory,
-  ProjectManagementService,
-  NoOpProjectManagementClient,
   TypeDomainService,
   EventBus,
 } from "@dev-workflow/tracking";
@@ -49,9 +47,6 @@ export interface WebCradle {
 
   // Type service (global, not project-scoped)
   typeDomainService: TypeDomainService;
-
-  // Project management (no-op for web — real impl in MCP)
-  projectManagement: ProjectManagementService;
 
   // Worker queue (for board + worker endpoints)
   workerQueueDb: WorkerQueueDb;
@@ -98,10 +93,6 @@ export function buildWebContainer(): AwilixContainer<WebCradle> {
         sourceProvider: DbSourceProvider;
         typeDomainService: TypeDomainService;
       }) => new DomainExecutorFactory(sp, tds)
-    ).singleton(),
-
-    projectManagement: asFunction(
-      () => new ProjectManagementService(new NoOpProjectManagementClient())
     ).singleton(),
 
     workerQueueDb: asFunction(() => new GlobalDbWorkerQueueDb()).singleton(),
