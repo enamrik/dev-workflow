@@ -33,12 +33,21 @@ Track multiple projects from a single database with a beautiful web UI.
 ### Version History
 Full snapshot history with time-travel capabilities to view or revert to any previous state.
 
+## Quick Install
+
+```bash
+curl -fsSL https://enamrik.github.io/dev-workflow/install.sh | bash
+```
+
+Then in your git repository:
+
+```bash
+dev-workflow init
+```
+
 ## Quick Example
 
 ```bash
-# Initialize dev-workflow in your project
-dev-workflow init
-
 # Create an issue using Claude
 # Claude will invoke the MCP tools automatically
 "Add user authentication to the API"
@@ -54,7 +63,7 @@ dev-workflow init
 
 ## Getting Started
 
-Ready to get started? Head to the [Installation Guide](/getting-started/installation) to set up dev-workflow in your project.
+See the [Installation Guide](/getting-started/installation) for more options, or jump to the [Quick Start](/getting-started/quick-start) to create your first issue.
 
 ## Architecture
 
