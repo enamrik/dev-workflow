@@ -15,4 +15,13 @@ export default defineConfig({
   clean: true,
   splitting: false,
   sourcemap: false,
+  // Ship data files (not inlined by the bundler) beside cli.js: Drizzle migrations
+  // (resolveMigrationsFolder uses import.meta.url) and the CLI's skills/templates
+  // (getDefaultPackageRoot resolves to the bundle dir). Artifact assembly mirrors this.
+  async onSuccess() {
+    const { cpSync } = await import("node:fs");
+    cpSync("../../packages/database/dist/drizzle", "dist/drizzle", { recursive: true });
+    cpSync("skills", "dist/skills", { recursive: true });
+    cpSync("templates", "dist/templates", { recursive: true });
+  },
 });
