@@ -8,6 +8,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import Database from "better-sqlite3";
+import { openSqliteDatabase } from "@dev-workflow/database/open-database.js";
 import { drizzle, BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { eq, or, sql } from "drizzle-orm";
 
@@ -53,7 +54,7 @@ export class GlobalDbWorkerQueueDb implements WorkerQueueDb {
       fs.mkdirSync(parentDir, { recursive: true });
     }
 
-    this.sqlite = new Database(actualPath);
+    this.sqlite = openSqliteDatabase(actualPath);
     this.sqlite.pragma("foreign_keys = ON");
     this.db = drizzle(this.sqlite);
 

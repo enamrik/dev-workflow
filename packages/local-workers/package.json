@@ -21,7 +21,8 @@
     "@dev-workflow/dispatch": "workspace:*",
     "@dev-workflow/git": "workspace:*",
     "better-sqlite3": "^12.5.0",
-    "drizzle-orm": "^0.36.0"
+    "drizzle-orm": "^0.36.0",
+    "@dev-workflow/database": "workspace:*"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",

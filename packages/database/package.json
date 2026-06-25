@@ -14,6 +14,10 @@
       "types": "./dist/migrations-folder.d.ts",
       "default": "./dist/migrations-folder.js"
     },
+    "./open-database.js": {
+      "types": "./dist/open-database.d.ts",
+      "default": "./dist/open-database.js"
+    },
     "./drizzle-db.js": {
       "types": "./dist/drizzle-db.d.ts",
       "default": "./dist/drizzle-db.js"

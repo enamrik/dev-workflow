@@ -464,6 +464,9 @@ importers:
 
   packages/local-workers:
     dependencies:
+      '@dev-workflow/database':
+        specifier: workspace:*
+        version: link:../database
       '@dev-workflow/dispatch':
         specifier: workspace:*
         version: link:../dispatch

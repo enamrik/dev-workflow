@@ -6,15 +6,14 @@
  */
 
 import { spawn } from "node:child_process";
-import * as path from "node:path";
-import { bundledPackageDir } from "../infrastructure/bundled-package.js";
+import { resolveMcpServerEntry } from "../infrastructure/mcp-server-entry.js";
 
 export class MCPCommand {
   /**
    * Start MCP server for Claude Code integration.
    */
   execute(): void {
-    const mcpServerPath = path.join(bundledPackageDir("@dev-workflow/mcp-server"), "dist/main.js");
+    const mcpServerPath = resolveMcpServerEntry();
 
     // MCP server expects PROJECT_SLUG to be passed via environment
     // (set by Claude's MCP integration from the registered config)

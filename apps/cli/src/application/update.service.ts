@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { execSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
-import Database from "better-sqlite3";
+import { openSqliteDatabase } from "@dev-workflow/database/open-database.js";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
   DbSourceProvider,
@@ -106,7 +106,7 @@ export class UpdateService {
 
     // Use better-sqlite3 directly for this one-time migration
     // since we need raw SQL access across project scopes
-    const db = new Database(dbPath);
+    const db = openSqliteDatabase(dbPath);
 
     try {
       // Update issues with old projectId to use new project.id
