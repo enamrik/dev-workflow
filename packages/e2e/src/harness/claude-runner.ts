@@ -1,16 +1,20 @@
 /**
- * Claude CLI Runner
+ * Claude CLI Runner for AI-Driven E2E Tests
  *
- * TypeScript wrapper for running claude CLI commands.
- * Streams output to test stdout for visibility during test runs.
+ * TypeScript wrapper for running claude CLI commands with MCP server integration.
+ * Invokes the `claude` CLI as a subprocess to test full user flows through
+ * natural language prompts.
  */
 
 import { spawn, type SpawnOptions } from "node:child_process";
+import type { E2ETestHarness } from "./test-harness.js";
 
 export interface ClaudeResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+  /** Whether the prompt completed successfully (exitCode === 0) */
+  success: boolean;
 }
 
 export interface ClaudeOptions {
@@ -26,18 +30,28 @@ export interface ClaudeOptions {
   streamOutput?: boolean;
   /** Additional environment variables */
   env?: Record<string, string>;
+  /** Model to use (default: sonnet) */
+  model?: "haiku" | "sonnet" | "opus";
+  /** Maximum budget in USD per run (default: 1.00) */
+  maxBudgetUsd?: number;
 }
 
 /**
  * Run claude CLI with a prompt, optionally streaming output to test stdout
  */
 export async function runClaude(prompt: string, options: ClaudeOptions): Promise<ClaudeResult> {
-  const args = ["--print", prompt];
+  const args = ["--print"];
   const streamOutput = options.streamOutput ?? true;
   const timeout = options.timeout ?? 60000;
+  const model = options.model ?? "sonnet";
+  const maxBudgetUsd = options.maxBudgetUsd ?? 1.0;
 
   // Add --dangerously-skip-permissions to bypass permission checks for MCP tools in tests
   args.push("--dangerously-skip-permissions");
+
+  // Model and budget
+  args.push("--model", model);
+  args.push("--max-budget-usd", maxBudgetUsd.toString());
 
   if (options.mcpConfig) {
     args.push("--mcp-config", options.mcpConfig);
@@ -46,6 +60,10 @@ export async function runClaude(prompt: string, options: ClaudeOptions): Promise
   if (options.allowedTools && options.allowedTools.length > 0) {
     args.push("--allowedTools", options.allowedTools.join(","));
   }
+
+  // Add -- to separate options from prompt (since --mcp-config takes variadic args)
+  args.push("--");
+  args.push(prompt);
 
   return new Promise((resolve, reject) => {
     const truncatedPrompt = prompt.length > 50 ? `${prompt.slice(0, 50)}...` : prompt;
@@ -106,7 +124,7 @@ export async function runClaude(prompt: string, options: ClaudeOptions): Promise
       clearTimeout(timeoutId);
       const exitCode = code ?? (timedOut ? 124 : 1);
       console.log(`\n✓ Claude exited with code ${exitCode}\n`);
-      resolve({ stdout, stderr, exitCode });
+      resolve({ stdout, stderr, exitCode, success: exitCode === 0 });
     });
 
     proc.on("error", (error: Error) => {
@@ -147,5 +165,81 @@ export async function runClaudeSimple(prompt: string, cwd: string): Promise<bool
     return result.exitCode === 0;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Options for ClaudeRunner (harness-based runner)
+ */
+export interface ClaudeRunnerOptions {
+  /** Model to use (default: sonnet) */
+  model?: "haiku" | "sonnet" | "opus";
+  /** Maximum budget in USD per run (default: 1.00) */
+  maxBudgetUsd?: number;
+  /** Timeout in milliseconds (default: 300000 = 5 min) */
+  timeout?: number;
+  /** Stream output to console (default: true) */
+  streamOutput?: boolean;
+}
+
+/**
+ * Harness-integrated Claude runner for AI-driven E2E tests.
+ *
+ * Automatically configures MCP server connection using the test harness.
+ */
+export class ClaudeRunner {
+  constructor(private readonly harness: E2ETestHarness) {}
+
+  /**
+   * Run a prompt through Claude with the dev-workflow MCP server.
+   *
+   * @param prompt - Natural language prompt describing the user flow
+   * @param options - Configuration options
+   * @returns Result with output and success status
+   */
+  async run(prompt: string, options: ClaudeRunnerOptions = {}): Promise<ClaudeResult> {
+    const {
+      model = "sonnet",
+      maxBudgetUsd = 1.0,
+      timeout = 300000, // 5 minutes
+      streamOutput = true,
+    } = options;
+
+    const mcpConfigPath = this.harness.getMcpConfig();
+
+    return runClaude(prompt, {
+      cwd: this.harness.testDir,
+      mcpConfig: mcpConfigPath,
+      model,
+      maxBudgetUsd,
+      timeout,
+      streamOutput,
+      env: {
+        TRACK_DIR: this.harness.trackDir,
+      },
+    });
+  }
+
+  /**
+   * Run multiple prompts in sequence, useful for multi-turn workflows.
+   *
+   * @param prompts - Array of prompts to run in order
+   * @param options - Configuration options (applied to all prompts)
+   * @returns Array of results, one per prompt
+   */
+  async runSequence(prompts: string[], options: ClaudeRunnerOptions = {}): Promise<ClaudeResult[]> {
+    const results: ClaudeResult[] = [];
+
+    for (const prompt of prompts) {
+      const result = await this.run(prompt, options);
+      results.push(result);
+
+      // Stop on first failure
+      if (!result.success) {
+        break;
+      }
+    }
+
+    return results;
   }
 }

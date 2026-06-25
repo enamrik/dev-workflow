@@ -9,8 +9,10 @@ export {
   runClaude,
   isClaudeAvailable,
   runClaudeSimple,
+  ClaudeRunner,
   type ClaudeResult,
   type ClaudeOptions,
+  type ClaudeRunnerOptions,
 } from "./claude-runner.js";
 export {
   assertIssueExists,

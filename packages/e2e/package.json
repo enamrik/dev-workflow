@@ -4,8 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:e2e": "vitest run",
-    "test:e2e:watch": "vitest",
+    "test:e2e": "vitest run --config vitest.config.ts",
+    "test:e2e:watch": "vitest --config vitest.config.ts",
+    "test:ai": "vitest run --config vitest.ai.config.ts",
+    "test:ai:watch": "vitest --config vitest.ai.config.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit"
   },
