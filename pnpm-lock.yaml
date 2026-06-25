@@ -194,9 +194,6 @@ importers:
 
   apps/web:
     dependencies:
-      '@dev-workflow/database':
-        specifier: workspace:*
-        version: link:../../packages/database
       '@dev-workflow/dispatch':
         specifier: workspace:*
         version: link:../../packages/dispatch
@@ -221,9 +218,6 @@ importers:
       awilix:
         specifier: ^11.0.0
         version: 11.0.4
-      better-sqlite3:
-        specifier: ^12.5.0
-        version: 12.5.0
       clsx:
         specifier: ^2.1.0
         version: 2.1.1
@@ -254,9 +248,6 @@ importers:
       tailwind-merge:
         specifier: ^2.2.0
         version: 2.6.0
-      ws:
-        specifier: ^8.16.0
-        version: 8.18.3
     devDependencies:
       '@tailwindcss/typography':
         specifier: ^0.5.19
@@ -273,9 +264,6 @@ importers:
       '@testing-library/user-event':
         specifier: ^14.5.2
         version: 14.6.1(@testing-library/dom@10.4.1)
-      '@types/better-sqlite3':
-        specifier: ^7.6.13
-        version: 7.6.13
       '@types/node':
         specifier: ^20.10.6
         version: 20.19.27
@@ -288,9 +276,6 @@ importers:
       '@types/react-syntax-highlighter':
         specifier: ^15.5.13
         version: 15.5.13
-      '@types/ws':
-        specifier: ^8.5.10
-        version: 8.18.1
       autoprefixer:
         specifier: ^10.4.16
         version: 10.4.23(postcss@8.5.6)
