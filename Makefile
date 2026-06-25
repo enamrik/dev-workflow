@@ -5,7 +5,7 @@ export PNPM_HOME
 export PATH := $(PNPM_HOME):$(PATH)
 DEV_WORKFLOW := $(PNPM_HOME)/dev-workflow
 
-.PHONY: help install build clean reset init dogfood test test-npm-install test-mcp test-e2e link unlink flatten-migrations ui ui-dev ui-stop local-track ui-dev-local worktree-setup prep
+.PHONY: help install build clean reset init dogfood test test-ai test-npm-install test-mcp test-e2e link unlink flatten-migrations ui ui-dev ui-stop local-track ui-dev-local worktree-setup prep
 
 help:
 	@echo "dev-workflow - Makefile commands"
@@ -21,6 +21,7 @@ help:
 	@echo "  make dogfood          - Build + link + update + restart MCP server"
 	@echo "  make test             - Run unit tests"
 	@echo "  make test-e2e         - Run E2E tests (requires Claude CLI)"
+	@echo "  make test-ai          - Run AI-driven E2E tests (costs money, uses Claude API)"
 	@echo "  make prep             - Run all checks before pushing (typecheck, lint, format, tests)"
 	@echo "  make test-npm-install - Test npm install scenario (simulates user install)"
 	@echo "  make test-mcp         - Test MCP server startup and migrations"
@@ -133,6 +134,11 @@ test-mcp:
 test-e2e: build
 	@echo "🧪 Running E2E tests (requires Claude CLI)..."
 	@cd packages/e2e && pnpm test:e2e
+
+test-ai: build
+	@echo "🤖 Running AI-driven E2E tests (costs money!)..."
+	@echo "   Uses Claude API to test full user flows via natural language"
+	@cd packages/e2e && pnpm test:ai
 
 # Pre-push validation: runs all checks before pushing to remote
 # Fails fast on first error - no point continuing if typecheck fails
