@@ -1,5 +1,8 @@
 import getPort from "get-port";
 import { createConnection } from "node:net";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
 // Re-export shared port file utilities from git
 export {
@@ -10,6 +13,41 @@ export {
 } from "@dev-workflow/git/port-manager.js";
 
 const DEFAULT_PORT = 3456;
+
+// The UI daemon's PID, tracked so `ui:stop`/`ui:status` can find and signal it.
+const PID_FILE = path.join(os.homedir(), ".track", "ui.pid");
+
+export function saveDaemonPid(pid: number): void {
+  fs.mkdirSync(path.dirname(PID_FILE), { recursive: true });
+  fs.writeFileSync(PID_FILE, String(pid), "utf-8");
+}
+
+export function getSavedDaemonPid(): number | null {
+  try {
+    const pid = parseInt(fs.readFileSync(PID_FILE, "utf-8").trim(), 10);
+    return Number.isNaN(pid) ? null : pid;
+  } catch {
+    return null;
+  }
+}
+
+export function clearDaemonPid(): void {
+  try {
+    fs.unlinkSync(PID_FILE);
+  } catch {
+    // ignore if absent
+  }
+}
+
+/** True if a process with the given PID is currently alive. */
+export function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export async function findAvailablePort(): Promise<number> {
   // Find a random available port between 3000-9000

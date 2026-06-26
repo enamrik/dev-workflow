@@ -32,7 +32,6 @@ import {
 } from "@dev-workflow/tracking";
 import { NodeFileSystem, type FileSystem } from "../infrastructure/file-system.js";
 import { NodeUserPrompt, type UserPrompt } from "../infrastructure/user-prompt.js";
-import { resolveCliEntry } from "../infrastructure/cli-entry.js";
 
 // Application services
 import { UninstallService } from "../application/uninstall.service.js";
@@ -66,7 +65,6 @@ export interface CliCradle {
   // Values (provided at runtime by middleware or computed)
   workingDirectory: string;
   packageRoot: string;
-  cliPath: string;
 
   // Optional values (registered by middleware for specific commands)
   trackDirectoryResolver: TrackDirectoryResolver;
@@ -132,12 +130,6 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
     sourceProvider: asClass(DbSourceProvider)
       .singleton()
       .disposer((provider) => provider.closeAll()),
-
-    // Path to re-launch this CLI (used by ui:install's PM2 wrapper). Correct in the
-    // bundle (cli.js) and in dev (dist/main.js) — see resolveCliEntry.
-    cliPath: asFunction(({ packageRoot }: { packageRoot: string }) => {
-      return resolveCliEntry(packageRoot);
-    }).singleton(),
 
     // Scoped services (new instance per resolution)
     projectsResolver: asClass(ProjectsResolver).scoped(),
@@ -258,11 +250,9 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
       return new UpdateCommand(updateService);
     }).scoped(),
 
-    uiCommand: asFunction(
-      ({ cliPath, uiService }: { cliPath: string; uiService: UIService }) => {
-        return new UICommand(cliPath, uiService);
-      }
-    ).scoped(),
+    uiCommand: asFunction(({ uiService }: { uiService: UIService }) => {
+      return new UICommand(uiService);
+    }).scoped(),
 
     workerCommand: asFunction(
       ({

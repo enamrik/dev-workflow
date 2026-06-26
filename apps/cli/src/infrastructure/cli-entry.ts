@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 /**
  * Absolute path to this CLI's entry script, for re-launching it (MCP registration with
- * `claude mcp add … -- node <entry> mcp`, or the ui:install PM2 wrapper).
+ * `claude mcp add … -- node <entry> mcp`, or spawning the `ui` daemon).
  *
  * Uses the actual running entry (process.argv[1]) so it is correct in both the published
  * bundle (cli.js at the artifact root) and a dev checkout (dist/main.js) — never assume a

@@ -8,43 +8,37 @@ import { createCliHandler, createCliCommand, defaultMiddleware } from "../di/boo
 import { Effect } from "@dev-workflow/effect";
 import { UICommandTag } from "../di/cli-tags.js";
 
-/**
- * Options for UI commands (currently no options)
- */
-export type UIOptions = Record<string, never>;
+/** Options for the `ui` command. */
+export interface UIOptions {
+  foreground?: boolean;
+}
 
-/**
- * Handler for ui (start) command.
- */
+/** Handler for `ui` (start daemon; --foreground runs attached). */
 export const handleUI = createCliHandler({
-  handler: (_options: UIOptions) =>
+  handler: (options: UIOptions) =>
     Effect.gen(function* () {
       const uiCommand = yield* UICommandTag;
-      yield* Effect.promise(() => uiCommand.start());
+      yield* Effect.promise(() => uiCommand.start({ foreground: options.foreground === true }));
     }),
   middleware: defaultMiddleware,
 });
 
-/**
- * Handler for ui:install command.
- */
-export const handleUIInstall = createCliHandler({
-  handler: (_options: UIOptions) =>
+/** Handler for `ui:stop`. */
+export const handleUIStop = createCliHandler({
+  handler: (_options: Record<string, never>) =>
     Effect.gen(function* () {
       const uiCommand = yield* UICommandTag;
-      yield* Effect.promise(() => uiCommand.install());
+      yield* Effect.promise(() => uiCommand.stop());
     }),
   middleware: defaultMiddleware,
 });
 
-/**
- * Handler for ui:uninstall command.
- */
-export const handleUIUninstall = createCliHandler({
-  handler: (_options: UIOptions) =>
+/** Handler for `ui:status`. */
+export const handleUIStatus = createCliHandler({
+  handler: (_options: Record<string, never>) =>
     Effect.gen(function* () {
       const uiCommand = yield* UICommandTag;
-      yield* Effect.promise(() => uiCommand.uninstall());
+      yield* Effect.promise(() => uiCommand.status());
     }),
   middleware: defaultMiddleware,
 });
@@ -53,5 +47,5 @@ export const handleUIUninstall = createCliHandler({
  * Executable runners.
  */
 export const runUI = createCliCommand(handleUI);
-export const runUIInstall = createCliCommand(handleUIInstall);
-export const runUIUninstall = createCliCommand(handleUIUninstall);
+export const runUIStop = createCliCommand(handleUIStop);
+export const runUIStatus = createCliCommand(handleUIStatus);

@@ -12,21 +12,18 @@ dev-workflow includes a web-based UI for visualizing and managing your work acro
 dev-workflow ui
 ```
 
-Opens the web UI at http://localhost:3000
+Starts the web UI as a background daemon and returns to your prompt. It serves at
+http://127.0.0.1:3456 (the port is saved to `~/.track/ui-port`; logs go to `~/.track/ui.log`).
 
-### Auto-Start with PM2
-
-Install as a background service:
-
-```bash
-dev-workflow ui:install
-```
-
-Remove the service:
+### Managing the daemon
 
 ```bash
-dev-workflow ui:uninstall
+dev-workflow ui:status    # is it running, and on which port
+dev-workflow ui:stop      # stop the daemon
+dev-workflow ui --foreground   # run attached (Ctrl+C to stop) — for debugging
 ```
+
+The daemon runs until you stop it or the machine reboots (there is no boot auto-start).
 
 ## Features
 
@@ -86,7 +83,7 @@ Access project settings from the UI:
 
 ## Best Practices
 
-1. **Keep the UI running** - Install as PM2 service for always-on access
+1. **Keep the UI running** - `dev-workflow ui` runs it as a background daemon; check `ui:status`
 
 2. **Use alongside CLI** - UI is read-heavy, Claude handles mutations
 

@@ -1,8 +1,20 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { spawn } from "node:child_process";
 import type { AwilixContainer } from "awilix";
 import { FileSystem } from "../infrastructure/file-system.js";
-import { getDaemonPort, saveDaemonPort, clearDaemonPort } from "../infrastructure/port-manager.js";
+import {
+  getDaemonPort,
+  saveDaemonPort,
+  getSavedDaemonPort,
+  clearDaemonPort,
+  saveDaemonPid,
+  getSavedDaemonPid,
+  clearDaemonPid,
+  isProcessAlive,
+  isPortInUse,
+} from "../infrastructure/port-manager.js";
+import { resolveCliEntry } from "../infrastructure/cli-entry.js";
 import { TrackDirectoryResolver } from "@dev-workflow/git/track-directory-resolver.js";
 import { registerWebApiServices } from "../server/register-web-api-services.js";
 import { startApiServer, type ApiServerHandle } from "../server/http-server.js";
@@ -18,11 +30,10 @@ export class UIError extends Error {
 }
 
 /**
- * UIService runs the dev-workflow web UI in-process.
- *
- * The API + WebSocket layer is served by an embedded HTTP server (no Next.js
- * child process). Static UI assets are served from the CLI package's `ui/`
- * directory (the exported SPA build).
+ * UIService runs the dev-workflow web UI: an in-process HTTP + WebSocket server (no Next.js
+ * child process). `start()` launches it as a detached background daemon so the terminal
+ * returns; `runServer()` is the long-running body (used by the daemon and by `--foreground`).
+ * There is no boot auto-start — the daemon lives until `stop()` or a reboot.
  */
 export class UIService {
   constructor(
@@ -38,52 +49,80 @@ export class UIService {
   }
 
   /**
-   * Start single-project UI (for backward compatibility).
-   * The UI can filter to the current project via query params.
+   * Start the UI as a detached background daemon and return (terminal is freed).
+   * If a daemon is already running, just report it.
    */
   async start(): Promise<void> {
-    await this.startMultiProject();
+    const existing = this.runningDaemon();
+    if (existing) {
+      console.log(`✓ dev-workflow UI already running at http://127.0.0.1:${existing.port}`);
+      return;
+    }
+
+    const port = process.env["PORT"] ? parseInt(process.env["PORT"], 10) : await getDaemonPort();
+    const logPath = path.join(trackDir(), "ui.log");
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    const logFd = fs.openSync(logPath, "a");
+
+    const child = spawn(process.execPath, [resolveCliEntry(this.packageRoot), "ui", "--foreground"], {
+      detached: true,
+      stdio: ["ignore", logFd, logFd],
+      env: { ...process.env, PORT: String(port) },
+    });
+    child.unref();
+    fs.closeSync(logFd);
+
+    if (child.pid === undefined) {
+      throw new UIError("Failed to spawn UI daemon");
+    }
+    saveDaemonPid(child.pid);
+    saveDaemonPort(port);
+
+    // Wait for the server to accept connections; if it never does, clean up and fail.
+    const url = `http://127.0.0.1:${port}`;
+    const ready = await this.waitForPort(port, 20000);
+    if (!ready) {
+      try {
+        process.kill(child.pid, "SIGTERM");
+      } catch {
+        // already gone
+      }
+      clearDaemonPid();
+      clearDaemonPort();
+      throw new UIError(`UI daemon did not become ready on ${url} (see ${logPath})`);
+    }
+
+    console.log(`✓ dev-workflow UI started at ${url}`);
+    console.log(`  logs:  ${logPath}`);
+    console.log(`  stop:  dev-workflow ui:stop`);
   }
 
   /**
-   * Start the multi-project UI by booting the embedded API server.
-   * Resolves only when the process receives a shutdown signal.
+   * Run the server in the foreground (blocks until SIGINT/SIGTERM). This is the daemon's
+   * body (spawned with --foreground) and is also usable directly for debugging.
    */
-  async startMultiProject(): Promise<void> {
+  async runServer(): Promise<void> {
     const port = process.env["PORT"] ? parseInt(process.env["PORT"], 10) : await getDaemonPort();
     saveDaemonPort(port);
 
     let serverHandle: ApiServerHandle;
     try {
       registerWebApiServices(this.container);
-
       const assetsDir = path.join(this.packageRoot, "ui");
       if (!fs.existsSync(assetsDir)) {
-        console.warn(
-          `⚠️  UI assets not found at ${assetsDir}. Starting API only (the web UI will 503 until assets are built).`
-        );
+        console.warn(`⚠️  UI assets not found at ${assetsDir}. Serving API only.`);
       }
-
-      const url = `http://127.0.0.1:${port}`;
-      console.log(`🚀 Starting dev-workflow UI at ${url}`);
-
-      serverHandle = await startApiServer({
-        container: this.container,
-        port,
-        assetsDir,
-      });
-
-      console.log(`✓ dev-workflow UI started at ${url}`);
-      console.log("\nPress Ctrl+C to stop the server");
+      console.log(`🚀 dev-workflow UI on http://127.0.0.1:${port}`);
+      serverHandle = await startApiServer({ container: this.container, port, assetsDir });
     } catch (error) {
       clearDaemonPort();
       throw new UIError("Failed to start UI server", error);
     }
 
     await new Promise<void>((resolve) => {
-      const shutdown = (signal: string): void => {
-        console.log(`\n\n📦 Received ${signal}, shutting down gracefully...`);
+      const shutdown = (): void => {
         clearDaemonPort();
+        clearDaemonPid();
         void serverHandle
           .close()
           .catch(() => undefined)
@@ -91,9 +130,59 @@ export class UIService {
           .catch(() => undefined)
           .finally(() => resolve());
       };
-
-      process.once("SIGINT", () => shutdown("SIGINT"));
-      process.once("SIGTERM", () => shutdown("SIGTERM"));
+      process.once("SIGINT", shutdown);
+      process.once("SIGTERM", shutdown);
     });
   }
+
+  /** Stop the running daemon, if any. */
+  async stop(): Promise<void> {
+    const pid = getSavedDaemonPid();
+    if (pid === null || !isProcessAlive(pid)) {
+      clearDaemonPid();
+      clearDaemonPort();
+      console.log("dev-workflow UI is not running.");
+      return;
+    }
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // already exited
+    }
+    clearDaemonPid();
+    clearDaemonPort();
+    console.log("✓ dev-workflow UI stopped.");
+  }
+
+  /** Report daemon status. */
+  async status(): Promise<void> {
+    const running = this.runningDaemon();
+    if (running) {
+      console.log(`dev-workflow UI: running (pid ${running.pid}) at http://127.0.0.1:${running.port}`);
+    } else {
+      console.log("dev-workflow UI: not running");
+    }
+  }
+
+  private runningDaemon(): { pid: number; port: number } | null {
+    const pid = getSavedDaemonPid();
+    const port = getSavedDaemonPort();
+    if (pid !== null && port !== null && isProcessAlive(pid)) {
+      return { pid, port };
+    }
+    return null;
+  }
+
+  private async waitForPort(port: number, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (await isPortInUse(port)) return true;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return false;
+  }
+}
+
+function trackDir(): string {
+  return path.join(process.env["HOME"] ?? process.env["USERPROFILE"] ?? ".", ".track");
 }

@@ -1,140 +1,42 @@
 /**
- * UICommand - Manage the web UI service
+ * UICommand - Manage the web UI daemon
  *
- * Handles starting, installing, and uninstalling the dev-workflow web UI.
- * Receives all dependencies via constructor injection.
+ * `ui` starts the UI as a detached background daemon (terminal returns); `--foreground`
+ * runs it attached for debugging. `ui:stop`/`ui:status` manage the daemon. There is no
+ * boot auto-start (no PM2): the daemon runs until stopped or the machine reboots.
  */
 
-import { execSync } from "node:child_process";
 import { UIService } from "../application/ui.service.js";
 
+export interface UIStartOptions {
+  /** Run the server in the foreground (blocks) instead of daemonizing. */
+  foreground?: boolean;
+}
+
 export class UICommand {
-  constructor(
-    private readonly cliPath: string,
-    private readonly uiService: UIService
-  ) {}
+  constructor(private readonly uiService: UIService) {}
 
-  /**
-   * Start web UI for dev-workflow (shows all projects).
-   */
-  async start(): Promise<void> {
-    const { isPortInUse, getSavedDaemonPort } = await import("../infrastructure/port-manager.js");
-
+  /** Start the web UI (daemon by default; foreground with --foreground). */
+  async start(options: UIStartOptions = {}): Promise<void> {
     try {
-      // If PORT is explicitly set, always start on that port (for E2E tests, parallel instances)
-      const explicitPort = process.env["PORT"];
-      if (explicitPort) {
-        await this.uiService.startMultiProject();
-        return;
-      }
-
-      // Check if daemon is already running by checking saved port
-      const savedPort = getSavedDaemonPort();
-      if (savedPort) {
-        const serverRunning = await isPortInUse(savedPort);
-        if (serverRunning) {
-          const url = `http://127.0.0.1:${savedPort}`;
-          console.log(`✓ dev-workflow UI is already running at ${url}`);
-          return;
-        }
-      }
-
-      // Server not running, start it
-      await this.uiService.startMultiProject();
-    } catch (error) {
-      console.error("Error starting UI:", error);
-      process.exit(1);
-    }
-  }
-
-  /**
-   * Install UI as auto-start service using PM2.
-   */
-  async install(): Promise<void> {
-    console.log("🚀 Setting up dev-workflow UI auto-start with PM2...\n");
-
-    try {
-      // Check if pm2 is available
-      try {
-        execSync("npx pm2 --version", { stdio: "pipe" });
-      } catch {
-        console.error("❌ PM2 is required for auto-start.");
-        console.error("   Install it with: npm install -g pm2");
-        process.exit(1);
-      }
-
-      // Stop existing instance if running
-      try {
-        execSync("npx pm2 delete dev-workflow-ui", { stdio: "pipe" });
-      } catch {
-        // Ignore if not running
-      }
-
-      // Start with PM2
-      const startCmd = `npx pm2 start "node ${this.cliPath} ui" --name dev-workflow-ui`;
-      execSync(startCmd, { stdio: "inherit" });
-
-      // Setup startup script. On most systems `pm2 startup` cannot self-install (it needs
-      // a one-time elevated command) and instead prints a `sudo … pm2 startup …` line to
-      // run. Detect whether boot auto-start was actually configured so we don't over-claim.
-      console.log("\n📋 Setting up startup script...");
-      let bootConfigured = false;
-      try {
-        execSync("npx pm2 startup", { stdio: "inherit" });
-        bootConfigured = true;
-      } catch {
-        // pm2 printed a `sudo … pm2 startup …` command above; the user must run it once.
-      }
-
-      // Save process list
-      execSync("npx pm2 save", { stdio: "inherit" });
-
-      console.log("\n✨ dev-workflow UI installed!");
-      console.log("\nThe UI is now running at: http://127.0.0.1:3456");
-      if (bootConfigured) {
-        console.log("It will start automatically on system boot.");
+      if (options.foreground) {
+        await this.uiService.runServer();
       } else {
-        console.log("⚠️  Boot auto-start is NOT enabled yet. To enable it, copy/paste the");
-        console.log("   `sudo … pm2 startup …` command printed above and run it once.");
-        console.log("   (Until then the UI runs now but won't relaunch after a reboot.)");
+        await this.uiService.start();
       }
-      console.log("\nUseful commands:");
-      console.log("  npx pm2 status          - Check status");
-      console.log("  npx pm2 logs dev-workflow-ui - View logs");
-      console.log("  dev-workflow ui:uninstall   - Remove auto-start");
     } catch (error) {
-      console.error("Error setting up auto-start:", error);
+      console.error("Error starting UI:", error instanceof Error ? error.message : error);
       process.exit(1);
     }
   }
 
-  /**
-   * Remove UI auto-start service.
-   */
-  async uninstall(): Promise<void> {
-    console.log("🗑️  Removing dev-workflow UI auto-start...\n");
+  /** Stop the running UI daemon. */
+  async stop(): Promise<void> {
+    await this.uiService.stop();
+  }
 
-    try {
-      // Stop and delete from PM2
-      try {
-        execSync("npx pm2 delete dev-workflow-ui", { stdio: "inherit" });
-      } catch {
-        console.log("   (Process was not running)");
-      }
-
-      // Save to persist the removal
-      try {
-        execSync("npx pm2 save", { stdio: "inherit" });
-      } catch {
-        // Ignore
-      }
-
-      console.log("\n✨ dev-workflow UI auto-start removed.");
-      console.log("\nNote: The PM2 startup script is still installed.");
-      console.log("To remove it completely, run: npx pm2 unstartup");
-    } catch (error) {
-      console.error("Error removing auto-start:", error);
-      process.exit(1);
-    }
+  /** Report whether the UI daemon is running. */
+  async status(): Promise<void> {
+    await this.uiService.status();
   }
 }

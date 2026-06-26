@@ -13,7 +13,7 @@ import { Command } from "commander";
 import { runInit } from "./commands/init-command-def.js";
 import { runUpdate } from "./commands/update-command-def.js";
 import { runUninit } from "./commands/uninit-command-def.js";
-import { runUI, runUIInstall, runUIUninstall } from "./commands/ui-command-def.js";
+import { runUI, runUIStop, runUIStatus } from "./commands/ui-command-def.js";
 import { runWorkers, runClaudeWorker } from "./commands/worker-command-def.js";
 import { runMCP } from "./commands/mcp-command-def.js";
 import { runCleanClaudeConfig } from "./commands/claude-config-command-def.js";
@@ -44,15 +44,13 @@ program.command("mcp").description("Start MCP server for Claude Code integration
 
 program
   .command("ui")
-  .description("Start web UI for dev-workflow (shows all projects)")
-  .action(runUI);
+  .description("Start the web UI as a background daemon (shows all projects)")
+  .option("--foreground", "Run in the foreground instead of daemonizing (for debugging)")
+  .action((options) => runUI(options));
 
-program
-  .command("ui:install")
-  .description("Install UI as auto-start service using PM2")
-  .action(runUIInstall);
+program.command("ui:stop").description("Stop the web UI daemon").action(runUIStop);
 
-program.command("ui:uninstall").description("Remove UI auto-start service").action(runUIUninstall);
+program.command("ui:status").description("Show whether the web UI daemon is running").action(runUIStatus);
 
 program
   .command("workers")

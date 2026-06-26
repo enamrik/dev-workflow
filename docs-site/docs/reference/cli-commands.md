@@ -14,9 +14,9 @@ Complete reference for all dev-workflow CLI commands.
 | `update` | Update skills and run migrations |
 | `uninit` | Remove Claude integration |
 | `mcp` | Start MCP server |
-| `ui` | Start web UI |
-| `ui:install` | Install UI as PM2 service |
-| `ui:uninstall` | Remove UI PM2 service |
+| `ui` | Start the web UI as a background daemon |
+| `ui:stop` | Stop the web UI daemon |
+| `ui:status` | Show whether the web UI daemon is running |
 | `workers` | List registered workers |
 | `claude` | Run as a worker |
 | `clean-claude-config` | Clean stale config entries |
@@ -119,7 +119,7 @@ For debugging, run in a terminal to see server logs.
 
 ## ui
 
-Start the web UI server.
+Start the web UI as a background daemon and return to your prompt.
 
 ```bash
 dev-workflow ui
@@ -129,62 +129,41 @@ dev-workflow ui
 
 | Option | Description |
 |--------|-------------|
-| `PORT` | Environment variable to set port (default: 3000) |
+| `--foreground` | Run attached (blocks; Ctrl+C to stop) instead of daemonizing — for debugging |
+| `PORT` | Environment variable to set the port (default: 3456) |
 
 ### Example
 
 ```bash
-# Start on default port
-dev-workflow ui
-
-# Start on custom port
-PORT=3001 dev-workflow ui
+dev-workflow ui                 # start the daemon (default port)
+PORT=3001 dev-workflow ui       # start on a custom port
+dev-workflow ui --foreground    # run attached to the terminal
 ```
 
 ### What it does
 
-1. Starts Next.js development server
-2. Connects to workflow database
-3. Opens browser at http://localhost:3000
+1. Spawns a detached background process serving the embedded HTTP + WebSocket API and the
+   static web UI (no Next.js process, no external dependencies).
+2. Saves the port to `~/.track/ui-port` and the PID to `~/.track/ui.pid`; logs to `~/.track/ui.log`.
+3. Returns immediately. Re-running `ui` while it's already up just reports the URL.
 
-## ui:install
+The daemon runs until stopped or the machine reboots — there is no boot auto-start.
 
-Install the web UI as an auto-start service using PM2.
+## ui:stop
 
-```bash
-dev-workflow ui:install
-```
-
-### Requirements
-
-- PM2 must be installed (`npm install -g pm2`)
-
-### What it does
-
-1. Creates PM2 process for the UI
-2. Configures auto-start on system boot
-3. Runs UI in background
-
-### Verify installation
+Stop the running web UI daemon.
 
 ```bash
-pm2 list
-pm2 logs dev-workflow-ui
+dev-workflow ui:stop
 ```
 
-## ui:uninstall
+## ui:status
 
-Remove the web UI auto-start service.
+Report whether the web UI daemon is running, and on which port.
 
 ```bash
-dev-workflow ui:uninstall
+dev-workflow ui:status
 ```
-
-### What it does
-
-1. Stops the PM2 process
-2. Removes from PM2 configuration
-3. Disables auto-start
 
 ## workers
 
