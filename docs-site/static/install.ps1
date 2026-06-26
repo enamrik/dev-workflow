@@ -40,8 +40,8 @@ try {
     Invoke-WebRequest -Uri "$url.sha256" -OutFile $shaFile -UseBasicParsing
     $expected = ((Get-Content $shaFile) -split '\s+')[0]
     $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-    if ($expected -eq $actual) { Ok "Checksum verified" }
-    else { Write-Host "! Checksum mismatch for $asset (continuing - download is HTTPS-secured)" -ForegroundColor Yellow }
+    if ($expected -ne $actual) { Fail "Checksum mismatch for $asset - corrupt or incomplete download; retry" }
+    Ok "Checksum verified"
   } catch { }
 
   Info "Installing to $InstallDir..."
