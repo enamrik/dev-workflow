@@ -16,7 +16,7 @@ Configure dev-workflow through templates, settings, and types.
 │   └── task/
 └── worktrees/                # Git worktrees for tasks
 
-~/.track/                     # Global track directory
+~/.dwf/track/                 # Global track directory (override with DWF_HOME)
 ├── workflow.db               # Global database
 └── templates/                # Global templates
     ├── issue/
@@ -60,10 +60,10 @@ Add any technical considerations here.
 
 ### Template Locations
 
-| Scope | Location | Priority |
-|-------|----------|----------|
-| Local | `.track/templates/` | Higher |
-| Global | `~/.track/templates/` | Lower |
+| Scope  | Location                  | Priority |
+| ------ | ------------------------- | -------- |
+| Local  | `.track/templates/`       | Higher   |
+| Global | `~/.dwf/track/templates/` | Lower    |
 
 Local templates override global templates with the same filename.
 
@@ -89,13 +89,14 @@ priority: HIGH
 ## Error Handling
 `,
   scope: "local",
-  category: "issue"
-})
+  category: "issue",
+});
 ```
 
 ### Default Templates
 
 dev-workflow includes default templates for:
+
 - `feature.md` - New features
 - `bug.md` - Bug reports
 - `enhancement.md` - Improvements
@@ -103,21 +104,21 @@ dev-workflow includes default templates for:
 
 ### Template Variables
 
-| Variable | Replaced With |
-|----------|---------------|
-| `{title}` | Issue title |
+| Variable        | Replaced With     |
+| --------------- | ----------------- |
+| `{title}`       | Issue title       |
 | `{description}` | Issue description |
 
 ## Custom Types
 
 ### Default Types
 
-| Type | Description |
-|------|-------------|
-| FEATURE | New functionality |
-| BUG | Something broken |
+| Type        | Description             |
+| ----------- | ----------------------- |
+| FEATURE     | New functionality       |
+| BUG         | Something broken        |
 | ENHANCEMENT | Improvement to existing |
-| TASK | Generic work item |
+| TASK        | Generic work item       |
 
 ### Creating Custom Types
 
@@ -127,19 +128,19 @@ create_type({
   displayName: "Epic",
   description: "Large feature spanning multiple issues",
   keywords: ["epic", "large", "umbrella", "parent"],
-  color: "#9b59b6"
-})
+  color: "#9b59b6",
+});
 ```
 
 ### Type Properties
 
-| Property | Description |
-|----------|-------------|
-| `name` | Uppercase identifier (e.g., "EPIC") |
-| `displayName` | Human-readable name |
-| `description` | When to use this type |
-| `keywords` | Help Claude select type |
-| `color` | UI color (hex) |
+| Property      | Description                         |
+| ------------- | ----------------------------------- |
+| `name`        | Uppercase identifier (e.g., "EPIC") |
+| `displayName` | Human-readable name                 |
+| `description` | When to use this type               |
+| `keywords`    | Help Claude select type             |
+| `color`       | UI color (hex)                      |
 
 ### Type Keywords
 
@@ -150,8 +151,8 @@ create_type({
   name: "TECH_DEBT",
   displayName: "Tech Debt",
   description: "Technical debt reduction",
-  keywords: ["debt", "refactor", "cleanup", "technical", "legacy"]
-})
+  keywords: ["debt", "refactor", "cleanup", "technical", "legacy"],
+});
 ```
 
 ## GitHub Settings
@@ -162,10 +163,10 @@ create_type({
 update_settings({
   action: "enable_github",
   github: {
-    projectId: "PVT_...",     // GitHub Project ID
-    assignee: "username"       // Auto-assign on IN_PROGRESS
-  }
-})
+    projectId: "PVT_...", // GitHub Project ID
+    assignee: "username", // Auto-assign on IN_PROGRESS
+  },
+});
 ```
 
 ### Configuring Labels
@@ -178,12 +179,12 @@ update_settings({
       typeMappings: {
         FEATURE: "type: feature",
         BUG: "type: bug",
-        EPIC: "type: epic"
+        EPIC: "type: epic",
       },
-      customLabels: ["dev-workflow"]
-    }
-  }
-})
+      customLabels: ["dev-workflow"],
+    },
+  },
+});
 ```
 
 ### Column Mapping
@@ -195,42 +196,41 @@ update_settings({
     columnMapping: {
       READY: "To Do",
       PR_REVIEW: "Code Review",
-      COMPLETED: "Done"
-    }
-  }
-})
+      COMPLETED: "Done",
+    },
+  },
+});
 ```
 
 ### Checking Settings
 
 ```typescript
 update_settings({
-  action: "get_settings"
-})
+  action: "get_settings",
+});
 ```
 
 ### Disabling Sync
 
 ```typescript
 update_settings({
-  action: "disable_github"
-})
+  action: "disable_github",
+});
 ```
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DWF_HOME` | dev-workflow data root (DBs, project configs, worktrees) | `~/.track` |
-| `TRACK_DIR` | Legacy alias for `DWF_HOME` (still honored; `DWF_HOME` wins) | `~/.track` |
-| `DWF_PROJECT_SLUG` | Pin the MCP server to a specific project (overrides cwd resolution) | _(resolved from cwd)_ |
-| `CLAUDE_CONFIG_DIR` | Claude Code's config home — where skills are installed/read | `~/.claude` |
-| `DATABASE_PATH` | Database path | `{DWF_HOME}/workflow.db` |
-| `PORT` | Web UI port | `3000` |
+| Variable            | Description                                                         | Default                  |
+| ------------------- | ------------------------------------------------------------------- | ------------------------ |
+| `DWF_HOME`          | dwf data root (DBs, project configs, worktrees)                     | `~/.dwf/track`           |
+| `DWF_PROJECT_SLUG`  | Pin the MCP server to a specific project (overrides cwd resolution) | _(resolved from cwd)_    |
+| `CLAUDE_CONFIG_DIR` | Claude Code's config home — where skills are installed/read         | `~/.claude`              |
+| `DATABASE_PATH`     | Database path                                                       | `{DWF_HOME}/workflow.db` |
+| `PORT`              | Web UI port                                                         | `3000`                   |
 
 All overrides are optional. Setting `DWF_HOME` + `CLAUDE_CONFIG_DIR` together fully sandboxes
 an install into a throwaway directory (see `make e2e-sandbox`), touching neither your real
-`~/.track` nor `~/.claude`.
+`~/.dwf/track` nor `~/.claude`.
 
 ## Claude Settings
 
@@ -254,23 +254,22 @@ registration:
 }
 ```
 
-`dev-workflow init` and `dev-workflow update` create/refresh this registration (and clean up
-any stale per-project registrations from older versions).
+`dwf init` and `dwf update` create/refresh this registration.
 
 ### Claude Skills
 
 Skills are installed **globally** to `~/.claude/skills/` (honoring `CLAUDE_CONFIG_DIR`), so a
 single install applies them across every project:
 
-| Skill | Description |
-|-------|-------------|
-| `dwf-work-request` | Entry point for new work |
-| `dwf-manage-issue` | Issue CRUD operations |
-| `dwf-plan-issue` | Generate implementation plans |
-| `dwf-work-task` | Task execution lifecycle |
-| `dwf-worker-task` | Worker task execution |
-| `dwf-configure-github` | GitHub integration setup |
-| `dwf-manage-milestone` | Milestone management |
+| Skill                  | Description                   |
+| ---------------------- | ----------------------------- |
+| `dwf-work-request`     | Entry point for new work      |
+| `dwf-manage-issue`     | Issue CRUD operations         |
+| `dwf-plan-issue`       | Generate implementation plans |
+| `dwf-work-task`        | Task execution lifecycle      |
+| `dwf-worker-task`      | Worker task execution         |
+| `dwf-configure-github` | GitHub integration setup      |
+| `dwf-manage-milestone` | Milestone management          |
 
 ## Best Practices
 

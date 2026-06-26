@@ -46,7 +46,7 @@ done
 # Check if database exists
 if [[ ! -f "$DB_PATH" ]]; then
     echo_error "Database not found at $DB_PATH"
-    echo "Run 'dev-workflow init' first to create the database."
+    echo "Run 'dwf init' first to create the database."
     exit 1
 fi
 
@@ -71,7 +71,7 @@ if [[ "$FORCE" != true ]]; then
         echo ""
         echo "The database must be in sync with all migrations before flattening."
         echo "Options:"
-        echo "  1. Run 'dev-workflow update' to apply pending migrations first"
+        echo "  1. Run 'dwf update' to apply pending migrations first"
         echo "  2. Use --force to skip this check (only if you know what you're doing)"
         exit 1
     fi

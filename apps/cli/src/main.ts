@@ -26,7 +26,7 @@ const VERSION = typeof __DWF_VERSION__ !== "undefined" ? __DWF_VERSION__ : "0.0.
 
 const program = new Command();
 
-program.name("dev-workflow").description("AI-driven development workflow system").version(VERSION);
+program.name("dwf").description("AI-driven development workflow system").version(VERSION);
 
 program
   .command("init")
@@ -55,7 +55,10 @@ program
 
 program.command("ui:stop").description("Stop the web UI daemon").action(runUIStop);
 
-program.command("ui:status").description("Show whether the web UI daemon is running").action(runUIStatus);
+program
+  .command("ui:status")
+  .description("Show whether the web UI daemon is running")
+  .action(runUIStatus);
 
 program
   .command("workers")

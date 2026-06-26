@@ -18,7 +18,7 @@ This tutorial walks you through a complete dev-workflow cycle: from initializing
 Navigate to your project and run:
 
 ```bash
-dev-workflow init
+dwf init
 ```
 
 **Expected output:**
@@ -111,7 +111,7 @@ Claude loads the task session and creates an isolated worktree:
 Starting task #2.1: Create health route handler
 
 Mode: isolated
-Worktree: ~/.track/your-project/worktrees/issue-2-task-1
+Worktree: ~/.dwf/track/your-project/worktrees/issue-2-task-1
 Branch: issue-2/task-1-create-health-route
 
 Acceptance Criteria:

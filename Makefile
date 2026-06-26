@@ -3,7 +3,7 @@ SHELL := /bin/bash
 PNPM_HOME ?= $(HOME)/Library/pnpm
 export PNPM_HOME
 export PATH := $(PNPM_HOME):$(PATH)
-DEV_WORKFLOW := $(PNPM_HOME)/dev-workflow
+DEV_WORKFLOW := $(PNPM_HOME)/dwf
 
 .PHONY: help install build clean reset init dogfood test test-ai test-npm-install test-mcp test-e2e link unlink flatten-migrations ui ui-dev ui-stop local-track ui-dev-local worktree-setup prep
 
@@ -16,7 +16,7 @@ help:
 	@echo "  make clean            - Clean build artifacts"
 	@echo "  make link             - Install dev-workflow globally (for testing in other repos)"
 	@echo "  make unlink           - Uninstall global dev-workflow"
-	@echo "  make reset            - Uninstall dev-workflow (run 'dev-workflow uninit')"
+	@echo "  make reset            - Uninstall dev-workflow (run 'dwf uninit')"
 	@echo "  make init             - Initialize dev-workflow in this repository"
 	@echo "  make dogfood          - Build + link + update + restart MCP server"
 	@echo "  make test             - Run unit tests"
@@ -52,10 +52,10 @@ link: build
 	@pnpm remove -g @dev-workflow/mcp-server @dev-workflow/cli 2>/dev/null || true
 	@cd apps/mcp-server && pnpm link --global
 	@cd apps/cli && pnpm link --global
-	@echo "✓ dev-workflow is now linked globally"
+	@echo "✓ dwf is now linked globally"
 	@echo ""
-	@if ! command -v dev-workflow >/dev/null 2>&1; then \
-		echo "⚠️  dev-workflow is NOT in your PATH yet!"; \
+	@if ! command -v dwf >/dev/null 2>&1; then \
+		echo "⚠️  dwf is NOT in your PATH yet!"; \
 		echo ""; \
 		echo "To fix this, add these lines to your ~/.zshrc (or ~/.bashrc):"; \
 		echo ""; \
@@ -71,17 +71,17 @@ link: build
 		echo "  $(DEV_WORKFLOW) init"; \
 		echo "  $(DEV_WORKFLOW) ui"; \
 	else \
-		echo "✓ dev-workflow is available on your PATH!"; \
+		echo "✓ dwf is available on your PATH!"; \
 		echo ""; \
 		echo "You can now use these commands anywhere:"; \
-		echo "  dev-workflow init"; \
-		echo "  dev-workflow ui"; \
+		echo "  dwf init"; \
+		echo "  dwf ui"; \
 	fi
 
 unlink:
-	@echo "🔓 Uninstalling global dev-workflow..."
+	@echo "🔓 Uninstalling global dwf..."
 	@pnpm remove -g @dev-workflow/cli || true
-	@echo "✓ Global dev-workflow removed"
+	@echo "✓ Global dwf removed"
 
 reset:
 	@$(DEV_WORKFLOW) uninit || true
@@ -113,12 +113,12 @@ dogfood: install
 	@-pkill -f "dev-workflow.*mcp" 2>/dev/null || true
 	@echo "✓ MCP server will restart automatically on next tool call"
 	@echo ""
-	@echo "🐕 Ready to dogfood! You can now use dev-workflow anywhere on this machine."
+	@echo "🐕 Ready to dogfood! You can now use dwf anywhere on this machine."
 	@echo ""
 	@echo "Try these commands:"
-	@echo "  dev-workflow --help      - See all available commands"
-	@echo "  dev-workflow ui          - Start the web UI"
-	@echo "  cd /path/to/other/repo && dev-workflow init  - Use in other repos"
+	@echo "  dwf --help      - See all available commands"
+	@echo "  dwf ui          - Start the web UI"
+	@echo "  cd /path/to/other/repo && dwf init  - Use in other repos"
 
 test:
 	@echo "🧪 Running tests..."

@@ -11,8 +11,8 @@
  *   - CLAUDE_CONFIG_DIR  → Claude Code's config home (where skills are read from)
  *   - a stub `claude` on PATH → captures the MCP registration without writing the real registry
  *
- * Then it runs the real `dev-workflow init`, asserts everything landed in the sandbox (not the
- * real ~/.track / ~/.claude), and finally launches the actual MCP server via `dev-workflow mcp`
+ * Then it runs the real `dwf init`, asserts everything landed in the sandbox (not the
+ * real ~/.dwf/track / ~/.claude), and finally launches the actual MCP server via `dwf mcp`
  * with NO slug env — proving the server resolves the project purely from its cwd — and drives a
  * real MCP initialize → tools/list handshake over stdio. A negative case confirms it refuses a
  * non-project directory.
@@ -67,22 +67,21 @@ const stub = join(binDir, "claude");
 writeFileSync(stub, `#!/bin/sh\necho "$@" >> "${claudeLog}"\nexit 0\n`);
 chmodSync(stub, 0o755);
 
-// Fully isolated env — strip any slug/track vars leaking from the parent shell.
+// Fully isolated env: point the data root + Claude config at the sandbox, and strip any
+// leaked DWF_PROJECT_SLUG from the parent shell so the server resolves the project from cwd.
 const env = {
   ...process.env,
   DWF_HOME: dwfHome,
   CLAUDE_CONFIG_DIR: claudeDir,
   PATH: `${binDir}:${process.env.PATH}`,
 };
-delete env.PROJECT_SLUG;
 delete env.DWF_PROJECT_SLUG;
-delete env.TRACK_DIR;
 
 function git(args) {
   execSync(`git ${args}`, { cwd: proj, stdio: "pipe", env });
 }
 
-/** Spawn `dev-workflow mcp` and run a request/response RPC loop over its stdio. */
+/** Spawn `dwf mcp` and run a request/response RPC loop over its stdio. */
 function startMcp(cwd) {
   const child = spawn("node", [CLI, "mcp"], { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
   const pending = new Map();
@@ -179,24 +178,8 @@ try {
   git("add .");
   git('commit -qm "init"');
 
-  // Seed a stale per-project (local-scope) registration from the "old model", in a DIFFERENT
-  // project dir, to prove init sweeps it (migration to the single global registration).
-  const claudeJson = join(claudeDir, ".claude.json");
-  writeFileSync(
-    claudeJson,
-    JSON.stringify({
-      projects: {
-        "/some/other/old-project": {
-          mcpServers: {
-            "dev-workflow-tracker": { type: "stdio", command: "node", args: ["old-cli.js", "mcp"] },
-          },
-        },
-      },
-    })
-  );
-
   // 2. Run the real init, fully isolated.
-  console.log("▶ dev-workflow init (isolated)\n");
+  console.log("▶ dwf init (isolated)\n");
   execSync(`node ${CLI} init`, { cwd: proj, stdio: "inherit", env });
 
   // 3. Everything must have landed in the sandbox, not the real home dirs.
@@ -217,23 +200,18 @@ try {
   // 4. Registration shape — captured by the stub, never touching the real registry.
   const log = existsSync(claudeLog) ? readFileSync(claudeLog, "utf8") : "";
   check("MCP registered with --scope user", /mcp add .*--scope user/.test(log), log.trim());
-  check("registration bakes in no PROJECT_SLUG", !/PROJECT_SLUG/.test(log));
+  check("registration bakes in no DWF_PROJECT_SLUG", !/DWF_PROJECT_SLUG/.test(log));
 
-  // 5. Migration: the stale per-project local registration was swept away.
-  const claudeConfig = JSON.parse(readFileSync(claudeJson, "utf8"));
-  const staleServers = claudeConfig.projects?.["/some/other/old-project"]?.mcpServers ?? {};
-  check(
-    "stale per-project local registration removed",
-    !("dev-workflow-tracker" in staleServers),
-    `remaining=${Object.keys(staleServers)}`
-  );
-
-  // 6. The crux: the server resolves the project from cwd alone (no slug env).
+  // 5. The crux: the server resolves the project from cwd alone (no slug env).
   console.log("\n▶ MCP server resolves project from cwd (no slug env)");
   const tools = await mcpToolsList(proj);
-  check("tools/list returned tools", Array.isArray(tools) && tools.length > 0, `count=${tools?.length}`);
+  check(
+    "tools/list returned tools",
+    Array.isArray(tools) && tools.length > 0,
+    `count=${tools?.length}`
+  );
 
-  // 7. Negative: a non-project dir must be refused, not silently mis-served.
+  // 6. Negative: a non-project dir must be refused, not silently mis-served.
   console.log("\n▶ MCP server refuses a non-project directory");
   const neg = await mcpExpectFailure(nonProj);
   check("server exits non-zero outside a project", neg.code !== 0, `code=${neg.code}`);

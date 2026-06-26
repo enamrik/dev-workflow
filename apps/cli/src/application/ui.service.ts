@@ -64,11 +64,15 @@ export class UIService {
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
     const logFd = fs.openSync(logPath, "a");
 
-    const child = spawn(process.execPath, [resolveCliEntry(this.packageRoot), "ui", "--foreground"], {
-      detached: true,
-      stdio: ["ignore", logFd, logFd],
-      env: { ...process.env, PORT: String(port) },
-    });
+    const child = spawn(
+      process.execPath,
+      [resolveCliEntry(this.packageRoot), "ui", "--foreground"],
+      {
+        detached: true,
+        stdio: ["ignore", logFd, logFd],
+        env: { ...process.env, PORT: String(port) },
+      }
+    );
     child.unref();
     fs.closeSync(logFd);
 
@@ -94,7 +98,7 @@ export class UIService {
 
     console.log(`✓ dev-workflow UI started at ${url}`);
     console.log(`  logs:  ${logPath}`);
-    console.log(`  stop:  dev-workflow ui:stop`);
+    console.log(`  stop:  dwf ui:stop`);
   }
 
   /**
@@ -158,7 +162,9 @@ export class UIService {
   async status(): Promise<void> {
     const running = this.runningDaemon();
     if (running) {
-      console.log(`dev-workflow UI: running (pid ${running.pid}) at http://127.0.0.1:${running.port}`);
+      console.log(
+        `dev-workflow UI: running (pid ${running.pid}) at http://127.0.0.1:${running.port}`
+      );
     } else {
       console.log("dev-workflow UI: not running");
     }

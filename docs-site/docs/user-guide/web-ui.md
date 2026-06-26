@@ -9,18 +9,18 @@ dev-workflow includes a web-based UI for visualizing and managing your work acro
 ## Starting the UI
 
 ```bash
-dev-workflow ui
+dwf ui
 ```
 
 Starts the web UI as a background daemon and returns to your prompt. It serves at
-http://127.0.0.1:3456 (the port is saved to `~/.track/ui-port`; logs go to `~/.track/ui.log`).
+http://127.0.0.1:3456 (the port is saved to `~/.dwf/track/ui-port`; logs go to `~/.dwf/track/ui.log`).
 
 ### Managing the daemon
 
 ```bash
-dev-workflow ui:status    # is it running, and on which port
-dev-workflow ui:stop      # stop the daemon
-dev-workflow ui --foreground   # run attached (Ctrl+C to stop) — for debugging
+dwf ui:status    # is it running, and on which port
+dwf ui:stop      # stop the daemon
+dwf ui --foreground   # run attached (Ctrl+C to stop) — for debugging
 ```
 
 The daemon runs until you stop it or the machine reboots (there is no boot auto-start).
@@ -30,6 +30,7 @@ The daemon runs until you stop it or the machine reboots (there is no boot auto-
 ### Project Overview
 
 The dashboard shows all projects tracked by dev-workflow:
+
 - Project name and path
 - Issue counts by status
 - Recent activity
@@ -37,6 +38,7 @@ The dashboard shows all projects tracked by dev-workflow:
 ### Kanban Board
 
 Each project has a kanban board showing:
+
 - Issues as cards
 - Status columns (Planned, Open, In Progress, Closed)
 - Task progress indicators
@@ -50,6 +52,7 @@ Each project has a kanban board showing:
 ### Issue Detail
 
 Click an issue to see:
+
 - Full description
 - Acceptance criteria
 - Plan with tasks
@@ -59,6 +62,7 @@ Click an issue to see:
 ### Task Status
 
 Tasks show their current status:
+
 - 🔵 PLANNED - Not yet activated
 - ⬜ BACKLOG - Available but not started
 - 🟡 READY - Dependencies met
@@ -70,6 +74,7 @@ Tasks show their current status:
 ## Multi-Project Support
 
 The web UI shows all projects in your track directory:
+
 - Switch between projects in the sidebar
 - Each project has its own board
 - Shared database, separate views
@@ -77,13 +82,14 @@ The web UI shows all projects in your track directory:
 ## Settings
 
 Access project settings from the UI:
+
 - GitHub integration status
 - Column mapping
 - Label configuration
 
 ## Best Practices
 
-1. **Keep the UI running** - `dev-workflow ui` runs it as a background daemon; check `ui:status`
+1. **Keep the UI running** - `dwf ui` runs it as a background daemon; check `ui:status`
 
 2. **Use alongside CLI** - UI is read-heavy, Claude handles mutations
 
@@ -100,17 +106,18 @@ Access project settings from the UI:
 lsof -i :3000
 
 # Kill it or use different port
-PORT=3001 dev-workflow ui
+PORT=3001 dwf ui
 ```
 
 ### No Projects Showing
 
-- Run `dev-workflow init` in at least one project
-- Check `~/.track/workflow.db` exists
+- Run `dwf init` in at least one project
+- Check `~/.dwf/track/workflow.db` exists
 
 ### Stale Data
 
 The UI auto-refreshes, but you can manually refresh:
+
 - Ctrl+R / Cmd+R to reload
 - Or click the refresh button
 

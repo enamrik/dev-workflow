@@ -115,19 +115,19 @@ export class DirectToolExecutor {
 
     // 4. Set up isolated track directory
     mkdirSync(this.trackDir, { recursive: true });
-    process.env["TRACK_DIR"] = this.trackDir;
+    process.env["DWF_HOME"] = this.trackDir;
 
     // 5. Compute project slug from git
     const resolver = createTrackDirectoryResolver(this.testDir);
     this.projectSlug = resolver.getProjectId();
 
     // 6. Run dev-workflow init (creates config, database, etc.)
-    // TRACK_DIR env var points init to test directory instead of ~/.track
+    // DWF_HOME env var points init to test directory instead of ~/.dwf/track
     const cliPath = join(__dirname, "../../../../apps/cli/dist/main.js");
     execSync(`node ${cliPath} init`, {
       cwd: this.testDir,
       stdio: "pipe",
-      env: { ...process.env, TRACK_DIR: this.trackDir },
+      env: { ...process.env, DWF_HOME: this.trackDir },
     });
 
     // 7. Create MCP container and tools registry
@@ -412,7 +412,7 @@ export class DirectToolExecutor {
     }
 
     // Reset environment
-    delete process.env["TRACK_DIR"];
+    delete process.env["DWF_HOME"];
   }
 
   /**

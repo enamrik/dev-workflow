@@ -10,12 +10,12 @@ dev-workflow integrates with GitHub to sync tasks as GitHub Issues and manage th
 
 ### What Syncs
 
-| dev-workflow | GitHub | Direction |
-|--------------|--------|-----------|
-| Tasks | Issues | Push-only |
-| Task status | Project board column | Push-only |
-| Task type | Issue label | Push-only |
-| Task labels | Project custom fields | Push-only |
+| dev-workflow | GitHub                | Direction |
+| ------------ | --------------------- | --------- |
+| Tasks        | Issues                | Push-only |
+| Task status  | Project board column  | Push-only |
+| Task type    | Issue label           | Push-only |
+| Task labels  | Project custom fields | Push-only |
 
 ### What Doesn't Sync
 
@@ -43,11 +43,12 @@ dev-workflow integrates with GitHub to sync tasks as GitHub Issues and manage th
 
 ```typescript
 update_settings({
-  action: "enable_github"
-})
+  action: "enable_github",
+});
 ```
 
 This:
+
 - Validates `gh` CLI authentication
 - Auto-detects repository from git remotes
 - Enables task → GitHub issue sync
@@ -58,12 +59,13 @@ This:
 update_settings({
   action: "enable_github",
   github: {
-    projectId: "PVT_kwDO..."  // Your project ID
-  }
-})
+    projectId: "PVT_kwDO...", // Your project ID
+  },
+});
 ```
 
 Find your Project ID:
+
 1. Open your GitHub Project
 2. Click **Settings** (⚙️) → **Copy project ID**
 
@@ -74,25 +76,25 @@ update_settings({
   action: "enable_github",
   github: {
     projectId: "PVT_kwDO...",
-    assignee: "username"  // No @ prefix
-  }
-})
+    assignee: "username", // No @ prefix
+  },
+});
 ```
 
 ### Checking Configuration
 
 ```typescript
 update_settings({
-  action: "get_settings"
-})
+  action: "get_settings",
+});
 ```
 
 ### Disabling Sync
 
 ```typescript
 update_settings({
-  action: "disable_github"
-})
+  action: "disable_github",
+});
 ```
 
 ## Column Mapping
@@ -100,13 +102,13 @@ update_settings({
 Task status maps to project board columns:
 
 | Task Status | Default Column |
-|-------------|----------------|
-| BACKLOG | Backlog |
-| READY | Ready |
-| IN_PROGRESS | In Progress |
-| PR_REVIEW | In Review |
-| COMPLETED | Done |
-| ABANDONED | Done |
+| ----------- | -------------- |
+| BACKLOG     | Backlog        |
+| READY       | Ready          |
+| IN_PROGRESS | In Progress    |
+| PR_REVIEW   | In Review      |
+| COMPLETED   | Done           |
+| ABANDONED   | Done           |
 
 ### Custom Column Names
 
@@ -116,10 +118,10 @@ update_settings({
   github: {
     columnMapping: {
       READY: "To Do",
-      PR_REVIEW: "Code Review"
-    }
-  }
-})
+      PR_REVIEW: "Code Review",
+    },
+  },
+});
 ```
 
 ### Reset to Defaults
@@ -127,20 +129,20 @@ update_settings({
 ```typescript
 update_settings({
   action: "configure_column_mapping",
-  resetColumnMapping: true
-})
+  resetColumnMapping: true,
+});
 ```
 
 ## Label Configuration
 
 ### Type Labels
 
-| Task Type | Default Label |
-|-----------|---------------|
-| FEATURE | feature |
-| BUG | bug |
-| ENHANCEMENT | enhancement |
-| TASK | task |
+| Task Type   | Default Label |
+| ----------- | ------------- |
+| FEATURE     | feature       |
+| BUG         | bug           |
+| ENHANCEMENT | enhancement   |
+| TASK        | task          |
 
 All synced issues also get a `task` label.
 
@@ -153,11 +155,11 @@ update_settings({
     labels: {
       typeMappings: {
         FEATURE: "type: feature",
-        BUG: "type: bug"
-      }
-    }
-  }
-})
+        BUG: "type: bug",
+      },
+    },
+  },
+});
 ```
 
 ### Additional Labels
@@ -167,10 +169,10 @@ update_settings({
   action: "configure_github",
   github: {
     labels: {
-      customLabels: ["dev-workflow", "automated"]
-    }
-  }
-})
+      customLabels: ["dev-workflow", "automated"],
+    },
+  },
+});
 ```
 
 ## How Sync Works
@@ -189,16 +191,17 @@ When you call `move_issue_to_backlog`:
 
 ### Status Changes
 
-| Status Change | GitHub Actions |
-|---------------|----------------|
+| Status Change     | GitHub Actions                     |
+| ----------------- | ---------------------------------- |
 | Any → IN_PROGRESS | Move to "In Progress", auto-assign |
-| Any → PR_REVIEW | Move to "In Review" |
-| Any → COMPLETED | Close issue, move to "Done" |
-| Any → ABANDONED | Close issue, move to "Done" |
+| Any → PR_REVIEW   | Move to "In Review"                |
+| Any → COMPLETED   | Close issue, move to "Done"        |
+| Any → ABANDONED   | Close issue, move to "Done"        |
 
 ### Issue Body
 
 Synced issues include:
+
 - Task description
 - Acceptance criteria (checkboxes)
 - Link to dev-workflow task
@@ -209,19 +212,20 @@ Import existing GitHub issues:
 
 ```typescript
 import_github_issue({
-  githubIssueNumber: 42
-})
+  githubIssueNumber: 42,
+});
 ```
 
 Or by URL:
 
 ```typescript
 import_github_issue({
-  githubIssueUrl: "https://github.com/owner/repo/issues/42"
-})
+  githubIssueUrl: "https://github.com/owner/repo/issues/42",
+});
 ```
 
 This:
+
 - Creates dev-workflow issue from GitHub issue
 - Infers type/priority from labels
 - Stores source issue reference
@@ -233,6 +237,7 @@ After importing and generating a plan:
 **Single task:** Links to parent issue (no new issue)
 
 **Multiple tasks:** Creates sub-issues:
+
 - Each task becomes a new GitHub issue
 - Sub-issues linked to parent
 - Parent tracks overall progress
@@ -243,11 +248,12 @@ If sync gets out of sync:
 
 ```typescript
 sync_issue({
-  issueNumber: 123
-})
+  issueNumber: 123,
+});
 ```
 
 This:
+
 - Creates missing GitHub issues
 - Links existing issues by title
 - Verifies linked issues exist

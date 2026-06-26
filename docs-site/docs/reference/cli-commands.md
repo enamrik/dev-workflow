@@ -8,25 +8,25 @@ Complete reference for all dev-workflow CLI commands.
 
 ## Overview
 
-| Command | Description |
-|---------|-------------|
-| `init` | Initialize dev-workflow in a repository |
-| `update` | Update skills and run migrations |
-| `uninit` | Remove Claude integration |
-| `mcp` | Start MCP server |
-| `ui` | Start the web UI as a background daemon |
-| `ui:stop` | Stop the web UI daemon |
-| `ui:status` | Show whether the web UI daemon is running |
-| `workers` | List registered workers |
-| `claude` | Run as a worker |
-| `clean-claude-config` | Clean stale config entries |
+| Command               | Description                               |
+| --------------------- | ----------------------------------------- |
+| `init`                | Initialize dev-workflow in a repository   |
+| `update`              | Update skills and run migrations          |
+| `uninit`              | Remove Claude integration                 |
+| `mcp`                 | Start MCP server                          |
+| `ui`                  | Start the web UI as a background daemon   |
+| `ui:stop`             | Stop the web UI daemon                    |
+| `ui:status`           | Show whether the web UI daemon is running |
+| `workers`             | List registered workers                   |
+| `claude`              | Run as a worker                           |
+| `clean-claude-config` | Clean stale config entries                |
 
 ## init
 
 Initialize dev-workflow in the current git repository.
 
 ```bash
-dev-workflow init
+dwf init
 ```
 
 ### What it does
@@ -49,7 +49,7 @@ dev-workflow init
 cd my-project
 git init
 git commit --allow-empty -m "Initial commit"
-dev-workflow init
+dwf init
 ```
 
 ## update
@@ -57,7 +57,7 @@ dev-workflow init
 Update dev-workflow to the latest version.
 
 ```bash
-dev-workflow update
+dwf update
 ```
 
 ### What it does
@@ -77,7 +77,7 @@ dev-workflow update
 Remove dev-workflow Claude integration from the project.
 
 ```bash
-dev-workflow uninit
+dwf uninit
 ```
 
 ### What it removes
@@ -100,7 +100,7 @@ Temporarily disable dev-workflow without losing data.
 Start the MCP server for Claude Code integration.
 
 ```bash
-dev-workflow mcp
+dwf mcp
 ```
 
 ### How it works
@@ -122,29 +122,29 @@ For debugging, run in a terminal to see server logs.
 Start the web UI as a background daemon and return to your prompt.
 
 ```bash
-dev-workflow ui
+dwf ui
 ```
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
+| Option         | Description                                                                  |
+| -------------- | ---------------------------------------------------------------------------- |
 | `--foreground` | Run attached (blocks; Ctrl+C to stop) instead of daemonizing — for debugging |
-| `PORT` | Environment variable to set the port (default: 3456) |
+| `PORT`         | Environment variable to set the port (default: 3456)                         |
 
 ### Example
 
 ```bash
-dev-workflow ui                 # start the daemon (default port)
-PORT=3001 dev-workflow ui       # start on a custom port
-dev-workflow ui --foreground    # run attached to the terminal
+dwf ui                 # start the daemon (default port)
+PORT=3001 dwf ui       # start on a custom port
+dwf ui --foreground    # run attached to the terminal
 ```
 
 ### What it does
 
 1. Spawns a detached background process serving the embedded HTTP + WebSocket API and the
    static web UI (no Next.js process, no external dependencies).
-2. Saves the port to `~/.track/ui-port` and the PID to `~/.track/ui.pid`; logs to `~/.track/ui.log`.
+2. Saves the port to `~/.dwf/track/ui-port` and the PID to `~/.dwf/track/ui.pid`; logs to `~/.dwf/track/ui.log`.
 3. Returns immediately. Re-running `ui` while it's already up just reports the URL.
 
 The daemon runs until stopped or the machine reboots — there is no boot auto-start.
@@ -154,7 +154,7 @@ The daemon runs until stopped or the machine reboots — there is no boot auto-s
 Stop the running web UI daemon.
 
 ```bash
-dev-workflow ui:stop
+dwf ui:stop
 ```
 
 ## ui:status
@@ -162,7 +162,7 @@ dev-workflow ui:stop
 Report whether the web UI daemon is running, and on which port.
 
 ```bash
-dev-workflow ui:status
+dwf ui:status
 ```
 
 ## workers
@@ -170,7 +170,7 @@ dev-workflow ui:status
 List registered workers and dispatch queue status.
 
 ```bash
-dev-workflow workers
+dwf workers
 ```
 
 ### Output
@@ -189,27 +189,27 @@ Debugging worker issues, checking queue status.
 Run as a Claude worker that polls for and executes dispatched tasks.
 
 ```bash
-dev-workflow claude [options]
+dwf claude [options]
 ```
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `--name <name>` | Worker name (auto-generates if not provided) |
-| `--auto-claim` | Automatically claim READY tasks when dependencies complete |
+| Option          | Description                                                |
+| --------------- | ---------------------------------------------------------- |
+| `--name <name>` | Worker name (auto-generates if not provided)               |
+| `--auto-claim`  | Automatically claim READY tasks when dependencies complete |
 
 ### Examples
 
 ```bash
 # Start with auto-generated name
-dev-workflow claude
+dwf claude
 
 # Start with custom name
-dev-workflow claude --name worker-1
+dwf claude --name worker-1
 
 # Start with auto-claim enabled
-dev-workflow claude --name worker-1 --auto-claim
+dwf claude --name worker-1 --auto-claim
 ```
 
 ### How it works
@@ -233,23 +233,23 @@ dev-workflow claude --name worker-1 --auto-claim
 Remove stale worktree folder registrations from `~/.claude.json`.
 
 ```bash
-dev-workflow clean-claude-config [options]
+dwf clean-claude-config [options]
 ```
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
+| Option      | Description                                       |
+| ----------- | ------------------------------------------------- |
 | `--dry-run` | Show what would be removed without making changes |
 
 ### Examples
 
 ```bash
 # Preview what would be removed
-dev-workflow clean-claude-config --dry-run
+dwf clean-claude-config --dry-run
 
 # Actually clean up
-dev-workflow clean-claude-config
+dwf clean-claude-config
 ```
 
 ### What it does
@@ -261,32 +261,32 @@ Removes MCP server registrations for worktree directories that no longer exist. 
 ### Version
 
 ```bash
-dev-workflow --version
+dwf --version
 ```
 
 ### Help
 
 ```bash
-dev-workflow --help
-dev-workflow <command> --help
+dwf --help
+dwf <command> --help
 ```
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `DWF_HOME` | Override the data root (`~/.track`); `TRACK_DIR` is a legacy alias |
-| `DWF_PROJECT_SLUG` | Pin the MCP server to a project instead of resolving from cwd |
-| `CLAUDE_CONFIG_DIR` | Override Claude's config home (where skills install) |
-| `DATABASE_PATH` | Override database path |
-| `PORT` | Port for web UI |
+| Variable            | Description                                                   |
+| ------------------- | ------------------------------------------------------------- |
+| `DWF_HOME`          | Override the data root (default `~/.dwf/track`)               |
+| `DWF_PROJECT_SLUG`  | Pin the MCP server to a project instead of resolving from cwd |
+| `CLAUDE_CONFIG_DIR` | Override Claude's config home (where skills install)          |
+| `DATABASE_PATH`     | Override database path                                        |
+| `PORT`              | Port for web UI                                               |
 
 ## Exit Codes
 
 | Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Error |
+| ---- | ------- |
+| 0    | Success |
+| 1    | Error   |
 
 ## Next Steps
 

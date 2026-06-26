@@ -30,7 +30,13 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 
+// PKG_NAME names the published archive (kept stable: dev-workflow-<slug>.tar.gz). STAGE_NAME
+// is the archive's single top-level dir, which the installer extracts to $INSTALL_DIR — so the
+// install lands at ~/.dwf/install/. BIN_NAME is the command the user types. The project is
+// "dev-workflow"; the CLI is `dwf` (like ripgrep → rg).
 const PKG_NAME = "dev-workflow";
+const STAGE_NAME = "install";
+const BIN_NAME = "dwf";
 
 /** Resolve the target: slug → node platform/arch + archive format. */
 function resolveTarget() {
@@ -98,7 +104,8 @@ function fetchBetterSqlite3(platform, arch) {
     fs.renameSync(built, path.join(abiDir, "better_sqlite3.node"));
     fetched++;
   }
-  if (fetched === 0) throw new Error(`no better-sqlite3 prebuilds available for ${platform}-${arch}`);
+  if (fetched === 0)
+    throw new Error(`no better-sqlite3 prebuilds available for ${platform}-${arch}`);
   return dest;
 }
 
@@ -113,7 +120,7 @@ function main() {
   requireExists(webOut, "build apps/web (next build → out/) first");
 
   const outDir = path.join(repoRoot, "dist-artifacts");
-  const stage = path.join(outDir, PKG_NAME);
+  const stage = path.join(outDir, STAGE_NAME);
   fs.rmSync(stage, { recursive: true, force: true });
   fs.mkdirSync(path.join(stage, "bin"), { recursive: true });
   fs.mkdirSync(path.join(stage, "node_modules"), { recursive: true });
@@ -122,7 +129,10 @@ function main() {
   copy(path.join(cliDist, "cli.js"), path.join(stage, "cli.js"));
   copy(path.join(mcpDist, "mcp-server.js"), path.join(stage, "mcp-server.js"));
   const migrations = path.join(repoRoot, "packages/database/drizzle");
-  requireExists(path.join(migrations, "meta/_journal.json"), "missing committed drizzle migrations");
+  requireExists(
+    path.join(migrations, "meta/_journal.json"),
+    "missing committed drizzle migrations"
+  );
   copy(migrations, path.join(stage, "drizzle"));
   copy(path.join(repoRoot, "apps/cli/skills"), path.join(stage, "skills"));
   copy(path.join(repoRoot, "apps/cli/templates"), path.join(stage, "templates"));
@@ -131,23 +141,27 @@ function main() {
   // Target's better-sqlite3 prebuild (the only platform-specific piece).
   copy(fetchBetterSqlite3(platform, arch), path.join(stage, "node_modules/better-sqlite3"));
 
-  // Bin wrappers (getDefaultPackageRoot resolves to the bundle dir; the installer writes
-  // its own absolute-path launcher, but ship these for running in-place too).
+  // Bin wrappers named `dwf` (the command). On Windows the installer puts this bin/ dir on
+  // PATH, so the wrapper name IS the command; on unix the installer writes its own absolute-
+  // path launcher, but these let the artifact run in-place too.
   fs.writeFileSync(
-    path.join(stage, "bin", PKG_NAME),
+    path.join(stage, "bin", BIN_NAME),
     `#!/bin/sh\nDIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"\nexec node "$DIR/cli.js" "$@"\n`,
     { mode: 0o755 }
   );
-  fs.writeFileSync(path.join(stage, "bin", `${PKG_NAME}.cmd`), `@echo off\r\nnode "%~dp0\\..\\cli.js" %*\r\n`);
+  fs.writeFileSync(
+    path.join(stage, "bin", `${BIN_NAME}.cmd`),
+    `@echo off\r\nnode "%~dp0\\..\\cli.js" %*\r\n`
+  );
 
   // Archive (zip for Windows, tar.gz otherwise) + SHA-256. zip/tar both run on Linux/macOS,
   // so all targets archive from one runner.
   const archive = path.join(outDir, `${PKG_NAME}-${slug}.${isWindows ? "zip" : "tar.gz"}`);
   fs.rmSync(archive, { force: true });
   if (isWindows) {
-    execFileSync("zip", ["-r", "-q", archive, PKG_NAME], { cwd: outDir });
+    execFileSync("zip", ["-r", "-q", archive, STAGE_NAME], { cwd: outDir });
   } else {
-    execFileSync("tar", ["-czf", archive, "-C", outDir, PKG_NAME]);
+    execFileSync("tar", ["-czf", archive, "-C", outDir, STAGE_NAME]);
   }
 
   const hash = createHash("sha256").update(fs.readFileSync(archive)).digest("hex");

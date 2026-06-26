@@ -344,7 +344,7 @@ export async function resolveConfigFromGit(cwd: string = process.cwd()): Promise
   const slug = gitOps.readSlugFromGitConfig(gitRoot);
   if (!slug) {
     throw new ProjectConfigError(
-      `Project not initialized. Run 'dev-workflow init' first.`,
+      `Project not initialized. Run 'dwf init' first.`,
       "SLUG_NOT_FOUND",
       { gitRoot }
     );

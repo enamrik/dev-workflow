@@ -12,8 +12,7 @@ import {
 import { TrackDirectoryResolver } from "@dev-workflow/git/track-directory-resolver.js";
 import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
 import { resolveCliEntry } from "../infrastructure/cli-entry.js";
-import { registerMcpServer, MCP_SERVER_NAME } from "../infrastructure/mcp-registration.js";
-import { ClaudeConfigService } from "./claude-config.service.js";
+import { registerMcpServer } from "../infrastructure/mcp-registration.js";
 import { installSkillsGlobally } from "../infrastructure/skills-installer.js";
 
 export class InstallError extends Error {
@@ -63,7 +62,6 @@ export class InstallService {
     }
     throw new InstallError(`Cannot extract path from connection string: ${connectionString}`);
   }
-
 
   /**
    * Register the project in the database.
@@ -163,10 +161,6 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
     try {
       // Project must be registered first (to validate it exists).
       this.getProject();
-
-      // Migrate off the old per-project model: clear stale local-scope registrations across
-      // ALL projects so the single global (--scope user) server is the only one that loads.
-      await new ClaudeConfigService().removeMcpServerFromAllProjects(MCP_SERVER_NAME);
 
       // One global (--scope user) registration. The server resolves which project it's in
       // from its working directory at startup, so no per-project slug/gitRoot is baked in.

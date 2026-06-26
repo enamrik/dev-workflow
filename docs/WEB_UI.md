@@ -9,7 +9,7 @@ The dev-workflow includes a web interface for visualizing issues, plans, tasks, 
 From a project with dev-workflow initialized:
 
 ```bash
-dev-workflow ui
+dwf ui
 ```
 
 The server will:

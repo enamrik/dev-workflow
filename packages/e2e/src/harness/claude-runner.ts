@@ -215,7 +215,7 @@ export class ClaudeRunner {
       timeout,
       streamOutput,
       env: {
-        TRACK_DIR: this.harness.trackDir,
+        DWF_HOME: this.harness.trackDir,
       },
     });
   }

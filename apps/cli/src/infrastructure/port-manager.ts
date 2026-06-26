@@ -1,8 +1,8 @@
 import getPort from "get-port";
 import { createConnection } from "node:net";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
+import { resolveGlobalTrackDir } from "@dev-workflow/git/track-directory-resolver.js";
 
 // Re-export shared port file utilities from git
 export {
@@ -14,17 +14,21 @@ export {
 
 const DEFAULT_PORT = 3456;
 
-// The UI daemon's PID, tracked so `ui:stop`/`ui:status` can find and signal it.
-const PID_FILE = path.join(os.homedir(), ".track", "ui.pid");
+// The UI daemon's PID, tracked so `ui:stop`/`ui:status` can find and signal it. Resolved
+// per-call so it honors DWF_HOME (the data root), not a hardcoded location.
+function pidFile(): string {
+  return path.join(resolveGlobalTrackDir(), "ui.pid");
+}
 
 export function saveDaemonPid(pid: number): void {
-  fs.mkdirSync(path.dirname(PID_FILE), { recursive: true });
-  fs.writeFileSync(PID_FILE, String(pid), "utf-8");
+  const file = pidFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, String(pid), "utf-8");
 }
 
 export function getSavedDaemonPid(): number | null {
   try {
-    const pid = parseInt(fs.readFileSync(PID_FILE, "utf-8").trim(), 10);
+    const pid = parseInt(fs.readFileSync(pidFile(), "utf-8").trim(), 10);
     return Number.isNaN(pid) ? null : pid;
   } catch {
     return null;
@@ -33,7 +37,7 @@ export function getSavedDaemonPid(): number | null {
 
 export function clearDaemonPid(): void {
   try {
-    fs.unlinkSync(PID_FILE);
+    fs.unlinkSync(pidFile());
   } catch {
     // ignore if absent
   }

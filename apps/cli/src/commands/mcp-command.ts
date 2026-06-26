@@ -16,7 +16,7 @@ export class MCPCommand {
     const mcpServerPath = resolveMcpServerEntry();
 
     // The server resolves which project it's serving from its working directory, which it
-    // inherits from this process (Claude Code launches `dev-workflow mcp` with cwd = the
+    // inherits from this process (Claude Code launches `dwf mcp` with cwd = the
     // session's project dir). stdio is inherited so the JSON-RPC stream flows through.
     const mcpProcess = spawn("node", [mcpServerPath], {
       stdio: "inherit",

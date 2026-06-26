@@ -8,15 +8,15 @@ Claude skills provide structured workflows for common operations. Skills are aut
 
 ## Available Skills
 
-| Skill | Description | Trigger |
-|-------|-------------|---------|
-| `dwf-work-request` | Entry point for new work | "Add X", "Fix Y", "Implement Z" |
-| `dwf-manage-issue` | Issue CRUD operations | "Update issue #N", "Add criteria" |
-| `dwf-plan-issue` | Generate implementation plans | "Plan issue #N", "Create tasks" |
-| `dwf-work-task` | Task execution lifecycle | "Start task", "Work on task" |
-| `dwf-worker-task` | Worker task execution | Auto-invoked by workers |
-| `dwf-configure-github` | GitHub integration setup | "Enable GitHub sync" |
-| `dwf-manage-milestone` | Milestone management | "Create milestone" |
+| Skill                  | Description                   | Trigger                           |
+| ---------------------- | ----------------------------- | --------------------------------- |
+| `dwf-work-request`     | Entry point for new work      | "Add X", "Fix Y", "Implement Z"   |
+| `dwf-manage-issue`     | Issue CRUD operations         | "Update issue #N", "Add criteria" |
+| `dwf-plan-issue`       | Generate implementation plans | "Plan issue #N", "Create tasks"   |
+| `dwf-work-task`        | Task execution lifecycle      | "Start task", "Work on task"      |
+| `dwf-worker-task`      | Worker task execution         | Auto-invoked by workers           |
+| `dwf-configure-github` | GitHub integration setup      | "Enable GitHub sync"              |
+| `dwf-manage-milestone` | Milestone management          | "Create milestone"                |
 
 ## dwf-work-request
 
@@ -65,13 +65,13 @@ Handles issue creation, updates, and management.
 
 ### Operations
 
-| Operation | Example |
-|-----------|---------|
-| Create | "Create an issue for..." |
-| Update | "Update issue #N..." |
-| Close | "Close issue #N" |
-| Delete | "Delete issue #N" |
-| Change type | "Change #N to bug" |
+| Operation   | Example                  |
+| ----------- | ------------------------ |
+| Create      | "Create an issue for..." |
+| Update      | "Update issue #N..."     |
+| Close       | "Close issue #N"         |
+| Delete      | "Delete issue #N"        |
+| Change type | "Change #N to bug"       |
 
 ## dwf-plan-issue
 
@@ -141,7 +141,7 @@ Claude:
 Starting task #5.1: Configure OAuth credentials
 
 Mode: isolated
-Worktree: ~/.track/project/worktrees/issue-5-task-1
+Worktree: ~/.dwf/track/project/worktrees/issue-5-task-1
 Branch: issue-5/task-1-configure-oauth
 
 Ready to implement. What would you like me to do first?
@@ -150,6 +150,7 @@ Ready to implement. What would you like me to do first?
 ## dwf-worker-task
 
 Executes tasks for background workers. Same as `dwf-work-task` but:
+
 - Requires worker ID
 - Must call `end_worker_session` when done
 - No interactive prompts
@@ -183,12 +184,12 @@ Manages milestones for time-bounded planning.
 
 ### Operations
 
-| Operation | Example |
-|-----------|---------|
-| Create | "Create milestone Q1 2025" |
-| Update | "Extend milestone by 2 weeks" |
-| Assign | "Add #5 to Q1 milestone" |
-| Close | "Complete the milestone" |
+| Operation | Example                       |
+| --------- | ----------------------------- |
+| Create    | "Create milestone Q1 2025"    |
+| Update    | "Extend milestone by 2 weeks" |
+| Assign    | "Add #5 to Q1 milestone"      |
+| Close     | "Complete the milestone"      |
 
 ## Skill Invocation
 

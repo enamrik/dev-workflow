@@ -61,7 +61,7 @@ describe("bootstrap", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         "❌ dev-workflow is not initialized for this repository."
       );
-      expect(mockConsoleError).toHaveBeenCalledWith("\nRun: dev-workflow init");
+      expect(mockConsoleError).toHaveBeenCalledWith("\nRun: dwf init");
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 

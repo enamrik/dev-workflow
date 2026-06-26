@@ -415,7 +415,6 @@ export const projects = sqliteTable("projects", {
   updatedAt: text("updated_at").notNull(),
 });
 
-
 /**
  * Global settings table schema
  *

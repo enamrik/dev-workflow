@@ -37,20 +37,20 @@ Workers are background Claude Code processes that automatically pick up and exec
 
 ### Key Concepts
 
-| Concept            | Description                                           |
-| ------------------ | ----------------------------------------------------- |
-| **Dispatch Queue** | Database table holding tasks waiting for workers      |
-| **Worker**         | A `dev-workflow worker` process running in a terminal |
-| **Claim**          | Atomic lock that assigns a task to one worker         |
-| **Heartbeat**      | Periodic signal that a worker is still alive          |
-| **Stale**          | A claim from a dead worker (heartbeat expired)        |
+| Concept            | Description                                      |
+| ------------------ | ------------------------------------------------ |
+| **Dispatch Queue** | Database table holding tasks waiting for workers |
+| **Worker**         | A `dwf worker` process running in a terminal     |
+| **Claim**          | Atomic lock that assigns a task to one worker    |
+| **Heartbeat**      | Periodic signal that a worker is still alive     |
+| **Stale**          | A claim from a dead worker (heartbeat expired)   |
 
 ## Starting a Worker
 
 Run in a dedicated terminal:
 
 ```bash
-dev-workflow worker
+dwf worker
 ```
 
 The worker will:
@@ -63,7 +63,7 @@ The worker will:
 ### Worker Options
 
 ```bash
-dev-workflow worker --name my-worker  # Custom name
+dwf worker --name my-worker  # Custom name
 ```
 
 ### Recommended Setup
@@ -72,10 +72,10 @@ Open multiple terminal windows/tabs or use tmux:
 
 ```bash
 # Terminal 1
-dev-workflow worker --name worker-1
+dwf worker --name worker-1
 
 # Terminal 2
-dev-workflow worker --name worker-2
+dwf worker --name worker-2
 
 # Terminal 3 (your main session)
 # Dispatch tasks, the workers will pick them up
@@ -225,7 +225,7 @@ The Workers page shows:
 - Heartbeat age (freshness)
 - Dispatch queue contents
 
-Access via: `dev-workflow ui` → Workers tab
+Access via: `dwf ui` → Workers tab
 
 ### Terminal Title
 

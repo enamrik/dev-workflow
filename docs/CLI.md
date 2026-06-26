@@ -8,8 +8,8 @@ _Documentation coming soon - see [Issue #162](https://github.com/enamrik/dev-wor
 
 ## Commands
 
-- `dev-workflow init` - Initialize project
-- `dev-workflow mcp` - Start MCP server
-- `dev-workflow ui` - Start Web UI server
-- `dev-workflow worker` - Run as background worker
-- `dev-workflow update` - Apply database migrations
+- `dwf init` - Initialize project
+- `dwf mcp` - Start MCP server
+- `dwf ui` - Start Web UI server
+- `dwf worker` - Run as background worker
+- `dwf update` - Apply database migrations

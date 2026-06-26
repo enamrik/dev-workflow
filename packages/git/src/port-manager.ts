@@ -4,19 +4,23 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as os from "node:os";
+import { resolveGlobalTrackDir } from "./track-directory-resolver.js";
 
-const PORT_FILE = path.join(os.homedir(), ".track", "ui-port");
+// Resolved per-call so it honors DWF_HOME (set at runtime by tests/sandbox), not just at import.
+function portFile(): string {
+  return path.join(resolveGlobalTrackDir(), "ui-port");
+}
 
 /**
  * Save the running daemon port to a file
  */
 export function saveDaemonPort(port: number): void {
-  const dir = path.dirname(PORT_FILE);
+  const file = portFile();
+  const dir = path.dirname(file);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  fs.writeFileSync(PORT_FILE, String(port), "utf-8");
+  fs.writeFileSync(file, String(port), "utf-8");
 }
 
 /**
@@ -24,7 +28,7 @@ export function saveDaemonPort(port: number): void {
  */
 export function getSavedDaemonPort(): number | null {
   try {
-    const content = fs.readFileSync(PORT_FILE, "utf-8").trim();
+    const content = fs.readFileSync(portFile(), "utf-8").trim();
     const port = parseInt(content, 10);
     return isNaN(port) ? null : port;
   } catch {
@@ -37,7 +41,7 @@ export function getSavedDaemonPort(): number | null {
  */
 export function clearDaemonPort(): void {
   try {
-    fs.unlinkSync(PORT_FILE);
+    fs.unlinkSync(portFile());
   } catch {
     // Ignore if file doesn't exist
   }
@@ -47,5 +51,5 @@ export function clearDaemonPort(): void {
  * Get the path to the port file (for testing/debugging)
  */
 export function getPortFilePath(): string {
-  return PORT_FILE;
+  return portFile();
 }

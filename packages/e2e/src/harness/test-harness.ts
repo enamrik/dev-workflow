@@ -68,12 +68,12 @@ export class E2ETestHarness {
   }
 
   /**
-   * Get environment variables with TRACK_DIR set for isolated testing
+   * Get environment variables with DWF_HOME set for isolated testing
    */
   getEnv(): Record<string, string | undefined> {
     return {
       ...process.env,
-      TRACK_DIR: this.trackDir,
+      DWF_HOME: this.trackDir,
       // Ensure we don't inherit any existing DATABASE_PATH
       DATABASE_PATH: undefined,
     };
@@ -93,9 +93,9 @@ export class E2ETestHarness {
           command: "node",
           args: [cliPath, "mcp"],
           env: {
-            PROJECT_SLUG: this.projectId,
+            DWF_PROJECT_SLUG: this.projectId,
             GIT_ROOT: this.testDir,
-            TRACK_DIR: this.trackDir,
+            DWF_HOME: this.trackDir,
           },
         },
       },
@@ -138,7 +138,7 @@ export class E2ETestHarness {
       }
     } else {
       console.log("📦 Checking dev-workflow installation...");
-      const result = spawnSync("dev-workflow", ["--version"], {
+      const result = spawnSync("dwf", ["--version"], {
         encoding: "utf-8",
       });
       if (result.error || result.status !== 0) {
@@ -182,8 +182,8 @@ export class E2ETestHarness {
     mkdirSync(this.trackDir, { recursive: true });
     console.log(`✓ Created isolated track directory: ${this.trackDir}`);
 
-    // Set TRACK_DIR in environment so resolver uses our isolated directory
-    process.env["TRACK_DIR"] = this.trackDir;
+    // Set DWF_HOME in environment so resolver uses our isolated directory
+    process.env["DWF_HOME"] = this.trackDir;
 
     // Use the same resolver as production code to compute paths
     // Must be AFTER initial commit since we use git first commit hash
@@ -192,9 +192,9 @@ export class E2ETestHarness {
     this.projectTrackDir = resolver.getTrackDirectory();
     this.dbPath = resolver.getDatabasePath();
 
-    // 5. Run dev-workflow init with isolated TRACK_DIR
+    // 5. Run dev-workflow init with isolated DWF_HOME
     console.log("🚀 Running dev-workflow init...");
-    const devWorkflowCmd = this.useLocalBuild ? `node ${this.getCliPath()}` : "dev-workflow";
+    const devWorkflowCmd = this.useLocalBuild ? `node ${this.getCliPath()}` : "dwf";
 
     try {
       execSync(`${devWorkflowCmd} init`, {
@@ -311,7 +311,7 @@ console.log("Capitalized:", capitalize("hello"));
    * Get the dev-workflow command to use
    */
   getDevWorkflowCommand(): string {
-    return this.useLocalBuild ? `node ${this.getCliPath()}` : "dev-workflow";
+    return this.useLocalBuild ? `node ${this.getCliPath()}` : "dwf";
   }
 
   /**
@@ -360,13 +360,13 @@ console.log("Capitalized:", capitalize("hello"));
    */
   cleanup(testPassed: boolean): void {
     // Restore environment
-    delete process.env["TRACK_DIR"];
+    delete process.env["DWF_HOME"];
 
     if (testPassed && this.cleanupOnSuccess) {
       console.log("\n🧹 Cleaning up test environment...");
       try {
         // Run uninit to properly unregister MCP server and remove skills/subagents
-        const devWorkflowCmd = this.useLocalBuild ? `node ${this.getCliPath()}` : "dev-workflow";
+        const devWorkflowCmd = this.useLocalBuild ? `node ${this.getCliPath()}` : "dwf";
         execSync(`${devWorkflowCmd} uninit`, {
           cwd: this.testDir,
           stdio: "pipe",

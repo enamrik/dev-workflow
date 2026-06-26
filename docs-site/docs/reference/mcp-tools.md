@@ -8,18 +8,18 @@ Complete reference for all 55 MCP tools provided by dev-workflow.
 
 ## Overview
 
-| Category | Tools | Description |
-|----------|-------|-------------|
-| Issue Management | 16 | Create, read, update, delete issues |
-| Plan Management | 5 | Generate and manage plans |
-| Task Management | 10 | Work on and track tasks |
-| Snapshot Management | 3 | Version history |
-| Milestone Management | 7 | Time-bounded planning |
-| Worktree Management | 2 | Git worktree management |
-| PR Tools | 4 | Pull request lifecycle |
-| Merge Tools | 1 | Combine issues |
-| Type Management | 4 | Custom type management |
-| Dispatch Tools | 3 | Worker coordination |
+| Category             | Tools | Description                         |
+| -------------------- | ----- | ----------------------------------- |
+| Issue Management     | 16    | Create, read, update, delete issues |
+| Plan Management      | 5     | Generate and manage plans           |
+| Task Management      | 10    | Work on and track tasks             |
+| Snapshot Management  | 3     | Version history                     |
+| Milestone Management | 7     | Time-bounded planning               |
+| Worktree Management  | 2     | Git worktree management             |
+| PR Tools             | 4     | Pull request lifecycle              |
+| Merge Tools          | 1     | Combine issues                      |
+| Type Management      | 4     | Custom type management              |
+| Dispatch Tools       | 3     | Worker coordination                 |
 
 ---
 
@@ -88,8 +88,8 @@ Restore a soft-deleted issue.
 
 ```typescript
 restore_issue({
-  issueNumber: number         // Required
-})
+  issueNumber: number, // Required
+});
 ```
 
 ### close_issue
@@ -109,9 +109,9 @@ Change an issue's type.
 
 ```typescript
 change_issue_type({
-  issueNumber: number,        // Required
-  type: string                // Required
-})
+  issueNumber: number, // Required
+  type: string, // Required
+});
 ```
 
 ### search_issues
@@ -120,8 +120,8 @@ Search issues by keyword.
 
 ```typescript
 search_issues({
-  query: string               // Required (case-insensitive)
-})
+  query: string, // Required (case-insensitive)
+});
 ```
 
 ### get_project_stats
@@ -129,7 +129,7 @@ search_issues({
 Get project statistics.
 
 ```typescript
-get_project_stats({})
+get_project_stats({});
 ```
 
 Returns issue and task counts by status.
@@ -139,7 +139,7 @@ Returns issue and task counts by status.
 Get prioritized work queue.
 
 ```typescript
-get_work_queue({})
+get_work_queue({});
 ```
 
 Returns top issues and tasks, plus issues needing planning.
@@ -212,11 +212,11 @@ Copy template between scopes.
 
 ```typescript
 copy_template({
-  filename: string,           // Required
+  filename: string, // Required
   category: "issue" | "task", // Required
   fromScope: "local" | "global", // Required
-  toScope: "local" | "global"    // Required
-})
+  toScope: "local" | "global", // Required
+});
 ```
 
 ---
@@ -229,21 +229,21 @@ Generate or regenerate an implementation plan.
 
 ```typescript
 generate_plan({
-  issueNumber: number,        // Required
-  summary: string,            // Required
-  approach: string,           // Required
+  issueNumber: number, // Required
+  summary: string, // Required
+  approach: string, // Required
   estimatedComplexity: "LOW" | "MEDIUM" | "HIGH" | "VERY_HIGH",
   tasks: Array<{
-    id: string,               // Placeholder ID for dependencies
-    title: string,
-    description: string,
-    type: string,             // Must be valid type
-    dependsOn?: string[],     // References to other task ids
-    acceptanceCriteria?: string[],
-    estimatedMinutes?: number,
-    implementationPlan?: string
-  }>
-})
+    id: string; // Placeholder ID for dependencies
+    title: string;
+    description: string;
+    type: string; // Must be valid type
+    dependsOn?: string[]; // References to other task ids
+    acceptanceCriteria?: string[];
+    estimatedMinutes?: number;
+    implementationPlan?: string;
+  }>,
+});
 ```
 
 ### get_plan
@@ -252,8 +252,8 @@ Get the active plan for an issue.
 
 ```typescript
 get_plan({
-  issueNumber: number         // Required
-})
+  issueNumber: number, // Required
+});
 ```
 
 ### move_issue_to_backlog
@@ -273,8 +273,8 @@ Mark tasks as ready for work.
 
 ```typescript
 move_issue_to_ready({
-  issueNumber: number         // Required
-})
+  issueNumber: number, // Required
+});
 ```
 
 ### pause_issue
@@ -283,8 +283,8 @@ Pause work on an issue.
 
 ```typescript
 pause_issue({
-  issueNumber: number         // Required
-})
+  issueNumber: number, // Required
+});
 ```
 
 ---
@@ -346,8 +346,8 @@ Delete a PLANNED task.
 
 ```typescript
 delete_task({
-  taskId: string              // Required
-})
+  taskId: string, // Required
+});
 ```
 
 ### update_task
@@ -372,8 +372,8 @@ Generate execution prompt for a task.
 
 ```typescript
 get_task_execution_prompt({
-  taskId: string              // Required
-})
+  taskId: string, // Required
+});
 ```
 
 ### log_task_progress
@@ -395,8 +395,8 @@ Get execution log for a task.
 
 ```typescript
 get_task_execution_log({
-  taskId: string              // Required
-})
+  taskId: string, // Required
+});
 ```
 
 ### check_task_conflicts
@@ -405,8 +405,8 @@ Check for file conflicts.
 
 ```typescript
 check_task_conflicts({
-  taskId: string              // Required
-})
+  taskId: string, // Required
+});
 ```
 
 ---
@@ -419,8 +419,8 @@ Get version history for an issue.
 
 ```typescript
 get_snapshot_history({
-  issueNumber: number         // Required
-})
+  issueNumber: number, // Required
+});
 ```
 
 ### view_snapshot
@@ -429,9 +429,9 @@ View issue at specific version.
 
 ```typescript
 view_snapshot({
-  issueNumber: number,        // Required
-  version: number             // Required
-})
+  issueNumber: number, // Required
+  version: number, // Required
+});
 ```
 
 ### revert_to_snapshot
@@ -469,8 +469,8 @@ Get milestone details.
 
 ```typescript
 get_milestone({
-  milestoneNumber: number     // Required
-})
+  milestoneNumber: number, // Required
+});
 ```
 
 ### list_milestones
@@ -506,8 +506,8 @@ Delete a milestone.
 
 ```typescript
 delete_milestone({
-  milestoneNumber: number     // Required
-})
+  milestoneNumber: number, // Required
+});
 ```
 
 ### assign_issue_to_milestone
@@ -516,9 +516,9 @@ Assign issue to milestone.
 
 ```typescript
 assign_issue_to_milestone({
-  issueNumber: number,        // Required
-  milestoneNumber: number     // Required
-})
+  issueNumber: number, // Required
+  milestoneNumber: number, // Required
+});
 ```
 
 ### remove_issue_from_milestone
@@ -527,8 +527,8 @@ Remove issue from milestone.
 
 ```typescript
 remove_issue_from_milestone({
-  issueNumber: number         // Required
-})
+  issueNumber: number, // Required
+});
 ```
 
 ---
@@ -540,7 +540,7 @@ remove_issue_from_milestone({
 List active git worktrees.
 
 ```typescript
-list_worktrees({})
+list_worktrees({});
 ```
 
 ### prune_stale_worktrees
@@ -548,7 +548,7 @@ list_worktrees({})
 Clean up orphaned worktrees.
 
 ```typescript
-prune_stale_worktrees({})
+prune_stale_worktrees({});
 ```
 
 ---
@@ -561,8 +561,8 @@ Get PR status for a task.
 
 ```typescript
 get_task_pr_status({
-  taskId: string              // Required
-})
+  taskId: string, // Required
+});
 ```
 
 ### create_pr
@@ -632,7 +632,7 @@ merge_issues({
 List available issue/task types.
 
 ```typescript
-list_types({})
+list_types({});
 ```
 
 ### create_type
@@ -671,8 +671,8 @@ Soft-delete a type.
 
 ```typescript
 delete_type({
-  name: string                // Required
-})
+  name: string, // Required
+});
 ```
 
 ---
@@ -685,8 +685,8 @@ Add task to dispatch queue.
 
 ```typescript
 dispatch_task({
-  taskId: string              // Required
-})
+  taskId: string, // Required
+});
 ```
 
 ### get_dispatch_status
@@ -694,7 +694,7 @@ dispatch_task({
 Get worker and queue status.
 
 ```typescript
-get_dispatch_status({})
+get_dispatch_status({});
 ```
 
 ### end_worker_session
@@ -703,9 +703,9 @@ Signal worker session complete.
 
 ```typescript
 end_worker_session({
-  workerId: string,           // Required
-  taskId: string              // Required
-})
+  workerId: string, // Required
+  taskId: string, // Required
+});
 ```
 
 ---
@@ -714,12 +714,12 @@ end_worker_session({
 
 ### Common Error Patterns
 
-| Error | Meaning | Solution |
-|-------|---------|----------|
-| "Issue not found" | Invalid issue number | Check issue exists |
-| "Task in progress" | Session conflict | Wait or use force |
-| "Invalid type" | Unknown type name | Check `list_types` |
-| "Cannot delete" | Wrong status | Use appropriate action |
+| Error              | Meaning              | Solution               |
+| ------------------ | -------------------- | ---------------------- |
+| "Issue not found"  | Invalid issue number | Check issue exists     |
+| "Task in progress" | Session conflict     | Wait or use force      |
+| "Invalid type"     | Unknown type name    | Check `list_types`     |
+| "Cannot delete"    | Wrong status         | Use appropriate action |
 
 ### Force Mode
 

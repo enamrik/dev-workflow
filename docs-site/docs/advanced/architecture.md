@@ -106,7 +106,7 @@ Abstracts database operations for multiple backends:
 
 ```typescript
 interface DataSourceProvider {
-  readonly providerId: string;  // "sqlite" or "neon"
+  readonly providerId: string; // "sqlite" or "neon"
 
   getDb(): DrizzleDatabase;
 
@@ -121,6 +121,7 @@ interface DataSourceProvider {
 ### Schema
 
 Two schemas maintained in parallel:
+
 - `schema.ts` - SQLite (CLI/MCP)
 - `schema-pg.ts` - PostgreSQL (Web/Neon)
 
@@ -150,6 +151,7 @@ class IssueService {
 ```
 
 Key services:
+
 - `IssueService` - Issue lifecycle
 - `TaskService` - Task execution
 - `PlanningService` - Plan generation
@@ -200,7 +202,7 @@ TaskService → GitHubProjectManagementProvider → GitHub CLI → GitHub API
 Tasks execute in isolated worktrees:
 
 ```
-~/.track/{project}/worktrees/issue-{N}-task-{T}/
+~/.dwf/track/{project}/worktrees/issue-{N}-task-{T}/
   └── Complete git working directory
 ```
 
@@ -230,12 +232,12 @@ Web UI shows all projects in the track directory, each with its own context.
 
 ## Testing Strategy
 
-| Level | Focus | Tools |
-|-------|-------|-------|
-| Unit | Domain logic | Vitest |
-| Integration | Database, services | Vitest + SQLite |
-| E2E | Full workflows | DirectToolExecutor |
-| AI E2E | Claude interaction | Claude CLI |
+| Level       | Focus              | Tools              |
+| ----------- | ------------------ | ------------------ |
+| Unit        | Domain logic       | Vitest             |
+| Integration | Database, services | Vitest + SQLite    |
+| E2E         | Full workflows     | DirectToolExecutor |
+| AI E2E      | Claude interaction | Claude CLI         |
 
 ## Performance
 

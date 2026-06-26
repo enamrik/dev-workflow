@@ -12,7 +12,7 @@ AI-driven development workflow system that integrates with Claude Code to automa
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | **Issue Tracking**     | Create, update, search, merge issues; soft delete with restore; flexible templates; custom types with GitHub label mapping |
 | **Planning**           | Generate implementation plans with tasks; automatic task dependencies; complexity estimation; SPIKE handling for research  |
-| **Task Execution**     | Isolated worktree execution; session ownership; conflict detection; progress logging                                        |
+| **Task Execution**     | Isolated worktree execution; session ownership; conflict detection; progress logging                                       |
 | **PR Workflow**        | Create PRs with issue linking; submit for review; automatic status sync; complete after merge                              |
 | **GitHub Integration** | Two-way sync with GitHub Issues; GitHub Projects column mapping; import existing issues; sub-issue creation                |
 | **Milestones**         | Time-bounded planning; automatic status computation; issue assignment; deadline tracking                                   |
@@ -43,7 +43,7 @@ npm link -w packages/cli
 
 ```bash
 cd your-project
-dev-workflow init
+dwf init
 ```
 
 This creates:

@@ -44,9 +44,9 @@ Common issues and solutions for dev-workflow. If you encounter a problem not cov
    # Or in Claude Code, run /mcp to restart
    ```
 
-3. **Re-run dev-workflow init:**
+3. **Re-run dwf init:**
    ```bash
-   dev-workflow init
+   dwf init
    ```
 
 ### "Issue not found" or "Task not found" for existing data
@@ -270,7 +270,7 @@ git add . && git commit -m "WIP"
 1. **Check for long-running processes:**
 
    ```bash
-   lsof ~/.track/workflow.db
+   lsof ~/.dwf/track/workflow.db
    ```
 
 2. **Kill stuck processes if safe:**
@@ -293,7 +293,7 @@ git add . && git commit -m "WIP"
 1. **Run update command:**
 
    ```bash
-   dev-workflow update
+   dwf update
    ```
 
 2. **If migration is stuck**, check for pending migrations:
@@ -303,7 +303,7 @@ git add . && git commit -m "WIP"
    pnpm drizzle-kit generate
    ```
 
-3. **Never delete `~/.track/workflow.db`** - this contains all your data
+3. **Never delete `~/.dwf/track/workflow.db`** - this contains all your data
 
 ### Data not showing after restart
 
@@ -447,7 +447,7 @@ Worker process died without calling `end_worker_session`.
 2. **Verify workers are running:**
 
    ```bash
-   dev-workflow worker
+   dwf worker
    ```
 
 3. **Manually work the task** without workers:
@@ -489,14 +489,14 @@ Useful commands for debugging:
 
 ```bash
 # Check dev-workflow version
-dev-workflow --version
+dwf --version
 
 # Verify MCP server
-dev-workflow mcp --help
+dwf mcp --help
 
 # Check database location
-echo $TRACK_DIR  # If set
-ls ~/.track/workflow.db
+echo $DWF_HOME  # If set
+ls ~/.dwf/track/workflow.db
 
 # List all git worktrees
 git worktree list

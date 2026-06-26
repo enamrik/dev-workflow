@@ -17,8 +17,7 @@ import {
 import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
 import { resolveCliEntry } from "../infrastructure/cli-entry.js";
 import { installSkillsGlobally } from "../infrastructure/skills-installer.js";
-import { registerMcpServer, MCP_SERVER_NAME } from "../infrastructure/mcp-registration.js";
-import { ClaudeConfigService } from "./claude-config.service.js";
+import { registerMcpServer } from "../infrastructure/mcp-registration.js";
 
 export class UpdateError extends Error {
   constructor(
@@ -226,10 +225,6 @@ export class UpdateService {
       // Project must be registered first (validates it exists).
       this.getProject();
 
-      // Migrate off the old per-project model: clear stale local-scope registrations across
-      // ALL projects so the single global (--scope user) server is the only one that loads.
-      await new ClaudeConfigService().removeMcpServerFromAllProjects(MCP_SERVER_NAME);
-
       // One global (--scope user) registration, refreshed in case cliPath changed on upgrade.
       registerMcpServer(resolveCliEntry(this.packageRoot), this.workingDirectory);
     } catch (error) {
@@ -249,7 +244,7 @@ export class UpdateService {
       // Verify database exists
       const exists = await this.fileSystem.exists(dbPath);
       if (!exists) {
-        throw new UpdateError("Database not found. Run 'dev-workflow init' first.");
+        throw new UpdateError("Database not found. Run 'dwf init' first.");
       }
 
       // Run migrations
@@ -376,12 +371,12 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
    * port, advise the user to restart it to pick up schema/code changes.
    */
   async restartUIDaemonIfRunning(): Promise<void> {
-    const { getSavedDaemonPort, isPortInUse } = await import(
-      "../infrastructure/port-manager.js"
-    );
+    const { getSavedDaemonPort, isPortInUse } = await import("../infrastructure/port-manager.js");
     const savedPort = getSavedDaemonPort();
     if (savedPort && (await isPortInUse(savedPort))) {
-      console.log("ℹ️  A dev-workflow UI server is running. Restart it (Ctrl+C, then 'dev-workflow ui') to pick up changes.");
+      console.log(
+        "ℹ️  A dev-workflow UI server is running. Restart it (Ctrl+C, then 'dwf ui') to pick up changes."
+      );
     }
   }
 

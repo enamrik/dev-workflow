@@ -23,21 +23,21 @@ An **Issue** represents a unit of work to be done. Issues are the top-level enti
 
 ### Issue States
 
-| Status | Description |
-|--------|-------------|
-| `PLANNED` | Issue created, no plan yet or plan not activated |
-| `OPEN` | Plan activated, tasks available for work |
-| `IN_PROGRESS` | At least one task is being worked on |
-| `CLOSED` | All work complete |
+| Status        | Description                                      |
+| ------------- | ------------------------------------------------ |
+| `PLANNED`     | Issue created, no plan yet or plan not activated |
+| `OPEN`        | Plan activated, tasks available for work         |
+| `IN_PROGRESS` | At least one task is being worked on             |
+| `CLOSED`      | All work complete                                |
 
 ### Issue Types
 
-| Type | Description |
-|------|-------------|
-| `FEATURE` | New functionality |
-| `BUG` | Something broken |
+| Type          | Description                           |
+| ------------- | ------------------------------------- |
+| `FEATURE`     | New functionality                     |
+| `BUG`         | Something broken                      |
 | `ENHANCEMENT` | Improvement to existing functionality |
-| `TASK` | Generic work item |
+| `TASK`        | Generic work item                     |
 
 You can also create custom types for your project.
 
@@ -85,15 +85,15 @@ PLANNED → BACKLOG → READY → IN_PROGRESS → PR_REVIEW → COMPLETED
                                ABANDONED
 ```
 
-| Status | Description |
-|--------|-------------|
-| `PLANNED` | Task defined but plan not activated |
-| `BACKLOG` | Plan activated, task waiting |
-| `READY` | Dependencies met, available for work |
-| `IN_PROGRESS` | Actively being worked on |
-| `PR_REVIEW` | PR created, awaiting review |
-| `COMPLETED` | PR merged, task done |
-| `ABANDONED` | Task cancelled or superseded |
+| Status        | Description                          |
+| ------------- | ------------------------------------ |
+| `PLANNED`     | Task defined but plan not activated  |
+| `BACKLOG`     | Plan activated, task waiting         |
+| `READY`       | Dependencies met, available for work |
+| `IN_PROGRESS` | Actively being worked on             |
+| `PR_REVIEW`   | PR created, awaiting review          |
+| `COMPLETED`   | PR merged, task done                 |
+| `ABANDONED`   | Task cancelled or superseded         |
 
 ### Task Dependencies
 
@@ -123,11 +123,11 @@ When you start working on a task, Claude creates an **Execution Session**:
 
 ### Execution Modes
 
-| Mode | Description | Use Case |
-|------|-------------|----------|
-| `isolated` | New git worktree | Default, parallel work |
-| `branch` | New branch in main worktree | Single task at a time |
-| `main` | Work directly on main | Quick fixes, testing |
+| Mode       | Description                 | Use Case               |
+| ---------- | --------------------------- | ---------------------- |
+| `isolated` | New git worktree            | Default, parallel work |
+| `branch`   | New branch in main worktree | Single task at a time  |
+| `main`     | Work directly on main       | Quick fixes, testing   |
 
 ### Session Lifecycle
 
@@ -152,12 +152,12 @@ A **Milestone** groups issues for time-bounded planning:
 
 Status is computed automatically:
 
-| Status | Condition |
-|--------|-----------|
-| `PLANNED` | No issues have started work |
+| Status        | Condition                             |
+| ------------- | ------------------------------------- |
+| `PLANNED`     | No issues have started work           |
 | `IN_PROGRESS` | At least one issue is being worked on |
-| `DELAYED` | Past end date with incomplete work |
-| `COMPLETED` | All issues closed (manual sign-off) |
+| `DELAYED`     | Past end date with incomplete work    |
+| `COMPLETED`   | All issues closed (manual sign-off)   |
 
 ## Snapshots
 
@@ -190,30 +190,30 @@ When enabled, dev-workflow syncs with GitHub:
 ### Column Mapping
 
 | Task Status | Default Column |
-|-------------|----------------|
-| BACKLOG | Backlog |
-| READY | Ready |
-| IN_PROGRESS | In Progress |
-| PR_REVIEW | In Review |
-| COMPLETED | Done |
-| ABANDONED | Done |
+| ----------- | -------------- |
+| BACKLOG     | Backlog        |
+| READY       | Ready          |
+| IN_PROGRESS | In Progress    |
+| PR_REVIEW   | In Review      |
+| COMPLETED   | Done           |
+| ABANDONED   | Done           |
 
 ## MCP Tools
 
 dev-workflow provides 55 MCP tools organized by category:
 
-| Category | Tools | Purpose |
-|----------|-------|---------|
-| Issue | 16 | Create, read, update, delete issues |
-| Plan | 5 | Generate and manage plans |
-| Task | 10 | Work on and track tasks |
-| Snapshot | 3 | Version history |
-| Milestone | 7 | Time-bounded planning |
-| Worktree | 2 | Git worktree management |
-| PR | 4 | Pull request lifecycle |
-| Merge | 1 | Combine issues |
-| Type | 4 | Custom type management |
-| Dispatch | 3 | Worker coordination |
+| Category  | Tools | Purpose                             |
+| --------- | ----- | ----------------------------------- |
+| Issue     | 16    | Create, read, update, delete issues |
+| Plan      | 5     | Generate and manage plans           |
+| Task      | 10    | Work on and track tasks             |
+| Snapshot  | 3     | Version history                     |
+| Milestone | 7     | Time-bounded planning               |
+| Worktree  | 2     | Git worktree management             |
+| PR        | 4     | Pull request lifecycle              |
+| Merge     | 1     | Combine issues                      |
+| Type      | 4     | Custom type management              |
+| Dispatch  | 3     | Worker coordination                 |
 
 See the [MCP Tools Reference](/reference/mcp-tools) for complete documentation.
 

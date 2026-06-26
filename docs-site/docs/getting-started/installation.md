@@ -18,12 +18,12 @@ This checks prerequisites, installs the CLI, and verifies optional dependencies.
 
 ### Prerequisites
 
-| Requirement | Version | Purpose |
-|-------------|---------|---------|
-| **Node.js** | >= 20.0 | Runtime environment |
-| **Git** | Any recent | Version control |
-| **Claude Code** | Latest | AI integration (optional) |
-| **GitHub CLI** | Latest | GitHub sync (optional) |
+| Requirement     | Version    | Purpose                   |
+| --------------- | ---------- | ------------------------- |
+| **Node.js**     | >= 20.0    | Runtime environment       |
+| **Git**         | Any recent | Version control           |
+| **Claude Code** | Latest     | AI integration (optional) |
+| **GitHub CLI**  | Latest     | GitHub sync (optional)    |
 
 ### npm Install
 
@@ -48,13 +48,13 @@ pnpm link --global
 After installing, verify all dependencies are set up correctly:
 
 ```bash
-dev-workflow setup
+dwf setup
 ```
 
 This checks Node.js, Git, better-sqlite3, Claude CLI, and GitHub CLI. If anything is missing, run with `--fix` to attempt automatic installation:
 
 ```bash
-dev-workflow setup --fix
+dwf setup --fix
 ```
 
 ## Initialize in a Project
@@ -63,7 +63,7 @@ After installation, initialize dev-workflow in your git repository:
 
 ```bash
 cd your-project
-dev-workflow init
+dwf init
 ```
 
 This will:
@@ -79,13 +79,13 @@ Check that dev-workflow is working:
 
 ```bash
 # Check version
-dev-workflow --version
+dwf --version
 
 # Check help
-dev-workflow --help
+dwf --help
 
 # List workers (should show no workers initially)
-dev-workflow workers
+dwf workers
 ```
 
 ## Updating
@@ -98,10 +98,11 @@ npm update -g @dev-workflow/cli
 
 # Update in a project
 cd your-project
-dev-workflow update
+dwf update
 ```
 
 The `update` command:
+
 - Runs database migrations
 - Updates Claude skills to the latest version
 - Syncs MCP server registration
@@ -112,14 +113,16 @@ To remove dev-workflow integration from a project:
 
 ```bash
 cd your-project
-dev-workflow uninit
+dwf uninit
 ```
 
 This removes:
+
 - Claude skills from `.claude/`
 - MCP server registration
 
 It preserves:
+
 - Your `.track/` directory with all data
 - The workflow database
 

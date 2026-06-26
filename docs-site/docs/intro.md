@@ -19,18 +19,23 @@ dev-workflow provides a structured approach to software development where:
 ## Key Features
 
 ### Issue Tracking
+
 Create and manage issues with rich metadata including types, priorities, acceptance criteria, and milestone assignments.
 
 ### AI-Powered Planning
+
 Claude AI generates implementation plans with properly-scoped tasks, dependencies, and acceptance criteria.
 
 ### Task Execution
+
 Work on tasks in isolated git worktrees with automatic PR creation and GitHub sync.
 
 ### Multi-Project Support
+
 Track multiple projects from a single database with a beautiful web UI.
 
 ### Version History
+
 Full snapshot history with time-travel capabilities to view or revert to any previous state.
 
 ## Quick Install
@@ -42,7 +47,7 @@ curl -fsSL https://enamrik.github.io/dev-workflow/install.sh | bash
 Then in your git repository:
 
 ```bash
-dev-workflow init
+dwf init
 ```
 
 ## Quick Example

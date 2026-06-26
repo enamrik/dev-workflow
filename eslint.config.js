@@ -8,8 +8,12 @@ export default tseslint.config(
   {
     ignores: [
       "**/dist/**",
+      "**/dist-artifacts/**",
       "**/node_modules/**",
       "**/.next/**",
+      "**/out/**",
+      "**/build/**",
+      "**/.docusaurus/**",
       "**/drizzle/**",
       "**/*.d.ts",
       "**/coverage/**",

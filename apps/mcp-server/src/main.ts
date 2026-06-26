@@ -40,21 +40,20 @@ import { createToolsRegistry, type ToolsRegistry } from "./tools/tools-registry.
 // per session with cwd = that session's project dir — so a single registration covers every
 // project.
 //
-// An explicit slug env overrides cwd resolution (used by the E2E harness and any pinned
-// registration):
-// - DWF_PROJECT_SLUG (preferred) / PROJECT_SLUG (legacy alias)
+// An explicit DWF_PROJECT_SLUG overrides cwd resolution (used by the E2E harness and any
+// pinned registration).
 //
 // Other env:
-// - DWF_HOME / TRACK_DIR: override dev-workflow's data root (for sandboxed/isolated runs)
+// - DWF_HOME: override dwf's data root (for sandboxed/isolated runs)
 // =============================================================================
 
 /**
- * Resolve the project slug: an explicit env var wins, otherwise resolve from the working
+ * Resolve the project slug: DWF_PROJECT_SLUG wins, otherwise resolve from the working
  * directory's git root (the `.git`-stored slug). Throws ProjectConfigError if cwd isn't a
  * registered dev-workflow project.
  */
 async function resolveProjectSlug(): Promise<string> {
-  const explicit = process.env["DWF_PROJECT_SLUG"] ?? process.env["PROJECT_SLUG"];
+  const explicit = process.env["DWF_PROJECT_SLUG"];
   if (explicit) {
     return explicit;
   }
@@ -126,7 +125,7 @@ async function main() {
       console.error(`Error: not a dev-workflow project (${process.cwd()}).`);
     }
     console.error(error instanceof Error ? error.message : String(error));
-    console.error("Run 'dev-workflow init' in your project's main repository to register it.");
+    console.error("Run 'dwf init' in your project's main repository to register it.");
     process.exit(1);
   }
 
@@ -141,7 +140,7 @@ async function main() {
   } catch (error) {
     console.error(`Error: Failed to initialize for slug "${slug}"`);
     console.error(error instanceof Error ? error.message : String(error));
-    console.error("Run 'dev-workflow init' to create the config file.");
+    console.error("Run 'dwf init' to create the config file.");
     process.exit(1);
   }
 

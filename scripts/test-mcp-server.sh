@@ -20,14 +20,14 @@ else
     exit 1
 fi
 
-# Step 2: Verify dev-workflow command is available
+# Step 2: Verify dwf command is available
 echo ""
-echo "2️⃣  Checking dev-workflow command..."
-if command -v dev-workflow &> /dev/null; then
-    VERSION=$(dev-workflow --version)
-    echo "   ✓ dev-workflow available (version $VERSION)"
+echo "2️⃣  Checking dwf command..."
+if command -v dwf &> /dev/null; then
+    VERSION=$(dwf --version)
+    echo "   ✓ dwf available (version $VERSION)"
 else
-    echo "   ✗ dev-workflow not found on PATH"
+    echo "   ✗ dwf not found on PATH"
     exit 1
 fi
 
@@ -40,7 +40,7 @@ export TEMPLATES_PATH="$PROJECT_DIR/.track/config/issues/templates/"
 # Start MCP server with stdin closed (will exit after printing startup message)
 # Capture both stdout and stderr
 MCP_OUTPUT=$(mktemp)
-(dev-workflow mcp < /dev/null 2>&1 || true) > "$MCP_OUTPUT" &
+(dwf mcp < /dev/null 2>&1 || true) > "$MCP_OUTPUT" &
 MCP_PID=$!
 
 # Give it time to start and print messages

@@ -90,7 +90,9 @@ export class SetupCommand {
               console.log(`  ✗ Installation failed: ${recheck.error}`);
             }
           } catch (error) {
-            console.log(`  ✗ Installation failed: ${error instanceof Error ? error.message : error}`);
+            console.log(
+              `  ✗ Installation failed: ${error instanceof Error ? error.message : error}`
+            );
           }
         } else if (fix && !options.fix) {
           console.log(`  → Run with --fix to attempt installation`);
@@ -102,11 +104,11 @@ export class SetupCommand {
 
     if (hasErrors) {
       console.log("❌ Some required dependencies are missing.");
-      console.log("   Install them manually or run: dev-workflow setup --fix");
+      console.log("   Install them manually or run: dwf setup --fix");
       process.exit(1);
     } else if (hasOptionalMissing) {
       console.log("⚠ Optional dependencies missing. Some features may be limited.");
-      console.log("  Run: dev-workflow setup --fix to install them.");
+      console.log("  Run: dwf setup --fix to install them.");
     } else {
       console.log("✨ All dependencies are satisfied!");
     }

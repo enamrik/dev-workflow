@@ -14,16 +14,16 @@ Tasks execute in git worktrees for fully parallel work:
 main repo                  worktree
 ─────────                 ─────────────────────────────
 main branch  ────┐        issue-5/task-1-add-oauth
-                 │        └── ~/.track/project/worktrees/issue-5-task-1/
+                 │        └── ~/.dwf/track/project/worktrees/issue-5-task-1/
                  └────────    (separate working directory)
 ```
 
-| Aspect | Details |
-|--------|---------|
-| **Git setup** | Creates worktree + branch |
-| **Isolation** | Changes don't affect main repo |
-| **Parallel work** | Multiple tasks simultaneously |
-| **PR workflow** | Full PR lifecycle support |
+| Aspect            | Details                        |
+| ----------------- | ------------------------------ |
+| **Git setup**     | Creates worktree + branch      |
+| **Isolation**     | Changes don't affect main repo |
+| **Parallel work** | Multiple tasks simultaneously  |
+| **PR workflow**   | Full PR lifecycle support      |
 
 :::warning Important
 All file operations must use the worktree path returned by `load_task_session`. Never use the main repo path during task execution.
@@ -39,27 +39,27 @@ PLANNED → BACKLOG → READY → IN_PROGRESS → PR_REVIEW → COMPLETED
 
 ### Status Definitions
 
-| Status | Meaning |
-|--------|---------|
-| **PLANNED** | Task exists but plan not approved |
-| **BACKLOG** | Plan approved, task available but not started |
-| **READY** | Dependencies complete, task ready for execution |
-| **IN_PROGRESS** | Task is actively being worked on |
-| **PR_REVIEW** | PR created and submitted for review |
-| **COMPLETED** | PR merged, task done |
-| **ABANDONED** | Work stopped, reason documented |
+| Status          | Meaning                                         |
+| --------------- | ----------------------------------------------- |
+| **PLANNED**     | Task exists but plan not approved               |
+| **BACKLOG**     | Plan approved, task available but not started   |
+| **READY**       | Dependencies complete, task ready for execution |
+| **IN_PROGRESS** | Task is actively being worked on                |
+| **PR_REVIEW**   | PR created and submitted for review             |
+| **COMPLETED**   | PR merged, task done                            |
+| **ABANDONED**   | Work stopped, reason documented                 |
 
 ### Status Transitions
 
-| From | To | Trigger |
-|------|-----|---------|
-| PLANNED | BACKLOG | `move_issue_to_backlog` |
-| BACKLOG | IN_PROGRESS | `load_task_session` |
-| READY | IN_PROGRESS | `load_task_session` |
-| READY | BACKLOG | `pause_issue` |
-| IN_PROGRESS | PR_REVIEW | `submit_for_review` |
-| PR_REVIEW | COMPLETED | `complete_task` |
-| Any | ABANDONED | `abandon_task` |
+| From        | To          | Trigger                 |
+| ----------- | ----------- | ----------------------- |
+| PLANNED     | BACKLOG     | `move_issue_to_backlog` |
+| BACKLOG     | IN_PROGRESS | `load_task_session`     |
+| READY       | IN_PROGRESS | `load_task_session`     |
+| READY       | BACKLOG     | `pause_issue`           |
+| IN_PROGRESS | PR_REVIEW   | `submit_for_review`     |
+| PR_REVIEW   | COMPLETED   | `complete_task`         |
+| Any         | ABANDONED   | `abandon_task`          |
 
 ## Starting a Task
 
@@ -77,17 +77,17 @@ Claude invokes `dwf-work-task` which handles the full workflow.
 load_task_session({
   taskId: "task-uuid",
   sessionId: "your-session-id",
-  mode: "isolated"  // Default
-})
+  mode: "isolated", // Default
+});
 ```
 
 ### Execution Modes
 
-| Mode | Description | Use Case |
-|------|-------------|----------|
-| `isolated` | New git worktree | Default, parallel work |
-| `branch` | New branch in main worktree | Single task at a time |
-| `main` | Work directly on main | Quick fixes, testing |
+| Mode       | Description                 | Use Case               |
+| ---------- | --------------------------- | ---------------------- |
+| `isolated` | New git worktree            | Default, parallel work |
+| `branch`   | New branch in main worktree | Single task at a time  |
+| `main`     | Work directly on main       | Quick fixes, testing   |
 
 ## Working on Tasks
 
@@ -107,23 +107,24 @@ log_task_progress({
   taskId: "task-uuid",
   sessionId: "session-id",
   message: "Implemented OAuth callback handler. Added tests.",
-  filesModified: ["src/auth/callback.ts", "src/test/auth.test.ts"]
-})
+  filesModified: ["src/auth/callback.ts", "src/test/auth.test.ts"],
+});
 ```
 
 :::tip
 Log at milestones only, not routine operations:
+
 - Feature: 2-4 entries (approach, key milestones)
 - Bug: 3-5 entries (hypotheses, root cause, fix)
 - Simple: 0 entries - just use `finalLogEntry`
-:::
+  :::
 
 ### Reading Progress
 
 ```typescript
 get_task_execution_log({
-  taskId: "task-uuid"
-})
+  taskId: "task-uuid",
+});
 ```
 
 ## PR Workflow
@@ -140,10 +141,10 @@ After implementing the task:
 ```typescript
 create_pr({
   taskId: "task-uuid",
-  title: "Add OAuth authentication",  // Optional
-  body: "## Summary\n...",             // Optional
-  draft: false                         // Optional
-})
+  title: "Add OAuth authentication", // Optional
+  body: "## Summary\n...", // Optional
+  draft: false, // Optional
+});
 ```
 
 ### Step 2: Submit for Review
@@ -152,8 +153,8 @@ When ready for review:
 
 ```typescript
 submit_for_review({
-  taskId: "task-uuid"
-})
+  taskId: "task-uuid",
+});
 ```
 
 This transitions the task to PR_REVIEW and updates GitHub.
@@ -170,11 +171,12 @@ After the PR is merged:
 complete_task({
   taskId: "task-uuid",
   sessionId: "session-id",
-  finalLogEntry: "Implemented OAuth with Google provider. Added tests."
-})
+  finalLogEntry: "Implemented OAuth with Google provider. Added tests.",
+});
 ```
 
 This:
+
 1. Verifies PR is merged
 2. Pulls latest main
 3. Cleans up worktree and branch
@@ -185,15 +187,16 @@ This:
 
 Each task is owned by one session at a time:
 
-| Scenario | Result |
-|----------|--------|
-| Task is BACKLOG/READY | Session claims ownership |
-| Same session resumes | Continues work |
-| Different session tries | Error - task locked |
+| Scenario                | Result                   |
+| ----------------------- | ------------------------ |
+| Task is BACKLOG/READY   | Session claims ownership |
+| Same session resumes    | Continues work           |
+| Different session tries | Error - task locked      |
 
 ### Session Timeout
 
 Sessions time out after 1 hour of inactivity. After timeout:
+
 - Same session can resume
 - Different session can force claim
 
@@ -205,23 +208,23 @@ Tasks can be resumed after interruption:
 // Resume (idempotent)
 load_task_session({
   taskId: "task-uuid",
-  sessionId: "new-session-id"
-})
+  sessionId: "new-session-id",
+});
 
 // Check previous work
 get_task_execution_log({
-  taskId: "task-uuid"
-})
+  taskId: "task-uuid",
+});
 ```
 
 ### What's Preserved
 
-| Preserved | Lost |
-|-----------|------|
+| Preserved               | Lost                             |
+| ----------------------- | -------------------------------- |
 | Git worktree and branch | Uncommitted changes (if crashed) |
-| Previous commits | Claude's context |
-| Execution log entries | - |
-| Task status | - |
+| Previous commits        | Claude's context                 |
+| Execution log entries   | -                                |
+| Task status             | -                                |
 
 ## Conflict Detection
 
@@ -229,8 +232,8 @@ Check for conflicts before starting:
 
 ```typescript
 check_task_conflicts({
-  taskId: "task-uuid"
-})
+  taskId: "task-uuid",
+});
 ```
 
 Returns warnings about files modified by prior completed tasks.
@@ -243,11 +246,12 @@ Stop work on a task:
 abandon_task({
   taskId: "task-uuid",
   sessionId: "session-id",
-  reason: "Requirements changed, will be handled in different issue"
-})
+  reason: "Requirements changed, will be handled in different issue",
+});
 ```
 
 This:
+
 - Marks task ABANDONED
 - Cleans up worktree/branch
 - Records the reason
@@ -256,18 +260,19 @@ This:
 
 Force mode bypasses state validation when state has drifted:
 
-| Tool | What force bypasses |
-|------|---------------------|
-| `create_pr` | IN_PROGRESS status check |
-| `submit_for_review` | Status and PR existence |
-| `complete_task` | Status check |
-| `abandon_task` | Session ownership |
+| Tool                | What force bypasses      |
+| ------------------- | ------------------------ |
+| `create_pr`         | IN_PROGRESS status check |
+| `submit_for_review` | Status and PR existence  |
+| `complete_task`     | Status check             |
+| `abandon_task`      | Session ownership        |
 
 :::caution
 Never use force without explicit user confirmation. Always explain the state mismatch first.
 :::
 
 **Example:**
+
 ```
 Error: Task must be in PR_REVIEW to complete. Current: IN_PROGRESS.
 
@@ -282,6 +287,7 @@ User: "yes" → complete_task({ ..., force: true })
 ## Auto-Closing Issues
 
 When `complete_task` returns `allTasksComplete: true`:
+
 - All tasks in the issue are now COMPLETED or ABANDONED
 - Ask user: "All tasks done. Close issue #N?"
 - If confirmed, call `close_issue`
@@ -290,13 +296,13 @@ When `complete_task` returns `allTasksComplete: true`:
 
 ### Common Errors
 
-| Error | Cause | Solution |
-|-------|-------|----------|
-| Task not found | Stale UUID | Use `get_task(issueNumber, taskNumber)` |
-| Task in progress | Another session owns it | Wait or force if stale |
-| Create PR failed | No worktree | Start task first |
-| Submit failed | No PR | Create PR first |
-| Complete failed - not merged | PR still open | Merge on GitHub |
+| Error                        | Cause                   | Solution                                |
+| ---------------------------- | ----------------------- | --------------------------------------- |
+| Task not found               | Stale UUID              | Use `get_task(issueNumber, taskNumber)` |
+| Task in progress             | Another session owns it | Wait or force if stale                  |
+| Create PR failed             | No worktree             | Start task first                        |
+| Submit failed                | No PR                   | Create PR first                         |
+| Complete failed - not merged | PR still open           | Merge on GitHub                         |
 
 ### MCP Server Issues
 
@@ -312,14 +318,14 @@ Never bypass MCP tools with direct database updates or `gh` CLI. This creates in
 
 ## Summary
 
-| Concept | Key Points |
-|---------|------------|
-| **Git isolation** | Worktree + branch per task |
-| **Task lifecycle** | PLANNED → BACKLOG → READY → IN_PROGRESS → PR_REVIEW → COMPLETED |
-| **PR workflow** | `create_pr` → `submit_for_review` → merge → `complete_task` |
-| **Session ownership** | One task per session, 1 hour timeout |
-| **Progress logging** | Milestones only, enables resume |
-| **Force mode** | User confirmation required |
+| Concept               | Key Points                                                      |
+| --------------------- | --------------------------------------------------------------- |
+| **Git isolation**     | Worktree + branch per task                                      |
+| **Task lifecycle**    | PLANNED → BACKLOG → READY → IN_PROGRESS → PR_REVIEW → COMPLETED |
+| **PR workflow**       | `create_pr` → `submit_for_review` → merge → `complete_task`     |
+| **Session ownership** | One task per session, 1 hour timeout                            |
+| **Progress logging**  | Milestones only, enables resume                                 |
+| **Force mode**        | User confirmation required                                      |
 
 ## Next Steps
 

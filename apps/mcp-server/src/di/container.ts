@@ -42,7 +42,7 @@ import { getGlobalDatabasePath } from "@dev-workflow/git/track-directory-resolve
 import { resolveConfig } from "@dev-workflow/tracking";
 
 /**
- * Configuration resolved from PROJECT_SLUG
+ * Configuration resolved from DWF_PROJECT_SLUG
  */
 export interface McpConfig {
   readonly projectSlug: string;
@@ -110,11 +110,11 @@ const sourceProvider = new DbSourceProvider();
  * All services are registered as singletons since the MCP server has a
  * long-running process with server lifetime scope.
  *
- * @param projectSlug - The project slug from PROJECT_SLUG environment variable
+ * @param projectSlug - The project slug from DWF_PROJECT_SLUG environment variable
  * @returns Promise resolving to configured Awilix container
  */
 export async function createMcpContainer(projectSlug: string): Promise<AwilixContainer<McpCradle>> {
-  // Resolve config from ~/.track/projects/{slug}/config.json
+  // Resolve config from ~/.dwf/track/projects/{slug}/config.json
   const resolvedConfig = await resolveConfig(projectSlug);
   const gitRoot = resolvedConfig.gitRoot;
   const databasePath = getGlobalDatabasePath();
@@ -128,8 +128,7 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
 
   if (!project) {
     throw new Error(
-      `Project not found for slug: ${projectSlug}. ` +
-        `Run 'dev-workflow init' to register the project.`
+      `Project not found for slug: ${projectSlug}. ` + `Run 'dwf init' to register the project.`
     );
   }
 

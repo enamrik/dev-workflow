@@ -103,56 +103,6 @@ export class ClaudeConfigService {
   }
 
   /**
-   * Remove a server (e.g. "dev-workflow-tracker") from EVERY project's local-scope
-   * `mcpServers` in ~/.claude.json.
-   *
-   * Migrates away from the old per-project registration model: dev-workflow used to register
-   * the MCP server per-project (`--scope local`), so each previously-initialized repo holds its
-   * own entry. Now there's a single global (`--scope user`) registration — without sweeping the
-   * old per-project entries, every such repo would carry a stale local registration that
-   * duplicates/shadows the global one. Running `init`/`update` in any one repo migrates them
-   * all. Best-effort and non-destructive: it never touches a file it can't parse, and only
-   * rewrites when something actually changed.
-   *
-   * @returns the number of stale registrations removed
-   */
-  async removeMcpServerFromAllProjects(serverName: string): Promise<number> {
-    try {
-      await fs.access(this.configPath);
-    } catch {
-      return 0;
-    }
-
-    const content = await fs.readFile(this.configPath, "utf-8");
-    let config: Record<string, unknown>;
-    try {
-      config = JSON.parse(content) as Record<string, unknown>;
-    } catch {
-      return 0; // Never clobber a config we can't safely parse.
-    }
-
-    const projects = config["projects"];
-    if (!projects || typeof projects !== "object") return 0;
-
-    let removed = 0;
-    for (const project of Object.values(projects as Record<string, unknown>)) {
-      if (!project || typeof project !== "object") continue;
-      const servers = (project as Record<string, unknown>)["mcpServers"];
-      if (servers && typeof servers === "object" && serverName in servers) {
-        delete (servers as Record<string, unknown>)[serverName];
-        removed++;
-      }
-    }
-
-    if (removed > 0) {
-      const tempPath = `${this.configPath}.tmp`;
-      await fs.writeFile(tempPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-      await fs.rename(tempPath, this.configPath);
-    }
-    return removed;
-  }
-
-  /**
    * Check if a path matches the dev-workflow worktree naming convention.
    * Pattern: /worktrees/issue-<number>-task-<number>
    */

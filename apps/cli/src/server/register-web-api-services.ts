@@ -19,13 +19,11 @@ import { getGlobalDatabasePath } from "@dev-workflow/git/track-directory-resolve
 
 export function registerWebApiServices(container: AwilixContainer): void {
   container.register({
-    typeDomainService: asFunction(
-      ({ sourceProvider }: { sourceProvider: DbSourceProvider }) => {
-        const connectionString = `sqlite://${getGlobalDatabasePath()}`;
-        const source = sourceProvider.getOrCreate({ connectionString });
-        return new TypeDomainService(source.types);
-      }
-    ).singleton(),
+    typeDomainService: asFunction(({ sourceProvider }: { sourceProvider: DbSourceProvider }) => {
+      const connectionString = `sqlite://${getGlobalDatabasePath()}`;
+      const source = sourceProvider.getOrCreate({ connectionString });
+      return new TypeDomainService(source.types);
+    }).singleton(),
 
     domain: asFunction(
       ({

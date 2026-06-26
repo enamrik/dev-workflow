@@ -6,7 +6,10 @@
 set -eu
 
 REPO="enamrik/dev-workflow"
-INSTALL_DIR="${DWF_INSTALL_DIR:-$HOME/.dev-workflow}"
+# ~/.dwf holds both the install (~/.dwf/install) and data (~/.dwf/track). Only the install
+# subdir is replaced on (re)install; track/ is left untouched.
+DWF_DIR="${DWF_INSTALL_DIR:-$HOME/.dwf}"
+INSTALL_DIR="$DWF_DIR/install"
 BIN_DIR="${DWF_BIN_DIR:-$HOME/.local/bin}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -55,30 +58,32 @@ fi
 
 # Extract, replacing any prior install.
 info "Installing to ${INSTALL_DIR}..."
+# Replace only the install dir; preserve sibling data in $DWF_DIR/track. The archive's single
+# top-level dir is "install", so extracting into $DWF_DIR yields $DWF_DIR/install.
 rm -rf "$INSTALL_DIR"
-mkdir -p "$INSTALL_DIR"
-tar -xzf "$TMP/$ASSET" -C "$INSTALL_DIR"
+mkdir -p "$DWF_DIR"
+tar -xzf "$TMP/$ASSET" -C "$DWF_DIR"
 
 # Write a launcher with the absolute cli.js path. (A symlink to the bundled wrapper
 # would break: the wrapper derives its dir from $0, which is the symlink's location.)
 mkdir -p "$BIN_DIR"
-cat > "$BIN_DIR/dev-workflow" <<EOF
+cat > "$BIN_DIR/dwf" <<EOF
 #!/bin/sh
-exec node "$INSTALL_DIR/dev-workflow/cli.js" "\$@"
+exec node "$INSTALL_DIR/cli.js" "\$@"
 EOF
-chmod +x "$BIN_DIR/dev-workflow"
-ok "Installed launcher at $BIN_DIR/dev-workflow"
+chmod +x "$BIN_DIR/dwf"
+ok "Installed launcher at $BIN_DIR/dwf"
 
 # Install skills globally so they apply across all projects (Claude Code loads
 # ~/.claude/skills everywhere). Updating the tool thus updates skills for every project.
-SKILLS_SRC="$INSTALL_DIR/dev-workflow/skills"
+SKILLS_SRC="$INSTALL_DIR/skills"
 if [ -d "$SKILLS_SRC" ]; then
   mkdir -p "$HOME/.claude/skills"
   cp -R "$SKILLS_SRC"/. "$HOME/.claude/skills/"
   ok "Installed skills to ~/.claude/skills"
 fi
 
-if ! command -v dev-workflow >/dev/null 2>&1; then
+if ! command -v dwf >/dev/null 2>&1; then
   warn "$BIN_DIR is not on your PATH. Add it:"
   printf '  export PATH="%s:$PATH"\n' "$BIN_DIR"
 fi
@@ -86,6 +91,6 @@ fi
 printf "\n%bInstallation complete!%b\n\n" "$GREEN" "$NC"
 echo "Next steps:"
 echo "  1. cd into your git repository"
-echo "  2. Run: dev-workflow init"
+echo "  2. Run: dwf init"
 echo ""
 echo "Docs: https://enamrik.github.io/dev-workflow"

@@ -28,15 +28,15 @@ Background workers are Claude instances that automatically poll for and execute 
 ### Command
 
 ```bash
-dev-workflow claude --name worker-1
+dwf claude --name worker-1
 ```
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
+| Option          | Description                                  |
+| --------------- | -------------------------------------------- |
 | `--name <name>` | Worker name (auto-generated if not provided) |
-| `--auto-claim` | Automatically claim READY tasks |
+| `--auto-claim`  | Automatically claim READY tasks              |
 
 ### Multiple Workers
 
@@ -44,13 +44,13 @@ Run multiple workers for parallel execution:
 
 ```bash
 # Terminal 1
-dev-workflow claude --name worker-1
+dwf claude --name worker-1
 
 # Terminal 2
-dev-workflow claude --name worker-2
+dwf claude --name worker-2
 
 # Terminal 3
-dev-workflow claude --name worker-3
+dwf claude --name worker-3
 ```
 
 ## Dispatching Tasks
@@ -59,8 +59,8 @@ dev-workflow claude --name worker-3
 
 ```typescript
 dispatch_task({
-  taskId: "task-uuid"
-})
+  taskId: "task-uuid",
+});
 ```
 
 ### What Happens
@@ -75,10 +75,10 @@ dispatch_task({
 
 ### States
 
-| State | Description |
-|-------|-------------|
-| IDLE | Polling for tasks |
-| WORKING | Executing a task |
+| State    | Description                            |
+| -------- | -------------------------------------- |
+| IDLE     | Polling for tasks                      |
+| WORKING  | Executing a task                       |
 | DRAINING | Completing current task, then stopping |
 
 ### Execution Flow
@@ -102,9 +102,9 @@ Workers receive a `workerId` that must be passed to `load_task_session`:
 load_task_session({
   taskId: "task-uuid",
   sessionId: "session-id",
-  workerId: "worker-uuid",  // REQUIRED
-  mode: "isolated"          // Always isolated for workers
-})
+  workerId: "worker-uuid", // REQUIRED
+  mode: "isolated", // Always isolated for workers
+});
 ```
 
 ### Terminal Action
@@ -114,8 +114,8 @@ Workers MUST call `end_worker_session` as final action:
 ```typescript
 end_worker_session({
   workerId: "worker-uuid",
-  taskId: "task-uuid"
-})
+  taskId: "task-uuid",
+});
 ```
 
 :::danger Critical
@@ -140,13 +140,13 @@ end_worker_session({
 ### Check Status
 
 ```bash
-dev-workflow workers
+dwf workers
 ```
 
 Or via MCP:
 
 ```typescript
-get_dispatch_status({})
+get_dispatch_status({});
 ```
 
 ### Output
@@ -172,7 +172,7 @@ Stats:
 With `--auto-claim`, workers automatically claim READY tasks when dependencies complete:
 
 ```bash
-dev-workflow claude --name worker-1 --auto-claim
+dwf claude --name worker-1 --auto-claim
 ```
 
 This enables fully autonomous task execution across dependency chains.
@@ -182,6 +182,7 @@ This enables fully autonomous task execution across dependency chains.
 ### Task Failure
 
 If a worker fails during execution:
+
 1. Task remains IN_PROGRESS
 2. Session times out (1 hour)
 3. Another worker can claim with force mode
@@ -189,6 +190,7 @@ If a worker fails during execution:
 ### Worker Crash
 
 If a worker process crashes:
+
 1. Worker shows as not alive
 2. Claimed tasks can be reclaimed
 3. Restart worker to resume
@@ -207,14 +209,15 @@ Clean up stale worker entries:
 ### Worker Count
 
 | Project Size | Recommended Workers |
-|--------------|---------------------|
-| Small | 1-2 |
-| Medium | 2-4 |
-| Large | 4-8 |
+| ------------ | ------------------- |
+| Small        | 1-2                 |
+| Medium       | 2-4                 |
+| Large        | 4-8                 |
 
 ### Resource Usage
 
 Each worker:
+
 - Spawns Claude CLI process
 - Creates git worktree
 - Uses API tokens
@@ -243,9 +246,9 @@ claude
 > "Dispatch task #5.3"
 
 # Terminal 2-4: Workers
-dev-workflow claude --name worker-1 --auto-claim
-dev-workflow claude --name worker-2 --auto-claim
-dev-workflow claude --name worker-3 --auto-claim
+dwf claude --name worker-1 --auto-claim
+dwf claude --name worker-2 --auto-claim
+dwf claude --name worker-3 --auto-claim
 
 # Workers automatically:
 # - Pick up dispatched tasks
@@ -258,7 +261,7 @@ dev-workflow claude --name worker-3 --auto-claim
 
 ### Worker Not Picking Up Tasks
 
-1. Check worker is running: `dev-workflow workers`
+1. Check worker is running: `dwf workers`
 2. Check task is in queue: `get_dispatch_status()`
 3. Verify task status is READY or BACKLOG
 
@@ -271,6 +274,7 @@ dev-workflow claude --name worker-3 --auto-claim
 ### Too Many Workers
 
 If workers compete for same tasks:
+
 - Reduce worker count
 - Use auto-claim strategically
 - Sequence dependent tasks

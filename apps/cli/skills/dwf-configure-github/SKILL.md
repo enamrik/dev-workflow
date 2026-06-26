@@ -151,7 +151,7 @@ Before enabling GitHub sync, the following must be true:
 | "gh is not authenticated" | Run `gh auth login` first                                    |
 | "Repository not found"    | Check owner/repo spelling and access permissions             |
 | "Project not found"       | Verify Project ID in GitHub Project settings → ... → Copy ID |
-| "Config not found"        | Run `dev-workflow init` first                                |
+| "Config not found"        | Run `dwf init` first                                         |
 
 ## Finding GitHub Project ID
 

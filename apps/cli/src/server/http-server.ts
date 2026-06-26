@@ -182,10 +182,7 @@ export async function startApiServer(opts: {
     });
   });
 
-  async function handleRequest(
-    req: http.IncomingMessage,
-    res: http.ServerResponse
-  ): Promise<void> {
+  async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const requestUrl = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
     const pathname = requestUrl.pathname;
     const method = req.method ?? "GET";

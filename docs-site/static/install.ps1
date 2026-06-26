@@ -5,7 +5,10 @@
 $ErrorActionPreference = "Stop"
 
 $Repo = "enamrik/dev-workflow"
-$InstallDir = if ($env:DWF_INSTALL_DIR) { $env:DWF_INSTALL_DIR } else { Join-Path $HOME ".dev-workflow" }
+# ~/.dwf holds both the install (~/.dwf/install) and data (~/.dwf/track). Only the install
+# subdir is replaced on (re)install; track/ is left untouched.
+$DwfDir = if ($env:DWF_INSTALL_DIR) { $env:DWF_INSTALL_DIR } else { Join-Path $HOME ".dwf" }
+$InstallDir = Join-Path $DwfDir "install"
 
 function Info($m) { Write-Host $m -ForegroundColor Blue }
 function Ok($m)   { Write-Host "+ $m" -ForegroundColor Green }
@@ -45,16 +48,18 @@ try {
   } catch { }
 
   Info "Installing to $InstallDir..."
+  # Replace only the install dir; preserve sibling data in $DwfDir\track. The zip's single
+  # top-level dir is "install", so extracting into $DwfDir yields $DwfDir\install.
   if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir }
-  New-Item -ItemType Directory -Path $InstallDir | Out-Null
-  Expand-Archive -Path $zip -DestinationPath $InstallDir -Force
+  New-Item -ItemType Directory -Force -Path $DwfDir | Out-Null
+  Expand-Archive -Path $zip -DestinationPath $DwfDir -Force
 } finally {
   Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }
 
 # Install skills globally so they apply across all projects (Claude Code loads
 # ~/.claude/skills everywhere). Updating the tool thus updates skills for every project.
-$skillsSrc = Join-Path $InstallDir "dev-workflow\skills"
+$skillsSrc = Join-Path $InstallDir "skills"
 if (Test-Path $skillsSrc) {
   $skillsDest = Join-Path $HOME ".claude\skills"
   New-Item -ItemType Directory -Force -Path $skillsDest | Out-Null
@@ -63,7 +68,7 @@ if (Test-Path $skillsSrc) {
 }
 
 # Add the bin dir to the user PATH (persisted) if not already present.
-$binDir = Join-Path $InstallDir "dev-workflow\bin"
+$binDir = Join-Path $InstallDir "bin"
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($userPath -notlike "*$binDir*") {
   [Environment]::SetEnvironmentVariable("Path", "$userPath;$binDir", "User")
@@ -76,6 +81,6 @@ Write-Host "Installation complete!" -ForegroundColor Green
 Write-Host ""
 Write-Host "Next steps:"
 Write-Host "  1. cd into your git repository"
-Write-Host "  2. Run: dev-workflow init"
+Write-Host "  2. Run: dwf init"
 Write-Host ""
 Write-Host "Docs: https://enamrik.github.io/dev-workflow"

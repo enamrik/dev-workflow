@@ -14,7 +14,7 @@ This tutorial walks you through a complete dev-workflow cycle: from initializing
 Navigate to your project and run:
 
 ```bash
-dev-workflow init
+dwf init
 ```
 
 **Expected output:**

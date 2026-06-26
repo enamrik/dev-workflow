@@ -44,7 +44,7 @@ export function pruneWorktrees(input: PruneWorktreesInput) {
 
     if (!project.gitRoot) {
       throw new Error(
-        "Project config.json not found. Run 'dev-workflow init' in the project directory first."
+        "Project config.json not found. Run 'dwf init' in the project directory first."
       );
     }
 
