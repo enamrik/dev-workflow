@@ -2,10 +2,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
-import {
-  TrackDirectoryResolver,
-  resolveGlobalTrackDir,
-} from "@dev-workflow/git/track-directory-resolver.js";
+import { resolveGlobalTrackDir } from "@dev-workflow/git/track-directory-resolver.js";
 import { globalSkillsDir } from "../infrastructure/skills-installer.js";
 
 export class UninstallError extends Error {
@@ -18,25 +15,16 @@ export class UninstallError extends Error {
   }
 }
 
+export interface UninstallResult {
+  steps: string[];
+  windowsInstallDirNote?: string;
+}
+
 export class UninstallService {
   constructor(
     private readonly fileSystem: FileSystem,
-    private readonly workingDirectory: string,
-    private readonly resolver: TrackDirectoryResolver
+    private readonly workingDirectory: string
   ) {}
-
-  async removeTrackDirectory(): Promise<void> {
-    try {
-      const trackDir = this.resolver.getTrackDirectory();
-      const exists = await this.fileSystem.exists(trackDir);
-
-      if (exists) {
-        await this.fileSystem.rmdir(trackDir, { recursive: true });
-      }
-    } catch (error) {
-      throw new UninstallError("Failed to remove track directory", error);
-    }
-  }
 
   async removeSkills(): Promise<void> {
     try {
@@ -44,7 +32,6 @@ export class UninstallService {
       const exists = await this.fileSystem.exists(skillsBaseDir);
 
       if (exists) {
-        // Remove dfl-* prefixed skill folders
         const entries = await this.fileSystem.readdirWithFileTypes(skillsBaseDir);
         for (const entry of entries) {
           if (entry.isDirectory() && entry.name.startsWith("dfl-")) {
@@ -58,20 +45,16 @@ export class UninstallService {
   }
 
   async unregisterMCPServer(): Promise<void> {
-    try {
-      for (const scope of ["user", "local", "project"]) {
-        try {
-          execSync(`claude mcp remove dev-workflow-tracker --scope ${scope}`, {
-            cwd: this.workingDirectory,
-            stdio: "ignore",
-            timeout: 30000,
-          });
-        } catch {
-          // Ignore if doesn't exist in this scope
-        }
+    for (const scope of ["user", "local", "project"]) {
+      try {
+        execSync(`claude mcp remove dev-workflow-tracker --scope ${scope}`, {
+          cwd: this.workingDirectory,
+          stdio: "ignore",
+          timeout: 30000,
+        });
+      } catch {
+        // Ignore if doesn't exist in this scope
       }
-    } catch (error) {
-      throw new UninstallError("Failed to unregister MCP server", error);
     }
   }
 
@@ -107,23 +90,20 @@ export class UninstallService {
     }
   }
 
-  async removeInstallDir(): Promise<void> {
+  async removeInstallDir(): Promise<{ skipped: boolean; path: string }> {
     try {
       const dflDir = process.env["DFL_INSTALL_DIR"] ?? path.join(os.homedir(), ".dfl");
       const installDir = path.join(dflDir, "install");
 
       if (process.platform === "win32") {
-        console.log(
-          "Note: On Windows the install directory cannot be removed while dfl is running."
-        );
-        console.log(`  Delete it manually: ${installDir}`);
-        return;
+        return { skipped: true, path: installDir };
       }
 
       const exists = await this.fileSystem.exists(installDir);
       if (exists) {
         await this.fileSystem.rmdir(installDir, { recursive: true });
       }
+      return { skipped: false, path: installDir };
     } catch (error) {
       throw new UninstallError("Failed to remove install directory", error);
     }
@@ -136,18 +116,44 @@ export class UninstallService {
       if (exists) {
         await this.fileSystem.rmdir(trackRoot, { recursive: true });
       }
+
+      // Attempt to clean up the parent ~/.dfl dir if it is now empty
+      const dflDir = process.env["DFL_INSTALL_DIR"] ?? path.join(os.homedir(), ".dfl");
+      try {
+        await this.fileSystem.rmdir(dflDir);
+      } catch {
+        // Not empty or already gone — ignore
+      }
     } catch (error) {
       throw new UninstallError("Failed to remove global track directory", error);
     }
   }
 
-  async uninstall(options: { purge: boolean }): Promise<void> {
+  async uninstall(options: { purge: boolean }): Promise<UninstallResult> {
+    const steps: string[] = [];
+    let windowsInstallDirNote: string | undefined;
+
     await this.removeLauncher();
-    await this.removeInstallDir();
+    steps.push("Removed launcher");
+
+    const installDirResult = await this.removeInstallDir();
+    if (installDirResult.skipped) {
+      windowsInstallDirNote = installDirResult.path;
+    } else {
+      steps.push("Removed install dir");
+    }
+
     await this.removeGlobalSkills();
+    steps.push("Removed global dfl-* skills");
+
     await this.unregisterMCPServer();
+    steps.push("Removed MCP registration");
+
     if (options.purge) {
       await this.removeGlobalTrackDirectory();
+      steps.push(`Purged data (${resolveGlobalTrackDir()})`);
     }
+
+    return { steps, windowsInstallDirNote };
   }
 }

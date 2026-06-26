@@ -147,16 +147,8 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
 
     // Application services (lazily resolved - depend on middleware-registered values)
     uninstallService: asFunction(
-      ({
-        fileSystem,
-        workingDirectory,
-        trackDirectoryResolver,
-      }: {
-        fileSystem: FileSystem;
-        workingDirectory: string;
-        trackDirectoryResolver: TrackDirectoryResolver;
-      }) => {
-        return new UninstallService(fileSystem, workingDirectory, trackDirectoryResolver);
+      ({ fileSystem, workingDirectory }: { fileSystem: FileSystem; workingDirectory: string }) => {
+        return new UninstallService(fileSystem, workingDirectory);
       }
     ).scoped(),
 

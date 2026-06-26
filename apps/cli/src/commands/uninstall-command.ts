@@ -12,29 +12,23 @@ export class UninstallCommand {
 
     console.log("🗑️  Uninstalling dfl...");
 
-    await this.uninstallService.removeLauncher();
-    console.log("✓ Removed launcher");
+    const result = await this.uninstallService.uninstall({ purge });
 
-    await this.uninstallService.removeInstallDir();
-    console.log("✓ Removed install dir");
+    for (const step of result.steps) {
+      console.log(`✓ ${step}`);
+    }
 
-    await this.uninstallService.removeGlobalSkills();
-    console.log("✓ Removed global dfl-* skills");
-
-    await this.uninstallService.unregisterMCPServer();
-    console.log("✓ Removed MCP registration");
-
-    if (purge) {
-      await this.uninstallService.removeGlobalTrackDirectory();
-      console.log("✓ Purged data (~/.dfl/track)");
+    if (result.windowsInstallDirNote) {
+      console.log("Note: On Windows the install directory cannot be removed while dfl is running.");
+      console.log(`  Delete it manually: ${result.windowsInstallDirNote}`);
     }
 
     console.log("\n✨ dfl uninstalled!");
 
     if (purge) {
-      console.log("\n⚠  All data in ~/.dfl/track has been removed.");
+      console.log("\n⚠  All data has been removed.");
     } else {
-      console.log("\nData preserved at ~/.dfl/track. Re-run with --purge to delete it.");
+      console.log("\nData preserved. Re-run with --purge to delete it.");
     }
   }
 }
