@@ -56,13 +56,20 @@ function main() {
   fs.mkdirSync(path.join(stage, "bin"), { recursive: true });
   fs.mkdirSync(path.join(stage, "node_modules"), { recursive: true });
 
-  // CLI bundle + data files (drizzle/skills/templates placed beside cli.js by tsup).
-  for (const item of ["cli.js", "drizzle", "skills", "templates"]) {
-    requireExists(path.join(cliDist, item), "re-run the CLI tsup build");
-    copy(path.join(cliDist, item), path.join(stage, item));
-  }
-  // MCP server bundle (sourced from its own dist — independent of CLI build order).
+  // Bundles (from tsup output).
+  copy(path.join(cliDist, "cli.js"), path.join(stage, "cli.js"));
   copy(path.join(mcpDist, "mcp-server.js"), path.join(stage, "mcp-server.js"));
+
+  // Data files shipped beside the bundles, sourced from their CANONICAL committed
+  // locations (not the dist copies, which depend on a unix-only copy-migrations step and
+  // the tsup onSuccess hook — both unreliable on Windows). resolveMigrationsFolder() and
+  // getDefaultPackageRoot() resolve these relative to cli.js at runtime.
+  const migrations = path.join(repoRoot, "packages/database/drizzle");
+  requireExists(path.join(migrations, "meta/_journal.json"), "missing committed drizzle migrations");
+  copy(migrations, path.join(stage, "drizzle"));
+  copy(path.join(repoRoot, "apps/cli/skills"), path.join(stage, "skills"));
+  copy(path.join(repoRoot, "apps/cli/templates"), path.join(stage, "templates"));
+
   // Static SPA served by the embedded server (UIService assetsDir = <root>/ui).
   copy(webOut, path.join(stage, "ui"));
 
