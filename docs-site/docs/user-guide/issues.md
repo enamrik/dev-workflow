@@ -17,6 +17,7 @@ The easiest way to create an issue is through natural conversation with Claude:
 ```
 
 Claude invokes the `dfl-work-request` skill and creates a structured issue with:
+
 - Appropriate type (FEATURE, BUG, etc.)
 - Priority level
 - Acceptance criteria
@@ -34,30 +35,30 @@ create_issue({
   acceptanceCriteria: [
     "Users can register with email/password",
     "Users receive JWT token on login",
-    "Protected routes require valid token"
-  ]
-})
+    "Protected routes require valid token",
+  ],
+});
 ```
 
 ## Issue Properties
 
-| Property | Description | Required |
-|----------|-------------|----------|
-| `title` | Brief description (< 100 chars) | Yes |
-| `description` | Detailed explanation | Yes |
-| `type` | FEATURE, BUG, ENHANCEMENT, TASK | No (auto-detected) |
-| `priority` | LOW, MEDIUM, HIGH, CRITICAL | No (defaults to MEDIUM) |
-| `acceptanceCriteria` | List of completion criteria | No |
-| `labels` | Custom key-value tags | No |
+| Property             | Description                     | Required                |
+| -------------------- | ------------------------------- | ----------------------- |
+| `title`              | Brief description (< 100 chars) | Yes                     |
+| `description`        | Detailed explanation            | Yes                     |
+| `type`               | FEATURE, BUG, ENHANCEMENT, TASK | No (auto-detected)      |
+| `priority`           | LOW, MEDIUM, HIGH, CRITICAL     | No (defaults to MEDIUM) |
+| `acceptanceCriteria` | List of completion criteria     | No                      |
+| `labels`             | Custom key-value tags           | No                      |
 
 ## Issue Types
 
-| Type | Description | Use When |
-|------|-------------|----------|
-| `FEATURE` | New functionality | Adding new capabilities |
-| `BUG` | Broken behavior | Fixing something that was working |
-| `ENHANCEMENT` | Improvement to existing feature | Making something better |
-| `TASK` | Generic work item | Maintenance, documentation, etc. |
+| Type          | Description                     | Use When                          |
+| ------------- | ------------------------------- | --------------------------------- |
+| `FEATURE`     | New functionality               | Adding new capabilities           |
+| `BUG`         | Broken behavior                 | Fixing something that was working |
+| `ENHANCEMENT` | Improvement to existing feature | Making something better           |
+| `TASK`        | Generic work item               | Maintenance, documentation, etc.  |
 
 ### Custom Types
 
@@ -69,8 +70,8 @@ create_type({
   displayName: "Epic",
   description: "Large feature spanning multiple issues",
   keywords: ["epic", "large", "umbrella"],
-  color: "#9b59b6"
-})
+  color: "#9b59b6",
+});
 ```
 
 ## Issue Lifecycle
@@ -79,12 +80,12 @@ create_type({
 PLANNED → OPEN → IN_PROGRESS → CLOSED
 ```
 
-| Status | Description |
-|--------|-------------|
-| `PLANNED` | Issue created, no plan activated |
-| `OPEN` | Plan activated, tasks available |
-| `IN_PROGRESS` | At least one task being worked |
-| `CLOSED` | All work complete |
+| Status        | Description                      |
+| ------------- | -------------------------------- |
+| `PLANNED`     | Issue created, no plan activated |
+| `OPEN`        | Plan activated, tasks available  |
+| `IN_PROGRESS` | At least one task being worked   |
+| `CLOSED`      | All work complete                |
 
 ## Viewing Issues
 
@@ -93,22 +94,22 @@ PLANNED → OPEN → IN_PROGRESS → CLOSED
 ```typescript
 get_issue({
   issueNumber: 1,
-  includePlan: true  // Include tasks
-})
+  includePlan: true, // Include tasks
+});
 ```
 
 ### Search Issues
 
 ```typescript
 search_issues({
-  query: "authentication"
-})
+  query: "authentication",
+});
 ```
 
 ### Project Statistics
 
 ```typescript
-get_project_stats({})
+get_project_stats({});
 ```
 
 Returns counts by status, type, and priority.
@@ -116,7 +117,7 @@ Returns counts by status, type, and priority.
 ### Work Queue
 
 ```typescript
-get_work_queue({})
+get_work_queue({});
 ```
 
 Returns prioritized list of issues needing attention and tasks ready for work.
@@ -129,9 +130,9 @@ update_issue({
   updates: {
     title: "Updated title",
     priority: "CRITICAL",
-    acceptanceCriteria: ["New criterion"]
-  }
-})
+    acceptanceCriteria: ["New criterion"],
+  },
+});
 ```
 
 :::warning
@@ -147,12 +148,12 @@ update_issue({
   issueNumber: 1,
   updates: {
     labels: {
-      "urgent": "",           // Simple tag
-      "product": "Auth",      // Key-value pair
-      "sprint": "2024-Q1"     // Key-value pair
-    }
-  }
-})
+      urgent: "", // Simple tag
+      product: "Auth", // Key-value pair
+      sprint: "2024-Q1", // Key-value pair
+    },
+  },
+});
 ```
 
 ## Milestones
@@ -162,8 +163,8 @@ Assign issues to milestones for time-bounded planning:
 ```typescript
 assign_issue_to_milestone({
   issueNumber: 1,
-  milestoneNumber: 1
-})
+  milestoneNumber: 1,
+});
 ```
 
 See [Milestones Guide](/user-guide/milestones) for more details.
@@ -176,8 +177,8 @@ Close an issue when all tasks are complete:
 
 ```typescript
 close_issue({
-  issueNumber: 1
-})
+  issueNumber: 1,
+});
 ```
 
 This validates all tasks are in terminal state (COMPLETED or ABANDONED).
@@ -189,8 +190,8 @@ If you need to close an issue with incomplete tasks:
 ```typescript
 close_issue({
   issueNumber: 1,
-  force: true
-})
+  force: true,
+});
 ```
 
 :::caution
@@ -203,8 +204,8 @@ Only PLANNED issues can be deleted (soft delete):
 
 ```typescript
 delete_issue({
-  issueNumber: 1
-})
+  issueNumber: 1,
+});
 ```
 
 Once work begins (OPEN status), use `close_issue` instead.
@@ -213,8 +214,8 @@ Once work begins (OPEN status), use `close_issue` instead.
 
 ```typescript
 restore_issue({
-  issueNumber: 1
-})
+  issueNumber: 1,
+});
 ```
 
 ## Merging Issues
@@ -227,30 +228,31 @@ merge_issues({
   sourceIssueNumber: 1,
   targetIssueNumber: 2,
   mode: "create_new",
-  newTitle: "Combined authentication feature"
-})
+  newTitle: "Combined authentication feature",
+});
 
 // Or fold source into target
 merge_issues({
   sourceIssueNumber: 1,
   targetIssueNumber: 2,
-  mode: "merge_into"
-})
+  mode: "merge_into",
+});
 ```
 
 ## Best Practices
 
 ### Writing Good Issue Titles
 
-| Good | Bad |
-|------|-----|
-| "Add JWT authentication to API" | "Fix auth" |
-| "Users cannot login with SSO" | "Login broken" |
-| "Optimize database queries for dashboard" | "Make faster" |
+| Good                                      | Bad            |
+| ----------------------------------------- | -------------- |
+| "Add JWT authentication to API"           | "Fix auth"     |
+| "Users cannot login with SSO"             | "Login broken" |
+| "Optimize database queries for dashboard" | "Make faster"  |
 
 ### Writing Good Descriptions
 
 Include:
+
 - **Context**: Why is this needed?
 - **Requirements**: What exactly should happen?
 - **Constraints**: Any limitations or considerations?

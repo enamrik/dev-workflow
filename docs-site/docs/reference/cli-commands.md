@@ -194,11 +194,11 @@ dfl claude [options]
 
 ### Options
 
-| Option           | Description                                                        |
-| ---------------- | ------------------------------------------------------------------ |
-| `--name <name>`  | Worker name (auto-generates if not provided)                       |
-| `--auto-claim`   | Automatically claim READY tasks when dependencies complete         |
-| `-- <flags...>`  | Extra flags forwarded verbatim to each spawned `claude` invocation |
+| Option          | Description                                                        |
+| --------------- | ------------------------------------------------------------------ |
+| `--name <name>` | Worker name (auto-generates if not provided)                       |
+| `--auto-claim`  | Automatically claim READY tasks when dependencies complete         |
+| `-- <flags...>` | Extra flags forwarded verbatim to each spawned `claude` invocation |
 
 ### Examples
 

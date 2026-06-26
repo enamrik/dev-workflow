@@ -30,6 +30,7 @@ make dogfood
 ```
 
 This:
+
 1. Builds all packages
 2. Links CLI globally
 3. Initializes dev-workflow in itself
@@ -53,13 +54,13 @@ packages/
 
 ## Development Commands
 
-| Command | Description |
-|---------|-------------|
-| `make dogfood` | Full rebuild + link + init |
-| `make test` | Run unit tests |
-| `make test-e2e` | Run E2E tests |
-| `make prep` | Run all checks before push |
-| `make ui-dev-local` | Start UI dev server |
+| Command             | Description                |
+| ------------------- | -------------------------- |
+| `make dogfood`      | Full rebuild + link + init |
+| `make test`         | Run unit tests             |
+| `make test-e2e`     | Run E2E tests              |
+| `make prep`         | Run all checks before push |
+| `make ui-dev-local` | Start UI dev server        |
 
 ## Code Standards
 
@@ -79,13 +80,13 @@ packages/
 
 ### Naming Conventions
 
-| Type | Convention | Example |
-|------|------------|---------|
-| Classes | PascalCase, no `Impl` | `SqliteIssueRepository` |
-| Interfaces | PascalCase | `IssueRepository` |
-| Functions | camelCase | `createIssue` |
-| Constants | UPPER_SNAKE | `MAX_RETRIES` |
-| Files | kebab-case | `issue-service.ts` |
+| Type       | Convention            | Example                 |
+| ---------- | --------------------- | ----------------------- |
+| Classes    | PascalCase, no `Impl` | `SqliteIssueRepository` |
+| Interfaces | PascalCase            | `IssueRepository`       |
+| Functions  | camelCase             | `createIssue`           |
+| Constants  | UPPER_SNAKE           | `MAX_RETRIES`           |
+| Files      | kebab-case            | `issue-service.ts`      |
 
 ## Making Changes
 
@@ -106,6 +107,7 @@ When modifying schema:
    - `packages/database/src/schema-pg.ts` (PostgreSQL)
 
 2. Generate migration:
+
    ```bash
    cd packages/database
    pnpm drizzle-kit generate
@@ -168,6 +170,7 @@ Uses Claude CLI for AI-driven tests (requires API key)
 ### PR Title
 
 Use conventional commits:
+
 - `feat: Add milestone filtering`
 - `fix: Correct task status transition`
 - `docs: Update MCP tools reference`
@@ -176,6 +179,7 @@ Use conventional commits:
 ### PR Description
 
 Include:
+
 - Summary of changes
 - Related issue numbers
 - Test plan
@@ -219,6 +223,7 @@ After modifying skills in `apps/cli/skills/`:
 ### Version Bump
 
 Update version in:
+
 - `package.json` (root)
 - `apps/cli/package.json`
 - `apps/mcp-server/package.json`

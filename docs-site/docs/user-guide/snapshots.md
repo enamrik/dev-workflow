@@ -25,11 +25,12 @@ Snapshots capture the complete state of an issue, including plan and tasks.
 
 ```typescript
 get_snapshot_history({
-  issueNumber: 1
-})
+  issueNumber: 1,
+});
 ```
 
 Returns list of snapshots with:
+
 - Version number
 - Timestamp
 - Event type
@@ -41,11 +42,12 @@ Returns list of snapshots with:
 ```typescript
 view_snapshot({
   issueNumber: 1,
-  version: 3
-})
+  version: 3,
+});
 ```
 
 Returns the complete issue state at that version:
+
 - Issue properties
 - Plan (if any)
 - Tasks (if any)
@@ -58,11 +60,12 @@ If you need to undo changes:
 revert_to_snapshot({
   issueNumber: 1,
   version: 3,
-  notes: "Reverting to previous plan - new requirements were incorrect"
-})
+  notes: "Reverting to previous plan - new requirements were incorrect",
+});
 ```
 
 This:
+
 1. Loads the state from version 3
 2. Creates a new snapshot with that state
 3. Records the revert in history
@@ -73,14 +76,14 @@ Revert creates a new snapshot; it doesn't delete history. You can always see the
 
 ## Snapshot Events
 
-| Event | When Created |
-|-------|--------------|
-| `ISSUE_CREATED` | New issue created |
-| `ISSUE_UPDATED` | Title, description, etc. changed |
-| `PLAN_CREATED` | First plan generated |
-| `PLAN_REGENERATED` | Plan updated/regenerated |
-| `ISSUE_CLOSED` | Issue closed |
-| `REVERT` | Reverted to previous version |
+| Event              | When Created                     |
+| ------------------ | -------------------------------- |
+| `ISSUE_CREATED`    | New issue created                |
+| `ISSUE_UPDATED`    | Title, description, etc. changed |
+| `PLAN_CREATED`     | First plan generated             |
+| `PLAN_REGENERATED` | Plan updated/regenerated         |
+| `ISSUE_CLOSED`     | Issue closed                     |
+| `REVERT`           | Reverted to previous version     |
 
 ## Use Cases
 
@@ -115,6 +118,7 @@ view_snapshot({ issueNumber: 5, version: 3 })  # Current plan
 ### Auditing Changes
 
 Snapshots provide an audit trail:
+
 - Who made each change
 - When changes occurred
 - What changed between versions

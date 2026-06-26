@@ -32,47 +32,47 @@ generate_plan({
       title: "Create user model and migration",
       description: "Set up database schema for users",
       type: "TASK",
-      acceptanceCriteria: ["User table with id, email, password_hash"]
+      acceptanceCriteria: ["User table with id, email, password_hash"],
     },
     {
       id: "auth",
       title: "Implement authentication middleware",
       description: "JWT validation for protected routes",
       type: "TASK",
-      dependsOn: ["db"]
+      dependsOn: ["db"],
     },
     {
       id: "login",
       title: "Create login endpoint",
       description: "POST /api/auth/login",
       type: "TASK",
-      dependsOn: ["auth"]
-    }
-  ]
-})
+      dependsOn: ["auth"],
+    },
+  ],
+});
 ```
 
 ## Plan Properties
 
-| Property | Description |
-|----------|-------------|
-| `summary` | Brief description of approach |
-| `approach` | Detailed implementation strategy |
-| `estimatedComplexity` | LOW, MEDIUM, HIGH, VERY_HIGH |
-| `tasks` | Array of task definitions |
+| Property              | Description                      |
+| --------------------- | -------------------------------- |
+| `summary`             | Brief description of approach    |
+| `approach`            | Detailed implementation strategy |
+| `estimatedComplexity` | LOW, MEDIUM, HIGH, VERY_HIGH     |
+| `tasks`               | Array of task definitions        |
 
 ## Task Properties
 
-| Property | Description | Required |
-|----------|-------------|----------|
-| `id` | Placeholder ID for dependencies | Yes |
-| `title` | Brief task description | Yes |
-| `description` | Detailed requirements | Yes |
-| `type` | FEATURE, BUG, ENHANCEMENT, TASK | Yes |
-| `dependsOn` | Array of task IDs this depends on | No |
-| `acceptanceCriteria` | Completion criteria | No |
-| `estimatedMinutes` | Time estimate | No |
-| `implementationPlan` | Technical details for execution | No |
+| Property             | Description                       | Required |
+| -------------------- | --------------------------------- | -------- |
+| `id`                 | Placeholder ID for dependencies   | Yes      |
+| `title`              | Brief task description            | Yes      |
+| `description`        | Detailed requirements             | Yes      |
+| `type`               | FEATURE, BUG, ENHANCEMENT, TASK   | Yes      |
+| `dependsOn`          | Array of task IDs this depends on | No       |
+| `acceptanceCriteria` | Completion criteria               | No       |
+| `estimatedMinutes`   | Time estimate                     | No       |
+| `implementationPlan` | Technical details for execution   | No       |
 
 ## Task Dependencies
 
@@ -108,8 +108,8 @@ View a generated plan:
 
 ```typescript
 get_plan({
-  issueNumber: 2
-})
+  issueNumber: 2,
+});
 ```
 
 ### Plan Review Checklist
@@ -145,14 +145,14 @@ Once a plan is activated, you can:
 update_task({
   taskId: "task-uuid",
   description: "Updated description",
-  acceptanceCriteria: ["New criteria"]
-})
+  acceptanceCriteria: ["New criteria"],
+});
 
 // Regenerate plan (preserves active tasks)
 generate_plan({
   issueNumber: 2,
   // ... new plan
-})
+});
 ```
 
 :::info
@@ -166,11 +166,12 @@ After review, activate the plan to make tasks workable:
 ```typescript
 move_issue_to_backlog({
   issueNumber: 2,
-  skipGitHubSync: false  // Create GitHub issues
-})
+  skipGitHubSync: false, // Create GitHub issues
+});
 ```
 
 This:
+
 1. Transitions issue: PLANNED → OPEN
 2. Transitions tasks: PLANNED → BACKLOG
 3. Creates GitHub issues (if enabled)
@@ -184,11 +185,12 @@ Move all READY tasks back to BACKLOG:
 
 ```typescript
 pause_issue({
-  issueNumber: 2
-})
+  issueNumber: 2,
+});
 ```
 
 Useful when:
+
 - Switching to higher priority work
 - Waiting on external dependency
 - Team bandwidth constraints
@@ -199,8 +201,8 @@ Mark issue ready to work:
 
 ```typescript
 move_issue_to_ready({
-  issueNumber: 2
-})
+  issueNumber: 2,
+});
 ```
 
 Transitions BACKLOG tasks to READY (if no dependencies).
@@ -211,21 +213,21 @@ Transitions BACKLOG tasks to READY (if no dependencies).
 
 Each task should be:
 
-| Principle | Description |
-|-----------|-------------|
-| **Deployable** | Produces a working, testable change |
+| Principle       | Description                         |
+| --------------- | ----------------------------------- |
+| **Deployable**  | Produces a working, testable change |
 | **Independent** | Minimal dependencies on other tasks |
-| **Testable** | Clear verification criteria |
-| **Focused** | Single responsibility |
+| **Testable**    | Clear verification criteria         |
+| **Focused**     | Single responsibility               |
 
 ### Task Size Guidelines
 
-| Complexity | Tasks | Task Size |
-|------------|-------|-----------|
-| LOW | 1-2 tasks | 1-2 hours each |
-| MEDIUM | 2-4 tasks | 2-4 hours each |
-| HIGH | 4-8 tasks | 2-4 hours each |
-| VERY_HIGH | 8+ tasks | Consider breaking into multiple issues |
+| Complexity | Tasks     | Task Size                              |
+| ---------- | --------- | -------------------------------------- |
+| LOW        | 1-2 tasks | 1-2 hours each                         |
+| MEDIUM     | 2-4 tasks | 2-4 hours each                         |
+| HIGH       | 4-8 tasks | 2-4 hours each                         |
+| VERY_HIGH  | 8+ tasks  | Consider breaking into multiple issues |
 
 ### Writing Implementation Plans
 
@@ -239,18 +241,19 @@ The `implementationPlan` field gives Claude execution context:
 ```
 
 This helps Claude:
+
 - Find relevant code
 - Follow existing patterns
 - Use correct conventions
 
 ## Complexity Estimation
 
-| Level | Description | Indicators |
-|-------|-------------|------------|
-| LOW | Simple change | 1-2 files, clear requirements, no dependencies |
-| MEDIUM | Moderate change | 3-5 files, some design decisions |
-| HIGH | Significant change | 5-10 files, architecture decisions, integration |
-| VERY_HIGH | Major change | 10+ files, new patterns, significant risk |
+| Level     | Description        | Indicators                                      |
+| --------- | ------------------ | ----------------------------------------------- |
+| LOW       | Simple change      | 1-2 files, clear requirements, no dependencies  |
+| MEDIUM    | Moderate change    | 3-5 files, some design decisions                |
+| HIGH      | Significant change | 5-10 files, architecture decisions, integration |
+| VERY_HIGH | Major change       | 10+ files, new patterns, significant risk       |
 
 ## Example: Feature Plan
 
@@ -271,7 +274,7 @@ generate_plan({
       title: "Configure OAuth2 provider settings",
       description: "Add Google OAuth credentials to config",
       type: "TASK",
-      implementationPlan: "Add to src/config/auth.ts using env vars"
+      implementationPlan: "Add to src/config/auth.ts using env vars",
     },
     {
       id: "callback",
@@ -282,25 +285,25 @@ generate_plan({
       acceptanceCriteria: [
         "Exchanges code for tokens",
         "Creates/updates user record",
-        "Sets session cookie"
-      ]
+        "Sets session cookie",
+      ],
     },
     {
       id: "button",
       title: "Add Google login button to UI",
       description: "Frontend OAuth flow trigger",
       type: "FEATURE",
-      dependsOn: ["callback"]
+      dependsOn: ["callback"],
     },
     {
       id: "tests",
       title: "Add integration tests",
       description: "Test OAuth flow end-to-end",
       type: "TASK",
-      dependsOn: ["button"]
-    }
-  ]
-})
+      dependsOn: ["button"],
+    },
+  ],
+});
 ```
 
 ## Next Steps
