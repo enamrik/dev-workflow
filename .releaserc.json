@@ -5,9 +5,9 @@
     "@semantic-release/release-notes-generator",
     ["@semantic-release/github", {
       "assets": [
-        {"path": "dist-artifacts/dev-workflow-*.tar.gz", "label": "${name}"},
-        {"path": "dist-artifacts/dev-workflow-*.zip", "label": "${name}"},
-        {"path": "dist-artifacts/dev-workflow-*.sha256", "label": "${name}"}
+        {"path": "dist-artifacts/dev-workflow-*.tar.gz"},
+        {"path": "dist-artifacts/dev-workflow-*.zip"},
+        {"path": "dist-artifacts/dev-workflow-*.sha256"}
       ]
     }]
   ]
