@@ -10,8 +10,6 @@
  * processes that terminate after the command completes.
  */
 
-import * as path from "node:path";
-import { existsSync } from "node:fs";
 import {
   createContainer,
   asClass,
@@ -34,6 +32,7 @@ import {
 } from "@dev-workflow/tracking";
 import { NodeFileSystem, type FileSystem } from "../infrastructure/file-system.js";
 import { NodeUserPrompt, type UserPrompt } from "../infrastructure/user-prompt.js";
+import { resolveCliEntry } from "../infrastructure/cli-entry.js";
 
 // Application services
 import { UninstallService } from "../application/uninstall.service.js";
@@ -134,13 +133,10 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
       .singleton()
       .disposer((provider) => provider.closeAll()),
 
-    // Path to re-launch this CLI (used by ui:install's PM2 wrapper). Use the actual
-    // running entry so it's correct in the bundle (cli.js) and in dev (dist/main.js),
-    // rather than assuming a fixed dist layout.
+    // Path to re-launch this CLI (used by ui:install's PM2 wrapper). Correct in the
+    // bundle (cli.js) and in dev (dist/main.js) — see resolveCliEntry.
     cliPath: asFunction(({ packageRoot }: { packageRoot: string }) => {
-      if (process.argv[1]) return process.argv[1];
-      const bundled = path.join(packageRoot, "cli.js");
-      return existsSync(bundled) ? bundled : path.join(packageRoot, "dist/main.js");
+      return resolveCliEntry(packageRoot);
     }).singleton(),
 
     // Scoped services (new instance per resolution)

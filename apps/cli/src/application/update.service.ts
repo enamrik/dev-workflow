@@ -16,6 +16,7 @@ import {
   resolveGlobalTrackDir,
 } from "@dev-workflow/git/track-directory-resolver.js";
 import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
+import { resolveCliEntry } from "../infrastructure/cli-entry.js";
 
 export class UpdateError extends Error {
   constructor(
@@ -226,7 +227,7 @@ export class UpdateService {
       // Project must be registered first
       const project = this.getProject();
 
-      const cliPath = path.join(this.packageRoot, "dist/main.js");
+      const cliPath = resolveCliEntry(this.packageRoot);
 
       // Remove existing registration (from both scopes for migration from old versions)
       try {

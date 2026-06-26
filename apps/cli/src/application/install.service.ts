@@ -11,6 +11,7 @@ import {
 } from "@dev-workflow/tracking";
 import { TrackDirectoryResolver } from "@dev-workflow/git/track-directory-resolver.js";
 import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
+import { resolveCliEntry } from "../infrastructure/cli-entry.js";
 
 export class InstallError extends Error {
   constructor(
@@ -165,7 +166,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
       this.getProject();
 
       const slug = this.resolver.getProjectId();
-      const cliPath = path.join(this.packageRoot, "dist/main.js");
+      const cliPath = resolveCliEntry(this.packageRoot);
 
       // Remove existing registration if it exists (from both scopes for migration)
       try {
