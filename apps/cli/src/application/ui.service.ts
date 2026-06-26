@@ -63,7 +63,12 @@ export class UIService {
     }
 
     const port = process.env["PORT"] ? parseInt(process.env["PORT"], 10) : await getDaemonPort();
-    this.reclaimPort(port);
+    // Only reclaim if we have a stale pid file — evidence a prior dfl daemon died without cleanup.
+    // Avoids killing unrelated processes that happen to be on port 3456.
+    const stalePid = getSavedDaemonPid();
+    if (stalePid !== null && !isProcessAlive(stalePid)) {
+      this.reclaimPort(port);
+    }
     const logPath = path.join(resolveGlobalTrackDir(), "ui.log");
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
     const logFd = fs.openSync(logPath, "a");
@@ -160,6 +165,11 @@ export class UIService {
       process.kill(pid, "SIGTERM");
     } catch {
       // already exited
+    }
+    // Give the daemon time to shut down gracefully before force-reclaiming the port.
+    const gracefulDeadline = Date.now() + 3000;
+    while (Date.now() < gracefulDeadline && isProcessAlive(pid)) {
+      await new Promise((r) => setTimeout(r, 100));
     }
     if (port !== null) {
       this.reclaimPort(port);
