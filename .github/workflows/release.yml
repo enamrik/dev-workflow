@@ -46,7 +46,7 @@ jobs:
           pnpm --filter @dev-workflow/mcp-server exec tsup
       - name: Assemble all platform artifacts
         run: |
-          for t in darwin-arm64 darwin-x64 linux-x64 linux-arm64 windows-x64; do
+          for t in darwin-arm64 darwin-x64 linux-x64 linux-arm64 windows-x64 windows-arm64; do
             DWF_TARGET=$t node scripts/assemble-artifact.mjs
           done
       - name: Record current release tag

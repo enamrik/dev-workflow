@@ -7,6 +7,7 @@
 
 import { execSync, spawnSync } from "node:child_process";
 import { platform } from "node:os";
+import { openSqliteDatabase } from "@dev-workflow/database/open-database.js";
 
 export interface SetupOptions {
   /** Attempt to install missing dependencies */
@@ -141,10 +142,11 @@ export class SetupCommand {
 
   private checkSqlite(): CheckResult {
     try {
-      // Try to require better-sqlite3 to check if native bindings work
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const Database = require("better-sqlite3");
-      const db = new Database(":memory:");
+      // Use openSqliteDatabase (passes an explicit nativeBinding) — a bare
+      // `new Database()` would fail in the bundled artifact because better-sqlite3's
+      // bindings detection resolves to the bundle dir. This mirrors how the app
+      // actually opens the DB, so the check reflects real behavior.
+      const db = openSqliteDatabase(":memory:");
       const row = db.prepare("SELECT sqlite_version() as v").get() as { v: string };
       db.close();
       return { ok: true, version: `SQLite ${row.v}` };
@@ -157,8 +159,14 @@ export class SetupCommand {
   }
 
   private async fixSqlite(): Promise<void> {
-    // Rebuild better-sqlite3 native module
-    execSync("npm rebuild better-sqlite3", { stdio: "inherit" });
+    // In the published artifact better-sqlite3 ships prebuilt, so there is nothing to
+    // rebuild (and no registry access). Only attempt a rebuild in a dev checkout where
+    // node_modules/better-sqlite3 exists.
+    try {
+      execSync("npm rebuild better-sqlite3", { stdio: "inherit" });
+    } catch {
+      console.warn("Could not rebuild better-sqlite3 (expected in a packaged install).");
+    }
   }
 
   private checkClaude(): CheckResult {

@@ -105,7 +105,12 @@ function sendJson(res: http.ServerResponse, status: number, data: unknown): void
  * Returns null if the resolved path escapes assetsDir.
  */
 function resolveAssetPath(assetsDir: string, pathname: string): string | null {
-  const decoded = decodeURIComponent(pathname);
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return null; // malformed %-escape → treat as not found, not a 500
+  }
   const requested = path.normalize(path.join(assetsDir, decoded));
   const root = path.resolve(assetsDir);
   if (requested !== root && !requested.startsWith(root + path.sep)) {
