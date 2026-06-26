@@ -21,10 +21,12 @@ jobs:
       matrix:
         include:
           - { os: macos-14, slug: darwin-arm64 }
-          - { os: macos-13, slug: darwin-x64 }
           - { os: ubuntu-latest, slug: linux-x64 }
           - { os: ubuntu-24.04-arm, slug: linux-arm64 }
           - { os: windows-latest, slug: windows-x64 }
+          # darwin-x64 (Intel mac) omitted: the deprecated macos-13 runner queues
+          # indefinitely and would block every release. Re-add when a reliable Intel
+          # runner is available — the build itself is known-good.
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
