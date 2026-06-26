@@ -527,11 +527,8 @@ function configToProjectInfo(config: ProjectConfig): ProjectInfo {
  * - Caches configs to avoid repeated filesystem access
  */
 export class ProjectsResolver extends Service<ProjectsResolver>()("projectsResolver") {
-  /** Cached configs by slug */
-  private readonly configBySlug = new Map<string, ProjectConfig>();
-
-  /** Whether configs have been scanned */
-  private scanned = false;
+  /** Cached configs by slug (reassigned atomically on each enumeration scan) */
+  private configBySlug = new Map<string, ProjectConfig>();
 
   /**
    * Get a project by slug
@@ -543,8 +540,6 @@ export class ProjectsResolver extends Service<ProjectsResolver>()("projectsResol
   getProjectBySlug(slug: string): Effect<ProjectInfo> {
     const self = this;
     return Effect.gen(function* () {
-      yield* self.ensureScannedEffect();
-
       let config = self.configBySlug.get(slug);
 
       if (!config) {
@@ -650,8 +645,7 @@ export class ProjectsResolver extends Service<ProjectsResolver>()("projectsResol
    * Clear cached configs
    */
   clear(): void {
-    this.configBySlug.clear();
-    this.scanned = false;
+    this.configBySlug = new Map();
   }
 
   /**
@@ -718,20 +712,20 @@ export class ProjectsResolver extends Service<ProjectsResolver>()("projectsResol
   // ===========================================================================
 
   /**
-   * Ensure configs have been scanned (Effect version)
+   * Scan the projects directory and atomically refresh the config cache.
+   *
+   * Called on every enumeration (getAllProjects, getAllSources) so long-lived
+   * processes (e.g. the UI daemon) always reflect projects registered after
+   * they started, without a restart. Not called from getProjectBySlug, which
+   * uses the cache and falls back to direct resolveConfig() for new slugs.
+   *
+   * The directory scan is cheap (~3-15 syscalls for a typical installation).
    */
   private ensureScannedEffect(): Effect<void> {
     const self = this;
     return Effect.promise(async () => {
-      if (self.scanned) return;
-
       const configs = await loadAllConfigs();
-
-      for (const config of configs) {
-        self.configBySlug.set(config.slug, config);
-      }
-
-      self.scanned = true;
+      self.configBySlug = new Map(configs.map((c) => [c.slug, c]));
     });
   }
 }
