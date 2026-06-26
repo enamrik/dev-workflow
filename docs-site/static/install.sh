@@ -62,10 +62,15 @@ rm -rf "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 tar -xzf "$TMP/$ASSET" -C "$INSTALL_DIR"
 
-# Link the bin onto PATH.
+# Write a launcher with the absolute cli.js path. (A symlink to the bundled wrapper
+# would break: the wrapper derives its dir from $0, which is the symlink's location.)
 mkdir -p "$BIN_DIR"
-ln -sf "$INSTALL_DIR/dev-workflow/bin/dev-workflow" "$BIN_DIR/dev-workflow"
-ok "Linked $BIN_DIR/dev-workflow"
+cat > "$BIN_DIR/dev-workflow" <<EOF
+#!/bin/sh
+exec node "$INSTALL_DIR/dev-workflow/cli.js" "\$@"
+EOF
+chmod +x "$BIN_DIR/dev-workflow"
+ok "Installed launcher at $BIN_DIR/dev-workflow"
 
 if ! command -v dev-workflow >/dev/null 2>&1; then
   warn "$BIN_DIR is not on your PATH. Add it:"
