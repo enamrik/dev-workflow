@@ -13,56 +13,16 @@ permissions:
   issues: write
   pull-requests: write
 
-# Serialize releases: overlapping runs racing to upload assets to the same release
-# corrupt them. Queue (don't cancel) so each run finishes its uploads cleanly.
+# Serialize releases so overlapping runs can't race-corrupt release assets.
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  # Build a self-contained artifact per platform. better-sqlite3 is compiled natively on
-  # each runner so its prebuilt binary matches the target; everything else is bundled.
-  build:
-    name: Build ${{ matrix.slug }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: macos-14, slug: darwin-arm64 }
-          - { os: macos-13, slug: darwin-x64 }
-          - { os: ubuntu-latest, slug: linux-x64 }
-          - { os: ubuntu-24.04-arm, slug: linux-arm64 }
-          - { os: windows-latest, slug: windows-x64 }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Build packages + static web export
-        run: pnpm build
-      - name: Bundle CLI + MCP server
-        run: |
-          pnpm --filter @dev-workflow/cli exec tsup
-          pnpm --filter @dev-workflow/mcp-server exec tsup
-      - name: Assemble artifact
-        run: node scripts/assemble-artifact.mjs
-      - uses: actions/upload-artifact@v4
-        with:
-          name: artifact-${{ matrix.slug }}
-          path: dist-artifacts/dev-workflow-*
-          if-no-files-found: error
-
-  # Version + publish a GitHub Release with all platform artifacts attached.
+  # Single runner builds the JS bundles + static SPA once, then assembles every platform's
+  # artifact by fetching that platform's better-sqlite3 prebuild (the only native piece).
+  # No per-OS matrix is needed — the app is pure JS/data otherwise.
   release:
-    name: Release
-    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -78,23 +38,28 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Collect platform artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist-artifacts
-          merge-multiple: true
+      - name: Build packages + static web export
+        run: pnpm build
+      - name: Bundle CLI + MCP server
+        run: |
+          pnpm --filter @dev-workflow/cli exec tsup
+          pnpm --filter @dev-workflow/mcp-server exec tsup
+      - name: Assemble all platform artifacts
+        run: |
+          for t in darwin-arm64 darwin-x64 linux-x64 linux-arm64 windows-x64; do
+            DWF_TARGET=$t node scripts/assemble-artifact.mjs
+          done
       - name: Record current release tag
         id: pre
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "tag=$(gh release view --json tagName -q .tagName 2>/dev/null || echo none)" >> "$GITHUB_OUTPUT"
-      - name: Semantic Release (version + tag + notes; assets uploaded separately)
+      - name: Semantic Release (version + tag + notes)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
-      # Upload assets with the gh CLI rather than @semantic-release/github: the latter
-      # intermittently corrupted the macOS asset on upload. gh upload is reliable, and we
-      # re-download every asset to verify integrity (gzip/zip + sha) before trusting it.
+      # Upload assets with the gh CLI (reliable) rather than @semantic-release/github, which
+      # intermittently corrupted assets on upload; then re-download to verify every asset.
       - name: Upload + verify release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -102,7 +67,7 @@ jobs:
           set -euo pipefail
           NEW=$(gh release view --json tagName -q .tagName)
           if [ "$NEW" = "${{ steps.pre.outputs.tag }}" ]; then
-            echo "No new release was created this run; nothing to upload."
+            echo "No new release created this run; nothing to upload."
             exit 0
           fi
           echo "Uploading assets to $NEW"
