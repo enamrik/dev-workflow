@@ -74,21 +74,30 @@ export class UICommand {
       const startCmd = `npx pm2 start "node ${this.cliPath} ui" --name dev-workflow-ui`;
       execSync(startCmd, { stdio: "inherit" });
 
-      // Setup startup script
+      // Setup startup script. On most systems `pm2 startup` cannot self-install (it needs
+      // a one-time elevated command) and instead prints a `sudo … pm2 startup …` line to
+      // run. Detect whether boot auto-start was actually configured so we don't over-claim.
       console.log("\n📋 Setting up startup script...");
+      let bootConfigured = false;
       try {
         execSync("npx pm2 startup", { stdio: "inherit" });
+        bootConfigured = true;
       } catch {
-        console.warn("⚠️  Could not setup startup script automatically.");
-        console.warn("   Run 'npx pm2 startup' manually and follow the instructions.");
+        // pm2 printed a `sudo … pm2 startup …` command above; the user must run it once.
       }
 
       // Save process list
       execSync("npx pm2 save", { stdio: "inherit" });
 
-      console.log("\n✨ dev-workflow UI installed successfully!");
+      console.log("\n✨ dev-workflow UI installed!");
       console.log("\nThe UI is now running at: http://127.0.0.1:3456");
-      console.log("It will start automatically on system boot.");
+      if (bootConfigured) {
+        console.log("It will start automatically on system boot.");
+      } else {
+        console.log("⚠️  Boot auto-start is NOT enabled yet. To enable it, copy/paste the");
+        console.log("   `sudo … pm2 startup …` command printed above and run it once.");
+        console.log("   (Until then the UI runs now but won't relaunch after a reboot.)");
+      }
       console.log("\nUseful commands:");
       console.log("  npx pm2 status          - Check status");
       console.log("  npx pm2 logs dev-workflow-ui - View logs");

@@ -11,6 +11,7 @@
  */
 
 import * as path from "node:path";
+import { existsSync } from "node:fs";
 import {
   createContainer,
   asClass,
@@ -133,9 +134,13 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
       .singleton()
       .disposer((provider) => provider.closeAll()),
 
-    // Computed values from packageRoot
+    // Path to re-launch this CLI (used by ui:install's PM2 wrapper). Use the actual
+    // running entry so it's correct in the bundle (cli.js) and in dev (dist/main.js),
+    // rather than assuming a fixed dist layout.
     cliPath: asFunction(({ packageRoot }: { packageRoot: string }) => {
-      return path.join(packageRoot, "dist/main.js");
+      if (process.argv[1]) return process.argv[1];
+      const bundled = path.join(packageRoot, "cli.js");
+      return existsSync(bundled) ? bundled : path.join(packageRoot, "dist/main.js");
     }).singleton(),
 
     // Scoped services (new instance per resolution)
