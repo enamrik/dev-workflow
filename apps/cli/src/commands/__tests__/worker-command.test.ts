@@ -41,11 +41,10 @@ describe("WorkerCommand.start", () => {
     );
   });
 
-  it("does not include name/autoClaim inside claudeArgs", async () => {
+  it("does not include name inside claudeArgs", async () => {
     const cmd = new WorkerCommand(stubQueue, stubSourceProvider, stubProjectsResolver);
     await cmd.start({
       name: "worker-1",
-      autoClaim: true,
       claudeArgs: ["--dangerously-skip-permissions"],
     });
 
@@ -55,7 +54,6 @@ describe("WorkerCommand.start", () => {
       stubProjectsResolver,
       expect.objectContaining({
         name: "worker-1",
-        autoClaim: true,
         claudeArgs: ["--dangerously-skip-permissions"],
       })
     );

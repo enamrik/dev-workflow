@@ -11,7 +11,6 @@ import { ClaudeWorkerService } from "../application/claude-worker.service.js";
 
 export interface StartWorkerOptions {
   name?: string;
-  autoClaim?: boolean;
   claudeArgs?: string[];
 }
 
@@ -88,7 +87,6 @@ export class WorkerCommand {
         this.projectsResolver,
         {
           name: options.name,
-          autoClaim: options.autoClaim,
           claudeArgs: options.claudeArgs ?? [],
         }
       );

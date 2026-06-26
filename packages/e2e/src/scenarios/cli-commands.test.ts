@@ -421,15 +421,15 @@ describe("CLI Commands E2E", () => {
       }
     }, 15000);
 
-    it("accepts --auto-claim flag", async () => {
-      const proc = startCli(["claude", "--name", "auto-worker", "--auto-claim"], {
+    it("scans for READY tasks automatically (dependency-aware claiming is always on)", async () => {
+      const proc = startCli(["claude", "--name", "auto-worker"], {
         cwd: testDir,
         env: { DFL_HOME: trackDir },
       });
 
       try {
         // Should start without error
-        const output = await waitForOutput(proc, /worker|poll|auto/i, 10000);
+        const output = await waitForOutput(proc, /worker|poll/i, 10000);
         expect(output).toBeDefined();
       } finally {
         proc.kill("SIGTERM");

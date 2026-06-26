@@ -82,9 +82,8 @@ program
   .command("claude")
   .description("Run as a Claude worker that polls for and executes dispatched tasks")
   .option("--name <name>", "Worker name (auto-generates worker-1, worker-2, etc. if not provided)")
-  .option("--auto-claim", "Automatically claim READY tasks when dependencies complete")
   .passThroughOptions()
-  .action(async (options: { name?: string; autoClaim?: boolean }, cmd: Command) => {
+  .action(async (options: { name?: string }, cmd: Command) => {
     await runClaudeWorker({ ...options, claudeArgs: cmd.args });
   });
 
