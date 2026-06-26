@@ -2,6 +2,10 @@
 
 # ⚠️ THE MANDATORIES — Always Active
 
+## 0. One Commit Per Push to `main`
+
+**Collapse all local commits into a single commit before pushing to `main`.** Iterating with many small WIP commits locally is fine — but `main` gets ONE commit for the unit of work, never a stream of "fix typo", "lockfile", "address review", "fix again" commits. Before any `git push` to `main`: squash your local commits (`git reset --soft <base>` then one `git commit`, or interactive rebase) into one well-described commit, then push. This keeps `main` history readable and bisectable. (Branches/PRs may carry intermediate commits; the squash applies when landing on `main`.)
+
 ## 1. Plan Agent Before Non-Trivial Work
 
 **Non-trivial work starts with a `Plan` subagent, not with code.** Diving straight into implementation is how an agent under-reads: it skips the existing abstractions, never loads the patterns, duplicates what already exists — or gets halfway in, hits a surprise, and starts *patching its first idea* instead of pausing to rethink. The Plan agent front-loads the reading so the implementation is the right shape from line one.
