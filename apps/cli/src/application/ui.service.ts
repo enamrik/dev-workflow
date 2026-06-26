@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import type { AwilixContainer } from "awilix";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
@@ -63,6 +63,7 @@ export class UIService {
     }
 
     const port = process.env["PORT"] ? parseInt(process.env["PORT"], 10) : await getDaemonPort();
+    this.reclaimPort(port);
     const logPath = path.join(resolveGlobalTrackDir(), "ui.log");
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
     const logFd = fs.openSync(logPath, "a");
@@ -142,12 +143,16 @@ export class UIService {
     });
   }
 
-  /** Stop the running daemon, if any. */
+  /** Stop the running daemon, if any. Always reclaims the port even when pid tracking has drifted. */
   async stop(): Promise<void> {
     const pid = getSavedDaemonPid();
+    const port = getSavedDaemonPort();
     if (pid === null || !isProcessAlive(pid)) {
       clearDaemonPid();
       clearDaemonPort();
+      if (port !== null) {
+        this.reclaimPort(port);
+      }
       console.log("dev-workflow UI is not running.");
       return;
     }
@@ -155,6 +160,9 @@ export class UIService {
       process.kill(pid, "SIGTERM");
     } catch {
       // already exited
+    }
+    if (port !== null) {
+      this.reclaimPort(port);
     }
     clearDaemonPid();
     clearDaemonPort();
@@ -189,5 +197,39 @@ export class UIService {
       await new Promise((r) => setTimeout(r, 250));
     }
     return false;
+  }
+
+  /** Kill any process holding the given TCP port via lsof + SIGKILL. */
+  private reclaimPort(port: number): void {
+    try {
+      const pids = execSync(`lsof -ti tcp:${port}`, { encoding: "utf-8" })
+        .trim()
+        .split("\n")
+        .filter(Boolean);
+      for (const pid of pids) {
+        try {
+          process.kill(parseInt(pid, 10), "SIGKILL");
+        } catch {
+          // already gone
+        }
+      }
+    } catch {
+      // lsof exits non-zero when nothing is on the port — that's fine
+    }
+  }
+
+  /** Restart the daemon if one is running — stop, wait for port to free, then start. */
+  async restart(): Promise<void> {
+    if (!this.runningDaemon()) {
+      return;
+    }
+    await this.stop();
+    const port = process.env["PORT"] ? parseInt(process.env["PORT"], 10) : await getDaemonPort();
+    // Wait until the port is actually free before re-spawning
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline && (await isPortInUse(port))) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    await this.start();
   }
 }

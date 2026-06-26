@@ -240,9 +240,11 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
       }
     ).scoped(),
 
-    updateCommand: asFunction(({ updateService }: { updateService: UpdateService }) => {
-      return new UpdateCommand(updateService);
-    }).scoped(),
+    updateCommand: asFunction(
+      ({ updateService, uiService }: { updateService: UpdateService; uiService: UIService }) => {
+        return new UpdateCommand(updateService, uiService);
+      }
+    ).scoped(),
 
     uiCommand: asFunction(({ uiService }: { uiService: UIService }) => {
       return new UICommand(uiService);
