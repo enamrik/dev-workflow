@@ -13,6 +13,12 @@ export default defineConfig({
   // better-sqlite3 which can't be bundled and is vendored per-platform in the artifact.
   noExternal: [/.*/],
   external: ["better-sqlite3"],
+  // Stamp the release version into the bundle. CI sets DWF_VERSION (from semantic-release's
+  // computed next version) before building; dev builds fall back to a dev marker. main.ts
+  // reads __DWF_VERSION__ for `dev-workflow --version`.
+  define: {
+    __DWF_VERSION__: JSON.stringify(process.env["DWF_VERSION"] ?? "0.0.0-dev"),
+  },
   // Bundled CJS deps (commander, etc.) do dynamic require() of Node builtins; esbuild's
   // ESM shim falls through to a real `require` if one is in scope. Provide it.
   banner: {

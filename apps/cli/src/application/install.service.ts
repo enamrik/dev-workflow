@@ -1,6 +1,6 @@
 import { Effect } from "@dev-workflow/effect";
 import * as path from "node:path";
-import { execSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { FileSystem } from "../infrastructure/file-system.js";
 import {
   DbSourceProvider,
@@ -12,6 +12,8 @@ import {
 import { TrackDirectoryResolver } from "@dev-workflow/git/track-directory-resolver.js";
 import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
 import { resolveCliEntry } from "../infrastructure/cli-entry.js";
+import { registerMcpServer, MCP_SERVER_NAME } from "../infrastructure/mcp-registration.js";
+import { ClaudeConfigService } from "./claude-config.service.js";
 import { installSkillsGlobally } from "../infrastructure/skills-installer.js";
 
 export class InstallError extends Error {
@@ -159,66 +161,16 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
 
   async registerMCPServer(): Promise<void> {
     try {
-      // Project must be registered first (to validate it exists)
+      // Project must be registered first (to validate it exists).
       this.getProject();
 
-      const slug = this.resolver.getProjectId();
-      const cliPath = resolveCliEntry(this.packageRoot);
+      // Migrate off the old per-project model: clear stale local-scope registrations across
+      // ALL projects so the single global (--scope user) server is the only one that loads.
+      await new ClaudeConfigService().removeMcpServerFromAllProjects(MCP_SERVER_NAME);
 
-      // Remove existing registration if it exists (from both scopes for migration)
-      try {
-        execSync("claude mcp remove dev-workflow-tracker --scope project", {
-          cwd: this.workingDirectory,
-          stdio: "ignore",
-          timeout: 30000,
-        });
-      } catch {
-        // Ignore if doesn't exist
-      }
-      try {
-        execSync("claude mcp remove dev-workflow-tracker --scope local", {
-          cwd: this.workingDirectory,
-          stdio: "ignore",
-          timeout: 30000,
-        });
-      } catch {
-        // Ignore if doesn't exist
-      }
-
-      // Build the command args for local scope only
-      // Local scope stores config in ~/.claude.json, not in the project's .mcp.json
-      // This allows dev-workflow to work in projects where .mcp.json is committed
-      // All options must come BEFORE the server name
-      // Use --env=KEY=value format (equals sign) to avoid variadic arg parsing issues
-      const gitRoot = this.resolver.getGitRoot();
-      const args = [
-        "mcp",
-        "add",
-        "--scope",
-        "local",
-        "--transport",
-        "stdio",
-        `--env=PROJECT_SLUG=${slug}`,
-        `--env=GIT_ROOT=${gitRoot}`,
-      ];
-
-      // Pass TRACK_DIR for E2E test isolation - allows MCP server to use
-      // a temporary database instead of the global one
-      const trackDir = process.env["TRACK_DIR"];
-      if (trackDir) {
-        args.push(`--env=TRACK_DIR=${trackDir}`);
-      }
-
-      args.push("dev-workflow-tracker", "--", "node", cliPath, "mcp");
-
-      // Register with local scope only (stored in ~/.claude.json)
-      // Use spawnSync with array args to preserve argument boundaries
-      // (execSync with joined string causes --env to be parsed incorrectly)
-      spawnSync("claude", args, {
-        cwd: this.workingDirectory,
-        stdio: "inherit",
-        timeout: 30000,
-      });
+      // One global (--scope user) registration. The server resolves which project it's in
+      // from its working directory at startup, so no per-project slug/gitRoot is baked in.
+      registerMcpServer(resolveCliEntry(this.packageRoot), this.workingDirectory);
     } catch {
       // Don't fail if claude CLI is not available
       console.warn("Warning: Could not register MCP server with claude CLI");

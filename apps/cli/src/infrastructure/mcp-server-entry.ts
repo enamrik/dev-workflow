@@ -15,7 +15,8 @@ export function resolveMcpServerEntry(): string {
   const sibling = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp-server.js");
   if (existsSync(sibling)) return sibling;
 
+  // Resolve the package's main export directly. (Resolving "/package.json" fails under Node's
+  // exports enforcement — the manifest isn't an exported subpath.)
   const require = createRequire(import.meta.url);
-  const manifest = require.resolve("@dev-workflow/mcp-server/package.json");
-  return path.join(path.dirname(manifest), "dist/main.js");
+  return require.resolve("@dev-workflow/mcp-server");
 }

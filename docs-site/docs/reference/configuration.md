@@ -221,15 +221,26 @@ update_settings({
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `TRACK_DIR` | Track directory location | `~/.track` or `.track` |
-| `DATABASE_PATH` | Database path | `{TRACK_DIR}/workflow.db` |
+| `DWF_HOME` | dev-workflow data root (DBs, project configs, worktrees) | `~/.track` |
+| `TRACK_DIR` | Legacy alias for `DWF_HOME` (still honored; `DWF_HOME` wins) | `~/.track` |
+| `DWF_PROJECT_SLUG` | Pin the MCP server to a specific project (overrides cwd resolution) | _(resolved from cwd)_ |
+| `CLAUDE_CONFIG_DIR` | Claude Code's config home — where skills are installed/read | `~/.claude` |
+| `DATABASE_PATH` | Database path | `{DWF_HOME}/workflow.db` |
 | `PORT` | Web UI port | `3000` |
+
+All overrides are optional. Setting `DWF_HOME` + `CLAUDE_CONFIG_DIR` together fully sandboxes
+an install into a throwaway directory (see `make e2e-sandbox`), touching neither your real
+`~/.track` nor `~/.claude`.
 
 ## Claude Settings
 
 ### MCP Server Registration
 
-The MCP server is registered in `~/.claude.json`:
+The MCP server is registered **once, globally** (`claude mcp add --scope user`) — a single
+entry in the top-level `mcpServers` of `~/.claude.json` that serves every project. The server
+figures out which project it's in from its working directory at startup (Claude Code launches
+it with the session's project directory as cwd), so no per-project slug is baked into the
+registration:
 
 ```json
 {
@@ -237,19 +248,19 @@ The MCP server is registered in `~/.claude.json`:
     "dev-workflow-tracker": {
       "type": "stdio",
       "command": "node",
-      "args": ["/path/to/dev-workflow/dist/main.js", "mcp"],
-      "env": {
-        "PROJECT_SLUG": "project-id",
-        "GIT_ROOT": "/path/to/project"
-      }
+      "args": ["/path/to/dev-workflow/cli.js", "mcp"]
     }
   }
 }
 ```
 
+`dev-workflow init` and `dev-workflow update` create/refresh this registration (and clean up
+any stale per-project registrations from older versions).
+
 ### Claude Skills
 
-Skills are installed to `.claude/skills/`:
+Skills are installed **globally** to `~/.claude/skills/` (honoring `CLAUDE_CONFIG_DIR`), so a
+single install applies them across every project:
 
 | Skill | Description |
 |-------|-------------|

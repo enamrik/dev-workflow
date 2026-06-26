@@ -13,6 +13,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 
 // Import DI container and types
 import { createMcpContainer, type McpContainer } from "./di/container.js";
+import { resolveConfigFromGit, ProjectConfigError } from "@dev-workflow/tracking";
 
 // Import tool definitions and registry
 import {
@@ -31,18 +32,35 @@ import { errorResponse } from "./tools/types.js";
 import { createToolsRegistry, type ToolsRegistry } from "./tools/tools-registry.js";
 
 // =============================================================================
-// Environment Variable Configuration
+// Project Resolution
 // =============================================================================
 //
-// Required environment variables (set by CLI when registering MCP server):
-// - PROJECT_SLUG: Project identifier (e.g., "dev-workflow-b9bccf")
-// - GIT_ROOT: Absolute path to the git repository root
+// The server is registered ONCE globally (`claude mcp add --scope user`). It figures out
+// which project it's serving from its working directory — Claude Code spawns one stdio server
+// per session with cwd = that session's project dir — so a single registration covers every
+// project.
 //
-// Optional:
-// - TRACK_DIR: Override global track directory (for testing)
+// An explicit slug env overrides cwd resolution (used by the E2E harness and any pinned
+// registration):
+// - DWF_PROJECT_SLUG (preferred) / PROJECT_SLUG (legacy alias)
+//
+// Other env:
+// - DWF_HOME / TRACK_DIR: override dev-workflow's data root (for sandboxed/isolated runs)
 // =============================================================================
 
-const PROJECT_SLUG = process.env["PROJECT_SLUG"];
+/**
+ * Resolve the project slug: an explicit env var wins, otherwise resolve from the working
+ * directory's git root (the `.git`-stored slug). Throws ProjectConfigError if cwd isn't a
+ * registered dev-workflow project.
+ */
+async function resolveProjectSlug(): Promise<string> {
+  const explicit = process.env["DWF_PROJECT_SLUG"] ?? process.env["PROJECT_SLUG"];
+  if (explicit) {
+    return explicit;
+  }
+  const config = await resolveConfigFromGit(process.cwd());
+  return config.slug;
+}
 
 // Awilix container and tools registry (initialized in main)
 let container: McpContainer;
@@ -94,23 +112,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
  * Initialize all services and start the server
  */
 async function main() {
-  // Validate PROJECT_SLUG
-  if (!PROJECT_SLUG) {
-    console.error("Error: PROJECT_SLUG environment variable is required.");
-    console.error("Run 'dev-workflow init' to set up the project correctly.");
+  // Resolve which project this server is serving (cwd-based unless pinned via env).
+  let slug: string;
+  try {
+    slug = await resolveProjectSlug();
+  } catch (error) {
+    const code = error instanceof ProjectConfigError ? error.code : undefined;
+    if (code === "NOT_GIT_REPO") {
+      console.error(`Error: not a git repository (${process.cwd()}).`);
+    } else if (code === "WORKTREE_DETECTED") {
+      console.error(`Error: cannot serve from a git worktree (${process.cwd()}).`);
+    } else {
+      console.error(`Error: not a dev-workflow project (${process.cwd()}).`);
+    }
+    console.error(error instanceof Error ? error.message : String(error));
+    console.error("Run 'dev-workflow init' in your project's main repository to register it.");
     process.exit(1);
   }
 
-  console.error(`Loading config from slug: ${PROJECT_SLUG}`);
+  console.error(`Loading config from slug: ${slug}`);
 
   try {
     // Create Awilix container - this wires up all dependencies
-    container = await createMcpContainer(PROJECT_SLUG);
+    container = await createMcpContainer(slug);
 
     // Create tools registry - binds all handlers to container
     tools = createToolsRegistry(container);
   } catch (error) {
-    console.error(`Error: Failed to initialize for slug "${PROJECT_SLUG}"`);
+    console.error(`Error: Failed to initialize for slug "${slug}"`);
     console.error(error instanceof Error ? error.message : String(error));
     console.error("Run 'dev-workflow init' to create the config file.");
     process.exit(1);

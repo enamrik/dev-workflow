@@ -2,9 +2,17 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { FileSystem } from "./file-system.js";
 
-/** The global Claude Code skills directory (loaded across all projects). */
+/**
+ * The global Claude Code skills directory (loaded across all projects).
+ *
+ * Honors CLAUDE_CONFIG_DIR — Claude Code's own override for its config home (normally
+ * ~/.claude) — so we install skills exactly where Claude reads them, and so sandboxed test
+ * runs that relocate CLAUDE_CONFIG_DIR stay fully isolated from the real ~/.claude.
+ */
 export function globalSkillsDir(): string {
-  return path.join(os.homedir(), ".claude", "skills");
+  const configDir = process.env["CLAUDE_CONFIG_DIR"];
+  const base = configDir ? path.resolve(configDir) : path.join(os.homedir(), ".claude");
+  return path.join(base, "skills");
 }
 
 /**

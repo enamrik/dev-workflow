@@ -275,7 +275,9 @@ dev-workflow <command> --help
 
 | Variable | Description |
 |----------|-------------|
-| `TRACK_DIR` | Override track directory location |
+| `DWF_HOME` | Override the data root (`~/.track`); `TRACK_DIR` is a legacy alias |
+| `DWF_PROJECT_SLUG` | Pin the MCP server to a project instead of resolving from cwd |
+| `CLAUDE_CONFIG_DIR` | Override Claude's config home (where skills install) |
 | `DATABASE_PATH` | Override database path |
 | `PORT` | Port for web UI |
 

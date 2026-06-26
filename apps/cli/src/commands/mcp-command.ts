@@ -15,8 +15,9 @@ export class MCPCommand {
   execute(): void {
     const mcpServerPath = resolveMcpServerEntry();
 
-    // MCP server expects PROJECT_SLUG to be passed via environment
-    // (set by Claude's MCP integration from the registered config)
+    // The server resolves which project it's serving from its working directory, which it
+    // inherits from this process (Claude Code launches `dev-workflow mcp` with cwd = the
+    // session's project dir). stdio is inherited so the JSON-RPC stream flows through.
     const mcpProcess = spawn("node", [mcpServerPath], {
       stdio: "inherit",
       env: process.env,

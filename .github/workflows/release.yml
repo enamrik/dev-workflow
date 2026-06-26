@@ -38,6 +38,23 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Compute next version (stamp into the bundle)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          # Dry-run semantic-release to learn the version it will publish, so the CLI bundle
+          # self-reports it (tsup reads DWF_VERSION). The real release runs later and computes
+          # the same version from the same commits.
+          OUT=$(npx semantic-release --dry-run 2>&1 || true)
+          VER=$(printf '%s\n' "$OUT" | grep -oiE 'next release version is [0-9]+\.[0-9]+\.[0-9]+' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          if [ -z "${VER:-}" ]; then
+            # No releasable commits this run — fall back to the latest tag for the stamp.
+            VER=$(git tag --sort=-v:refname | head -1 | sed 's/^v//')
+            VER=${VER:-0.0.0}
+          fi
+          echo "Stamping version: $VER"
+          echo "DWF_VERSION=$VER" >> "$GITHUB_ENV"
       - name: Build packages + static web export
         run: pnpm build
       - name: Bundle CLI + MCP server

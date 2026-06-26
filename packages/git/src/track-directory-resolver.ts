@@ -4,12 +4,14 @@ import * as os from "node:os";
 import { execSync } from "node:child_process";
 
 /**
- * Get the global track directory, respecting TRACK_DIR environment variable.
+ * Get the global track directory — dev-workflow's data root (databases, project configs,
+ * worktrees). Overridable for sandboxed/isolated runs via DWF_HOME (preferred) or the legacy
+ * TRACK_DIR alias.
  *
- * @returns TRACK_DIR if set, otherwise ~/.track/
+ * @returns DWF_HOME, else TRACK_DIR, else ~/.track/
  */
 export function resolveGlobalTrackDir(): string {
-  const trackDir = process.env["TRACK_DIR"];
+  const trackDir = process.env["DWF_HOME"] ?? process.env["TRACK_DIR"];
   if (trackDir) {
     return path.resolve(trackDir);
   }

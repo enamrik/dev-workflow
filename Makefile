@@ -131,6 +131,10 @@ test-npm-install:
 test-mcp:
 	@./scripts/test-mcp-server.sh
 
+e2e-sandbox: build
+	@echo "🧪 Sandbox smoke test: install + global MCP cwd-resolution in an isolated temp home..."
+	@node scripts/e2e-sandbox.mjs
+
 test-e2e: build
 	@echo "🧪 Running E2E tests (requires Claude CLI)..."
 	@cd packages/e2e && pnpm test:e2e
