@@ -14,6 +14,7 @@ import type { WorkerCommand } from "../commands/worker-command.js";
 import type { ClaudeConfigCommand } from "../commands/claude-config-command.js";
 import type { MCPCommand } from "../commands/mcp-command.js";
 import type { SetupCommand } from "../commands/setup-command.js";
+import type { UninstallCommand } from "../commands/uninstall-command.js";
 
 export class UninitCommandTag extends Service<UninitCommand>()("uninitCommand") {}
 export class InitCommandTag extends Service<InitCommand>()("initCommand") {}
@@ -23,3 +24,4 @@ export class WorkerCommandTag extends Service<WorkerCommand>()("workerCommand") 
 export class ClaudeConfigCommandTag extends Service<ClaudeConfigCommand>()("claudeConfigCommand") {}
 export class MCPCommandTag extends Service<MCPCommand>()("mcpCommand") {}
 export class SetupCommandTag extends Service<SetupCommand>()("setupCommand") {}
+export class UninstallCommandTag extends Service<UninstallCommand>()("uninstallCommand") {}
