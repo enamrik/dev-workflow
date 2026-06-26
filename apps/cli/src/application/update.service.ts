@@ -364,23 +364,6 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
   }
 
   /**
-   * Notify the user to restart the UI server if one is running.
-   *
-   * The UI now runs as an in-process foreground server (no PM2 daemon), so it
-   * cannot be restarted automatically. If a server is listening on the saved
-   * port, advise the user to restart it to pick up schema/code changes.
-   */
-  async restartUIDaemonIfRunning(): Promise<void> {
-    const { getSavedDaemonPort, isPortInUse } = await import("../infrastructure/port-manager.js");
-    const savedPort = getSavedDaemonPort();
-    if (savedPort && (await isPortInUse(savedPort))) {
-      console.log(
-        "ℹ️  A dev-workflow UI server is running. Restart it (Ctrl+C, then 'dfl ui') to pick up changes."
-      );
-    }
-  }
-
-  /**
    * Configure Claude Code permissions for worktree directories.
    *
    * Creates per-project .claude/settings.local.json with Read and Edit permissions

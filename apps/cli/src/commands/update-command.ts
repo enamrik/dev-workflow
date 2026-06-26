@@ -6,9 +6,13 @@
  */
 
 import { UpdateService } from "../application/update.service.js";
+import { UIService } from "../application/ui.service.js";
 
 export class UpdateCommand {
-  constructor(private readonly updateService: UpdateService) {}
+  constructor(
+    private readonly updateService: UpdateService,
+    private readonly uiService: UIService
+  ) {}
 
   /**
    * Update dev-workflow installation.
@@ -56,7 +60,7 @@ export class UpdateCommand {
         console.log("✓ Updated Claude permissions");
       }
 
-      await this.updateService.restartUIDaemonIfRunning();
+      await this.uiService.restart();
 
       console.log("\n✨ dev-workflow updated successfully!");
       console.log("\nChanges:");

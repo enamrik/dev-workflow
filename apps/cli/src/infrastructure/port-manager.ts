@@ -60,11 +60,10 @@ export async function findAvailablePort(): Promise<number> {
 }
 
 /**
- * Get preferred port for daemon, trying default first, then finding available
+ * Get the fixed port for the daemon. Always returns DEFAULT_PORT (override via PORT env).
  */
 export async function getDaemonPort(): Promise<number> {
-  // Try the default port first, fall back to random if busy
-  return await getPort({ port: [DEFAULT_PORT, 3457, 3458, 3459] });
+  return DEFAULT_PORT;
 }
 
 /**
