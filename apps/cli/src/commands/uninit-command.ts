@@ -22,11 +22,11 @@ export class UninitCommand {
     await this.uninstallService.unregisterMCPServer();
     console.log("✓ Unregistered MCP server");
 
-    console.log("\n✨ dev-workflow Claude integration removed!");
+    console.log("\n✨ dfl Claude integration removed!");
     console.log("\nPreserved:");
-    console.log("- Project data in ~/.track/ (issues, plans, tasks)");
+    console.log("- Project data in ~/.dfl/track (issues, plans, tasks)");
     console.log("- .claude/config/ (your Claude Code configuration)");
-    console.log("\nTo fully remove project data, use: dev-workflow nuke");
-    console.log("To archive (hide but preserve data), use: dev-workflow archive");
+    console.log("\nTo fully remove dfl (binary, install files, and data): dfl uninstall --purge");
+    console.log("To remove only the binary and install files: dfl uninstall");
   }
 }

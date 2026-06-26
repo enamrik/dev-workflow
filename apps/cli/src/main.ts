@@ -18,6 +18,7 @@ import { runWorkers, runClaudeWorker } from "./commands/worker-command-def.js";
 import { runMCP } from "./commands/mcp-command-def.js";
 import { runCleanClaudeConfig } from "./commands/claude-config-command-def.js";
 import { runSetup } from "./commands/setup-command-def.js";
+import { runUninstall } from "./commands/uninstall-command-def.js";
 
 // Injected at bundle time by tsup (define: __DFL_VERSION__). Undefined in dev/tsc builds —
 // the typeof guard avoids a ReferenceError there and falls back to a dev marker.
@@ -44,6 +45,14 @@ program
   .command("uninit")
   .description("Remove dev-workflow Claude integration (skills, MCP) - preserves project data")
   .action(runUninit);
+
+program
+  .command("uninstall")
+  .description("Fully uninstall dfl (removes install dir, launcher, skills, MCP registration)")
+  .option("--purge", "Also remove all data in ~/.dfl/track (issues, plans, tasks)")
+  .action(async (options: { purge?: boolean }) => {
+    await runUninstall(options);
+  });
 
 program.command("mcp").description("Start MCP server for Claude Code integration").action(runMCP);
 
