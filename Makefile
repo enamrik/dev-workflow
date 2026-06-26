@@ -98,27 +98,20 @@ init: link
 	@echo "  3. Start using dev-workflow to build dev-workflow!"
 	@echo "  4. Or run '$(DEV_WORKFLOW) ui' to open the web UI"
 
-dogfood: install
-	@echo "🧹 Clearing Next.js cache..."
-	@rm -rf apps/web/.next
-	@$(MAKE) build
-	@$(MAKE) link
+# Build the local code and publish it into the install.sh layout (~/.dfl/install), so the
+# global `dfl` command runs your working tree — no pnpm linking, no release. Data (~/.dfl/track)
+# is untouched. Requires `dfl` to have been installed once via curl (vendored better-sqlite3).
+dogfood: build
+	@echo "🔨 Bundling cli + mcp-server..."
+	@pnpm --filter @dev-workflow/cli exec tsup
+	@pnpm --filter @dev-workflow/mcp-server exec tsup
+	@echo "📦 Publishing local build into ~/.dfl/install..."
+	@node scripts/dogfood.mjs
+	@echo "🔄 Restarting UI daemon to pick up changes (if running)..."
+	@dfl ui:stop >/dev/null 2>&1 || true
+	@dfl ui >/dev/null 2>&1 || true
 	@echo ""
-	@echo "🚀 Initializing dev-workflow..."
-	@$(DEV_WORKFLOW) init
-	@echo "🔄 Updating dev-workflow installation..."
-	@$(DEV_WORKFLOW) update
-	@echo ""
-	@echo "🔄 Restarting MCP server (if running)..."
-	@-pkill -f "dev-workflow.*mcp" 2>/dev/null || true
-	@echo "✓ MCP server will restart automatically on next tool call"
-	@echo ""
-	@echo "🐕 Ready to dogfood! You can now use dfl anywhere on this machine."
-	@echo ""
-	@echo "Try these commands:"
-	@echo "  dfl --help      - See all available commands"
-	@echo "  dfl ui          - Start the web UI"
-	@echo "  cd /path/to/other/repo && dfl init  - Use in other repos"
+	@echo "🐕 Dogfood complete — the global 'dfl' now runs your local build."
 
 test:
 	@echo "🧪 Running tests..."
