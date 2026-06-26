@@ -43,3 +43,6 @@ data/
 # Vite temp files
 vite.config.ts.timestamp-*
 .worktrees/
+
+# Per-platform release artifacts (built by scripts/assemble-artifact.mjs)
+dist-artifacts/
