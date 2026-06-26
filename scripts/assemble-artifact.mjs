@@ -50,11 +50,17 @@ function requireExists(p, hint) {
   if (!fs.existsSync(p)) throw new Error(`Missing ${p} — ${hint}`);
 }
 
+// Node versions whose ABI we ship a better-sqlite3 binary for. The installer requires
+// Node >=20; this covers 20–25. Each maps to a NODE_MODULE_VERSION via node-abi, and the
+// binary is stored under build/Release-v<ABI>/ for openSqliteDatabase to select at runtime.
+const SUPPORTED_NODE_VERSIONS = ["20.0.0", "22.0.0", "23.0.0", "24.0.0", "25.0.0"];
+
 /**
- * Produce a better-sqlite3 package dir carrying the prebuilt binary for the target
- * platform/arch, by fetching the prebuild with prebuild-install. Works cross-platform
- * (e.g. fetch the darwin-x64 binary from a Linux runner) because the prebuilds are
- * N-API and downloaded, not compiled.
+ * Produce a better-sqlite3 package dir carrying prebuilt binaries for the target
+ * platform/arch across every supported Node ABI. better-sqlite3 ships per-Node-ABI
+ * prebuilds (not N-API), so one binary per ABI is fetched and laid out as
+ * build/Release-v<ABI>/better_sqlite3.node. Cross-platform: prebuilds are downloaded
+ * (from better-sqlite3's GitHub releases), not compiled, so this runs from one host.
  */
 function fetchBetterSqlite3(platform, arch) {
   const src = path.dirname(require.resolve("better-sqlite3/package.json"));
@@ -64,16 +70,35 @@ function fetchBetterSqlite3(platform, arch) {
   fs.rmSync(path.join(dest, "build"), { recursive: true, force: true });
   fs.rmSync(path.join(dest, "prebuilds"), { recursive: true, force: true });
 
-  // prebuild-install is better-sqlite3's own dependency, so resolve it from there.
-  const prebuildInstall = createRequire(path.join(src, "package.json")).resolve("prebuild-install/bin.js");
-  execFileSync("node", [prebuildInstall, `--platform=${platform}`, `--arch=${arch}`], {
-    cwd: dest,
-    stdio: "inherit",
-  });
-  requireExists(
-    path.join(dest, "build/Release/better_sqlite3.node"),
-    `no better-sqlite3 prebuild for ${platform}-${arch}`
-  );
+  // prebuild-install (and node-abi) are better-sqlite3's own dependencies.
+  const bsqRequire = createRequire(path.join(src, "package.json"));
+  const prebuildInstall = bsqRequire.resolve("prebuild-install/bin.js");
+  const { getAbi } = createRequire(prebuildInstall)("node-abi");
+
+  let fetched = 0;
+  for (const nodeVersion of SUPPORTED_NODE_VERSIONS) {
+    const abi = getAbi(nodeVersion, "node");
+    const built = path.join(dest, "build/Release/better_sqlite3.node");
+    fs.rmSync(path.join(dest, "build/Release"), { recursive: true, force: true });
+    try {
+      execFileSync(
+        "node",
+        [prebuildInstall, `--platform=${platform}`, `--arch=${arch}`, `--target=${nodeVersion}`],
+        { cwd: dest, stdio: "inherit" }
+      );
+      if (!fs.existsSync(built)) throw new Error("prebuild not downloaded");
+    } catch {
+      // Some platform/ABI combos have no published prebuild (e.g. older Node on newer
+      // arches); skip them. openSqliteDatabase falls back if a user hits a missing ABI.
+      console.warn(`  (skip ${platform}-${arch} node-v${abi}: no prebuild)`);
+      continue;
+    }
+    const abiDir = path.join(dest, "build", `Release-v${abi}`);
+    fs.mkdirSync(abiDir, { recursive: true });
+    fs.renameSync(built, path.join(abiDir, "better_sqlite3.node"));
+    fetched++;
+  }
+  if (fetched === 0) throw new Error(`no better-sqlite3 prebuilds available for ${platform}-${arch}`);
   return dest;
 }
 
