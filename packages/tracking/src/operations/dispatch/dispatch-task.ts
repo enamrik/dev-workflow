@@ -90,9 +90,10 @@ function getQueueEntryWithWorker(
  *
  * 1. Validate input
  * 2. Verify task exists and is in BACKLOG or READY status
- * 3. Check if already queued (return existing entry if so)
- * 4. Enqueue the task
- * 5. Return queue entry with worker info and summary
+ * 3. Return existing entry if already queued (idempotent)
+ * 4. Verify all dependencies are satisfied before new enqueue
+ * 5. Enqueue the task
+ * 6. Return queue entry with worker info and summary
  */
 export function dispatchTask(input: DispatchTaskInput) {
   return Effect.gen(function* () {
@@ -115,7 +116,7 @@ export function dispatchTask(input: DispatchTaskInput) {
       );
     }
 
-    // 3. Check if already queued
+    // 3. Check if already queued (idempotent — return existing entry before any further checks)
     const existing = getQueueEntryWithWorker(workerQueueDb, taskId);
     if (existing) {
       const workerSummary = workerQueueDb.getWorkerSummary(DEFAULT_HEARTBEAT_THRESHOLD_SECONDS);
@@ -131,10 +132,20 @@ export function dispatchTask(input: DispatchTaskInput) {
       } satisfies DispatchTaskResult;
     }
 
-    // 4. Enqueue
+    // 4. Verify all dependencies are satisfied before queuing a new entry
+    const depsOk = yield* taskDomainService.areDependenciesSatisfied(task);
+    if (!depsOk) {
+      return yield* Effect.fail(
+        new BusinessRuleError(
+          `Task cannot be dispatched: dependencies are not yet satisfied. Dispatch after all prerequisite tasks are COMPLETED or ABANDONED.`
+        )
+      );
+    }
+
+    // 5. Enqueue
     workerQueueDb.enqueue(taskId, projectSlug);
 
-    // 5. Build result with fresh queue entry info
+    // 6. Build result with fresh queue entry info
     const result = getQueueEntryWithWorker(workerQueueDb, taskId);
     if (!result) {
       return yield* Effect.fail(

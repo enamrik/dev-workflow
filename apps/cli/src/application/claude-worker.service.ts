@@ -20,6 +20,7 @@ import {
   DbSourceProvider,
   ProjectsResolver,
   PlanDomainService,
+  TaskDomainService,
   TypeDomainService,
   type DbSource,
   type Task,
@@ -61,8 +62,6 @@ export interface WorkerConfig {
   pollIntervalMs?: number;
   /** Stale heartbeat threshold in seconds (default: 10s) */
   staleThresholdSeconds?: number;
-  /** Automatically claim READY tasks when dependencies complete */
-  autoClaim?: boolean;
   /** Extra flags forwarded verbatim to every spawned `claude` invocation (before the prompt) */
   claudeArgs?: string[];
 }
@@ -137,7 +136,6 @@ export class ClaudeWorkerService {
       heartbeatIntervalMs: config.heartbeatIntervalMs ?? 5000,
       pollIntervalMs: config.pollIntervalMs ?? 2000,
       staleThresholdSeconds: config.staleThresholdSeconds ?? 10,
-      autoClaim: config.autoClaim ?? false,
       claudeArgs: config.claudeArgs ?? [],
     };
   }
@@ -270,9 +268,8 @@ export class ClaudeWorkerService {
 
     // Register worker with process ID (for killing stale workers)
     this.queue.registerWorker(this.state.workerId, this.state.workerName, process.pid);
-    const autoClaimSuffix = this.config.autoClaim ? " [auto-claim enabled]" : "";
     console.log(
-      `Worker registered: ${this.state.workerName} (${this.state.workerId.slice(0, 8)}...)${autoClaimSuffix}`
+      `Worker registered: ${this.state.workerName} (${this.state.workerId.slice(0, 8)}...)`
     );
 
     // Update terminal title
@@ -419,6 +416,20 @@ export class ClaudeWorkerService {
         term.green(`Claimed from queue: ${claim.taskId} (project: ${claim.projectSlug})`)
       );
 
+      // Enforce dependency readiness: skip tasks with unmet prerequisites.
+      // The task remains in the tracking DB and will be auto-claimed once its
+      // dependencies reach terminal state.
+      if (!(await this.isClaimedTaskAvailable(claim.taskId, claim.projectSlug))) {
+        console.log(
+          term.yellow(
+            `Skipping task ${claim.taskId}: dependencies not yet satisfied. ` +
+              `Removing from dispatch queue — will be auto-claimed when prerequisites complete.`
+          )
+        );
+        this.queue.remove(claim.taskId);
+        return;
+      }
+
       // Stop polling while working
       if (this.pollInterval) {
         clearInterval(this.pollInterval);
@@ -429,11 +440,30 @@ export class ClaudeWorkerService {
       return;
     }
 
-    // If auto-claim is enabled and queue is empty, look for READY tasks
-    if (this.config.autoClaim) {
-      // tryAutoClaimReadyTask handles everything: enqueue, claim, work
-      // Returns the task if claimed, null if nothing available
-      await this.tryAutoClaimReadyTask();
+    // Queue is empty — scan for READY tasks with satisfied dependencies
+    await this.tryAutoClaimReadyTask();
+  }
+
+  /**
+   * Check whether a queue-claimed task is actually ready to work on.
+   *
+   * A task is available when: its parent issue is open, its status is
+   * BACKLOG or READY, and all dependsOn prerequisites are terminal
+   * (COMPLETED or ABANDONED). Mirrors the check tryAutoClaimReadyTask uses.
+   */
+  private async isClaimedTaskAvailable(taskId: string, projectSlug: string): Promise<boolean> {
+    try {
+      const projectInfo = await Effect.runPromise(
+        this.projectsResolver.getProjectBySlug(projectSlug)
+      );
+      const source = this.sourceProvider.getOrCreate(projectInfo.sourceInfo);
+      const client = source.createClient(projectInfo.projectId);
+      const taskDomainService = new TaskDomainService(client.tasks, client.plans, client.issues);
+      return await Effect.runPromise(taskDomainService.isTaskAvailable(taskId));
+    } catch (error) {
+      // Fail safe: if availability cannot be determined, do not work the task
+      console.error(term.red(`Could not check availability for task ${taskId}: ${error}`));
+      return false;
     }
   }
 
