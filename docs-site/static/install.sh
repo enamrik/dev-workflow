@@ -69,6 +69,15 @@ EOF
 chmod +x "$BIN_DIR/dev-workflow"
 ok "Installed launcher at $BIN_DIR/dev-workflow"
 
+# Install skills globally so they apply across all projects (Claude Code loads
+# ~/.claude/skills everywhere). Updating the tool thus updates skills for every project.
+SKILLS_SRC="$INSTALL_DIR/dev-workflow/skills"
+if [ -d "$SKILLS_SRC" ]; then
+  mkdir -p "$HOME/.claude/skills"
+  cp -R "$SKILLS_SRC"/. "$HOME/.claude/skills/"
+  ok "Installed skills to ~/.claude/skills"
+fi
+
 if ! command -v dev-workflow >/dev/null 2>&1; then
   warn "$BIN_DIR is not on your PATH. Add it:"
   printf '  export PATH="%s:$PATH"\n' "$BIN_DIR"

@@ -17,6 +17,7 @@ import {
 } from "@dev-workflow/git/track-directory-resolver.js";
 import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
 import { resolveCliEntry } from "../infrastructure/cli-entry.js";
+import { installSkillsGlobally } from "../infrastructure/skills-installer.js";
 
 export class UpdateError extends Error {
   constructor(
@@ -206,11 +207,8 @@ export class UpdateService {
    */
   async updateSkills(): Promise<void> {
     try {
-      const skillsTarget = path.join(this.workingDirectory, ".claude/skills");
-      const skillsSource = path.join(this.packageRoot, "skills");
-
-      await this.fileSystem.mkdir(skillsTarget, { recursive: true });
-      await this.fileSystem.copyDirectory(skillsSource, skillsTarget);
+      // Skills are global (~/.claude/skills); refresh them and clear stale per-project copies.
+      await installSkillsGlobally(this.fileSystem, this.packageRoot, this.workingDirectory);
     } catch (error) {
       throw new UpdateError("Failed to update skills", error);
     }

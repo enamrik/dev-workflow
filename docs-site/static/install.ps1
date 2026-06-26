@@ -52,6 +52,16 @@ try {
   Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }
 
+# Install skills globally so they apply across all projects (Claude Code loads
+# ~/.claude/skills everywhere). Updating the tool thus updates skills for every project.
+$skillsSrc = Join-Path $InstallDir "dev-workflow\skills"
+if (Test-Path $skillsSrc) {
+  $skillsDest = Join-Path $HOME ".claude\skills"
+  New-Item -ItemType Directory -Force -Path $skillsDest | Out-Null
+  Copy-Item -Path (Join-Path $skillsSrc '*') -Destination $skillsDest -Recurse -Force
+  Ok "Installed skills to ~/.claude/skills"
+}
+
 # Add the bin dir to the user PATH (persisted) if not already present.
 $binDir = Join-Path $InstallDir "dev-workflow\bin"
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")

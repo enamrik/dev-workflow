@@ -12,6 +12,7 @@ import {
 import { TrackDirectoryResolver } from "@dev-workflow/git/track-directory-resolver.js";
 import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
 import { resolveCliEntry } from "../infrastructure/cli-entry.js";
+import { installSkillsGlobally } from "../infrastructure/skills-installer.js";
 
 export class InstallError extends Error {
   constructor(
@@ -148,13 +149,9 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
 
   async installSkills(): Promise<void> {
     try {
-      const skillsTarget = path.join(this.workingDirectory, ".claude/skills");
-      await this.fileSystem.mkdir(skillsTarget, { recursive: true });
-
-      // Copy skill folders directly (flat, no subfolder)
-      // Skills are prefixed with dwf- to avoid conflicts with other packages
-      const skillsSource = path.join(this.packageRoot, "skills");
-      await this.fileSystem.copyDirectory(skillsSource, skillsTarget);
+      // dev-workflow is global, so install dwf-* skills into ~/.claude/skills (applies to
+      // every project) and remove any stale per-project copies from older versions.
+      await installSkillsGlobally(this.fileSystem, this.packageRoot, this.workingDirectory);
     } catch (error) {
       throw new InstallError("Failed to install skills", error);
     }
