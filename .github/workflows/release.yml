@@ -85,7 +85,44 @@ jobs:
         with:
           path: dist-artifacts
           merge-multiple: true
-      - name: Semantic Release
+      - name: Record current release tag
+        id: pre
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "tag=$(gh release view --json tagName -q .tagName 2>/dev/null || echo none)" >> "$GITHUB_OUTPUT"
+      - name: Semantic Release (version + tag + notes; assets uploaded separately)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
+      # Upload assets with the gh CLI rather than @semantic-release/github: the latter
+      # intermittently corrupted the macOS asset on upload. gh upload is reliable, and we
+      # re-download every asset to verify integrity (gzip/zip + sha) before trusting it.
+      - name: Upload + verify release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          NEW=$(gh release view --json tagName -q .tagName)
+          if [ "$NEW" = "${{ steps.pre.outputs.tag }}" ]; then
+            echo "No new release was created this run; nothing to upload."
+            exit 0
+          fi
+          echo "Uploading assets to $NEW"
+          gh release upload "$NEW" dist-artifacts/dev-workflow-* --clobber
+          echo "Verifying uploaded assets..."
+          tmp=$(mktemp -d)
+          fail=0
+          for f in dist-artifacts/dev-workflow-*.tar.gz dist-artifacts/dev-workflow-*.zip; do
+            [ -e "$f" ] || continue
+            name=$(basename "$f")
+            rm -f "$tmp/$name" "$tmp/$name.sha256"
+            gh release download "$NEW" -p "$name" -p "$name.sha256" -D "$tmp"
+            case "$name" in
+              *.tar.gz) gzip -t "$tmp/$name" || { echo "CORRUPT gzip: $name"; fail=1; continue; } ;;
+              *.zip) unzip -tq "$tmp/$name" >/dev/null || { echo "CORRUPT zip: $name"; fail=1; continue; } ;;
+            esac
+            exp=$(awk '{print $1}' "$tmp/$name.sha256")
+            act=$(sha256sum "$tmp/$name" | awk '{print $1}')
+            if [ "$exp" != "$act" ]; then echo "SHA MISMATCH: $name"; fail=1; else echo "OK: $name"; fi
+          done
+          [ "$fail" -eq 0 ] || { echo "Release asset verification failed."; exit 1; }
