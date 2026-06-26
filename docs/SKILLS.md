@@ -13,24 +13,24 @@ You: "I want to add user authentication"
      ↓
 Claude recognizes this as a work request
      ↓
-dwf-work-request skill activates
+dfl-work-request skill activates
      ↓
-Routes to dwf-manage-issue for issue creation
+Routes to dfl-manage-issue for issue creation
      ↓
-Chains to dwf-plan-issue for planning
+Chains to dfl-plan-issue for planning
 ```
 
 ## Skill Overview
 
 | Skill                                         | Purpose                             | Typical Triggers                         |
 | --------------------------------------------- | ----------------------------------- | ---------------------------------------- |
-| [dwf-work-request](#dwf-work-request)         | Entry point for all new work        | "add X", "fix Y", "implement Z"          |
-| [dwf-manage-issue](#dwf-manage-issue)         | Issue lifecycle management          | "update issue #N", "merge issues"        |
-| [dwf-plan-issue](#dwf-plan-issue)             | Generate implementation plans       | "plan issue #N", "break down into tasks" |
-| [dwf-work-task](#dwf-work-task)               | Dispatch tasks to workers           | "start task #1", "work on task"          |
-| [dwf-worker-task](#dwf-worker-task)           | Execute tasks (create PR, complete) | Used by workers or inline execution      |
-| [dwf-configure-github](#dwf-configure-github) | GitHub integration setup            | "enable GitHub sync", "configure labels" |
-| [dwf-manage-milestone](#dwf-manage-milestone) | Milestone management                | "create milestone", "assign to M1"       |
+| [dfl-work-request](#dfl-work-request)         | Entry point for all new work        | "add X", "fix Y", "implement Z"          |
+| [dfl-manage-issue](#dfl-manage-issue)         | Issue lifecycle management          | "update issue #N", "merge issues"        |
+| [dfl-plan-issue](#dfl-plan-issue)             | Generate implementation plans       | "plan issue #N", "break down into tasks" |
+| [dfl-work-task](#dfl-work-task)               | Dispatch tasks to workers           | "start task #1", "work on task"          |
+| [dfl-worker-task](#dfl-worker-task)           | Execute tasks (create PR, complete) | Used by workers or inline execution      |
+| [dfl-configure-github](#dfl-configure-github) | GitHub integration setup            | "enable GitHub sync", "configure labels" |
+| [dfl-manage-milestone](#dfl-manage-milestone) | Milestone management                | "create milestone", "assign to M1"       |
 
 ## Skill Interaction Flow
 
@@ -38,34 +38,34 @@ Chains to dwf-plan-issue for planning
 User describes work
         ↓
 ┌─────────────────────┐
-│  dwf-work-request   │  ← Entry point for all new work
+│  dfl-work-request   │  ← Entry point for all new work
 └─────────┬───────────┘
           ↓
 ┌─────────────────────┐
-│  dwf-manage-issue   │  ← Creates/updates issues
+│  dfl-manage-issue   │  ← Creates/updates issues
 └─────────┬───────────┘
           ↓
 ┌─────────────────────┐
-│   dwf-plan-issue    │  ← Generates tasks
+│   dfl-plan-issue    │  ← Generates tasks
 └─────────┬───────────┘
           ↓
     User approves plan
           ↓
 ┌─────────────────────┐
-│    dwf-work-task    │  ← Dispatch decision
+│    dfl-work-task    │  ← Dispatch decision
 └────┬───────────┬────┘
      ↓           ↓
   Workers    No workers
   online      available
      ↓           ↓
   Dispatch   ┌─────────────────────┐
-  to queue   │  dwf-worker-task    │ ← Inline execution
+  to queue   │  dfl-worker-task    │ ← Inline execution
              └─────────────────────┘
 ```
 
 ---
 
-## dwf-work-request
+## dfl-work-request
 
 **Purpose:** Entry point for ALL new work, regardless of size.
 
@@ -85,7 +85,7 @@ Any request to build, fix, add, or create something:
 ### What It Does
 
 1. Recognizes the work request
-2. Routes to `dwf-manage-issue` for issue creation
+2. Routes to `dfl-manage-issue` for issue creation
 3. Passes along context (requirements, preferences)
 
 ### Key Decision Points
@@ -104,7 +104,7 @@ Skip issue creation only when:
 
 ---
 
-## dwf-manage-issue
+## dfl-manage-issue
 
 **Purpose:** Handles issue creation, updates, merges, and imports.
 
@@ -144,7 +144,7 @@ Skip issue creation only when:
 
 ---
 
-## dwf-plan-issue
+## dfl-plan-issue
 
 **Purpose:** Generates implementation plans with properly-scoped tasks.
 
@@ -152,7 +152,7 @@ Skip issue creation only when:
 
 - "plan issue #N", "create implementation plan"
 - "break down into tasks", "how should we implement this?"
-- Auto-chained from `dwf-manage-issue` after issue creation
+- Auto-chained from `dfl-manage-issue` after issue creation
 
 ### What It Does
 
@@ -201,7 +201,7 @@ Dependencies control execution order:
 
 ---
 
-## dwf-work-task
+## dfl-work-task
 
 **Purpose:** Dispatch decision when starting a task. Routes to workers or executes inline.
 
@@ -215,7 +215,7 @@ Dependencies control execution order:
 1. Identifies the task to work on
 2. Checks if workers are available
 3. **If workers online:** Dispatches to queue, STOPS
-4. **If no workers:** Invokes `dwf-worker-task` for inline execution
+4. **If no workers:** Invokes `dfl-worker-task` for inline execution
 
 ### Key Decision Points
 
@@ -233,13 +233,13 @@ These bypass worker dispatch:
 
 ---
 
-## dwf-worker-task
+## dfl-worker-task
 
 **Purpose:** Execute tasks - load, implement, create PR, and complete.
 
 ### When It Activates
 
-- Invoked by `dwf-work-task` for inline execution
+- Invoked by `dfl-work-task` for inline execution
 - Used directly by background workers
 
 ### What It Does
@@ -272,7 +272,7 @@ See [Task Execution Guide](TASK_EXECUTION.md) for the complete lifecycle and PR 
 
 ---
 
-## dwf-configure-github
+## dfl-configure-github
 
 **Purpose:** Configure GitHub integration for issue syncing.
 
@@ -311,7 +311,7 @@ See [GitHub Integration Guide](GITHUB_INTEGRATION.md) for detailed configuration
 
 ---
 
-## dwf-manage-milestone
+## dfl-manage-milestone
 
 **Purpose:** Manage time-bounded goals that group related issues.
 
@@ -358,9 +358,9 @@ Don't try to invoke skills directly - describe what you want:
 
 | Instead of              | Say                                    |
 | ----------------------- | -------------------------------------- |
-| "Run dwf-manage-issue"  | "Create an issue for adding dark mode" |
-| "Invoke dwf-plan-issue" | "Break this down into tasks"           |
-| "Use dwf-work-task"     | "Start working on task 1"              |
+| "Run dfl-manage-issue"  | "Create an issue for adding dark mode" |
+| "Invoke dfl-plan-issue" | "Break this down into tasks"           |
+| "Use dfl-work-task"     | "Start working on task 1"              |
 
 ### Provide Context
 

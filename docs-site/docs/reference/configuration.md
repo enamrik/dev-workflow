@@ -16,7 +16,7 @@ Configure dev-workflow through templates, settings, and types.
 │   └── task/
 └── worktrees/                # Git worktrees for tasks
 
-~/.dwf/track/                 # Global track directory (override with DWF_HOME)
+~/.dfl/track/                 # Global track directory (override with DFL_HOME)
 ├── workflow.db               # Global database
 └── templates/                # Global templates
     ├── issue/
@@ -24,7 +24,7 @@ Configure dev-workflow through templates, settings, and types.
 
 .claude/                      # Claude Code configuration
 ├── skills/                   # Claude skills
-│   └── dwf-*/
+│   └── dfl-*/
 └── settings.json             # Claude settings
 ```
 
@@ -63,7 +63,7 @@ Add any technical considerations here.
 | Scope  | Location                  | Priority |
 | ------ | ------------------------- | -------- |
 | Local  | `.track/templates/`       | Higher   |
-| Global | `~/.dwf/track/templates/` | Lower    |
+| Global | `~/.dfl/track/templates/` | Lower    |
 
 Local templates override global templates with the same filename.
 
@@ -222,15 +222,15 @@ update_settings({
 
 | Variable            | Description                                                         | Default                  |
 | ------------------- | ------------------------------------------------------------------- | ------------------------ |
-| `DWF_HOME`          | dwf data root (DBs, project configs, worktrees)                     | `~/.dwf/track`           |
-| `DWF_PROJECT_SLUG`  | Pin the MCP server to a specific project (overrides cwd resolution) | _(resolved from cwd)_    |
+| `DFL_HOME`          | dfl data root (DBs, project configs, worktrees)                     | `~/.dfl/track`           |
+| `DFL_PROJECT_SLUG`  | Pin the MCP server to a specific project (overrides cwd resolution) | _(resolved from cwd)_    |
 | `CLAUDE_CONFIG_DIR` | Claude Code's config home — where skills are installed/read         | `~/.claude`              |
-| `DATABASE_PATH`     | Database path                                                       | `{DWF_HOME}/workflow.db` |
+| `DATABASE_PATH`     | Database path                                                       | `{DFL_HOME}/workflow.db` |
 | `PORT`              | Web UI port                                                         | `3000`                   |
 
-All overrides are optional. Setting `DWF_HOME` + `CLAUDE_CONFIG_DIR` together fully sandboxes
+All overrides are optional. Setting `DFL_HOME` + `CLAUDE_CONFIG_DIR` together fully sandboxes
 an install into a throwaway directory (see `make e2e-sandbox`), touching neither your real
-`~/.dwf/track` nor `~/.claude`.
+`~/.dfl/track` nor `~/.claude`.
 
 ## Claude Settings
 
@@ -254,7 +254,7 @@ registration:
 }
 ```
 
-`dwf init` and `dwf update` create/refresh this registration.
+`dfl init` and `dfl update` create/refresh this registration.
 
 ### Claude Skills
 
@@ -263,13 +263,13 @@ single install applies them across every project:
 
 | Skill                  | Description                   |
 | ---------------------- | ----------------------------- |
-| `dwf-work-request`     | Entry point for new work      |
-| `dwf-manage-issue`     | Issue CRUD operations         |
-| `dwf-plan-issue`       | Generate implementation plans |
-| `dwf-work-task`        | Task execution lifecycle      |
-| `dwf-worker-task`      | Worker task execution         |
-| `dwf-configure-github` | GitHub integration setup      |
-| `dwf-manage-milestone` | Milestone management          |
+| `dfl-work-request`     | Entry point for new work      |
+| `dfl-manage-issue`     | Issue CRUD operations         |
+| `dfl-plan-issue`       | Generate implementation plans |
+| `dfl-work-task`        | Task execution lifecycle      |
+| `dfl-worker-task`      | Worker task execution         |
+| `dfl-configure-github` | GitHub integration setup      |
+| `dfl-manage-milestone` | Milestone management          |
 
 ## Best Practices
 

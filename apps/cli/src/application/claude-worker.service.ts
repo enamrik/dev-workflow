@@ -619,7 +619,7 @@ Spawn an **Adversarial Review agent** to:
 
 ## Task Lifecycle
 
-Use the dwf-worker-task skill to work through the lifecycle:
+Use the dfl-worker-task skill to work through the lifecycle:
 
 1. Load the task with load_task_session
    - **CRITICAL: You MUST pass workerId="${workerId}" to load_task_session**

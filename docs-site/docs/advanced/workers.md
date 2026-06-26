@@ -28,7 +28,7 @@ Background workers are Claude instances that automatically poll for and execute 
 ### Command
 
 ```bash
-dwf claude --name worker-1
+dfl claude --name worker-1
 ```
 
 ### Options
@@ -44,13 +44,13 @@ Run multiple workers for parallel execution:
 
 ```bash
 # Terminal 1
-dwf claude --name worker-1
+dfl claude --name worker-1
 
 # Terminal 2
-dwf claude --name worker-2
+dfl claude --name worker-2
 
 # Terminal 3
-dwf claude --name worker-3
+dfl claude --name worker-3
 ```
 
 ## Dispatching Tasks
@@ -68,7 +68,7 @@ dispatch_task({
 1. Task is added to dispatch queue
 2. Workers poll the queue
 3. First available worker claims the task
-4. Worker executes task via `dwf-worker-task` skill
+4. Worker executes task via `dfl-worker-task` skill
 5. Worker signals completion
 
 ## Worker Lifecycle
@@ -87,7 +87,7 @@ dispatch_task({
 1. Worker starts, registers in database
 2. Poll dispatch queue every few seconds
 3. Claim available task
-4. Spawn Claude session with dwf-worker-task
+4. Spawn Claude session with dfl-worker-task
 5. Wait for session completion
 6. Return to polling
 ```
@@ -140,7 +140,7 @@ end_worker_session({
 ### Check Status
 
 ```bash
-dwf workers
+dfl workers
 ```
 
 Or via MCP:
@@ -172,7 +172,7 @@ Stats:
 With `--auto-claim`, workers automatically claim READY tasks when dependencies complete:
 
 ```bash
-dwf claude --name worker-1 --auto-claim
+dfl claude --name worker-1 --auto-claim
 ```
 
 This enables fully autonomous task execution across dependency chains.
@@ -246,9 +246,9 @@ claude
 > "Dispatch task #5.3"
 
 # Terminal 2-4: Workers
-dwf claude --name worker-1 --auto-claim
-dwf claude --name worker-2 --auto-claim
-dwf claude --name worker-3 --auto-claim
+dfl claude --name worker-1 --auto-claim
+dfl claude --name worker-2 --auto-claim
+dfl claude --name worker-3 --auto-claim
 
 # Workers automatically:
 # - Pick up dispatched tasks
@@ -261,7 +261,7 @@ dwf claude --name worker-3 --auto-claim
 
 ### Worker Not Picking Up Tasks
 
-1. Check worker is running: `dwf workers`
+1. Check worker is running: `dfl workers`
 2. Check task is in queue: `get_dispatch_status()`
 3. Verify task status is READY or BACKLOG
 

@@ -202,7 +202,7 @@ TaskService → GitHubProjectManagementProvider → GitHub CLI → GitHub API
 Tasks execute in isolated worktrees:
 
 ```
-~/.dwf/track/{project}/worktrees/issue-{N}-task-{T}/
+~/.dfl/track/{project}/worktrees/issue-{N}-task-{T}/
   └── Complete git working directory
 ```
 

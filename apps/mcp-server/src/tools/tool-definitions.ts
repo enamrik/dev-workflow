@@ -95,7 +95,7 @@ import {
 export const issueToolDefinitions = [
   createToolDefinition(
     "create_issue",
-    "⚠️ Prefer 'dwf-manage-issue' skill for proper workflow. Creates a new issue in the task tracker.",
+    "⚠️ Prefer 'dfl-manage-issue' skill for proper workflow. Creates a new issue in the task tracker.",
     CreateIssueSchema
   ),
   createToolDefinition(
@@ -147,7 +147,7 @@ export const issueToolDefinitions = [
   ),
   createToolDefinition(
     "update_issue",
-    "⚠️ Prefer 'dwf-manage-issue' skill for proper workflow. Updates an issue. Optionally regenerate plan after update (you'll need to call generate_plan separately if needed).",
+    "⚠️ Prefer 'dfl-manage-issue' skill for proper workflow. Updates an issue. Optionally regenerate plan after update (you'll need to call generate_plan separately if needed).",
     UpdateIssueSchema
   ),
   createToolDefinition(
@@ -187,7 +187,7 @@ export const issueToolDefinitions = [
 export const planToolDefinitions = [
   createToolDefinition(
     "generate_plan",
-    "⚠️ Prefer 'dwf-plan-issue' skill for proper workflow. Generates or regenerates an implementation plan for an issue with tasks. Automatically preserves in-progress and completed tasks from previous plan when possible.",
+    "⚠️ Prefer 'dfl-plan-issue' skill for proper workflow. Generates or regenerates an implementation plan for an issue with tasks. Automatically preserves in-progress and completed tasks from previous plan when possible.",
     GeneratePlanSchema
   ),
   createToolDefinition("get_plan", "Get the active plan for an issue with tasks", GetPlanSchema),
@@ -215,14 +215,14 @@ export const planToolDefinitions = [
 export const taskToolDefinitions = [
   createToolDefinition(
     "load_task_session",
-    "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Load a task for execution. " +
+    "⚠️ Prefer 'dfl-work-task' skill for proper workflow. Load a task for execution. " +
       "Returns full context (task, issue, plan) and starts/resumes the session. " +
       "Idempotent: if task is already IN_PROGRESS, returns context without restarting.",
     LoadTaskSessionSchema
   ),
   createToolDefinition(
     "abandon_task",
-    "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Abandons the current task. Marks task as ABANDONED. " +
+    "⚠️ Prefer 'dfl-work-task' skill for proper workflow. Abandons the current task. Marks task as ABANDONED. " +
       "Use force=true to bypass session ownership validation when state has drifted.",
     AbandonTaskSchema
   ),
@@ -357,17 +357,17 @@ export const prToolDefinitions = [
   ),
   createToolDefinition(
     "create_pr",
-    "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Create a PR for a task. Pushes branch and creates PR with GitHub issue linking. Does NOT change task status (stays IN_PROGRESS). Use submit_for_review afterward to transition to PR_REVIEW. Task must be IN_PROGRESS with a worktree/branch. Use force=true to bypass status validation when task state has drifted. Claude MUST ask user permission before using force=true.",
+    "⚠️ Prefer 'dfl-work-task' skill for proper workflow. Create a PR for a task. Pushes branch and creates PR with GitHub issue linking. Does NOT change task status (stays IN_PROGRESS). Use submit_for_review afterward to transition to PR_REVIEW. Task must be IN_PROGRESS with a worktree/branch. Use force=true to bypass status validation when task state has drifted. Claude MUST ask user permission before using force=true.",
     CreatePRSchema
   ),
   createToolDefinition(
     "submit_for_review",
-    "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Submit a task for review. Transitions task status from IN_PROGRESS to PR_REVIEW and syncs to GitHub. Task must have a PR created via create_pr first. Use force=true to bypass validation when task state has drifted. Claude MUST ask user permission before using force=true.",
+    "⚠️ Prefer 'dfl-work-task' skill for proper workflow. Submit a task for review. Transitions task status from IN_PROGRESS to PR_REVIEW and syncs to GitHub. Task must have a PR created via create_pr first. Use force=true to bypass validation when task state has drifted. Claude MUST ask user permission before using force=true.",
     SubmitForReviewSchema
   ),
   createToolDefinition(
     "complete_task",
-    "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Complete a task after PR is merged. Atomically: verifies PR is merged, pulls main, cleans up worktree/branch, transitions status to COMPLETED. Task must be in PR_REVIEW status with a merged PR. Use force=true to bypass state validation when task state has drifted (e.g., PR already merged but task status is wrong).",
+    "⚠️ Prefer 'dfl-work-task' skill for proper workflow. Complete a task after PR is merged. Atomically: verifies PR is merged, pulls main, cleans up worktree/branch, transitions status to COMPLETED. Task must be in PR_REVIEW status with a merged PR. Use force=true to bypass state validation when task state has drifted (e.g., PR already merged but task status is wrong).",
     CompleteTaskSchema
   ),
 ];
@@ -418,7 +418,7 @@ export const typeToolDefinitions = [
 export const dispatchToolDefinitions = [
   createToolDefinition(
     "dispatch_task",
-    "⚠️ Prefer 'dwf-work-task' skill for proper workflow. Add a task to the dispatch queue for worker execution. Workers will poll and claim tasks from this queue. Idempotent - returns existing entry if task is already queued. Use this instead of load_task_session when you want a background worker to pick up the task.",
+    "⚠️ Prefer 'dfl-work-task' skill for proper workflow. Add a task to the dispatch queue for worker execution. Workers will poll and claim tasks from this queue. Idempotent - returns existing entry if task is already queued. Use this instead of load_task_session when you want a background worker to pick up the task.",
     DispatchTaskSchema
   ),
   createToolDefinition(

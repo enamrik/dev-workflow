@@ -15,7 +15,7 @@ export {
 const DEFAULT_PORT = 3456;
 
 // The UI daemon's PID, tracked so `ui:stop`/`ui:status` can find and signal it. Resolved
-// per-call so it honors DWF_HOME (the data root), not a hardcoded location.
+// per-call so it honors DFL_HOME (the data root), not a hardcoded location.
 function pidFile(): string {
   return path.join(resolveGlobalTrackDir(), "ui.pid");
 }

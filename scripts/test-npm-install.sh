@@ -60,7 +60,7 @@ else
 fi
 
 echo ""
-echo "🚀 Step 5: Testing dwf init..."
+echo "🚀 Step 5: Testing dfl init..."
 node node_modules/@dev-workflow/cli/dist/index.js init
 
 echo ""

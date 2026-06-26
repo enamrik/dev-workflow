@@ -16,7 +16,7 @@ The easiest way to create an issue is through natural conversation with Claude:
 > I need to add user authentication to the API
 ```
 
-Claude invokes the `dwf-work-request` skill and creates a structured issue with:
+Claude invokes the `dfl-work-request` skill and creates a structured issue with:
 - Appropriate type (FEATURE, BUG, etc.)
 - Priority level
 - Acceptance criteria

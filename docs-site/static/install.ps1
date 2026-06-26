@@ -5,10 +5,10 @@
 $ErrorActionPreference = "Stop"
 
 $Repo = "enamrik/dev-workflow"
-# ~/.dwf holds both the install (~/.dwf/install) and data (~/.dwf/track). Only the install
+# ~/.dfl holds both the install (~/.dfl/install) and data (~/.dfl/track). Only the install
 # subdir is replaced on (re)install; track/ is left untouched.
-$DwfDir = if ($env:DWF_INSTALL_DIR) { $env:DWF_INSTALL_DIR } else { Join-Path $HOME ".dwf" }
-$InstallDir = Join-Path $DwfDir "install"
+$DflDir = if ($env:DFL_INSTALL_DIR) { $env:DFL_INSTALL_DIR } else { Join-Path $HOME ".dfl" }
+$InstallDir = Join-Path $DflDir "install"
 
 function Info($m) { Write-Host $m -ForegroundColor Blue }
 function Ok($m)   { Write-Host "+ $m" -ForegroundColor Green }
@@ -30,7 +30,7 @@ $asset = "dev-workflow-$slug.zip"
 $url = "https://github.com/$Repo/releases/latest/download/$asset"
 Ok "Platform $slug"
 
-$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("dwf-" + [System.Guid]::NewGuid().ToString())
+$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("dfl-" + [System.Guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $tmp | Out-Null
 try {
   $zip = Join-Path $tmp $asset
@@ -48,11 +48,11 @@ try {
   } catch { }
 
   Info "Installing to $InstallDir..."
-  # Replace only the install dir; preserve sibling data in $DwfDir\track. The zip's single
-  # top-level dir is "install", so extracting into $DwfDir yields $DwfDir\install.
+  # Replace only the install dir; preserve sibling data in $DflDir\track. The zip's single
+  # top-level dir is "install", so extracting into $DflDir yields $DflDir\install.
   if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir }
-  New-Item -ItemType Directory -Force -Path $DwfDir | Out-Null
-  Expand-Archive -Path $zip -DestinationPath $DwfDir -Force
+  New-Item -ItemType Directory -Force -Path $DflDir | Out-Null
+  Expand-Archive -Path $zip -DestinationPath $DflDir -Force
 } finally {
   Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }
@@ -81,6 +81,6 @@ Write-Host "Installation complete!" -ForegroundColor Green
 Write-Host ""
 Write-Host "Next steps:"
 Write-Host "  1. cd into your git repository"
-Write-Host "  2. Run: dwf init"
+Write-Host "  2. Run: dfl init"
 Write-Host ""
 Write-Host "Docs: https://enamrik.github.io/dev-workflow"

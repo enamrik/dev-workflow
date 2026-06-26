@@ -6,11 +6,11 @@
 set -eu
 
 REPO="enamrik/dev-workflow"
-# ~/.dwf holds both the install (~/.dwf/install) and data (~/.dwf/track). Only the install
+# ~/.dfl holds both the install (~/.dfl/install) and data (~/.dfl/track). Only the install
 # subdir is replaced on (re)install; track/ is left untouched.
-DWF_DIR="${DWF_INSTALL_DIR:-$HOME/.dwf}"
-INSTALL_DIR="$DWF_DIR/install"
-BIN_DIR="${DWF_BIN_DIR:-$HOME/.local/bin}"
+DFL_DIR="${DFL_INSTALL_DIR:-$HOME/.dfl}"
+INSTALL_DIR="$DFL_DIR/install"
+BIN_DIR="${DFL_BIN_DIR:-$HOME/.local/bin}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info() { printf "%b%s%b\n" "$BLUE" "$1" "$NC"; }
@@ -58,21 +58,21 @@ fi
 
 # Extract, replacing any prior install.
 info "Installing to ${INSTALL_DIR}..."
-# Replace only the install dir; preserve sibling data in $DWF_DIR/track. The archive's single
-# top-level dir is "install", so extracting into $DWF_DIR yields $DWF_DIR/install.
+# Replace only the install dir; preserve sibling data in $DFL_DIR/track. The archive's single
+# top-level dir is "install", so extracting into $DFL_DIR yields $DFL_DIR/install.
 rm -rf "$INSTALL_DIR"
-mkdir -p "$DWF_DIR"
-tar -xzf "$TMP/$ASSET" -C "$DWF_DIR"
+mkdir -p "$DFL_DIR"
+tar -xzf "$TMP/$ASSET" -C "$DFL_DIR"
 
 # Write a launcher with the absolute cli.js path. (A symlink to the bundled wrapper
 # would break: the wrapper derives its dir from $0, which is the symlink's location.)
 mkdir -p "$BIN_DIR"
-cat > "$BIN_DIR/dwf" <<EOF
+cat > "$BIN_DIR/dfl" <<EOF
 #!/bin/sh
 exec node "$INSTALL_DIR/cli.js" "\$@"
 EOF
-chmod +x "$BIN_DIR/dwf"
-ok "Installed launcher at $BIN_DIR/dwf"
+chmod +x "$BIN_DIR/dfl"
+ok "Installed launcher at $BIN_DIR/dfl"
 
 # Install skills globally so they apply across all projects (Claude Code loads
 # ~/.claude/skills everywhere). Updating the tool thus updates skills for every project.
@@ -83,7 +83,7 @@ if [ -d "$SKILLS_SRC" ]; then
   ok "Installed skills to ~/.claude/skills"
 fi
 
-if ! command -v dwf >/dev/null 2>&1; then
+if ! command -v dfl >/dev/null 2>&1; then
   warn "$BIN_DIR is not on your PATH. Add it:"
   printf '  export PATH="%s:$PATH"\n' "$BIN_DIR"
 fi
@@ -91,6 +91,6 @@ fi
 printf "\n%bInstallation complete!%b\n\n" "$GREEN" "$NC"
 echo "Next steps:"
 echo "  1. cd into your git repository"
-echo "  2. Run: dwf init"
+echo "  2. Run: dfl init"
 echo ""
 echo "Docs: https://enamrik.github.io/dev-workflow"

@@ -39,10 +39,10 @@ export class UninstallService {
       const exists = await this.fileSystem.exists(skillsBaseDir);
 
       if (exists) {
-        // Remove dwf-* prefixed skill folders
+        // Remove dfl-* prefixed skill folders
         const entries = await this.fileSystem.readdirWithFileTypes(skillsBaseDir);
         for (const entry of entries) {
-          if (entry.isDirectory() && entry.name.startsWith("dwf-")) {
+          if (entry.isDirectory() && entry.name.startsWith("dfl-")) {
             await this.fileSystem.rmdir(path.join(skillsBaseDir, entry.name), { recursive: true });
           }
         }

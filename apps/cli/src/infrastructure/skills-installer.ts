@@ -21,8 +21,8 @@ export function globalSkillsDir(): string {
  * reason to copy skills into each repo. Claude Code loads personal (~/.claude/skills) skills
  * across all projects.
  *
- * Also removes any stale per-project dwf-* skill copies (from older versions that installed
- * per-project) so the global copies are the single source of truth. Only dwf-* directories
+ * Also removes any stale per-project dfl-* skill copies (from older versions that installed
+ * per-project) so the global copies are the single source of truth. Only dfl-* directories
  * are touched; other project skills are left alone.
  */
 export async function installSkillsGlobally(
@@ -44,7 +44,7 @@ async function removeStaleProjectSkills(fileSystem: FileSystem, projectDir: stri
   const projectSkills = path.join(projectDir, ".claude", "skills");
   if (!(await fileSystem.exists(projectSkills))) return;
   for (const entry of await fileSystem.readdirWithFileTypes(projectSkills)) {
-    if (entry.isDirectory() && entry.name.startsWith("dwf-")) {
+    if (entry.isDirectory() && entry.name.startsWith("dfl-")) {
       await fileSystem.rmdir(path.join(projectSkills, entry.name), { recursive: true });
     }
   }

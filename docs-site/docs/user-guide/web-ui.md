@@ -9,18 +9,18 @@ dev-workflow includes a web-based UI for visualizing and managing your work acro
 ## Starting the UI
 
 ```bash
-dwf ui
+dfl ui
 ```
 
 Starts the web UI as a background daemon and returns to your prompt. It serves at
-http://127.0.0.1:3456 (the port is saved to `~/.dwf/track/ui-port`; logs go to `~/.dwf/track/ui.log`).
+http://127.0.0.1:3456 (the port is saved to `~/.dfl/track/ui-port`; logs go to `~/.dfl/track/ui.log`).
 
 ### Managing the daemon
 
 ```bash
-dwf ui:status    # is it running, and on which port
-dwf ui:stop      # stop the daemon
-dwf ui --foreground   # run attached (Ctrl+C to stop) — for debugging
+dfl ui:status    # is it running, and on which port
+dfl ui:stop      # stop the daemon
+dfl ui --foreground   # run attached (Ctrl+C to stop) — for debugging
 ```
 
 The daemon runs until you stop it or the machine reboots (there is no boot auto-start).
@@ -89,7 +89,7 @@ Access project settings from the UI:
 
 ## Best Practices
 
-1. **Keep the UI running** - `dwf ui` runs it as a background daemon; check `ui:status`
+1. **Keep the UI running** - `dfl ui` runs it as a background daemon; check `ui:status`
 
 2. **Use alongside CLI** - UI is read-heavy, Claude handles mutations
 
@@ -106,13 +106,13 @@ Access project settings from the UI:
 lsof -i :3000
 
 # Kill it or use different port
-PORT=3001 dwf ui
+PORT=3001 dfl ui
 ```
 
 ### No Projects Showing
 
-- Run `dwf init` in at least one project
-- Check `~/.dwf/track/workflow.db` exists
+- Run `dfl init` in at least one project
+- Check `~/.dfl/track/workflow.db` exists
 
 ### Stale Data
 

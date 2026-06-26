@@ -104,11 +104,11 @@ export class SetupCommand {
 
     if (hasErrors) {
       console.log("❌ Some required dependencies are missing.");
-      console.log("   Install them manually or run: dwf setup --fix");
+      console.log("   Install them manually or run: dfl setup --fix");
       process.exit(1);
     } else if (hasOptionalMissing) {
       console.log("⚠ Optional dependencies missing. Some features may be limited.");
-      console.log("  Run: dwf setup --fix to install them.");
+      console.log("  Run: dfl setup --fix to install them.");
     } else {
       console.log("✨ All dependencies are satisfied!");
     }

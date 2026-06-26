@@ -47,7 +47,7 @@ curl -fsSL https://enamrik.github.io/dev-workflow/install.sh | bash
 Then in your git repository:
 
 ```bash
-dwf init
+dfl init
 ```
 
 ## Quick Example

@@ -16,7 +16,7 @@ The easiest way to plan is through conversation:
 > Plan issue #2
 ```
 
-Claude invokes `dwf-plan-issue` and generates a structured plan.
+Claude invokes `dfl-plan-issue` and generates a structured plan.
 
 ### Using MCP Tools
 

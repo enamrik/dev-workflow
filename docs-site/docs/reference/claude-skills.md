@@ -10,15 +10,15 @@ Claude skills provide structured workflows for common operations. Skills are aut
 
 | Skill                  | Description                   | Trigger                           |
 | ---------------------- | ----------------------------- | --------------------------------- |
-| `dwf-work-request`     | Entry point for new work      | "Add X", "Fix Y", "Implement Z"   |
-| `dwf-manage-issue`     | Issue CRUD operations         | "Update issue #N", "Add criteria" |
-| `dwf-plan-issue`       | Generate implementation plans | "Plan issue #N", "Create tasks"   |
-| `dwf-work-task`        | Task execution lifecycle      | "Start task", "Work on task"      |
-| `dwf-worker-task`      | Worker task execution         | Auto-invoked by workers           |
-| `dwf-configure-github` | GitHub integration setup      | "Enable GitHub sync"              |
-| `dwf-manage-milestone` | Milestone management          | "Create milestone"                |
+| `dfl-work-request`     | Entry point for new work      | "Add X", "Fix Y", "Implement Z"   |
+| `dfl-manage-issue`     | Issue CRUD operations         | "Update issue #N", "Add criteria" |
+| `dfl-plan-issue`       | Generate implementation plans | "Plan issue #N", "Create tasks"   |
+| `dfl-work-task`        | Task execution lifecycle      | "Start task", "Work on task"      |
+| `dfl-worker-task`      | Worker task execution         | Auto-invoked by workers           |
+| `dfl-configure-github` | GitHub integration setup      | "Enable GitHub sync"              |
+| `dfl-manage-milestone` | Milestone management          | "Create milestone"                |
 
-## dwf-work-request
+## dfl-work-request
 
 **Entry point for ALL new work.** Routes requests to appropriate skill.
 
@@ -34,7 +34,7 @@ Claude skills provide structured workflows for common operations. Skills are aut
 
 1. Analyzes the request
 2. Determines if it's a new issue or update
-3. Routes to `dwf-manage-issue` for creation
+3. Routes to `dfl-manage-issue` for creation
 4. Applies appropriate template
 
 ### Example
@@ -52,7 +52,7 @@ Acceptance Criteria:
 - Existing users can link accounts
 ```
 
-## dwf-manage-issue
+## dfl-manage-issue
 
 Handles issue creation, updates, and management.
 
@@ -73,7 +73,7 @@ Handles issue creation, updates, and management.
 | Delete      | "Delete issue #N"        |
 | Change type | "Change #N to bug"       |
 
-## dwf-plan-issue
+## dfl-plan-issue
 
 Generates implementation plans with properly-scoped tasks.
 
@@ -113,7 +113,7 @@ Estimated complexity: MEDIUM
 Approve this plan?
 ```
 
-## dwf-work-task
+## dfl-work-task
 
 Manages the complete task execution lifecycle.
 
@@ -141,21 +141,21 @@ Claude:
 Starting task #5.1: Configure OAuth credentials
 
 Mode: isolated
-Worktree: ~/.dwf/track/project/worktrees/issue-5-task-1
+Worktree: ~/.dfl/track/project/worktrees/issue-5-task-1
 Branch: issue-5/task-1-configure-oauth
 
 Ready to implement. What would you like me to do first?
 ```
 
-## dwf-worker-task
+## dfl-worker-task
 
-Executes tasks for background workers. Same as `dwf-work-task` but:
+Executes tasks for background workers. Same as `dfl-work-task` but:
 
 - Requires worker ID
 - Must call `end_worker_session` when done
 - No interactive prompts
 
-## dwf-configure-github
+## dfl-configure-github
 
 Sets up GitHub integration.
 
@@ -172,7 +172,7 @@ Sets up GitHub integration.
 3. Configures sync settings
 4. Sets up column mapping
 
-## dwf-manage-milestone
+## dfl-manage-milestone
 
 Manages milestones for time-bounded planning.
 
@@ -199,8 +199,8 @@ Claude automatically invokes skills based on intent:
 
 ```
 User: "I need to add a health check endpoint"
-→ Claude invokes dwf-work-request
-→ Routes to dwf-manage-issue
+→ Claude invokes dfl-work-request
+→ Routes to dfl-manage-issue
 → Creates issue with FEATURE type
 ```
 
@@ -209,9 +209,9 @@ User: "I need to add a health check endpoint"
 Use slash commands to explicitly invoke:
 
 ```
-/dwf-work-request Add health check endpoint
-/dwf-plan-issue 5
-/dwf-work-task 5.1
+/dfl-work-request Add health check endpoint
+/dfl-plan-issue 5
+/dfl-work-task 5.1
 ```
 
 ## Skill Files
@@ -220,19 +220,19 @@ Skills are located in `.claude/skills/`:
 
 ```
 .claude/skills/
-├── dwf-work-request/
+├── dfl-work-request/
 │   └── SKILL.md
-├── dwf-manage-issue/
+├── dfl-manage-issue/
 │   └── SKILL.md
-├── dwf-plan-issue/
+├── dfl-plan-issue/
 │   └── SKILL.md
-├── dwf-work-task/
+├── dfl-work-task/
 │   └── SKILL.md
-├── dwf-worker-task/
+├── dfl-worker-task/
 │   └── SKILL.md
-├── dwf-configure-github/
+├── dfl-configure-github/
 │   └── SKILL.md
-└── dwf-manage-milestone/
+└── dfl-manage-milestone/
     └── SKILL.md
 ```
 
@@ -249,7 +249,7 @@ Skills are designed for natural interaction:
 "Start working on the first task"
 
 # Also works but less natural
-"/dwf-work-request fix login timeout"
+"/dfl-work-request fix login timeout"
 ```
 
 ### Let Skills Route
@@ -257,11 +257,11 @@ Skills are designed for natural interaction:
 Don't micromanage skill selection:
 
 ```
-# Good - let dwf-work-request route appropriately
+# Good - let dfl-work-request route appropriately
 "Add a new API endpoint for users"
 
-# Unnecessary - dwf-work-request will handle this
-"/dwf-manage-issue create issue for API endpoint"
+# Unnecessary - dfl-work-request will handle this
+"/dfl-manage-issue create issue for API endpoint"
 ```
 
 ### Approve Plans Before Working

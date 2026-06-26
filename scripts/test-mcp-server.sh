@@ -20,14 +20,14 @@ else
     exit 1
 fi
 
-# Step 2: Verify dwf command is available
+# Step 2: Verify dfl command is available
 echo ""
-echo "2️⃣  Checking dwf command..."
-if command -v dwf &> /dev/null; then
-    VERSION=$(dwf --version)
-    echo "   ✓ dwf available (version $VERSION)"
+echo "2️⃣  Checking dfl command..."
+if command -v dfl &> /dev/null; then
+    VERSION=$(dfl --version)
+    echo "   ✓ dfl available (version $VERSION)"
 else
-    echo "   ✗ dwf not found on PATH"
+    echo "   ✗ dfl not found on PATH"
     exit 1
 fi
 
@@ -40,7 +40,7 @@ export TEMPLATES_PATH="$PROJECT_DIR/.track/config/issues/templates/"
 # Start MCP server with stdin closed (will exit after printing startup message)
 # Capture both stdout and stderr
 MCP_OUTPUT=$(mktemp)
-(dwf mcp < /dev/null 2>&1 || true) > "$MCP_OUTPUT" &
+(dfl mcp < /dev/null 2>&1 || true) > "$MCP_OUTPUT" &
 MCP_PID=$!
 
 # Give it time to start and print messages

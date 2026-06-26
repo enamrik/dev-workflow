@@ -8,7 +8,7 @@ import * as path from "node:path";
  *   with the migrations at the sibling packages/database/dist/drizzle.
  * - bundled CLI (tsup): this module is inlined into the single cli.js, so import.meta.url
  *   points at the bundle; the migrations are shipped as `drizzle/` beside cli.js.
- * - DWF_MIGRATIONS_DIR env override (escape hatch).
+ * - DFL_MIGRATIONS_DIR env override (escape hatch).
  *
  * Migrations are data files (.sql + meta/_journal.json) that bundlers don't inline, so
  * they must travel as real files; this resolver finds them regardless of layout.
@@ -16,7 +16,7 @@ import * as path from "node:path";
 export function resolveMigrationsFolder(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    process.env["DWF_MIGRATIONS_DIR"],
+    process.env["DFL_MIGRATIONS_DIR"],
     path.join(here, "drizzle"),
     path.join(here, "..", "drizzle"),
   ].filter((c): c is string => typeof c === "string" && c.length > 0);

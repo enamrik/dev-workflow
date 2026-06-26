@@ -4,30 +4,30 @@ import * as os from "node:os";
 import { execSync } from "node:child_process";
 
 /**
- * Get the global track directory — dwf's data root (databases, project configs, worktrees).
- * Overridable for sandboxed/isolated runs via DWF_HOME.
+ * Get the global track directory — dfl's data root (databases, project configs, worktrees).
+ * Overridable for sandboxed/isolated runs via DFL_HOME.
  *
- * @returns DWF_HOME if set, otherwise ~/.dwf/track
+ * @returns DFL_HOME if set, otherwise ~/.dfl/track
  */
 export function resolveGlobalTrackDir(): string {
-  const override = process.env["DWF_HOME"];
+  const override = process.env["DFL_HOME"];
   if (override) {
     return path.resolve(override);
   }
-  return path.join(os.homedir(), ".dwf", "track");
+  return path.join(os.homedir(), ".dfl", "track");
 }
 
 /**
  * TrackDirectoryResolver resolves paths to dev-workflow data storage.
  *
  * Storage architecture:
- * - Single global database: ~/.dwf/track/workflow.db (all projects share one DB)
- * - Per-project data: ~/.dwf/track/projects/<project-id>/
- * - Per-project worktrees: ~/.dwf/track/projects/<project-id>/worktrees/
+ * - Single global database: ~/.dfl/track/workflow.db (all projects share one DB)
+ * - Per-project data: ~/.dfl/track/projects/<project-id>/
+ * - Per-project worktrees: ~/.dfl/track/projects/<project-id>/worktrees/
  * - Local templates: ./.track/templates/issues/ and ./.track/templates/tasks/
- * - Global fallback templates: ~/.dwf/track/templates/issues/ and ~/.dwf/track/templates/tasks/
+ * - Global fallback templates: ~/.dfl/track/templates/issues/ and ~/.dfl/track/templates/tasks/
  *
- * The base directory can be overridden by setting the DWF_HOME environment
+ * The base directory can be overridden by setting the DFL_HOME environment
  * variable. This is useful for testing in worktrees without affecting
  * production data.
  *
@@ -127,7 +127,7 @@ export class TrackDirectoryResolver {
 
   /**
    * Get the base track directory for this project.
-   * Returns: $DWF_HOME/projects/<project-id>/ or ~/.dwf/track/projects/<project-id>/
+   * Returns: $DFL_HOME/projects/<project-id>/ or ~/.dfl/track/projects/<project-id>/
    */
   getTrackDirectory(): string {
     return path.join(resolveGlobalTrackDir(), "projects", this.projectId);
@@ -135,7 +135,7 @@ export class TrackDirectoryResolver {
 
   /**
    * Get the projects directory (parent of all project directories).
-   * Returns: $DWF_HOME/projects/ or ~/.dwf/track/projects/
+   * Returns: $DFL_HOME/projects/ or ~/.dfl/track/projects/
    */
   getProjectsDirectory(): string {
     return path.join(resolveGlobalTrackDir(), "projects");
@@ -143,7 +143,7 @@ export class TrackDirectoryResolver {
 
   /**
    * Get the global track directory (parent of all projects).
-   * Returns: $DWF_HOME or ~/.dwf/track/
+   * Returns: $DFL_HOME or ~/.dfl/track/
    */
   getGlobalTrackDirectory(): string {
     return resolveGlobalTrackDir();
@@ -151,7 +151,7 @@ export class TrackDirectoryResolver {
 
   /**
    * Get the global database file path.
-   * Returns: ~/.dwf/track/workflow.db (single DB for all projects)
+   * Returns: ~/.dfl/track/workflow.db (single DB for all projects)
    */
   getDatabasePath(): string {
     return path.join(this.getGlobalTrackDirectory(), "workflow.db");
@@ -186,12 +186,12 @@ export class TrackDirectoryResolver {
   }
 
   // ============================================================
-  // Global ~/.dwf/track/ paths (fallback)
+  // Global ~/.dfl/track/ paths (fallback)
   // ============================================================
 
   /**
    * Get the global issue templates directory path (fallback).
-   * Returns: ~/.dwf/track/templates/issues/
+   * Returns: ~/.dfl/track/templates/issues/
    */
   getGlobalIssueTemplatesPath(): string {
     return path.join(this.getGlobalTrackDirectory(), "templates", "issues");
@@ -199,7 +199,7 @@ export class TrackDirectoryResolver {
 
   /**
    * Get the global task templates directory path (fallback).
-   * Returns: ~/.dwf/track/templates/tasks/
+   * Returns: ~/.dfl/track/templates/tasks/
    */
   getGlobalTaskTemplatesPath(): string {
     return path.join(this.getGlobalTrackDirectory(), "templates", "tasks");
@@ -207,7 +207,7 @@ export class TrackDirectoryResolver {
 
   /**
    * Get the old global config directory path (for migration).
-   * Returns: ~/.dwf/track/config/
+   * Returns: ~/.dfl/track/config/
    * @deprecated Use getGlobalIssueTemplatesPath() and getGlobalTaskTemplatesPath() instead
    */
   getOldGlobalConfigDirectory(): string {
@@ -238,7 +238,7 @@ export function createTrackDirectoryResolver(cwd: string = process.cwd()): Track
 
 /**
  * Get the projects directory path.
- * Returns: $DWF_HOME/projects/ or ~/.dwf/track/projects/
+ * Returns: $DFL_HOME/projects/ or ~/.dfl/track/projects/
  *
  * @returns Full path to the projects directory
  */
@@ -248,7 +248,7 @@ export function getProjectsDirectory(): string {
 
 /**
  * List all project IDs in the projects directory.
- * Scans $DWF_HOME/projects/ or ~/.dwf/track/projects/ for project directories.
+ * Scans $DFL_HOME/projects/ or ~/.dfl/track/projects/ for project directories.
  *
  * @returns Array of project IDs
  */
@@ -280,7 +280,7 @@ export function getTrackDirectoryForProject(projectId: string): string {
 
 /**
  * Get the global database path.
- * All projects share a single database at $DWF_HOME/workflow.db or ~/.dwf/track/workflow.db.
+ * All projects share a single database at $DFL_HOME/workflow.db or ~/.dfl/track/workflow.db.
  *
  * @returns Full path to the global database file
  */

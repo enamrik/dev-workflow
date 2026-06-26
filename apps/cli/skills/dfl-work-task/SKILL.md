@@ -1,5 +1,5 @@
 ---
-name: dwf-work-task
+name: dfl-work-task
 description: Start working on a task - automatically dispatches to workers if available, otherwise executes inline. Auto-invoked when user wants to "start task", "work on task", "begin task", "pick up task", etc. (project)
 allowed-tools: mcp:dev-workflow-tracker:dispatch_task, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_task, mcp:dev-workflow-tracker:move_issue_to_backlog
 ---
@@ -13,7 +13,7 @@ This skill handles the **dispatch decision** when a user wants to start working 
 1. Check for inline execution hints → if present, skip dispatch
 2. Try to dispatch the task to a worker
 3. If dispatch succeeds (workers online) → report success and STOP
-4. If no workers available → invoke `dwf-worker-task` skill for inline execution
+4. If no workers available → invoke `dfl-worker-task` skill for inline execution
 
 ## When to Invoke
 
@@ -27,8 +27,8 @@ This skill handles the **dispatch decision** when a user wants to start working 
 
 | ❌ Wrong                      | ✅ Right                                     |
 | ----------------------------- | -------------------------------------------- |
-| "Use /dwf-work-task to start" | "Would you like to start working on task 1?" |
-| "Invoke dwf-worker-task"      | "Starting task locally..."                   |
+| "Use /dfl-work-task to start" | "Would you like to start working on task 1?" |
+| "Invoke dfl-worker-task"      | "Starting task locally..."                   |
 
 ## Inline Execution Hints
 
@@ -45,7 +45,7 @@ Users can bypass worker dispatch by using keywords that indicate they want the t
 
 **Example:** "start task 1 inline" or "work on the task here" → skip dispatch, execute locally
 
-When you detect these hints, skip the dispatch attempt entirely and go straight to `dwf-worker-task`.
+When you detect these hints, skip the dispatch attempt entirely and go straight to `dfl-worker-task`.
 
 ## Process
 
@@ -80,7 +80,7 @@ Call `dispatch_task` with the task ID.
 **Once `dispatch_task` returns `success: true`, your job is COMPLETE.**
 
 - Do NOT continue to execute the task
-- Do NOT invoke `dwf-worker-task`
+- Do NOT invoke `dfl-worker-task`
 - Do NOT check on the task or wait for it
 - The task is now in the queue - a worker will handle it (or the user will run one later)
 
@@ -146,11 +146,11 @@ Only execute inline (Step 5) when:
 
 **A successful dispatch with zero online workers is NOT a reason to execute inline.** The task is queued and will be picked up when workers come online. Report the status and ask the user what they want to do.
 
-### Step 5: Execute Inline via dwf-worker-task
+### Step 5: Execute Inline via dfl-worker-task
 
 Execute inline when the user has explicitly requested it (either upfront or after dispatch).
 
-Use the Skill tool: `skill: "dwf-worker-task", args: "start task #N"`
+Use the Skill tool: `skill: "dfl-worker-task", args: "start task #N"`
 
 This passes control to the worker-task skill which handles:
 
@@ -162,8 +162,8 @@ This passes control to the worker-task skill which handles:
 ## Key Points
 
 - **This skill does NOT execute tasks** - it only decides where they run
-- **Workers get tasks via dispatch queue** - they use `dwf-worker-task` directly
-- **Inline execution uses `dwf-worker-task`** - no duplication of execution logic
+- **Workers get tasks via dispatch queue** - they use `dfl-worker-task` directly
+- **Inline execution uses `dfl-worker-task`** - no duplication of execution logic
 - **Dispatch is attempted first** - workers are preferred when available
 - **NEVER pass `workerId` to `load_task_session`** - only workers pass workerId (they receive it in their prompt). This skill runs for users, not workers.
 
@@ -197,7 +197,7 @@ Would you like to:
 ```
 Starting task locally...
 
-[Control passes to dwf-worker-task]
+[Control passes to dfl-worker-task]
 ```
 
 ### Task Already Being Worked On
@@ -217,11 +217,11 @@ What would you like to do next?
 ```
 Starting task locally (inline execution requested)...
 
-[Control passes to dwf-worker-task]
+[Control passes to dfl-worker-task]
 ```
 
 ## Notes
 
-- Workers use `dwf-worker-task` directly - they never go through this dispatch skill
+- Workers use `dfl-worker-task` directly - they never go through this dispatch skill
 - This separation makes it impossible for workers to accidentally re-dispatch
-- All execution logic lives in `dwf-worker-task` - this skill is just a router
+- All execution logic lives in `dfl-worker-task` - this skill is just a router

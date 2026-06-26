@@ -43,7 +43,7 @@ npm link -w packages/cli
 
 ```bash
 cd your-project
-dwf init
+dfl init
 ```
 
 This creates:
@@ -108,7 +108,7 @@ Once initialized, interact with dev-workflow through Claude Code:
 ```
 your-project/
 ├── .claude/
-│   ├── skills/dwf-*/         # Claude Code skills
+│   ├── skills/dfl-*/         # Claude Code skills
 │   └── config/mcp-servers.json
 └── .track/
     ├── config.json           # Project settings

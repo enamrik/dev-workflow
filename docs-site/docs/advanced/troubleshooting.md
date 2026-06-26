@@ -26,7 +26,7 @@ Solutions to common dev-workflow issues.
 2. Re-register:
 
    ```bash
-   dwf init
+   dfl init
    ```
 
 3. Restart Claude Code session
@@ -50,7 +50,7 @@ Solutions to common dev-workflow issues.
 
 **Symptoms:**
 
-- `dwf mcp` fails
+- `dfl mcp` fails
 - Error in Claude Code when using tools
 
 **Solutions:**
@@ -83,7 +83,7 @@ Solutions to common dev-workflow issues.
 **Solution:**
 
 ```bash
-dwf update
+dfl update
 ```
 
 ### Corrupt Database
@@ -97,10 +97,10 @@ dwf update
 
 ```bash
 # Backup current database
-cp ~/.dwf/track/workflow.db ~/.dwf/track/workflow.db.backup
+cp ~/.dfl/track/workflow.db ~/.dfl/track/workflow.db.backup
 
 # Try to recover
-sqlite3 ~/.dwf/track/workflow.db ".recover" | sqlite3 ~/.dwf/track/workflow.recovered.db
+sqlite3 ~/.dfl/track/workflow.db ".recover" | sqlite3 ~/.dfl/track/workflow.recovered.db
 
 # Or restore from backup if you have one
 ```
@@ -311,16 +311,16 @@ create_pr({ taskId: "..." });
 lsof -i :3000
 
 # Use different port
-PORT=3001 dwf ui
+PORT=3001 dfl ui
 ```
 
 ### No Projects Showing
 
 **Solutions:**
 
-1. Run `dwf init` in at least one project
-2. Check database exists: `ls ~/.dwf/track/workflow.db`
-3. Verify track directory: `echo $DWF_HOME`
+1. Run `dfl init` in at least one project
+2. Check database exists: `ls ~/.dfl/track/workflow.db`
+3. Verify track directory: `echo $DFL_HOME`
 
 ### Stale Data
 
@@ -335,7 +335,7 @@ PORT=3001 dwf ui
 
 **Check:**
 
-1. Worker is running: `dwf workers`
+1. Worker is running: `dfl workers`
 2. Tasks are in queue: `get_dispatch_status()`
 3. Tasks are READY status
 
@@ -364,7 +364,7 @@ PORT=3001 dwf ui
 1. Check database size
 2. Run VACUUM:
    ```bash
-   sqlite3 ~/.dwf/track/workflow.db "VACUUM;"
+   sqlite3 ~/.dfl/track/workflow.db "VACUUM;"
    ```
 3. Check for long-running queries
 
@@ -387,13 +387,13 @@ Collect before reporting issues:
 
 ```bash
 # Version
-dwf --version
+dfl --version
 
 # Node version
 node --version
 
 # Database status
-ls -la ~/.dwf/track/
+ls -la ~/.dfl/track/
 
 # MCP registration
 cat ~/.claude.json

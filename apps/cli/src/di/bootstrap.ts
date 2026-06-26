@@ -128,7 +128,7 @@ export function handleCliError(error: unknown): never {
       case "SLUG_NOT_FOUND":
       case "CONFIG_NOT_FOUND":
         console.error("❌ dev-workflow is not initialized for this repository.");
-        console.error("\nRun: dwf init");
+        console.error("\nRun: dfl init");
         break;
       case "WORKTREE_DETECTED":
         console.error("❌ Cannot run this command from a git worktree.");

@@ -156,7 +156,7 @@ describe("CLI Commands E2E", () => {
         // Run uninit to clean up
         runCli(["uninit"], {
           cwd: testDir,
-          env: { DWF_HOME: trackDir },
+          env: { DFL_HOME: trackDir },
           expectError: true, // May fail if already uninitialized
         });
       } catch {
@@ -182,7 +182,7 @@ describe("CLI Commands E2E", () => {
     it("initializes dev-workflow in a git repository", () => {
       const result = runCli(["init"], {
         cwd: testDir,
-        env: { DWF_HOME: trackDir },
+        env: { DFL_HOME: trackDir },
       });
 
       expect(result.exitCode).toBe(0);
@@ -215,7 +215,7 @@ describe("CLI Commands E2E", () => {
     it("is idempotent - running twice succeeds", () => {
       const result = runCli(["init"], {
         cwd: testDir,
-        env: { DWF_HOME: trackDir },
+        env: { DFL_HOME: trackDir },
       });
 
       // Should succeed even if already initialized
@@ -231,7 +231,7 @@ describe("CLI Commands E2E", () => {
     it("updates skills and runs migrations", () => {
       const result = runCli(["update"], {
         cwd: testDir,
-        env: { DWF_HOME: trackDir },
+        env: { DFL_HOME: trackDir },
       });
 
       expect(result.exitCode).toBe(0);
@@ -252,7 +252,7 @@ describe("CLI Commands E2E", () => {
     it("lists workers and dispatch queue", () => {
       const result = runCli(["workers"], {
         cwd: testDir,
-        env: { DWF_HOME: trackDir },
+        env: { DFL_HOME: trackDir },
       });
 
       expect(result.exitCode).toBe(0);
@@ -274,7 +274,7 @@ describe("CLI Commands E2E", () => {
     it("runs with --dry-run flag", () => {
       const result = runCli(["clean-claude-config", "--dry-run"], {
         cwd: testDir,
-        env: { DWF_HOME: trackDir },
+        env: { DFL_HOME: trackDir },
       });
 
       expect(result.exitCode).toBe(0);
@@ -283,7 +283,7 @@ describe("CLI Commands E2E", () => {
     it("runs without flags", () => {
       const result = runCli(["clean-claude-config"], {
         cwd: testDir,
-        env: { DWF_HOME: trackDir },
+        env: { DFL_HOME: trackDir },
       });
 
       expect(result.exitCode).toBe(0);
@@ -298,7 +298,7 @@ describe("CLI Commands E2E", () => {
     it("starts MCP server and responds to protocol", async () => {
       const proc = startCli(["mcp"], {
         cwd: testDir,
-        env: { DWF_HOME: trackDir },
+        env: { DFL_HOME: trackDir },
       });
 
       try {
@@ -336,7 +336,7 @@ describe("CLI Commands E2E", () => {
     it("starts web UI server", async () => {
       const proc = startCli(["ui"], {
         cwd: testDir,
-        env: { DWF_HOME: trackDir },
+        env: { DFL_HOME: trackDir },
       });
 
       try {
@@ -364,7 +364,7 @@ describe("CLI Commands E2E", () => {
     it("attempts PM2 service installation", () => {
       const result = runCli(["ui:install"], {
         cwd: testDir,
-        env: { DWF_HOME: trackDir },
+        env: { DFL_HOME: trackDir },
         expectError: true, // May fail if PM2 not installed
       });
 
@@ -386,7 +386,7 @@ describe("CLI Commands E2E", () => {
     it("attempts PM2 service removal", () => {
       const result = runCli(["ui:uninstall"], {
         cwd: testDir,
-        env: { DWF_HOME: trackDir },
+        env: { DFL_HOME: trackDir },
         expectError: true, // May fail if PM2 not installed or service not running
       });
 
@@ -403,7 +403,7 @@ describe("CLI Commands E2E", () => {
     it("starts worker and polls for tasks", async () => {
       const proc = startCli(["claude", "--name", "test-worker"], {
         cwd: testDir,
-        env: { DWF_HOME: trackDir },
+        env: { DFL_HOME: trackDir },
       });
 
       try {
@@ -424,7 +424,7 @@ describe("CLI Commands E2E", () => {
     it("accepts --auto-claim flag", async () => {
       const proc = startCli(["claude", "--name", "auto-worker", "--auto-claim"], {
         cwd: testDir,
-        env: { DWF_HOME: trackDir },
+        env: { DFL_HOME: trackDir },
       });
 
       try {
@@ -445,7 +445,7 @@ describe("CLI Commands E2E", () => {
     it("removes Claude integration while preserving data", () => {
       const result = runCli(["uninit"], {
         cwd: testDir,
-        env: { DWF_HOME: trackDir },
+        env: { DFL_HOME: trackDir },
       });
 
       expect(result.exitCode).toBe(0);
@@ -463,7 +463,7 @@ describe("CLI Commands E2E", () => {
     it("is idempotent - running twice succeeds", () => {
       const result = runCli(["uninit"], {
         cwd: testDir,
-        env: { DWF_HOME: trackDir },
+        env: { DFL_HOME: trackDir },
       });
 
       expect(result.exitCode).toBe(0);

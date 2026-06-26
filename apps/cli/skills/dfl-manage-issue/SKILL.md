@@ -1,6 +1,6 @@
 ---
-name: dwf-manage-issue
-description: "⚠️ For NEW work requests, use 'dwf-work-request' first - it routes here automatically. This skill handles the mechanics: requirements separation, template selection, priority/milestone assignment. Only invoke directly for EDITING existing issues: 'update issue #N', 'add acceptance criteria to #5', 'change priority of #3'. (project)"
+name: dfl-manage-issue
+description: "⚠️ For NEW work requests, use 'dfl-work-request' first - it routes here automatically. This skill handles the mechanics: requirements separation, template selection, priority/milestone assignment. Only invoke directly for EDITING existing issues: 'update issue #N', 'add acceptance criteria to #5', 'change priority of #3'. (project)"
 allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:close_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:import_github_issue, mcp:dev-workflow-tracker:merge_issues
 ---
 
@@ -18,7 +18,7 @@ This indicates the MCP server is connected to the wrong database. **Do NOT work 
 
 ## When to Invoke
 
-**This skill is typically invoked by `dwf-work-request`** when the user describes work to be done. It can also be invoked directly for:
+**This skill is typically invoked by `dfl-work-request`** when the user describes work to be done. It can also be invoked directly for:
 
 **Explicit create operations:**
 
@@ -49,9 +49,9 @@ This indicates the MCP server is connected to the wrong database. **Do NOT work 
 
 | ❌ Wrong                                      | ✅ Right                                     |
 | --------------------------------------------- | -------------------------------------------- |
-| "Use /dwf-plan-issue to create a plan"        | "Now creating the implementation plan..."    |
-| "Run dwf-work-task to start"                  | "Would you like to start working on task 1?" |
-| "The dwf-manage-issue skill will handle this" | "I'll update the issue with those changes."  |
+| "Use /dfl-plan-issue to create a plan"        | "Now creating the implementation plan..."    |
+| "Run dfl-work-task to start"                  | "Would you like to start working on task 1?" |
+| "The dfl-manage-issue skill will handle this" | "I'll update the issue with those changes."  |
 
 ### Key Transition Prompts
 
@@ -200,7 +200,7 @@ Import allows users to bring existing GitHub issues into dev-workflow for struct
    - Show the new issue number (#N)
    - Display the issue URL
    - Mention it was imported from GitHub issue #X
-   - Chain to `dwf-plan-issue` just like a new issue
+   - Chain to `dfl-plan-issue` just like a new issue
 
 4. **Planning and backlog (handled by other skills):**
    - Planning works normally - `generate_plan` creates tasks
@@ -337,14 +337,14 @@ User: "Create an issue to add user authentication for M2"
 
 ## After Success
 
-**MANDATORY:** After successfully creating or updating an issue, you MUST invoke the `dwf-plan-issue` skill to generate an implementation plan. Do NOT ask the user if they want a plan - just create it.
+**MANDATORY:** After successfully creating or updating an issue, you MUST invoke the `dfl-plan-issue` skill to generate an implementation plan. Do NOT ask the user if they want a plan - just create it.
 
-**Required action:** Call the Skill tool with `skill: "dwf-plan-issue"` and pass the issue number.
+**Required action:** Call the Skill tool with `skill: "dfl-plan-issue"` and pass the issue number.
 
 Example flow:
 
 1. Create issue → get issue #N
-2. Immediately invoke: `Skill(skill: "dwf-plan-issue", args: "#N")`
+2. Immediately invoke: `Skill(skill: "dfl-plan-issue", args: "#N")`
 3. The plan skill will generate tasks automatically
 
 This ensures every issue gets a plan with deployable task units. Never skip this step.
@@ -355,7 +355,7 @@ If MCP tool call fails:
 
 - Explain the error clearly
 - Suggest troubleshooting steps:
-  - Is dev-workflow initialized? (run `dwf init`)
+  - Is dev-workflow initialized? (run `dfl init`)
   - Is the MCP server running?
   - Check `~/.claude.json` mcpServers section
 - Offer to help diagnose the issue

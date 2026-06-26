@@ -29,12 +29,12 @@ echo "📁 Setting up local .track/ directory for isolated testing..."
 
 # Check prerequisites
 if [ ! -d "$HOME/.track" ]; then
-    echo "❌ Error: ~/.dwf/track does not exist. Run 'dwf init' first."
+    echo "❌ Error: ~/.dfl/track does not exist. Run 'dfl init' first."
     exit 1
 fi
 
 if [ ! -f "$HOME/.track/workflow.db" ]; then
-    echo "❌ Error: ~/.dwf/track/workflow.db does not exist. Run 'dwf init' first."
+    echo "❌ Error: ~/.dfl/track/workflow.db does not exist. Run 'dfl init' first."
     exit 1
 fi
 
@@ -58,7 +58,7 @@ if [ -f "$HOME/.track/workflow.db-shm" ]; then
 fi
 
 # Copy project config if it exists (exclude worktrees - they can be huge)
-# Project directories are now at ~/.dwf/track/projects/$PROJECT_ID/ (since PR #460)
+# Project directories are now at ~/.dfl/track/projects/$PROJECT_ID/ (since PR #460)
 if [ -d "$HOME/.track/projects/$PROJECT_ID" ]; then
     echo "   Copying project config..."
     mkdir -p ".track/projects/$PROJECT_ID"
@@ -70,18 +70,18 @@ if [ -d "$HOME/.track/projects/$PROJECT_ID" ]; then
         fi
     done
 else
-    echo "⚠️  Warning: No project config found at ~/.dwf/track/projects/$PROJECT_ID"
+    echo "⚠️  Warning: No project config found at ~/.dfl/track/projects/$PROJECT_ID"
 fi
 
 echo ""
 echo "✓ Local .track/ directory created!"
 echo ""
-echo "To use local data, set the DWF_HOME environment variable:"
+echo "To use local data, set the DFL_HOME environment variable:"
 echo ""
-echo "  export DWF_HOME=$(pwd)/.track"
+echo "  export DFL_HOME=$(pwd)/.track"
 echo ""
 echo "Examples:"
-echo "  DWF_HOME=.track dwf ui           # Start UI with local data"
-echo "  DWF_HOME=.track pnpm --filter @dev-workflow/web dev  # Dev mode"
+echo "  DFL_HOME=.track dfl ui           # Start UI with local data"
+echo "  DFL_HOME=.track pnpm --filter @dev-workflow/web dev  # Dev mode"
 echo ""
 echo "Or use 'make ui-dev-local' for convenience."

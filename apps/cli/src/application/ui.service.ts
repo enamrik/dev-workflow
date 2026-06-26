@@ -15,7 +15,10 @@ import {
   isPortInUse,
 } from "../infrastructure/port-manager.js";
 import { resolveCliEntry } from "../infrastructure/cli-entry.js";
-import { TrackDirectoryResolver } from "@dev-workflow/git/track-directory-resolver.js";
+import {
+  TrackDirectoryResolver,
+  resolveGlobalTrackDir,
+} from "@dev-workflow/git/track-directory-resolver.js";
 import { registerWebApiServices } from "../server/register-web-api-services.js";
 import { startApiServer, type ApiServerHandle } from "../server/http-server.js";
 
@@ -60,7 +63,7 @@ export class UIService {
     }
 
     const port = process.env["PORT"] ? parseInt(process.env["PORT"], 10) : await getDaemonPort();
-    const logPath = path.join(trackDir(), "ui.log");
+    const logPath = path.join(resolveGlobalTrackDir(), "ui.log");
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
     const logFd = fs.openSync(logPath, "a");
 
@@ -98,7 +101,7 @@ export class UIService {
 
     console.log(`✓ dev-workflow UI started at ${url}`);
     console.log(`  logs:  ${logPath}`);
-    console.log(`  stop:  dwf ui:stop`);
+    console.log(`  stop:  dfl ui:stop`);
   }
 
   /**
@@ -187,8 +190,4 @@ export class UIService {
     }
     return false;
   }
-}
-
-function trackDir(): string {
-  return path.join(process.env["HOME"] ?? process.env["USERPROFILE"] ?? ".", ".track");
 }

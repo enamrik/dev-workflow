@@ -34,10 +34,10 @@ rm -rf apps/web/.next apps/web/node_modules/.cache
 
 echo "🔥 Starting UI in dev mode with local data..."
 echo "   http://localhost:$PORT$QUERY"
-echo "   Using: DWF_HOME=$(pwd)/.track"
+echo "   Using: DFL_HOME=$(pwd)/.track"
 
 # Open browser when server is ready
 (cd apps/web && npx wait-on tcp:"$PORT" && open "http://localhost:$PORT$QUERY") &
 
 # Start the dev server
-DWF_HOME="$(pwd)/.track" PORT="$PORT" pnpm --filter @dev-workflow/web dev
+DFL_HOME="$(pwd)/.track" PORT="$PORT" pnpm --filter @dev-workflow/web dev

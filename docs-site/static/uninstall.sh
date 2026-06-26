@@ -1,13 +1,13 @@
 #!/bin/sh
-# dwf uninstaller (macOS / Linux)
-# Removes the dwf install, launcher, global skills, and MCP registration. Preserves your data
-# (~/.dwf/track) unless you pass --purge. Usage:
+# dfl uninstaller (macOS / Linux)
+# Removes the dfl install, launcher, global skills, and MCP registration. Preserves your data
+# (~/.dfl/track) unless you pass --purge. Usage:
 #   curl -fsSL https://enamrik.github.io/dev-workflow/uninstall.sh | sh
 #   curl -fsSL https://enamrik.github.io/dev-workflow/uninstall.sh | sh -s -- --purge
 set -eu
 
-DWF_DIR="${DWF_INSTALL_DIR:-$HOME/.dwf}"
-BIN_DIR="${DWF_BIN_DIR:-$HOME/.local/bin}"
+DFL_DIR="${DFL_INSTALL_DIR:-$HOME/.dfl}"
+BIN_DIR="${DFL_BIN_DIR:-$HOME/.local/bin}"
 
 PURGE=0
 for arg in "$@"; do
@@ -19,20 +19,20 @@ info() { printf "%b%s%b\n" "$BLUE" "$1" "$NC"; }
 ok() { printf "%b✓%b %s\n" "$GREEN" "$NC" "$1"; }
 warn() { printf "%b⚠%b %s\n" "$YELLOW" "$NC" "$1"; }
 
-info "Uninstalling dwf..."
+info "Uninstalling dfl..."
 
 # Launcher.
-rm -f "$BIN_DIR/dwf"
+rm -f "$BIN_DIR/dfl"
 ok "Removed launcher"
 
-# Install dir. Data lives in $DWF_DIR/track and is left intact.
-rm -rf "$DWF_DIR/install"
+# Install dir. Data lives in $DFL_DIR/track and is left intact.
+rm -rf "$DFL_DIR/install"
 ok "Removed install dir"
 
 # Global skills.
 if [ -d "$HOME/.claude/skills" ]; then
-  rm -rf "$HOME"/.claude/skills/dwf-*
-  ok "Removed dwf-* skills from ~/.claude/skills"
+  rm -rf "$HOME"/.claude/skills/dfl-*
+  ok "Removed dfl-* skills from ~/.claude/skills"
 fi
 
 # Global MCP registration (best-effort, all scopes).
@@ -44,11 +44,11 @@ if command -v claude >/dev/null 2>&1; then
 fi
 
 if [ "$PURGE" -eq 1 ]; then
-  rm -rf "$DWF_DIR/track"
-  rmdir "$DWF_DIR" 2>/dev/null || true
-  warn "Purged all data ($DWF_DIR/track)"
+  rm -rf "$DFL_DIR/track"
+  rmdir "$DFL_DIR" 2>/dev/null || true
+  warn "Purged all data ($DFL_DIR/track)"
 else
-  info "Data preserved at $DWF_DIR/track. Re-run with --purge to delete it."
+  info "Data preserved at $DFL_DIR/track. Re-run with --purge to delete it."
 fi
 
 printf "\n%bUninstall complete.%b\n" "$GREEN" "$NC"

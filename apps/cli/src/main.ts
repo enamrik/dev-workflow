@@ -19,14 +19,14 @@ import { runMCP } from "./commands/mcp-command-def.js";
 import { runCleanClaudeConfig } from "./commands/claude-config-command-def.js";
 import { runSetup } from "./commands/setup-command-def.js";
 
-// Injected at bundle time by tsup (define: __DWF_VERSION__). Undefined in dev/tsc builds —
+// Injected at bundle time by tsup (define: __DFL_VERSION__). Undefined in dev/tsc builds —
 // the typeof guard avoids a ReferenceError there and falls back to a dev marker.
-declare const __DWF_VERSION__: string;
-const VERSION = typeof __DWF_VERSION__ !== "undefined" ? __DWF_VERSION__ : "0.0.0-dev";
+declare const __DFL_VERSION__: string;
+const VERSION = typeof __DFL_VERSION__ !== "undefined" ? __DFL_VERSION__ : "0.0.0-dev";
 
 const program = new Command();
 
-program.name("dwf").description("AI-driven development workflow system").version(VERSION);
+program.name("dfl").description("AI-driven development workflow system").version(VERSION);
 
 program
   .command("init")

@@ -149,7 +149,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
 
   async installSkills(): Promise<void> {
     try {
-      // dev-workflow is global, so install dwf-* skills into ~/.claude/skills (applies to
+      // dev-workflow is global, so install dfl-* skills into ~/.claude/skills (applies to
       // every project) and remove any stale per-project copies from older versions.
       await installSkillsGlobally(this.fileSystem, this.packageRoot, this.workingDirectory);
     } catch (error) {
@@ -299,7 +299,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
       "Read(~/.track/**/worktrees/**)",
       "Edit(~/.track/**/worktrees/**)",
       // Skills
-      "Skill(dwf-*)",
+      "Skill(dfl-*)",
       // MCP tools
       "mcp__dev-workflow-tracker__*",
     ];

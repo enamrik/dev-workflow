@@ -4,7 +4,7 @@
   "description": "CLI for dev-workflow system",
   "type": "module",
   "bin": {
-    "dwf": "./dist/main.js"
+    "dfl": "./dist/main.js"
   },
   "scripts": {
     "build": "tsc",

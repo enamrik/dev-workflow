@@ -1,5 +1,5 @@
 ---
-name: dwf-configure-github
+name: dfl-configure-github
 description: Configure GitHub integration for issue syncing. Use this when user wants to enable/disable GitHub sync, set up GitHub Projects integration, or configure issue labels.
 allowed-tools: mcp:dev-workflow-tracker:update_settings
 ---
@@ -151,7 +151,7 @@ Before enabling GitHub sync, the following must be true:
 | "gh is not authenticated" | Run `gh auth login` first                                    |
 | "Repository not found"    | Check owner/repo spelling and access permissions             |
 | "Project not found"       | Verify Project ID in GitHub Project settings → ... → Copy ID |
-| "Config not found"        | Run `dwf init` first                                         |
+| "Config not found"        | Run `dfl init` first                                         |
 
 ## Finding GitHub Project ID
 

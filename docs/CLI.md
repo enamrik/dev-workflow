@@ -8,8 +8,8 @@ _Documentation coming soon - see [Issue #162](https://github.com/enamrik/dev-wor
 
 ## Commands
 
-- `dwf init` - Initialize project
-- `dwf mcp` - Start MCP server
-- `dwf ui` - Start Web UI server
-- `dwf worker` - Run as background worker
-- `dwf update` - Apply database migrations
+- `dfl init` - Initialize project
+- `dfl mcp` - Start MCP server
+- `dfl ui` - Start Web UI server
+- `dfl worker` - Run as background worker
+- `dfl update` - Apply database migrations

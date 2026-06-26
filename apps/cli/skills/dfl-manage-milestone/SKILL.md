@@ -1,5 +1,5 @@
 ---
-name: dwf-manage-milestone
+name: dfl-manage-milestone
 description: Manage milestones - time-bounded goals that group related issues. Use for creating, updating, and organizing issues into milestones for project planning.
 allowed-tools: mcp:dev-workflow-tracker:create_milestone, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:update_milestone, mcp:dev-workflow-tracker:delete_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone, mcp:dev-workflow-tracker:remove_issue_from_milestone, mcp:dev-workflow-tracker:search_issues
 ---
@@ -145,7 +145,7 @@ Always confirm dates with user before creating.
 
 ## Integration with Issue Management
 
-When creating issues with the dwf-manage-issue skill, if user mentions a milestone:
+When creating issues with the dfl-manage-issue skill, if user mentions a milestone:
 
 - Note the milestone reference
 - After issue creation, assign to the milestone

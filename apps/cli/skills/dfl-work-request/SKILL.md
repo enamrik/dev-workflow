@@ -1,6 +1,6 @@
 ---
-name: dwf-work-request
-description: "⚠️ ENTRY POINT for ALL new work, regardless of size. Invoke FIRST when user wants anything built, fixed, added, or created - even 'trivial' fixes. Triggers: 'add X', 'fix Y', 'implement Z', 'create issue', 'we need...', 'can you build...', 'make it...'. Do NOT use dwf-manage-issue directly for new work - use this router instead."
+name: dfl-work-request
+description: "⚠️ ENTRY POINT for ALL new work, regardless of size. Invoke FIRST when user wants anything built, fixed, added, or created - even 'trivial' fixes. Triggers: 'add X', 'fix Y', 'implement Z', 'create issue', 'we need...', 'can you build...', 'make it...'. Do NOT use dfl-manage-issue directly for new work - use this router instead."
 ---
 
 # Work Request Skill
@@ -88,7 +88,7 @@ When you detect a SPIKE request:
 When you recognize a work request:
 
 1. **Acknowledge the request** - Show you understand what they want
-2. **Invoke `dwf-manage-issue`** - This skill handles issue creation with proper requirements separation
+2. **Invoke `dfl-manage-issue`** - This skill handles issue creation with proper requirements separation
 3. **Do NOT start coding** - Implementation comes after the issue and plan exist
 
 ## Import Requests
@@ -104,7 +104,7 @@ When you recognize a work request:
 
 ### Routing
 
-Import requests route to `dwf-manage-issue` with import context. The manage-issue skill has an "Import Operations" section that handles:
+Import requests route to `dfl-manage-issue` with import context. The manage-issue skill has an "Import Operations" section that handles:
 
 1. Calling `import_github_issue` to create a linked dev-workflow issue
 2. Chaining to planning (just like create-new)
@@ -149,10 +149,10 @@ When in doubt, create the issue. It takes seconds and prevents lost work.
 
 ## How to Invoke manage-issue
 
-After this skill activates, immediately invoke the `dwf-manage-issue` skill:
+After this skill activates, immediately invoke the `dfl-manage-issue` skill:
 
 ```
-Skill(skill: "dwf-manage-issue")
+Skill(skill: "dfl-manage-issue")
 ```
 
 Pass along any context the user provided - requirements, preferences, constraints. The manage-issue skill will:
@@ -167,9 +167,9 @@ Pass along any context the user provided - requirements, preferences, constraint
 
 | ❌ Wrong                                   | ✅ Right                                     |
 | ------------------------------------------ | -------------------------------------------- |
-| "Use /dwf-manage-issue to create an issue" | "I'll create an issue to track this work."   |
-| "Run the dwf-plan-issue skill"             | "Now creating the implementation plan..."    |
-| "Invoke dwf-work-task to start"            | "Would you like to start working on task 1?" |
+| "Use /dfl-manage-issue to create an issue" | "I'll create an issue to track this work."   |
+| "Run the dfl-plan-issue skill"             | "Now creating the implementation plan..."    |
+| "Invoke dfl-work-task to start"            | "Would you like to start working on task 1?" |
 
 ### Example Acknowledgments
 
@@ -191,7 +191,7 @@ When acknowledging a work request, use natural language:
 I'll create an issue to track this work.
 ```
 
-Then invoke `dwf-manage-issue` internally - the user doesn't need to know about the skill.
+Then invoke `dfl-manage-issue` internally - the user doesn't need to know about the skill.
 
 ### Importing Existing GitHub Issue
 
@@ -203,4 +203,4 @@ Then invoke `dwf-manage-issue` internally - the user doesn't need to know about 
 I'll import GitHub issue #42 so we can plan and track the implementation.
 ```
 
-Then invoke `dwf-manage-issue` with import context.
+Then invoke `dfl-manage-issue` with import context.

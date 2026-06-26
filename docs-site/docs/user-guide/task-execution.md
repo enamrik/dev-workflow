@@ -14,7 +14,7 @@ Tasks execute in git worktrees for fully parallel work:
 main repo                  worktree
 ─────────                 ─────────────────────────────
 main branch  ────┐        issue-5/task-1-add-oauth
-                 │        └── ~/.dwf/track/project/worktrees/issue-5-task-1/
+                 │        └── ~/.dfl/track/project/worktrees/issue-5-task-1/
                  └────────    (separate working directory)
 ```
 
@@ -69,7 +69,7 @@ PLANNED → BACKLOG → READY → IN_PROGRESS → PR_REVIEW → COMPLETED
 > Start task #2.1
 ```
 
-Claude invokes `dwf-work-task` which handles the full workflow.
+Claude invokes `dfl-work-task` which handles the full workflow.
 
 ### Using MCP Tools
 

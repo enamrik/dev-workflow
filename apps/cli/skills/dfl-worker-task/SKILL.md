@@ -1,5 +1,5 @@
 ---
-name: dwf-worker-task
+name: dfl-worker-task
 description: Execute tasks - load, implement, create PR, and complete. Used by workers and for inline execution. Does NOT dispatch to workers. Auto-invoked for task execution after dispatch decision is made.
 allowed-tools: mcp:dev-workflow-tracker:load_task_session, mcp:dev-workflow-tracker:abandon_task, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:update_task, mcp:dev-workflow-tracker:create_pr, mcp:dev-workflow-tracker:submit_for_review, mcp:dev-workflow-tracker:complete_task, mcp:dev-workflow-tracker:get_task_pr_status, mcp:dev-workflow-tracker:pause_issue, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:log_task_progress, mcp:dev-workflow-tracker:get_task_execution_log, mcp:dev-workflow-tracker:end_worker_session
 ---
@@ -26,7 +26,7 @@ The worker process that spawned you is waiting for `end_worker_session()` to sig
 **IMPORTANT:** This skill does NOT dispatch tasks to workers. It is used:
 
 - By workers to execute tasks they claimed from the queue
-- By `dwf-work-task` for inline execution when no workers are available
+- By `dfl-work-task` for inline execution when no workers are available
 
 ## Critical Constraint: One Task at a Time Per Session
 

@@ -1,5 +1,5 @@
 ---
-name: dwf-plan-issue
+name: dfl-plan-issue
 description: Generate implementation plans with properly-scoped tasks. Auto-invoked when user wants to "plan issue", "create implementation plan", "break down into tasks", "plan #N", etc. (project)
 allowed-tools: mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:generate_plan, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:list_types, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:get_template
 ---
@@ -29,9 +29,9 @@ This indicates the MCP server is connected to the wrong database. **Do NOT work 
 
 | ❌ Wrong                         | ✅ Right                                       |
 | -------------------------------- | ---------------------------------------------- |
-| "Run /dwf-work-task to start"    | "Would you like to start working on task 1?"   |
-| "Use the dwf-manage-issue skill" | "I'll update the issue."                       |
-| "Invoke dwf-plan-issue again"    | "I'll regenerate the plan with those changes." |
+| "Run /dfl-work-task to start"    | "Would you like to start working on task 1?"   |
+| "Use the dfl-manage-issue skill" | "I'll update the issue."                       |
+| "Invoke dfl-plan-issue again"    | "I'll regenerate the plan with those changes." |
 
 ### Key Transition Prompts
 

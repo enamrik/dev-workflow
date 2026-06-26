@@ -148,9 +148,9 @@ yield* versioningService.createSnapshot(...);
 
 ## Skills
 
-Source: `apps/cli/skills/dwf-*/SKILL.md` (bundled into the artifact at `<install>/skills`).
-Installed location: **global** `~/.claude/skills/dwf-*/SKILL.md` — dev-workflow is a global
+Source: `apps/cli/skills/dfl-*/SKILL.md` (bundled into the artifact at `<install>/skills`).
+Installed location: **global** `~/.claude/skills/dfl-*/SKILL.md` — dev-workflow is a global
 tool, so skills install once for all projects (the installer + `init`/`update` write there,
-via `skills-installer.ts`; old per-project `.claude/skills/dwf-*` copies are removed).
+via `skills-installer.ts`; old per-project `.claude/skills/dfl-*` copies are removed).
 
 After modifying: review against `scripts/revise-skills.md`.

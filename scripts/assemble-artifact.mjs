@@ -15,7 +15,7 @@
  *
  * Run AFTER building the CLI/MCP bundles (tsup) and the web export (next build → out/).
  *
- * Usage: DWF_TARGET=<slug> node scripts/assemble-artifact.mjs   (default: current host)
+ * Usage: DFL_TARGET=<slug> node scripts/assemble-artifact.mjs   (default: current host)
  *   slugs: darwin-arm64 darwin-x64 linux-x64 linux-arm64 windows-x64 windows-arm64
  */
 
@@ -32,16 +32,16 @@ const require = createRequire(import.meta.url);
 
 // PKG_NAME names the published archive (kept stable: dev-workflow-<slug>.tar.gz). STAGE_NAME
 // is the archive's single top-level dir, which the installer extracts to $INSTALL_DIR — so the
-// install lands at ~/.dwf/install/. BIN_NAME is the command the user types. The project is
-// "dev-workflow"; the CLI is `dwf` (like ripgrep → rg).
+// install lands at ~/.dfl/install/. BIN_NAME is the command the user types. The project is
+// "dev-workflow"; the CLI is `dfl` (like ripgrep → rg).
 const PKG_NAME = "dev-workflow";
 const STAGE_NAME = "install";
-const BIN_NAME = "dwf";
+const BIN_NAME = "dfl";
 
 /** Resolve the target: slug → node platform/arch + archive format. */
 function resolveTarget() {
   const hostOs = process.platform === "win32" ? "windows" : process.platform;
-  const slug = process.env["DWF_TARGET"] || `${hostOs}-${process.arch}`;
+  const slug = process.env["DFL_TARGET"] || `${hostOs}-${process.arch}`;
   const [osName, arch] = slug.split("-");
   const platform = osName === "windows" ? "win32" : osName; // node's platform value
   if (!["darwin", "linux", "win32"].includes(platform) || !["x64", "arm64"].includes(arch)) {
@@ -70,7 +70,7 @@ const SUPPORTED_NODE_VERSIONS = ["20.0.0", "22.0.0", "23.0.0", "24.0.0", "25.0.0
  */
 function fetchBetterSqlite3(platform, arch) {
   const src = path.dirname(require.resolve("better-sqlite3/package.json"));
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dwf-bsq-"));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dfl-bsq-"));
   const dest = path.join(tmp, "better-sqlite3");
   copy(src, dest);
   fs.rmSync(path.join(dest, "build"), { recursive: true, force: true });
@@ -141,7 +141,7 @@ function main() {
   // Target's better-sqlite3 prebuild (the only platform-specific piece).
   copy(fetchBetterSqlite3(platform, arch), path.join(stage, "node_modules/better-sqlite3"));
 
-  // Bin wrappers named `dwf` (the command). On Windows the installer puts this bin/ dir on
+  // Bin wrappers named `dfl` (the command). On Windows the installer puts this bin/ dir on
   // PATH, so the wrapper name IS the command; on unix the installer writes its own absolute-
   // path launcher, but these let the artifact run in-place too.
   fs.writeFileSync(

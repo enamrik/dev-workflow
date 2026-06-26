@@ -48,13 +48,13 @@ pnpm link --global
 After installing, verify all dependencies are set up correctly:
 
 ```bash
-dwf setup
+dfl setup
 ```
 
 This checks Node.js, Git, better-sqlite3, Claude CLI, and GitHub CLI. If anything is missing, run with `--fix` to attempt automatic installation:
 
 ```bash
-dwf setup --fix
+dfl setup --fix
 ```
 
 ## Initialize in a Project
@@ -63,7 +63,7 @@ After installation, initialize dev-workflow in your git repository:
 
 ```bash
 cd your-project
-dwf init
+dfl init
 ```
 
 This will:
@@ -79,13 +79,13 @@ Check that dev-workflow is working:
 
 ```bash
 # Check version
-dwf --version
+dfl --version
 
 # Check help
-dwf --help
+dfl --help
 
 # List workers (should show no workers initially)
-dwf workers
+dfl workers
 ```
 
 ## Updating
@@ -98,7 +98,7 @@ npm update -g @dev-workflow/cli
 
 # Update in a project
 cd your-project
-dwf update
+dfl update
 ```
 
 The `update` command:
@@ -113,7 +113,7 @@ To remove dev-workflow integration from a project:
 
 ```bash
 cd your-project
-dwf uninit
+dfl uninit
 ```
 
 This removes:

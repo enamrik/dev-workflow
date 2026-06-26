@@ -18,7 +18,7 @@ This tutorial walks you through a complete dev-workflow cycle: from initializing
 Navigate to your project and run:
 
 ```bash
-dwf init
+dfl init
 ```
 
 **Expected output:**
@@ -44,7 +44,7 @@ Start Claude Code in your project directory. Create an issue using natural langu
 > I want to add a /health endpoint that returns the server status
 ```
 
-Claude will invoke the `dwf-work-request` skill automatically and create a structured issue:
+Claude will invoke the `dfl-work-request` skill automatically and create a structured issue:
 
 **Expected output:**
 
@@ -111,7 +111,7 @@ Claude loads the task session and creates an isolated worktree:
 Starting task #2.1: Create health route handler
 
 Mode: isolated
-Worktree: ~/.dwf/track/your-project/worktrees/issue-2-task-1
+Worktree: ~/.dfl/track/your-project/worktrees/issue-2-task-1
 Branch: issue-2/task-1-create-health-route
 
 Acceptance Criteria:

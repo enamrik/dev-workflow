@@ -244,7 +244,7 @@ export class UpdateService {
       // Verify database exists
       const exists = await this.fileSystem.exists(dbPath);
       if (!exists) {
-        throw new UpdateError("Database not found. Run 'dwf init' first.");
+        throw new UpdateError("Database not found. Run 'dfl init' first.");
       }
 
       // Run migrations
@@ -375,7 +375,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
     const savedPort = getSavedDaemonPort();
     if (savedPort && (await isPortInUse(savedPort))) {
       console.log(
-        "ℹ️  A dev-workflow UI server is running. Restart it (Ctrl+C, then 'dwf ui') to pick up changes."
+        "ℹ️  A dev-workflow UI server is running. Restart it (Ctrl+C, then 'dfl ui') to pick up changes."
       );
     }
   }
@@ -392,7 +392,7 @@ priority: LOW | MEDIUM | HIGH | CRITICAL
       "Read(~/.track/**/worktrees/**)",
       "Edit(~/.track/**/worktrees/**)",
       // Skills
-      "Skill(dwf-*)",
+      "Skill(dfl-*)",
       // MCP tools
       "mcp__dev-workflow-tracker__*",
     ];

@@ -26,7 +26,7 @@ Complete reference for all dev-workflow CLI commands.
 Initialize dev-workflow in the current git repository.
 
 ```bash
-dwf init
+dfl init
 ```
 
 ### What it does
@@ -49,7 +49,7 @@ dwf init
 cd my-project
 git init
 git commit --allow-empty -m "Initial commit"
-dwf init
+dfl init
 ```
 
 ## update
@@ -57,7 +57,7 @@ dwf init
 Update dev-workflow to the latest version.
 
 ```bash
-dwf update
+dfl update
 ```
 
 ### What it does
@@ -77,7 +77,7 @@ dwf update
 Remove dev-workflow Claude integration from the project.
 
 ```bash
-dwf uninit
+dfl uninit
 ```
 
 ### What it removes
@@ -100,7 +100,7 @@ Temporarily disable dev-workflow without losing data.
 Start the MCP server for Claude Code integration.
 
 ```bash
-dwf mcp
+dfl mcp
 ```
 
 ### How it works
@@ -122,7 +122,7 @@ For debugging, run in a terminal to see server logs.
 Start the web UI as a background daemon and return to your prompt.
 
 ```bash
-dwf ui
+dfl ui
 ```
 
 ### Options
@@ -135,16 +135,16 @@ dwf ui
 ### Example
 
 ```bash
-dwf ui                 # start the daemon (default port)
-PORT=3001 dwf ui       # start on a custom port
-dwf ui --foreground    # run attached to the terminal
+dfl ui                 # start the daemon (default port)
+PORT=3001 dfl ui       # start on a custom port
+dfl ui --foreground    # run attached to the terminal
 ```
 
 ### What it does
 
 1. Spawns a detached background process serving the embedded HTTP + WebSocket API and the
    static web UI (no Next.js process, no external dependencies).
-2. Saves the port to `~/.dwf/track/ui-port` and the PID to `~/.dwf/track/ui.pid`; logs to `~/.dwf/track/ui.log`.
+2. Saves the port to `~/.dfl/track/ui-port` and the PID to `~/.dfl/track/ui.pid`; logs to `~/.dfl/track/ui.log`.
 3. Returns immediately. Re-running `ui` while it's already up just reports the URL.
 
 The daemon runs until stopped or the machine reboots — there is no boot auto-start.
@@ -154,7 +154,7 @@ The daemon runs until stopped or the machine reboots — there is no boot auto-s
 Stop the running web UI daemon.
 
 ```bash
-dwf ui:stop
+dfl ui:stop
 ```
 
 ## ui:status
@@ -162,7 +162,7 @@ dwf ui:stop
 Report whether the web UI daemon is running, and on which port.
 
 ```bash
-dwf ui:status
+dfl ui:status
 ```
 
 ## workers
@@ -170,7 +170,7 @@ dwf ui:status
 List registered workers and dispatch queue status.
 
 ```bash
-dwf workers
+dfl workers
 ```
 
 ### Output
@@ -189,7 +189,7 @@ Debugging worker issues, checking queue status.
 Run as a Claude worker that polls for and executes dispatched tasks.
 
 ```bash
-dwf claude [options]
+dfl claude [options]
 ```
 
 ### Options
@@ -203,13 +203,13 @@ dwf claude [options]
 
 ```bash
 # Start with auto-generated name
-dwf claude
+dfl claude
 
 # Start with custom name
-dwf claude --name worker-1
+dfl claude --name worker-1
 
 # Start with auto-claim enabled
-dwf claude --name worker-1 --auto-claim
+dfl claude --name worker-1 --auto-claim
 ```
 
 ### How it works
@@ -233,7 +233,7 @@ dwf claude --name worker-1 --auto-claim
 Remove stale worktree folder registrations from `~/.claude.json`.
 
 ```bash
-dwf clean-claude-config [options]
+dfl clean-claude-config [options]
 ```
 
 ### Options
@@ -246,10 +246,10 @@ dwf clean-claude-config [options]
 
 ```bash
 # Preview what would be removed
-dwf clean-claude-config --dry-run
+dfl clean-claude-config --dry-run
 
 # Actually clean up
-dwf clean-claude-config
+dfl clean-claude-config
 ```
 
 ### What it does
@@ -261,22 +261,22 @@ Removes MCP server registrations for worktree directories that no longer exist. 
 ### Version
 
 ```bash
-dwf --version
+dfl --version
 ```
 
 ### Help
 
 ```bash
-dwf --help
-dwf <command> --help
+dfl --help
+dfl <command> --help
 ```
 
 ## Environment Variables
 
 | Variable            | Description                                                   |
 | ------------------- | ------------------------------------------------------------- |
-| `DWF_HOME`          | Override the data root (default `~/.dwf/track`)               |
-| `DWF_PROJECT_SLUG`  | Pin the MCP server to a project instead of resolving from cwd |
+| `DFL_HOME`          | Override the data root (default `~/.dfl/track`)               |
+| `DFL_PROJECT_SLUG`  | Pin the MCP server to a project instead of resolving from cwd |
 | `CLAUDE_CONFIG_DIR` | Override Claude's config home (where skills install)          |
 | `DATABASE_PATH`     | Override database path                                        |
 | `PORT`              | Port for web UI                                               |

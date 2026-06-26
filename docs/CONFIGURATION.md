@@ -29,12 +29,12 @@ Located in your project's root directory. Checked into version control for team 
     └── unit-tests.yml
 ```
 
-### Global Configuration (`~/.dwf/track/`)
+### Global Configuration (`~/.dfl/track/`)
 
 Located in your home directory. Stores the database and fallback configurations.
 
 ```
-~/.dwf/track/
+~/.dfl/track/
 ├── workflow.db           # Single database for all projects
 ├── config/
 │   └── templates/        # Global fallback templates
@@ -44,7 +44,7 @@ Located in your home directory. Stores the database and fallback configurations.
     └── worktrees/        # Git worktrees for isolated tasks
 ```
 
-The `DWF_HOME` environment variable can override the `~/.dwf/track/` location (useful for testing).
+The `DFL_HOME` environment variable can override the `~/.dfl/track/` location (useful for testing).
 
 ## Templates
 
@@ -91,8 +91,8 @@ Templates are resolved in this order (first match wins):
 
 1. **Local per-type**: `./.track/templates/issues/<type>.md`
 2. **Local all.md**: `./.track/templates/issues/all.md`
-3. **Global per-type**: `~/.dwf/track/config/templates/issues/<type>.md`
-4. **Global all.md**: `~/.dwf/track/config/templates/issues/all.md`
+3. **Global per-type**: `~/.dfl/track/config/templates/issues/<type>.md`
+4. **Global all.md**: `~/.dfl/track/config/templates/issues/all.md`
 
 The same pattern applies for task templates in the `tasks/` subdirectory.
 
@@ -340,7 +340,7 @@ This ensures the ID:
 
 | Variable   | Description                                                    |
 | ---------- | -------------------------------------------------------------- |
-| `DWF_HOME` | Override the global track directory (default: `~/.dwf/track/`) |
+| `DFL_HOME` | Override the global track directory (default: `~/.dfl/track/`) |
 
 ## MCP Tools Reference
 

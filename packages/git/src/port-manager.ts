@@ -6,7 +6,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { resolveGlobalTrackDir } from "./track-directory-resolver.js";
 
-// Resolved per-call so it honors DWF_HOME (set at runtime by tests/sandbox), not just at import.
+// Resolved per-call so it honors DFL_HOME (set at runtime by tests/sandbox), not just at import.
 function portFile(): string {
   return path.join(resolveGlobalTrackDir(), "ui-port");
 }

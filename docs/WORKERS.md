@@ -27,7 +27,7 @@ Workers are background Claude Code processes that automatically pick up and exec
             └─────────────┘   └─────────────┘
 ```
 
-1. **You dispatch tasks** via `dispatch_task` or `dwf-work-task` skill
+1. **You dispatch tasks** via `dispatch_task` or `dfl-work-task` skill
 2. **Workers poll** the queue for available tasks
 3. **Worker claims** a task atomically (prevents double-claiming)
 4. **Worker spawns Claude** to execute the task
@@ -40,7 +40,7 @@ Workers are background Claude Code processes that automatically pick up and exec
 | Concept            | Description                                      |
 | ------------------ | ------------------------------------------------ |
 | **Dispatch Queue** | Database table holding tasks waiting for workers |
-| **Worker**         | A `dwf worker` process running in a terminal     |
+| **Worker**         | A `dfl worker` process running in a terminal     |
 | **Claim**          | Atomic lock that assigns a task to one worker    |
 | **Heartbeat**      | Periodic signal that a worker is still alive     |
 | **Stale**          | A claim from a dead worker (heartbeat expired)   |
@@ -50,7 +50,7 @@ Workers are background Claude Code processes that automatically pick up and exec
 Run in a dedicated terminal:
 
 ```bash
-dwf worker
+dfl worker
 ```
 
 The worker will:
@@ -63,7 +63,7 @@ The worker will:
 ### Worker Options
 
 ```bash
-dwf worker --name my-worker  # Custom name
+dfl worker --name my-worker  # Custom name
 ```
 
 ### Recommended Setup
@@ -72,10 +72,10 @@ Open multiple terminal windows/tabs or use tmux:
 
 ```bash
 # Terminal 1
-dwf worker --name worker-1
+dfl worker --name worker-1
 
 # Terminal 2
-dwf worker --name worker-2
+dfl worker --name worker-2
 
 # Terminal 3 (your main session)
 # Dispatch tasks, the workers will pick them up
@@ -85,7 +85,7 @@ dwf worker --name worker-2
 
 ### Using the Skill
 
-The `dwf-work-task` skill automatically dispatches to workers if available:
+The `dfl-work-task` skill automatically dispatches to workers if available:
 
 ```
 "Start task #5.2"
@@ -225,7 +225,7 @@ The Workers page shows:
 - Heartbeat age (freshness)
 - Dispatch queue contents
 
-Access via: `dwf ui` → Workers tab
+Access via: `dfl ui` → Workers tab
 
 ### Terminal Title
 

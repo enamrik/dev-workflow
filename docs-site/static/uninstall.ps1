@@ -1,21 +1,21 @@
-# dwf uninstaller (Windows, PowerShell)
-# Removes the dwf install, PATH entry, global skills, and MCP registration. Preserves your data
-# (~/.dwf/track) unless you pass -Purge. Usage:
+# dfl uninstaller (Windows, PowerShell)
+# Removes the dfl install, PATH entry, global skills, and MCP registration. Preserves your data
+# (~/.dfl/track) unless you pass -Purge. Usage:
 #   irm https://enamrik.github.io/dev-workflow/uninstall.ps1 | iex
 #   & ([scriptblock]::Create((irm https://enamrik.github.io/dev-workflow/uninstall.ps1))) -Purge
 param([switch]$Purge)
 $ErrorActionPreference = "Stop"
 
-$DwfDir = if ($env:DWF_INSTALL_DIR) { $env:DWF_INSTALL_DIR } else { Join-Path $HOME ".dwf" }
-$InstallDir = Join-Path $DwfDir "install"
+$DflDir = if ($env:DFL_INSTALL_DIR) { $env:DFL_INSTALL_DIR } else { Join-Path $HOME ".dfl" }
+$InstallDir = Join-Path $DflDir "install"
 
 function Info($m) { Write-Host $m -ForegroundColor Blue }
 function Ok($m)   { Write-Host "+ $m" -ForegroundColor Green }
 function Warn($m) { Write-Host $m -ForegroundColor Yellow }
 
-Info "Uninstalling dwf..."
+Info "Uninstalling dfl..."
 
-# Install dir. Data in $DwfDir\track is left intact.
+# Install dir. Data in $DflDir\track is left intact.
 if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir }
 Ok "Removed install dir"
 
@@ -26,15 +26,15 @@ if ($userPath) {
   $cleaned = ($userPath -split ';' | Where-Object { $_ -and $_ -ne $binDir }) -join ';'
   if ($cleaned -ne $userPath) {
     [Environment]::SetEnvironmentVariable("Path", $cleaned, "User")
-    Ok "Removed dwf from PATH"
+    Ok "Removed dfl from PATH"
   }
 }
 
 # Global skills.
 $skillsDest = Join-Path $HOME ".claude\skills"
 if (Test-Path $skillsDest) {
-  Get-ChildItem -Path $skillsDest -Directory -Filter "dwf-*" -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
-  Ok "Removed dwf-* skills from ~/.claude/skills"
+  Get-ChildItem -Path $skillsDest -Directory -Filter "dfl-*" -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
+  Ok "Removed dfl-* skills from ~/.claude/skills"
 }
 
 # Global MCP registration (best-effort, all scopes).
@@ -46,11 +46,11 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
 }
 
 if ($Purge) {
-  $track = Join-Path $DwfDir "track"
+  $track = Join-Path $DflDir "track"
   if (Test-Path $track) { Remove-Item -Recurse -Force $track }
-  Warn "Purged all data ($DwfDir\track)"
+  Warn "Purged all data ($DflDir\track)"
 } else {
-  Info "Data preserved at $DwfDir\track. Re-run with -Purge to delete it."
+  Info "Data preserved at $DflDir\track. Re-run with -Purge to delete it."
 }
 
 Write-Host ""

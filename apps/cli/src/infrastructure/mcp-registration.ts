@@ -3,7 +3,7 @@ import { execSync, spawnSync } from "node:child_process";
 const SERVER_NAME = "dev-workflow-tracker";
 
 /**
- * Register the dwf MCP server GLOBALLY — one `--scope user` registration that serves every
+ * Register the dfl MCP server GLOBALLY — one `--scope user` registration that serves every
  * project. The server resolves the current project from its working directory at startup:
  * Claude Code spawns one stdio server per session with cwd = that session's project dir, so a
  * single global registration is enough. No per-project env is baked in.
@@ -11,7 +11,7 @@ const SERVER_NAME = "dev-workflow-tracker";
  * Removes the existing user-scope entry first so re-registering (e.g. when cliPath changes on
  * upgrade) replaces it cleanly.
  *
- * In sandboxed / E2E runs DWF_HOME redirects dwf's data root; it's forwarded so the spawned
+ * In sandboxed / E2E runs DFL_HOME redirects dfl's data root; it's forwarded so the spawned
  * server shares the same isolated dir. Unset in normal global use, leaving the registration
  * fully generic.
  *
@@ -31,9 +31,9 @@ export function registerMcpServer(cliPath: string, cwd: string): void {
 
   const args = ["mcp", "add", "--scope", "user", "--transport", "stdio"];
 
-  const dataDir = process.env["DWF_HOME"];
+  const dataDir = process.env["DFL_HOME"];
   if (dataDir) {
-    args.push(`--env=DWF_HOME=${dataDir}`);
+    args.push(`--env=DFL_HOME=${dataDir}`);
   }
 
   args.push(SERVER_NAME, "--", "node", cliPath, "mcp");

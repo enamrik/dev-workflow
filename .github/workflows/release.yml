@@ -44,7 +44,7 @@ jobs:
         run: |
           set -uo pipefail
           # Dry-run semantic-release to learn the version it will publish, so the CLI bundle
-          # self-reports it (tsup reads DWF_VERSION). The real release runs later and computes
+          # self-reports it (tsup reads DFL_VERSION). The real release runs later and computes
           # the same version from the same commits.
           OUT=$(npx semantic-release --dry-run 2>&1 || true)
           VER=$(printf '%s\n' "$OUT" | grep -oiE 'next release version is [0-9]+\.[0-9]+\.[0-9]+' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
@@ -54,7 +54,7 @@ jobs:
             VER=${VER:-0.0.0}
           fi
           echo "Stamping version: $VER"
-          echo "DWF_VERSION=$VER" >> "$GITHUB_ENV"
+          echo "DFL_VERSION=$VER" >> "$GITHUB_ENV"
       - name: Build packages + static web export
         run: pnpm build
       - name: Bundle CLI + MCP server
@@ -64,7 +64,7 @@ jobs:
       - name: Assemble all platform artifacts
         run: |
           for t in darwin-arm64 darwin-x64 linux-x64 linux-arm64 windows-x64 windows-arm64; do
-            DWF_TARGET=$t node scripts/assemble-artifact.mjs
+            DFL_TARGET=$t node scripts/assemble-artifact.mjs
           done
       - name: Record current release tag
         id: pre
