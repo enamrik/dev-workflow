@@ -6,3 +6,5 @@ coverage/
 *.d.ts
 pnpm-lock.yaml
 .claude/settings.local.json
+apps/web/out/
+docs-site/.docusaurus/

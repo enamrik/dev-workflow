@@ -2,6 +2,12 @@ import { execSync, spawnSync } from "node:child_process";
 
 const SERVER_NAME = "dev-workflow-tracker";
 
+// Clear every scope before re-adding the global one. A leftover project/local-scope entry (from
+// an old `make link`/per-project install) would otherwise SHADOW the global --scope user server
+// and get launched instead — pointing at a stale binary. This is registration hygiene, not
+// backwards-compat.
+const SCOPES_TO_CLEAR = ["project", "local", "user"] as const;
+
 /**
  * Register the dfl MCP server GLOBALLY — one `--scope user` registration that serves every
  * project. The server resolves the current project from its working directory at startup:
@@ -19,14 +25,16 @@ const SERVER_NAME = "dev-workflow-tracker";
  * throwing — registration is a convenience, not a hard requirement for the CLI to work.
  */
 export function registerMcpServer(cliPath: string, cwd: string): void {
-  try {
-    execSync(`claude mcp remove ${SERVER_NAME} --scope user`, {
-      cwd,
-      stdio: "ignore",
-      timeout: 30000,
-    });
-  } catch {
-    // Not registered yet — nothing to remove.
+  for (const scope of SCOPES_TO_CLEAR) {
+    try {
+      execSync(`claude mcp remove ${SERVER_NAME} --scope ${scope}`, {
+        cwd,
+        stdio: "ignore",
+        timeout: 30000,
+      });
+    } catch {
+      // Not registered in this scope — nothing to remove.
+    }
   }
 
   const args = ["mcp", "add", "--scope", "user", "--transport", "stdio"];

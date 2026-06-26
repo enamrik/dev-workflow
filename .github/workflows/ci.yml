@@ -24,10 +24,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+          cache: "pnpm"
 
       - name: Install dependencies
         run: pnpm install
+
+      - name: Build
+        run: pnpm build
 
       - name: Type check
         run: pnpm typecheck
@@ -37,9 +40,6 @@ jobs:
 
       - name: Format check
         run: pnpm format:check
-
-      - name: Build
-        run: pnpm build
 
       - name: Unit tests
         run: pnpm test
@@ -65,7 +65,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+          cache: "pnpm"
 
       - name: Install dependencies
         run: pnpm install

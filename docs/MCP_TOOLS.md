@@ -401,11 +401,11 @@ Repair GitHub sync state for an issue.
 
 Load a task for execution with full context.
 
-| Parameter   | Type   | Required | Description                                                       |
-| ----------- | ------ | -------- | ----------------------------------------------------------------- |
-| `taskId`    | string | Yes      | Task UUID                                                         |
-| `sessionId` | string | Yes      | Claude session ID                                                 |
-| `workerId`  | string | No       | Worker UUID (required for workers, used for task queue validation)|
+| Parameter   | Type   | Required | Description                                                        |
+| ----------- | ------ | -------- | ------------------------------------------------------------------ |
+| `taskId`    | string | Yes      | Task UUID                                                          |
+| `sessionId` | string | Yes      | Claude session ID                                                  |
+| `workerId`  | string | No       | Worker UUID (required for workers, used for task queue validation) |
 
 **Behavior:** Creates a git worktree and branch for isolated parallel work.
 

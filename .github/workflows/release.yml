@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - 'docs-site/**'
-      - '**/*.md'
+      - "docs-site/**"
+      - "**/*.md"
   workflow_dispatch:
 
 permissions:

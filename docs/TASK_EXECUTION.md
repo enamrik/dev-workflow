@@ -16,12 +16,12 @@ main branch  ────┐        issue-5/task-1-add-oauth
                  └────────    (separate working directory)
 ```
 
-| Aspect            | Details                                                  |
-| ----------------- | -------------------------------------------------------- |
-| **Git setup**     | Creates worktree + branch                                |
-| **Isolation**     | Fully isolated - changes don't affect main repo          |
-| **Parallel work** | Multiple tasks can run simultaneously                    |
-| **PR workflow**   | Full workflow: create PR → review → merge → complete     |
+| Aspect            | Details                                              |
+| ----------------- | ---------------------------------------------------- |
+| **Git setup**     | Creates worktree + branch                            |
+| **Isolation**     | Fully isolated - changes don't affect main repo      |
+| **Parallel work** | Multiple tasks can run simultaneously                |
+| **PR workflow**   | Full workflow: create PR → review → merge → complete |
 
 **Critical:** All file operations must use the worktree path returned by `load_task_session`. Never use the main repo path during task execution.
 

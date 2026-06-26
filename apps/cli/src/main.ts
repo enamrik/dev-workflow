@@ -26,7 +26,11 @@ const VERSION = typeof __DFL_VERSION__ !== "undefined" ? __DFL_VERSION__ : "0.0.
 
 const program = new Command();
 
-program.name("dfl").description("AI-driven development workflow system").version(VERSION);
+program
+  .name("dfl")
+  .description("AI-driven development workflow system")
+  .version(VERSION)
+  .enablePositionalOptions();
 
 program
   .command("init")
@@ -70,8 +74,9 @@ program
   .description("Run as a Claude worker that polls for and executes dispatched tasks")
   .option("--name <name>", "Worker name (auto-generates worker-1, worker-2, etc. if not provided)")
   .option("--auto-claim", "Automatically claim READY tasks when dependencies complete")
-  .action(async (options: { name?: string; autoClaim?: boolean }) => {
-    await runClaudeWorker(options);
+  .passThroughOptions()
+  .action(async (options: { name?: string; autoClaim?: boolean }, cmd: Command) => {
+    await runClaudeWorker({ ...options, claudeArgs: cmd.args });
   });
 
 program

@@ -63,6 +63,8 @@ export interface WorkerConfig {
   staleThresholdSeconds?: number;
   /** Automatically claim READY tasks when dependencies complete */
   autoClaim?: boolean;
+  /** Extra flags forwarded verbatim to every spawned `claude` invocation (before the prompt) */
+  claudeArgs?: string[];
 }
 
 /**
@@ -136,6 +138,7 @@ export class ClaudeWorkerService {
       pollIntervalMs: config.pollIntervalMs ?? 2000,
       staleThresholdSeconds: config.staleThresholdSeconds ?? 10,
       autoClaim: config.autoClaim ?? false,
+      claudeArgs: config.claudeArgs ?? [],
     };
   }
 
@@ -645,7 +648,7 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
 
     return new Promise<void>((resolve) => {
       // Spawn Claude interactively with the prompt
-      const claudeProcess = spawn("claude", [prompt], {
+      const claudeProcess = spawn("claude", [...this.config.claudeArgs, prompt], {
         cwd,
         stdio: "inherit",
         env: process.env,

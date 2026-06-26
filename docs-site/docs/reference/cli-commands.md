@@ -194,10 +194,11 @@ dfl claude [options]
 
 ### Options
 
-| Option          | Description                                                |
-| --------------- | ---------------------------------------------------------- |
-| `--name <name>` | Worker name (auto-generates if not provided)               |
-| `--auto-claim`  | Automatically claim READY tasks when dependencies complete |
+| Option          | Description                                                        |
+| --------------- | ------------------------------------------------------------------ |
+| `--name <name>` | Worker name (auto-generates if not provided)                       |
+| `--auto-claim`  | Automatically claim READY tasks when dependencies complete         |
+| `-- <flags...>` | Extra flags forwarded verbatim to each spawned `claude` invocation |
 
 ### Examples
 
@@ -210,6 +211,15 @@ dfl claude --name worker-1
 
 # Start with auto-claim enabled
 dfl claude --name worker-1 --auto-claim
+
+# Use a specific model for all spawned Claude sessions
+dfl claude -- --model claude-opus-4-5
+
+# Skip permission prompts in all spawned Claude sessions
+dfl claude -- --dangerously-skip-permissions
+
+# Combine dfl options with Claude passthrough flags
+dfl claude --name worker-1 --auto-claim -- --model claude-opus-4-5 --dangerously-skip-permissions
 ```
 
 ### How it works
@@ -218,6 +228,11 @@ dfl claude --name worker-1 --auto-claim
 2. Polls dispatch queue for tasks
 3. Claims and executes dispatched tasks
 4. Reports completion and claims next task
+
+:::note
+`--name` and `--auto-claim` are consumed by `dfl` and are **not** forwarded to Claude.
+Only flags supplied after `--` are forwarded verbatim to each spawned Claude session, in the order given.
+:::
 
 ### Lifecycle
 

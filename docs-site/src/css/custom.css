@@ -14,7 +14,7 @@
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
 }
 
-[data-theme='dark'] {
+[data-theme="dark"] {
   --ifm-color-primary: #60a5fa;
   --ifm-color-primary-dark: #3b82f6;
   --ifm-color-primary-darker: #2563eb;
@@ -41,7 +41,8 @@ table {
   width: 100%;
 }
 
-th, td {
+th,
+td {
   padding: 0.75rem;
 }
 
@@ -62,6 +63,6 @@ th, td {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-[data-theme='dark'] .feature-card {
+[data-theme="dark"] .feature-card {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
