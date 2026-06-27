@@ -86,6 +86,7 @@ export {
 } from "./conflict-detection-service.js";
 export {
   ProjectsResolver,
+  resolveProjectInfoByTaskId,
   resolveConfig,
   resolveConfigFromGit,
   writeConfig,

@@ -120,7 +120,9 @@ async function main() {
     if (code === "NOT_GIT_REPO") {
       console.error(`Error: not a git repository (${process.cwd()}).`);
     } else if (code === "WORKTREE_DETECTED") {
-      console.error(`Error: cannot serve from a git worktree (${process.cwd()}).`);
+      console.error(
+        `Error: this worktree's main repository is not a dev-workflow project (${process.cwd()}).`
+      );
     } else {
       console.error(`Error: not a dev-workflow project (${process.cwd()}).`);
     }

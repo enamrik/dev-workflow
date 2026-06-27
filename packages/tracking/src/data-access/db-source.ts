@@ -40,6 +40,18 @@ export interface DbSource {
   getDb(): DrizzleDb;
 
   /**
+   * Resolve a task ID to the slug of the project that actually owns it.
+   *
+   * Joins tasks → plans → issues → projects on the (global) tracking database,
+   * so the authoritative project is derived from the issue's `projectId` rather
+   * than any externally-supplied/stale value (e.g. a dispatch-queue slug).
+   *
+   * @param taskId - Task ID to resolve
+   * @returns The owning project's slug, or null if the task does not exist
+   */
+  findProjectSlugByTaskId(taskId: string): string | null;
+
+  /**
    * Create a project-scoped client
    *
    * @param projectId - Project ID to scope repositories to

@@ -93,6 +93,33 @@ export class GitOperations {
   }
 
   /**
+   * Get the MAIN repository root, even when called from inside a worktree.
+   *
+   * Uses `git rev-parse --git-common-dir`, which always points at the main
+   * repository's `.git` directory (shared across all worktrees), unlike
+   * `--git-dir` which points at the per-worktree git dir. The common dir is
+   * `<mainRepoRoot>/.git`, so the main repo root is its parent directory.
+   *
+   * Git may return the common dir as either an absolute path or a path
+   * relative to `cwd`, so we resolve it against `cwd` before taking the
+   * parent. For a normal (non-worktree) checkout this still yields the repo
+   * root, so it's safe to call in either case.
+   */
+  getMainRepoRoot(cwd: string): string {
+    const gitCommonDir = execSync("git rev-parse --git-common-dir", {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+
+    // Resolve to an absolute path (handles both absolute and cwd-relative output)
+    const absoluteCommonDir = path.resolve(cwd, gitCommonDir);
+
+    // The common dir is "<mainRepoRoot>/.git"; the repo root is its parent.
+    return path.dirname(absoluteCommonDir);
+  }
+
+  /**
    * Read the project slug from .git/config
    */
   readSlugFromGitConfig(gitRoot: string): string | null {

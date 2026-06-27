@@ -15,9 +15,11 @@ import type { AwilixContainer } from "awilix";
 import {
   TaskDomainService,
   type DbClient,
+  type DbSource,
   DispatchTaskOperationSchema as DispatchTaskSchema,
   EndWorkerSessionOperationSchema as EndWorkerSessionSchema,
 } from "@dev-workflow/tracking";
+import { projects } from "@dev-workflow/database/schema.js";
 import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-queue-db.js";
 import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import { createTestIssue, createTestPlan, createTestTask } from "../../test/helpers.js";
@@ -34,6 +36,7 @@ import { createMcpTool } from "../../di/bootstrap.js";
 interface DispatchTestCradle {
   workerQueueDb: GlobalDbWorkerQueueDb;
   taskDomainService: TaskDomainService;
+  dbSource: DbSource;
   projectSlug: string;
 }
 
@@ -70,6 +73,7 @@ describe("Dispatch Tools Integration", () => {
     testContainer.register({
       workerQueueDb: asValue(workerQueueDb),
       taskDomainService: asValue(taskDomainService),
+      dbSource: asValue(testDb.source),
       projectSlug: asValue("test-project"),
     });
 
@@ -306,6 +310,44 @@ describe("Dispatch Tools Integration", () => {
       expect(result.isError).toBe(true);
       const content = JSON.parse(result.content[0].text);
       expect(content.error).toContain("not found");
+    });
+
+    it("enqueues the task's TRUE project slug even when dispatched via a different project's context", async () => {
+      // The task belongs to a project whose slug is NOT the serving MCP
+      // server's cwd-resolved slug ("test-project", bound in the cradle). The
+      // dispatch op must derive the owning slug from the task itself and
+      // enqueue THAT, never the caller's (cross-project) slug.
+      const TRUE_SLUG = "true-owner-aaaaaa";
+
+      // Register a projects row whose id matches the default test client's
+      // project id, so the tasks → … → projects join resolves to TRUE_SLUG.
+      testDb.db
+        .insert(projects)
+        .values({
+          id: "test-project-abc123",
+          gitRootHash: "hash-true",
+          name: "True Owner",
+          slug: TRUE_SLUG,
+          isArchived: false,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        })
+        .run();
+
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
+        title: "Cross-project task",
+        status: "READY",
+      });
+
+      const result = await dispatchTask({ taskId: task.id });
+      expect(result.isError).toBeUndefined();
+
+      // The stored queue slug must be the task's TRUE owner, not "test-project".
+      const entry = workerQueueDb.findByTaskId(task.id);
+      expect(entry?.projectSlug).toBe(TRUE_SLUG);
+      expect(entry?.projectSlug).not.toBe("test-project");
     });
   });
 

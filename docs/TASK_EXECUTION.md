@@ -392,12 +392,16 @@ See [Background Workers Guide](WORKERS.md) for worker setup and management.
 | Complete failed - PR not merged  | PR still open                | Merge the PR on GitHub                                 |
 | Complete failed - wrong status   | State drift                  | Use force mode after confirming                        |
 
-### MCP Server Connection Issues
+### MCP Server Connection Issues (rare)
 
-If MCP tools return "not found" errors for data that should exist:
+Project resolution is worktree-aware (a session running inside a task worktree
+resolves to the parent repo's project), so a worker or worktree session
+connecting to the wrong database is now uncommon. As a backstop, if MCP tools
+return "not found" errors for data that should exist and the normal recovery
+steps don't resolve it:
 
-1. **STOP immediately** - Don't try to work around it
-2. Tell user: "The MCP server appears to be connected to the wrong database. Please restart your Claude session."
+1. **Stop** - Don't try to work around it
+2. Tell user: "The MCP server may be connected to the wrong database. Please restart your Claude session."
 3. After restart, resume with `load_task_session` - it's idempotent
 
 **Never** bypass MCP tools with direct database updates or `gh` CLI - this creates inconsistent state.

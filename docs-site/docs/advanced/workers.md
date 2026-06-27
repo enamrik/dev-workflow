@@ -87,10 +87,17 @@ dispatch_task({
 1. Worker starts, registers in database
 2. Poll dispatch queue every few seconds
 3. Claim available task
-4. Spawn Claude session with dfl-worker-task
-5. Wait for session completion
-6. Return to polling
+4. Resolve the task's owning project from the task record (not the queue slug)
+5. Pre-create (or adopt) the task's git worktree
+6. Spawn Claude session inside that worktree (cwd = worktree) with dfl-worker-task
+7. Wait for session completion
+8. Return to polling
 ```
+
+The worker creates the worktree **before** spawning, so the Claude session
+starts already standing in it. `load_task_session` then adopts the existing
+worktree (it only creates one as a fallback for inline execution) and returns
+its path.
 
 ## Worker-Specific Requirements
 

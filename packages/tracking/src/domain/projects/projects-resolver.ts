@@ -16,6 +16,7 @@ import * as fs from "node:fs/promises";
 import { resolveGlobalTrackDir } from "@dev-workflow/git/track-directory-resolver.js";
 import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
 import type { SourceInfo } from "../../data-access/db-source-provider.js";
+import type { DbSource } from "../../data-access/db-source.js";
 import type { ProjectManagementConfig } from "@dev-workflow/database/schema.js";
 
 // Re-export for convenience
@@ -312,13 +313,19 @@ function isValidProjectConfig(config: unknown): config is ProjectConfig {
  *
  * This is the primary entry point for CLI tools:
  * 1. Find git root from cwd
- * 2. Check for worktree (error if detected)
- * 3. Read slug from .git/config
+ * 2. Determine the root to read the slug from — for a worktree this is the
+ *    MAIN repository root (the slug lives there, not in the worktree); for a
+ *    normal checkout it's the cwd's own git root.
+ * 3. Read slug from that root's .git/config
  * 4. Resolve config from ~/.track/projects/<slug>/config.json
+ *
+ * A worktree resolves to its parent repository's dev-workflow project. The
+ * WORKTREE_DETECTED error now fires only when the worktree's parent is not a
+ * dev-workflow project (i.e. genuinely uninitialized).
  *
  * @param cwd - Current working directory (defaults to process.cwd())
  * @returns Resolved project configuration
- * @throws ProjectConfigError if not in a git repo, is a worktree, or slug not configured
+ * @throws ProjectConfigError if not in a git repo, or slug not configured
  */
 export async function resolveConfigFromGit(cwd: string = process.cwd()): Promise<ProjectConfig> {
   const gitOps = new GitOperations();
@@ -331,18 +338,25 @@ export async function resolveConfigFromGit(cwd: string = process.cwd()): Promise
     throw new ProjectConfigError(`Not a git repository: ${cwd}`, "NOT_GIT_REPO", { cwd });
   }
 
-  // Check if we're in a worktree
-  if (gitOps.isWorktree(cwd)) {
-    throw new ProjectConfigError(
-      "Cannot run dev-workflow commands from a worktree. Run from the main repository.",
-      "WORKTREE_DETECTED",
-      { cwd, gitRoot }
-    );
-  }
+  // Hot spot: which root holds the slug? A worktree's slug lives on its MAIN
+  // repository root, not inside the worktree (and may be unreadable inside the
+  // worktree under extensions.worktreeConfig). A normal checkout reads its own
+  // root. Everything downstream (slug read, resolveConfig) is identical.
+  const isWorktree = gitOps.isWorktree(cwd);
+  const slugRoot = isWorktree ? gitOps.getMainRepoRoot(cwd) : gitRoot;
 
-  // Read slug from .git/config
-  const slug = gitOps.readSlugFromGitConfig(gitRoot);
+  // Read slug from the resolved root's .git/config
+  const slug = gitOps.readSlugFromGitConfig(slugRoot);
   if (!slug) {
+    // A worktree whose parent has no slug is genuinely not a dev-workflow
+    // project — surface the worktree-specific code so callers can explain it.
+    if (isWorktree) {
+      throw new ProjectConfigError(
+        "This worktree's main repository is not a dev-workflow project. Run 'dfl init' in the main repository.",
+        "WORKTREE_DETECTED",
+        { cwd, gitRoot, mainRoot: slugRoot }
+      );
+    }
     throw new ProjectConfigError(
       `Project not initialized. Run 'dfl init' first.`,
       "SLUG_NOT_FOUND",
@@ -556,23 +570,6 @@ export class ProjectsResolver extends Service<ProjectsResolver>()("projectsResol
   }
 
   /**
-   * Get a project by slug (synchronous version)
-   *
-   * This method only works if the project config is already cached.
-   * Call ensureScanned() or getProjectBySlug() first to populate the cache.
-   *
-   * @param slug - Project slug (e.g., "dev-workflow-b9bccf")
-   * @returns ProjectInfo with sourceInfo, or null if not cached
-   */
-  getProjectBySlugSync(slug: string): ProjectInfo | null {
-    const config = this.configBySlug.get(slug);
-    if (!config) {
-      return null;
-    }
-    return configToProjectInfo(config);
-  }
-
-  /**
    * Get all projects
    *
    * @returns Array of all projects with their sourceInfo
@@ -728,4 +725,40 @@ export class ProjectsResolver extends Service<ProjectsResolver>()("projectsResol
       self.configBySlug = new Map(configs.map((c) => [c.slug, c]));
     });
   }
+}
+
+// =============================================================================
+// Task → ProjectInfo resolution
+// =============================================================================
+
+/**
+ * Resolve a task ID to the {@link ProjectInfo} of the project that actually
+ * owns it — the authoritative resolution.
+ *
+ * The owning project is derived from the issue's `projectId` via a join on the
+ * global tracking database ({@link DbSource.findProjectSlugByTaskId}), never
+ * from an externally-supplied value such as a dispatch-queue `project_slug`.
+ * The resolved slug is then looked up against the on-disk project configs via
+ * {@link ProjectsResolver.getProjectBySlug}, keeping `ProjectsResolver`
+ * config-only (it never touches a database).
+ *
+ * @param globalSource - DbSource for the global tracking database (the same
+ *   connection string for every project)
+ * @param projectsResolver - Config-only resolver used to turn the slug into ProjectInfo
+ * @param taskId - Task ID to resolve
+ * @returns ProjectInfo for the owning project, or null if the task does not exist
+ * @throws Error if the resolved slug has no on-disk config
+ */
+export function resolveProjectInfoByTaskId(
+  globalSource: DbSource,
+  projectsResolver: ProjectsResolver,
+  taskId: string
+): Effect<ProjectInfo | null> {
+  return Effect.gen(function* () {
+    const slug = globalSource.findProjectSlugByTaskId(taskId);
+    if (slug === null) {
+      return null;
+    }
+    return yield* projectsResolver.getProjectBySlug(slug);
+  });
 }
