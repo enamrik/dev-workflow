@@ -304,11 +304,13 @@ When `complete_task` returns `allTasksComplete: true`:
 | Submit failed                | No PR                   | Create PR first                         |
 | Complete failed - not merged | PR still open           | Merge on GitHub                         |
 
-### MCP Server Issues
+### MCP Server Issues (rare)
 
-If tools return "not found" for data that should exist:
+Project resolution is worktree-aware, so a session connecting to the wrong
+database is now uncommon. As a backstop, if tools return "not found" for data
+that should exist and normal recovery doesn't resolve it:
 
-1. **STOP immediately**
+1. **Stop** - don't work around it
 2. Tell user: "MCP server may be connected to wrong database. Please restart Claude session."
 3. After restart, resume with `load_task_session`
 

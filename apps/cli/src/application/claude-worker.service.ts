@@ -16,16 +16,24 @@
 
 import { spawn, ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import {
   DbSourceProvider,
   ProjectsResolver,
   PlanDomainService,
   TaskDomainService,
   TypeDomainService,
+  resolveProjectInfoByTaskId,
   type DbSource,
+  type ProjectInfo,
   type Task,
 } from "@dev-workflow/tracking";
 import { issues, plans, tasks, sql } from "@dev-workflow/database/schema.js";
+import {
+  NodeGitWorktreeService,
+  generateWorktreeNames,
+} from "@dev-workflow/git/worktrees/git-worktree-service.js";
+import { getGlobalDatabasePath } from "@dev-workflow/git/track-directory-resolver.js";
 import { Effect } from "@dev-workflow/effect";
 import type { WorkerQueueDb } from "@dev-workflow/dispatch/worker-queue-db.js";
 import type { WorkerStatus } from "@dev-workflow/dispatch/worker.js";
@@ -79,7 +87,10 @@ export interface WorkerState {
   workerName: string;
   status: WorkerStatus;
   currentTaskId: string | null;
+  /** Slug carried by the dispatch-queue entry — a label/hint only, never used for resolution. */
   currentProjectSlug: string | null;
+  /** Project authoritatively resolved from the task (the source of truth while working). */
+  currentProjectInfo: ProjectInfo | null;
   currentClaudeProcess: ChildProcess | null;
 }
 
@@ -105,12 +116,17 @@ export class ClaudeWorkerService {
   // Current project's tracking db (set when working on a task)
   private currentSource: DbSource | null = null;
 
+  // Global tracking db (shared by every project) — used to resolve a task's
+  // owning project authoritatively, regardless of the dispatch-queue slug.
+  private globalSource: DbSource | null = null;
+
   private state: WorkerState = {
     workerId: randomUUID(),
     workerName: "",
     status: "IDLE",
     currentTaskId: null,
     currentProjectSlug: null,
+    currentProjectInfo: null,
     currentClaudeProcess: null,
   };
 
@@ -183,19 +199,32 @@ export class ClaudeWorkerService {
   // ==========================================================================
 
   /**
+   * Lazily build (and cache) the DbSource for the global tracking database.
+   *
+   * Every project shares this single database, so resolving a task's owning
+   * project from it needs no project knowledge. This is what lets the worker
+   * resolve the project authoritatively from the task rather than trusting the
+   * dispatch-queue slug.
+   */
+  private getGlobalSource(): DbSource {
+    if (!this.globalSource) {
+      this.globalSource = this.sourceProvider.getOrCreate({
+        connectionString: `sqlite://${getGlobalDatabasePath()}`,
+      });
+    }
+    return this.globalSource;
+  }
+
+  /**
    * Find a task by ID in the current tracking database
    */
   private async findTaskById(taskId: string): Promise<Task | null> {
-    if (!this.currentSource || !this.state.currentProjectSlug) {
+    if (!this.currentSource || !this.state.currentProjectInfo) {
       return null;
     }
 
-    // Get project info to get projectId
     try {
-      const projectInfo = this.projectsResolver.getProjectBySlugSync(this.state.currentProjectSlug);
-      if (!projectInfo) return null;
-
-      const client = this.currentSource.createClient(projectInfo.projectId);
+      const client = this.currentSource.createClient(this.state.currentProjectInfo.projectId);
       return (await Effect.runPromise(client.tasks.findById(taskId))) ?? null;
     } catch {
       return null;
@@ -226,15 +255,12 @@ export class ClaudeWorkerService {
    * Get the total number of tasks for a plan
    */
   private async getTotalTaskCount(planId: string): Promise<number | null> {
-    if (!this.currentSource || !this.state.currentProjectSlug) {
+    if (!this.currentSource || !this.state.currentProjectInfo) {
       return null;
     }
 
     try {
-      const projectInfo = this.projectsResolver.getProjectBySlugSync(this.state.currentProjectSlug);
-      if (!projectInfo) return null;
-
-      const client = this.currentSource.createClient(projectInfo.projectId);
+      const client = this.currentSource.createClient(this.state.currentProjectInfo.projectId);
       const planTasks = await Effect.runPromise(client.tasks.findByPlanId(planId));
       return planTasks.length > 0 ? planTasks.length : null;
     } catch {
@@ -419,7 +445,7 @@ export class ClaudeWorkerService {
       // Enforce dependency readiness: skip tasks with unmet prerequisites.
       // The task remains in the tracking DB and will be auto-claimed once its
       // dependencies reach terminal state.
-      if (!(await this.isClaimedTaskAvailable(claim.taskId, claim.projectSlug))) {
+      if (!(await this.isClaimedTaskAvailable(claim.taskId))) {
         console.log(
           term.yellow(
             `Skipping task ${claim.taskId}: dependencies not yet satisfied. ` +
@@ -451,11 +477,18 @@ export class ClaudeWorkerService {
    * BACKLOG or READY, and all dependsOn prerequisites are terminal
    * (COMPLETED or ABANDONED). Mirrors the check tryAutoClaimReadyTask uses.
    */
-  private async isClaimedTaskAvailable(taskId: string, projectSlug: string): Promise<boolean> {
+  private async isClaimedTaskAvailable(taskId: string): Promise<boolean> {
     try {
+      // Resolve the owning project AUTHORITATIVELY from the task itself, never
+      // from the dispatch-queue slug (which can be poisoned). This keeps the
+      // availability gate consistent with workOnTask so a poisoned row is
+      // judged against its TRUE owner instead of the wrong project.
       const projectInfo = await Effect.runPromise(
-        this.projectsResolver.getProjectBySlug(projectSlug)
+        resolveProjectInfoByTaskId(this.getGlobalSource(), this.projectsResolver, taskId)
       );
+      if (!projectInfo) {
+        return false;
+      }
       const source = this.sourceProvider.getOrCreate(projectInfo.sourceInfo);
       const client = source.createClient(projectInfo.projectId);
       const taskDomainService = new TaskDomainService(client.tasks, client.plans, client.issues);
@@ -570,20 +603,39 @@ export class ClaudeWorkerService {
     projectSlug: string,
     claimSource: ClaimSource = "queue"
   ): Promise<void> {
-    // Resolve project config
-    let projectInfo;
+    // Resolve the owning project AUTHORITATIVELY from the task itself, never
+    // from the dispatch-queue slug (which can be the claiming worker's home
+    // project, not the task's). The slug is kept only as a logging hint.
+    let projectInfo: ProjectInfo | null;
     try {
-      projectInfo = await Effect.runPromise(this.projectsResolver.getProjectBySlug(projectSlug));
+      projectInfo = await Effect.runPromise(
+        resolveProjectInfoByTaskId(this.getGlobalSource(), this.projectsResolver, taskId)
+      );
     } catch (error) {
-      console.error(`Failed to resolve project: ${projectSlug}`, error);
+      console.error(
+        `Failed to resolve project for task ${taskId} (queue slug: ${projectSlug})`,
+        error
+      );
       await this.releaseTask(taskId);
       return;
     }
 
-    // Connect to tracking database
+    if (!projectInfo) {
+      console.error(
+        term.red(
+          `Could not resolve owning project for task ${taskId} (queue slug: ${projectSlug}); ` +
+            `task, issue, or project missing. Releasing.`
+        )
+      );
+      await this.releaseTask(taskId);
+      return;
+    }
+
+    // Connect to the RESOLVED project's tracking database.
     this.currentSource = this.sourceProvider.getOrCreate(projectInfo.sourceInfo);
     this.state.currentTaskId = taskId;
     this.state.currentProjectSlug = projectSlug;
+    this.state.currentProjectInfo = projectInfo;
     this.state.status = "WORKING";
     this.queue.updateStatus(this.state.workerId, "WORKING");
     await this.updateTitle();
@@ -601,13 +653,107 @@ export class ClaudeWorkerService {
     const sourceLabel = claimSource === "auto-claim" ? " (auto-claimed)" : "";
 
     console.log(`Working on task #${issueNumber}.${taskNumber}: ${task.title}${sourceLabel}`);
-    console.log(`Project: ${projectSlug} (${projectInfo.gitRoot})`);
+    console.log(`Project: ${projectInfo.slug} (${projectInfo.gitRoot})`);
+    if (projectSlug !== projectInfo.slug) {
+      console.log(
+        term.yellow(
+          `Note: dispatch-queue slug "${projectSlug}" differs from resolved owner "${projectInfo.slug}" — using resolved owner.`
+        )
+      );
+      // Self-heal the poisoned queue row so its stored label stops lying.
+      this.queue.updateProjectSlug(taskId, projectInfo.slug);
+    }
+
+    // Pre-create (or adopt) the task's worktree BEFORE spawning, so the Claude
+    // session runs inside the worktree and load_task_session adopts it instead
+    // of creating a second one. Bails out (releases) on failure.
+    const worktreePath = await this.ensureWorktree(task, projectInfo, issueNumber);
+    if (!worktreePath) {
+      await this.releaseTask(taskId);
+      return;
+    }
 
     // Build the prompt for Claude
     const prompt = this.buildClaudePrompt(taskId, issueNumber, taskNumber);
 
-    // Spawn Claude process with project gitRoot as cwd
-    await this.spawnClaudeSession(taskId, prompt, projectInfo.gitRoot);
+    // Spawn Claude process inside the task's worktree (not the main repo).
+    await this.spawnClaudeSession(taskId, prompt, worktreePath);
+  }
+
+  /**
+   * Ensure the task's git worktree exists and is persisted on the task.
+   *
+   * Reuses the SAME worktree-creation path as load_task_session
+   * ({@link generateWorktreeNames} + {@link NodeGitWorktreeService.createWorktree}
+   * against the project gitRoot, persisted via
+   * {@link TaskDomainService.updateWorktreeInfo}). Persisting is what makes the
+   * later load_task_session call ADOPT this worktree via its `if (!worktreePath)`
+   * guard rather than create a second one.
+   *
+   * - Fresh task → compute names, create the worktree, persist path + branch.
+   * - Re-claim/resume (task already has a worktreePath) → adopt it; only
+   *   re-create if the directory is missing.
+   *
+   * @returns the absolute worktree path to use as the session cwd, or null on failure.
+   */
+  private async ensureWorktree(
+    task: Task,
+    projectInfo: ProjectInfo,
+    issueNumber: number | string
+  ): Promise<string | null> {
+    // Guard against an unresolved issue number ("?" → Number("?") is NaN),
+    // which would otherwise produce an `issue-NaN-task-N` worktree/branch.
+    if (!Number.isInteger(Number(issueNumber))) {
+      console.error(term.red(`Cannot resolve issue number for task ${task.id}; skipping worktree`));
+      return null;
+    }
+
+    const worktreeService = new NodeGitWorktreeService(projectInfo.gitRoot);
+
+    try {
+      // Re-claim / resume: adopt the existing worktree unless its directory is gone.
+      if (task.worktreePath) {
+        if (existsSync(task.worktreePath)) {
+          return task.worktreePath;
+        }
+        const branchName =
+          task.branchName ??
+          generateWorktreeNames(Number(issueNumber), task.number, task.title).branchName;
+        const recreated = await Effect.runPromise(
+          worktreeService.createWorktree(task.worktreePath, branchName)
+        );
+        await this.persistWorktreeInfo(projectInfo, task.id, recreated, branchName);
+        return recreated;
+      }
+
+      // Fresh task: compute names exactly as load_task_session does (relative
+      // path resolved against gitRoot), create, then persist.
+      const names = generateWorktreeNames(Number(issueNumber), task.number, task.title);
+      const createdPath = await Effect.runPromise(
+        worktreeService.createWorktree(names.worktreePath, names.branchName)
+      );
+      await this.persistWorktreeInfo(projectInfo, task.id, createdPath, names.branchName);
+      return createdPath;
+    } catch (error) {
+      console.error(term.red(`Failed to prepare worktree for task ${task.id}: ${error}`));
+      return null;
+    }
+  }
+
+  /**
+   * Persist worktreePath/branchName on the task via the domain service — the
+   * same call load_task_session uses — so the later session adopts this worktree.
+   */
+  private async persistWorktreeInfo(
+    projectInfo: ProjectInfo,
+    taskId: string,
+    worktreePath: string,
+    branchName: string
+  ): Promise<void> {
+    const source = this.sourceProvider.getOrCreate(projectInfo.sourceInfo);
+    const client = source.createClient(projectInfo.projectId);
+    const taskDomainService = new TaskDomainService(client.tasks, client.plans, client.issues);
+    await Effect.runPromise(taskDomainService.updateWorktreeInfo(taskId, worktreePath, branchName));
   }
 
   /**
@@ -786,6 +932,7 @@ A task is only complete when it reaches COMPLETED status (PR merged and complete
     // Reset state
     this.state.currentTaskId = null;
     this.state.currentProjectSlug = null;
+    this.state.currentProjectInfo = null;
     this.currentSource = null;
 
     // Only reset to IDLE if not draining

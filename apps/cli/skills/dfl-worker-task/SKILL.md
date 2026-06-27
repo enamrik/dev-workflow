@@ -337,13 +337,15 @@ When `load_task_session` returns a task in COMPLETED or ABANDONED state, the res
 
 ## CRITICAL: Worktree Path
 
-When a task is started, `load_task_session` returns a `worktreePath`. You MUST use this path for ALL file operations during the task:
+Every task runs in its own isolated git worktree. **Workers** pre-create that worktree and spawn your session already standing inside it; `load_task_session` then **adopts** the existing worktree (it does not create a second one) and **returns its `worktreePath`**. For **inline** (non-worker) execution, `load_task_session` creates the worktree itself and returns the path. Either way, the returned `worktreePath` is the one source of truth.
+
+You MUST use the returned `worktreePath` for ALL file operations during the task:
 
 - **Read/Edit/Write tools**: Always use the full worktree path (e.g., `/Users/.../.track/project/worktrees/issue-N-task-N/path/to/file`)
 - **Bash commands**: Always `cd` to the worktree path or use absolute paths within the worktree
 - **Glob/Grep tools**: Always specify the worktree path in the `path` parameter
 
-**NEVER** fall back to the main repo path. The main repo may be on a different branch or have different content. All changes for the PR must be made in the worktree.
+**NEVER** fall back to the main repo path. The main repo may be on a different branch or have different content. All changes for the PR must be made in the worktree. (As a worker your cwd already IS the worktree, but still resolve paths against the returned `worktreePath` rather than assuming cwd.)
 
 ```
 ❌ Read("/Users/user/code/project/Makefile")           # Main repo - WRONG
@@ -395,13 +397,15 @@ Task COMPLETED. Next task available: "Add session management"
 
 ## Error Handling
 
-### MCP Server Connection Issues (CRITICAL)
+### MCP Server Connection Issues (rare — backstop)
 
 **When MCP tools return unexpected "not found" errors for data that should exist:**
 
-If you were working on an issue/task and suddenly get "Issue not found" or "Task not found" errors, the MCP server is likely connected to the wrong database.
+This is now **rare**. Project resolution is worktree-aware: a session whose cwd is a task worktree resolves to the parent repo's project, and workers run inside the correct worktree from the start — so the old "running from a worktree connects the MCP to the wrong database" failure mode is largely gone. Treat this section as a backstop, not the expected outcome.
 
-**STOP IMMEDIATELY. Do NOT try to work around the issue.**
+If you were working on an issue/task and suddenly get "Issue not found" or "Task not found" errors that don't resolve via the recovery steps below, the MCP server may still be connected to the wrong database.
+
+**If that happens, STOP. Do NOT try to work around it.**
 
 Any manual workaround (direct database updates, `gh` CLI, etc.) creates **corrupt, inconsistent state** that will cause more problems later. The MCP tools maintain consistency between the database, git, and GitHub - bypassing them breaks that guarantee.
 

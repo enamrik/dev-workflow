@@ -106,6 +106,17 @@ export function createTestDatabase(projectId: string = TEST_PROJECT_ID): TestDat
     types,
     globalSettings,
     getDb: () => drizzleDb,
+    findProjectSlugByTaskId: (taskId: string): string | null => {
+      const result = drizzleDb
+        .select({ slug: schema.projects.slug })
+        .from(schema.tasks)
+        .innerJoin(schema.plans, schema.sql`${schema.plans.id} = ${schema.tasks.planId}`)
+        .innerJoin(schema.issues, schema.sql`${schema.issues.id} = ${schema.plans.issueId}`)
+        .innerJoin(schema.projects, schema.sql`${schema.projects.id} = ${schema.issues.projectId}`)
+        .where(schema.sql`${schema.tasks.id} = ${taskId}`)
+        .get();
+      return result?.slug ?? null;
+    },
     createClient: (pid: string) => new DrizzleDbClient(drizzleDb, pid),
     close: () => sqlite.close(),
   };

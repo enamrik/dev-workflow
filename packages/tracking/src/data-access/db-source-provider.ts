@@ -28,6 +28,13 @@ import { drizzle as sqliteDrizzle } from "drizzle-orm/better-sqlite3";
 import { migrate as sqliteMigrate } from "drizzle-orm/better-sqlite3/migrator";
 
 import * as sqliteSchema from "@dev-workflow/database/schema.js";
+import {
+  issues as issuesTable,
+  plans as plansTable,
+  projects as projectsTable,
+  tasks as tasksTable,
+  sql,
+} from "@dev-workflow/database/schema.js";
 import { resolveMigrationsFolder } from "@dev-workflow/database/migrations-folder.js";
 import { openSqliteDatabase } from "@dev-workflow/database/open-database.js";
 
@@ -160,6 +167,19 @@ export class DbSourceProvider extends Service<DbSourceProvider>()("sourceProvide
       globalSettings,
 
       getDb: () => drizzleDb,
+
+      findProjectSlugByTaskId: (taskId: string): string | null => {
+        const result = drizzleDb
+          .select({ slug: projectsTable.slug })
+          .from(tasksTable)
+          .innerJoin(plansTable, sql`${plansTable.id} = ${tasksTable.planId}`)
+          .innerJoin(issuesTable, sql`${issuesTable.id} = ${plansTable.issueId}`)
+          .innerJoin(projectsTable, sql`${projectsTable.id} = ${issuesTable.projectId}`)
+          .where(sql`${tasksTable.id} = ${taskId}`)
+          .get();
+
+        return result?.slug ?? null;
+      },
 
       createClient: (projectId: string): DbClient => {
         return new DrizzleDbClient(drizzleDb, projectId);

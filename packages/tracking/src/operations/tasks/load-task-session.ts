@@ -7,6 +7,15 @@
  * - Session management: start/resume via TaskDomainService + GitWorktreeService
  * - Conflict detection: warns about files modified by prior tasks
  * - Context enrichment: loads issue, plan, dependencies, dependents
+ *
+ * Worktree handling: ADOPTS an existing worktree, or CREATES one as a fallback.
+ * When the task already has a `worktreePath` (the common case under worker
+ * execution, where ClaudeWorkerService.ensureWorktree pre-creates the worktree
+ * and spawns the session inside it before this runs), the `if (!worktreePath)`
+ * guard is skipped and the existing worktree is adopted and returned unchanged.
+ * The create branch is the fallback for INLINE (non-worker) execution, where no
+ * worktree exists yet. Either way the returned `worktreePath` is the path callers
+ * MUST use for all file operations.
  */
 
 import { z } from "zod";
@@ -194,7 +203,10 @@ export function loadTaskSession(input: LoadTaskSessionInput) {
     let worktreePath: string | undefined = task.worktreePath;
     let branchName: string | undefined = task.branchName;
 
-    // Always use isolated mode (worktree-based execution)
+    // Always use isolated mode (worktree-based execution).
+    // If the task already has a worktreePath (e.g. a worker pre-created it and
+    // spawned this session inside it), adopt it. Otherwise create one here — the
+    // fallback path for inline (non-worker) execution.
     if (!worktreePath) {
       const names = generateWorktreeNames(issueNumber, task.number, task.title);
       branchName = names.branchName;

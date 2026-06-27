@@ -11,8 +11,14 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { execSync } from "node:child_process";
 import { Effect } from "@dev-workflow/effect";
-import { ProjectsResolver } from "../projects-resolver.js";
+import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
+import {
+  ProjectsResolver,
+  resolveConfigFromGit,
+  ProjectConfigError,
+} from "../projects-resolver.js";
 
 async function writeProjectConfig(
   projectsDir: string,
@@ -117,5 +123,69 @@ describe("ProjectsResolver — dynamic project enumeration", () => {
     const resolver = new (ProjectsResolver as unknown as new () => ProjectsResolver)();
     const projects = await Effect.runPromise(resolver.getAllProjects());
     expect(projects).toEqual([]);
+  });
+});
+
+// =============================================================================
+// resolveConfigFromGit — worktree-aware resolution (real git)
+// =============================================================================
+
+function git(cwd: string, args: string): void {
+  execSync(`git ${args}`, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+}
+
+describe("resolveConfigFromGit — worktree awareness", () => {
+  let reposDir: string;
+  let mainRepo: string;
+  const slug = "main-project-abc123";
+  const projectId = "proj-main-abc123";
+
+  beforeEach(async () => {
+    // realpath: git reports the resolved tmpdir path (macOS /var symlink).
+    reposDir = await fs.realpath(tmpDir);
+    mainRepo = path.join(reposDir, "main-repo");
+    await fs.mkdir(mainRepo, { recursive: true });
+
+    git(mainRepo, "init -b main");
+    git(mainRepo, "config user.email test@example.com");
+    git(mainRepo, "config user.name Test");
+    await fs.writeFile(path.join(mainRepo, "README.md"), "hello");
+    git(mainRepo, "add -A");
+    git(mainRepo, 'commit -m "initial"');
+  });
+
+  it("resolves a worktree to its PARENT repository's project config", async () => {
+    // The slug lives on the MAIN repo's git config + ~/.track project config.
+    new GitOperations().writeSlugToGitConfig(mainRepo, slug);
+    await writeProjectConfig(projectsDir, slug, projectId);
+
+    const worktree = path.join(reposDir, "wt-task-1");
+    git(mainRepo, `worktree add "${worktree}"`);
+
+    const config = await resolveConfigFromGit(worktree);
+
+    expect(config.slug).toBe(slug);
+    expect(config.projectId).toBe(projectId);
+  });
+
+  it("still resolves a normal (non-worktree) checkout from its own root", async () => {
+    new GitOperations().writeSlugToGitConfig(mainRepo, slug);
+    await writeProjectConfig(projectsDir, slug, projectId);
+
+    const config = await resolveConfigFromGit(mainRepo);
+
+    expect(config.slug).toBe(slug);
+    expect(config.projectId).toBe(projectId);
+  });
+
+  it("throws WORKTREE_DETECTED when the worktree's parent has no slug", async () => {
+    // No slug written on the main repo => parent is not a dev-workflow project.
+    const worktree = path.join(reposDir, "wt-uninit");
+    git(mainRepo, `worktree add "${worktree}"`);
+
+    await expect(resolveConfigFromGit(worktree)).rejects.toMatchObject({
+      code: "WORKTREE_DETECTED",
+    });
+    await expect(resolveConfigFromGit(worktree)).rejects.toBeInstanceOf(ProjectConfigError);
   });
 });

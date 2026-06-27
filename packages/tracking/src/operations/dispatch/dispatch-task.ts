@@ -10,6 +10,7 @@ import type { WorkerQueueDb, WorkerSummary } from "@dev-workflow/dispatch/worker
 import { WorkerQueueDbTag } from "@dev-workflow/dispatch/worker-queue-db.js";
 import { DEFAULT_HEARTBEAT_THRESHOLD_SECONDS } from "@dev-workflow/dispatch/worker.js";
 import { TaskDomainService } from "../../domain/tasks/task-domain-service.js";
+import { DbSourceTag } from "../../data-access/db-source.js";
 import { validateInput } from "../validation.js";
 import { Effect } from "@dev-workflow/effect";
 import { EntityNotFoundError, BusinessRuleError } from "../../domain/errors.js";
@@ -100,12 +101,21 @@ export function dispatchTask(input: DispatchTaskInput) {
     const { taskId, projectSlug } = validateInput(DispatchTaskSchema, input);
     const workerQueueDb = yield* WorkerQueueDbTag;
     const taskDomainService = yield* TaskDomainService;
+    const dbSource = yield* DbSourceTag;
 
     // 1. Verify task exists
     const task = yield* taskDomainService.findById(taskId);
     if (!task) {
       return yield* Effect.fail(new EntityNotFoundError("Task", taskId));
     }
+
+    // Derive the task's TRUE owning-project slug from the task itself
+    // (tasks → plans → issues → projects on the global DB). The caller-supplied
+    // `projectSlug` is only the serving MCP server's cwd-resolved slug, which is
+    // wrong for a cross-project dispatch — so prefer the derived slug and never
+    // enqueue with the caller's slug when they disagree.
+    const derivedSlug = dbSource.findProjectSlugByTaskId(taskId);
+    const trueProjectSlug = derivedSlug ?? projectSlug;
 
     // 2. Verify task is in a dispatchable state
     if (task.status !== "BACKLOG" && task.status !== "READY") {
@@ -142,8 +152,8 @@ export function dispatchTask(input: DispatchTaskInput) {
       );
     }
 
-    // 5. Enqueue
-    workerQueueDb.enqueue(taskId, projectSlug);
+    // 5. Enqueue with the task's TRUE owning-project slug
+    workerQueueDb.enqueue(taskId, trueProjectSlug);
 
     // 6. Build result with fresh queue entry info
     const result = getQueueEntryWithWorker(workerQueueDb, taskId);

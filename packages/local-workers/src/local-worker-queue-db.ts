@@ -354,6 +354,14 @@ export class GlobalDbWorkerQueueDb implements WorkerQueueDb {
     this.db.delete(dispatchQueue).where(eq(dispatchQueue.taskId, taskId)).run();
   }
 
+  updateProjectSlug(taskId: string, projectSlug: string): void {
+    this.db
+      .update(dispatchQueue)
+      .set({ projectSlug })
+      .where(eq(dispatchQueue.taskId, taskId))
+      .run();
+  }
+
   findByTaskId(taskId: string): QueueEntry | null {
     const row = this.db.select().from(dispatchQueue).where(eq(dispatchQueue.taskId, taskId)).get();
     return row ? this.mapQueueRow(row) : null;

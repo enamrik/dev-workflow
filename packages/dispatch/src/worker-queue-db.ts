@@ -160,6 +160,19 @@ export interface WorkerQueueDb {
   remove(taskId: string): void;
 
   /**
+   * Update the stored project slug for a queue entry.
+   *
+   * Self-heals a poisoned row: a dispatch bug may have stamped a row with the
+   * dispatching/claiming worker's home project rather than the task's true
+   * owner. Once the owner is resolved authoritatively from the task, this
+   * corrects the stored label so it stops lying.
+   *
+   * @param taskId - Task UUID whose queue entry to heal
+   * @param projectSlug - The task's authoritative owning-project slug
+   */
+  updateProjectSlug(taskId: string, projectSlug: string): void;
+
+  /**
    * Find queue entry by task ID
    */
   findByTaskId(taskId: string): QueueEntry | null;
