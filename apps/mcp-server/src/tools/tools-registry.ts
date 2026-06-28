@@ -7,6 +7,7 @@
 
 import type { McpContainer } from "../di/container.js";
 import { createMcpTool, type McpTool } from "../di/bootstrap.js";
+import { errorResponse } from "./types.js";
 
 // Import all handlers
 import {
@@ -93,6 +94,19 @@ import {
  * Tool registry type - maps tool names to bound handlers.
  */
 export type ToolsRegistry = Record<string, McpTool>;
+
+/**
+ * Degraded registry for when the server can't resolve a dev-workflow project
+ * (e.g. it was launched in a directory that isn't a registered dfl project).
+ * Every tool returns a clean error result instead of the server exiting on
+ * startup (#45) — the MCP connection stays alive so `/mcp` doesn't surface
+ * -32000. A Proxy covers all current and future tools without maintaining a
+ * parallel name list.
+ */
+export function createDegradedToolsRegistry(reason: string): ToolsRegistry {
+  const degraded: McpTool = async () => errorResponse(reason);
+  return new Proxy({} as ToolsRegistry, { get: () => degraded });
+}
 
 /**
  * Creates the tools registry by binding all handlers to the container.

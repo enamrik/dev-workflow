@@ -29,7 +29,11 @@ import {
   dispatchToolDefinitions,
 } from "./tools/tool-definitions.js";
 import { errorResponse } from "./tools/types.js";
-import { createToolsRegistry, type ToolsRegistry } from "./tools/tools-registry.js";
+import {
+  createToolsRegistry,
+  createDegradedToolsRegistry,
+  type ToolsRegistry,
+} from "./tools/tools-registry.js";
 
 // =============================================================================
 // Project Resolution
@@ -61,9 +65,14 @@ async function resolveProjectSlug(): Promise<string> {
   return config.slug;
 }
 
-// Awilix container and tools registry (initialized in main)
+// Awilix container and tools registry (initialized in main).
+// `tools` starts as a degraded registry so a tool call that arrives before main()
+// finishes resolving the project (or when there is no project) gets a clean error
+// rather than crashing on an undefined handler.
 let container: McpContainer;
-let tools: ToolsRegistry;
+let tools: ToolsRegistry = createDegradedToolsRegistry(
+  "dev-workflow MCP server is still starting up; retry in a moment."
+);
 
 // Create MCP server
 const server = new Server(
@@ -108,27 +117,45 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> =>
 });
 
 /**
- * Initialize all services and start the server
+ * Build the user-facing reason a directory can't be served, mirroring the
+ * ProjectConfigError cases. Surfaced via the degraded registry's tool errors (#45).
+ */
+function degradeReason(error: unknown): string {
+  const cwd = process.cwd();
+  const code = error instanceof ProjectConfigError ? error.code : undefined;
+  if (code === "NOT_GIT_REPO") {
+    return `This directory is not a git repository (${cwd}). Run 'dfl init' in your project's main repository to register it.`;
+  }
+  if (code === "WORKTREE_DETECTED") {
+    return `This worktree's main repository is not a dev-workflow project (${cwd}). Run 'dfl init' in the main repository to register it.`;
+  }
+  return `This directory isn't a dev-workflow project (${cwd}). Run 'dfl init' in the main repository to register it.`;
+}
+
+/**
+ * Initialize all services and start the server.
+ *
+ * The transport connects FIRST so the MCP handshake always completes — even in a
+ * directory that isn't a dev-workflow project. If we can't resolve a project (or
+ * build its container) we serve a DEGRADED registry whose tools return a clean
+ * "run dfl init" error, rather than exiting on startup (which Claude Code surfaces
+ * as -32000, with nothing to reconnect to). See #45.
  */
 async function main() {
+  // Connect first — never let project resolution gate the MCP handshake.
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error("dev-workflow MCP server running on stdio");
+
   // Resolve which project this server is serving (cwd-based unless pinned via env).
   let slug: string;
   try {
     slug = await resolveProjectSlug();
   } catch (error) {
-    const code = error instanceof ProjectConfigError ? error.code : undefined;
-    if (code === "NOT_GIT_REPO") {
-      console.error(`Error: not a git repository (${process.cwd()}).`);
-    } else if (code === "WORKTREE_DETECTED") {
-      console.error(
-        `Error: this worktree's main repository is not a dev-workflow project (${process.cwd()}).`
-      );
-    } else {
-      console.error(`Error: not a dev-workflow project (${process.cwd()}).`);
-    }
-    console.error(error instanceof Error ? error.message : String(error));
-    console.error("Run 'dfl init' in your project's main repository to register it.");
-    process.exit(1);
+    const reason = degradeReason(error);
+    console.error(reason);
+    tools = createDegradedToolsRegistry(reason);
+    return; // stay connected + degraded
   }
 
   console.error(`Loading config from slug: ${slug}`);
@@ -136,25 +163,19 @@ async function main() {
   try {
     // Create Awilix container - this wires up all dependencies
     container = await createMcpContainer(slug);
-
     // Create tools registry - binds all handlers to container
     tools = createToolsRegistry(container);
   } catch (error) {
-    console.error(`Error: Failed to initialize for slug "${slug}"`);
-    console.error(error instanceof Error ? error.message : String(error));
-    console.error("Run 'dfl init' to create the config file.");
-    process.exit(1);
+    const reason = `Failed to initialize for project "${slug}": ${
+      error instanceof Error ? error.message : String(error)
+    }. Run 'dfl init' to (re)create its config.`;
+    console.error(reason);
+    tools = createDegradedToolsRegistry(reason);
+    return; // stay connected + degraded
   }
 
   const cradle = container.cradle;
-
-  // Log startup info
   console.error(`Project: ${cradle.project.name} (${cradle.project.id.slice(0, 8)}...)`);
-
-  // Start server with stdio transport
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("dev-workflow MCP server running on stdio");
   console.error(`Database: ${cradle.config.databasePath}`);
 }
 
