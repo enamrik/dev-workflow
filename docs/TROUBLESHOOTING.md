@@ -49,6 +49,30 @@ Common issues and solutions for dev-workflow. If you encounter a problem not cov
    dfl init
    ```
 
+### MCP server fails to start (`-32000`)
+
+**Symptoms:**
+
+- Claude Code reports a bare `-32000` connection error
+- The MCP server never becomes available, with no visible cause
+
+**Cause:**
+The server's stderr (the real error — a failed spawn, a config-resolution
+failure, a stack trace) is captured by Claude Code but surfaced only as
+`-32000`.
+
+**Solution:**
+The server tees its stderr and startup failures to a log file, so the real
+cause is diagnosable without reproducing the launch:
+
+```bash
+# Honors $DFL_HOME; defaults to ~/.dfl/track/mcp.log
+cat ~/.dfl/track/mcp.log
+```
+
+The log is size-capped (rotated to `mcp.log.1` past ~1 MB), so the most recent
+diagnostics are always retained.
+
 ### "Issue not found" or "Task not found" for existing data
 
 **Symptoms:**
@@ -505,6 +529,7 @@ git worktree list
 gh auth status
 gh api user
 
-# View recent MCP server logs
-# (if running with debug output)
+# View MCP server diagnostics / startup errors
+# (the server's stderr is tee'd here; honors $DFL_HOME)
+cat ~/.dfl/track/mcp.log
 ```
