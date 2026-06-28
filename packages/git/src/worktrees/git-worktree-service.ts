@@ -204,15 +204,32 @@ export class NodeGitWorktreeService implements GitWorktreeService {
   ): Promise<string> {
     const fullPath = path.resolve(this.projectRoot, worktreePath);
 
+    // Idempotent: a re-claimed (e.g. previously abandoned/crashed) task must not
+    // be blocked by leftovers. Prune stale registrations, then adopt an existing
+    // worktree already registered at this path instead of failing.
+    await this._run(["worktree", "prune"]);
+    let resolvedFullPath: string;
+    try {
+      resolvedFullPath = await fs.realpath(fullPath);
+    } catch {
+      resolvedFullPath = fullPath;
+    }
+    const existing = await this._listWorktrees();
+    if (existing.some((w) => w.path === resolvedFullPath || w.path === fullPath)) {
+      return fullPath;
+    }
+
     // Ensure parent directory exists
     const parentDir = path.dirname(fullPath);
     await fs.mkdir(parentDir, { recursive: true });
 
-    // Create worktree with new branch
-    const args = ["worktree", "add", "-b", branchName, fullPath];
-    if (baseBranch) {
-      args.push(baseBranch);
-    }
+    // Attach an already-existing branch (e.g. one that survived a prior cleanup)
+    // rather than `-b`, which fails when the branch already exists; only create a
+    // fresh branch when none exists.
+    const branchExists = await this._branchExists(branchName);
+    const args = branchExists
+      ? ["worktree", "add", fullPath, branchName]
+      : ["worktree", "add", "-b", branchName, fullPath, ...(baseBranch ? [baseBranch] : [])];
 
     const result = await this._run(args);
     if (!result.success) {
@@ -224,6 +241,12 @@ export class NodeGitWorktreeService implements GitWorktreeService {
     }
 
     return fullPath;
+  }
+
+  /** True if a local branch with the given name already exists. */
+  private async _branchExists(branchName: string): Promise<boolean> {
+    const result = await this._run(["show-ref", "--verify", "--quiet", `refs/heads/${branchName}`]);
+    return result.success;
   }
 
   private async _removeWorktree(worktreePath: string, deleteBranch = false): Promise<void> {

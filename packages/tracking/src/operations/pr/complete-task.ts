@@ -21,16 +21,28 @@ import { EntityNotFoundError, BusinessRuleError } from "../../domain/errors.js";
 // Schema & Types
 // =============================================================================
 
-export const CompleteTaskSchema = z.object({
-  taskId: z.string().min(1),
-  sessionId: z.string().min(1),
-  finalLogEntry: z.string().trim().min(1, {
+// Sentinel used as the execution-log author / changedBy when a task is completed
+// without a worker session (locally-finished work, force-completed).
+const LOCAL_SESSION_SENTINEL = "local";
+
+export const CompleteTaskSchema = z
+  .object({
+    taskId: z.string().min(1),
+    // Optional: locally-finished tasks have no worker session. When absent, the task
+    // may only be force-completed (enforced by the refinement below).
+    sessionId: z.string().min(1).optional(),
+    finalLogEntry: z.string().trim().min(1, {
+      message:
+        "finalLogEntry is required. Please provide a summary of what was accomplished in this task.",
+    }),
+    force: z.boolean().optional().default(false),
+    autoCloseIssue: z.boolean().optional().default(false),
+  })
+  .refine((input) => input.sessionId !== undefined || input.force, {
     message:
-      "finalLogEntry is required. Please provide a summary of what was accomplished in this task.",
-  }),
-  force: z.boolean().optional().default(false),
-  autoCloseIssue: z.boolean().optional().default(false),
-});
+      "sessionId is required unless force=true. A task with no worker session may only be force-completed.",
+    path: ["sessionId"],
+  });
 
 export type CompleteTaskInput = z.infer<typeof CompleteTaskSchema>;
 
@@ -310,10 +322,16 @@ function completeIsolatedModeTask(
  */
 export function completeTask(input: CompleteTaskInput) {
   return Effect.gen(function* () {
-    const { taskId, sessionId, finalLogEntry, force, autoCloseIssue } = validateInput(
-      CompleteTaskSchema,
-      input
-    );
+    const {
+      taskId,
+      sessionId: rawSessionId,
+      finalLogEntry,
+      force,
+      autoCloseIssue,
+    } = validateInput(CompleteTaskSchema, input);
+    // No worker session (locally-finished, force-completed) → attribute the log entry
+    // and completion to a sentinel author. The schema guarantees force=true here.
+    const sessionId = rawSessionId ?? LOCAL_SESSION_SENTINEL;
     const taskDomainService = yield* TaskDomainService;
     const issueDomainService = yield* IssueDomainService;
     const planDomainService = yield* PlanDomainService;

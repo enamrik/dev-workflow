@@ -238,7 +238,13 @@ export class DrizzleTaskRepository implements TaskRepository {
     });
   }
 
-  updateStatus(id: string, status: TaskStatus, changedBy?: string, notes?: string): Effect<Task> {
+  updateStatus(
+    id: string,
+    status: TaskStatus,
+    changedBy?: string,
+    notes?: string,
+    force = false
+  ): Effect<Task> {
     const self = this;
     return Effect.gen(function* () {
       // Get current task
@@ -247,19 +253,22 @@ export class DrizzleTaskRepository implements TaskRepository {
         throw new Error(`Task not found: ${id}`);
       }
 
-      // Validate status transition
-      const transition = currentTask.checkTransition(status);
-      if (!transition.allowed) {
-        const allowedStr =
-          currentTask.allowedTransitions.length > 0
-            ? currentTask.allowedTransitions.join(", ")
-            : "none";
-        throw new InvalidStatusTransitionError(
-          id,
-          currentTask.status,
-          status,
-          `allowed transitions from ${currentTask.status}: ${allowedStr}`
-        );
+      // Validate status transition (skipped when forced — e.g. completing
+      // locally-finished work that never entered the PR/worker lifecycle).
+      if (!force) {
+        const transition = currentTask.checkTransition(status);
+        if (!transition.allowed) {
+          const allowedStr =
+            currentTask.allowedTransitions.length > 0
+              ? currentTask.allowedTransitions.join(", ")
+              : "none";
+          throw new InvalidStatusTransitionError(
+            id,
+            currentTask.status,
+            status,
+            `allowed transitions from ${currentTask.status}: ${allowedStr}`
+          );
+        }
       }
 
       // Skip update if status is the same (no-op)

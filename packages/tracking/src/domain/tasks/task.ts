@@ -517,7 +517,13 @@ export interface TaskRepository {
    * @param notes - Optional notes about the change
    * @returns The updated task
    */
-  updateStatus(id: string, status: TaskStatus, changedBy?: string, notes?: string): Effect<Task>;
+  updateStatus(
+    id: string,
+    status: TaskStatus,
+    changedBy?: string,
+    notes?: string,
+    force?: boolean
+  ): Effect<Task>;
 
   /**
    * Get the next order number for a plan

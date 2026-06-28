@@ -103,8 +103,9 @@ init: link
 # is untouched. Requires `dfl` to have been installed once via curl (vendored better-sqlite3).
 dogfood: build
 	@echo "🔨 Bundling cli + mcp-server..."
-	@pnpm --filter @dev-workflow/cli exec tsup
-	@pnpm --filter @dev-workflow/mcp-server exec tsup
+	@export DFL_VERSION="0.0.0-dev+g$$(git rev-parse --short HEAD)$$(git diff --quiet || echo .dirty)" && \
+		pnpm --filter @dev-workflow/cli exec tsup && \
+		pnpm --filter @dev-workflow/mcp-server exec tsup
 	@echo "📦 Publishing local build into ~/.dfl/install..."
 	@node scripts/dogfood.mjs
 	@echo "🔄 Restarting UI daemon to pick up changes (if running)..."

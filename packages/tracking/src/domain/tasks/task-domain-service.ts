@@ -219,7 +219,7 @@ export class TaskDomainService extends Service<TaskDomainService>()("taskDomainS
           return yield* Effect.fail(new BusinessRuleError(check.reason!));
         }
       }
-      return yield* repo.updateStatus(taskId, "COMPLETED", changedBy, notes);
+      return yield* repo.updateStatus(taskId, "COMPLETED", changedBy, notes, force);
     });
   }
 

@@ -19,6 +19,7 @@ import { runMCP } from "./commands/mcp-command-def.js";
 import { runCleanClaudeConfig } from "./commands/claude-config-command-def.js";
 import { runSetup } from "./commands/setup-command-def.js";
 import { runUninstall } from "./commands/uninstall-command-def.js";
+import { printVersionBanner } from "./version-banner.js";
 
 // Injected at bundle time by tsup (define: __DFL_VERSION__). Undefined in dev/tsc builds —
 // the typeof guard avoids a ReferenceError there and falls back to a dev marker.
@@ -103,4 +104,5 @@ program
     await runSetup(options);
   });
 
+printVersionBanner(VERSION);
 program.parse(process.argv);
