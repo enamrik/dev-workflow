@@ -77,6 +77,13 @@ export interface WorkerConfig {
   heartbeatIntervalMs?: number;
   /** Poll interval in milliseconds (default: 2000ms = 2s) */
   pollIntervalMs?: number;
+  /**
+   * How often the worker re-asserts its terminal-title banner while a Claude
+   * session is active (default: 1000ms = 1s). The spawned `claude` process
+   * inherits the TTY and writes its own title; re-asserting on this cadence
+   * keeps the worker's banner the one that wins the screen. Lower = wins harder.
+   */
+  titleAssertIntervalMs?: number;
   /** Stale heartbeat threshold in seconds (default: 10s) */
   staleThresholdSeconds?: number;
   /** Extra flags forwarded verbatim to every spawned `claude` invocation (before the prompt) */
@@ -146,6 +153,10 @@ export class ClaudeWorkerService {
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private pollInterval: NodeJS.Timeout | null = null;
   private taskWatchInterval: NodeJS.Timeout | null = null;
+  /** Re-asserts the worker banner on a tight cadence so it wins the TTY title. */
+  private titleAssertInterval: NodeJS.Timeout | null = null;
+  /** Last rendered banner string, re-emitted by titleAssertInterval to win. */
+  private currentTitle = "";
   private isShuttingDown = false;
   private resolveShutdown: (() => void) | null = null;
 
@@ -164,6 +175,7 @@ export class ClaudeWorkerService {
       name: config.name ?? "",
       heartbeatIntervalMs: config.heartbeatIntervalMs ?? 5000,
       pollIntervalMs: config.pollIntervalMs ?? 2000,
+      titleAssertIntervalMs: config.titleAssertIntervalMs ?? 1000,
       staleThresholdSeconds: config.staleThresholdSeconds ?? 10,
       claudeArgs: config.claudeArgs ?? [],
     };
@@ -179,6 +191,21 @@ export class ClaudeWorkerService {
    */
   private setTerminalTitle(title: string): void {
     process.stdout.write(`\x1b]0;${title}\x07`);
+  }
+
+  /**
+   * Stop the per-session timers (task watch + title re-assert). Safe to call
+   * repeatedly — each guarded clear is idempotent.
+   */
+  private stopSessionTimers(): void {
+    if (this.taskWatchInterval) {
+      clearInterval(this.taskWatchInterval);
+      this.taskWatchInterval = null;
+    }
+    if (this.titleAssertInterval) {
+      clearInterval(this.titleAssertInterval);
+      this.titleAssertInterval = null;
+    }
   }
 
   /**
@@ -204,6 +231,9 @@ export class ClaudeWorkerService {
       title = `${this.state.workerName} | polling...`;
     }
 
+    // Cache the rendered banner so titleAssertInterval can cheaply re-emit it
+    // (without re-querying the DB) to keep winning the TTY against Claude.
+    this.currentTitle = title;
     this.setTerminalTitle(title);
   }
 
@@ -374,11 +404,8 @@ export class ClaudeWorkerService {
       this.heartbeatInterval = null;
     }
 
-    // Stop task watch
-    if (this.taskWatchInterval) {
-      clearInterval(this.taskWatchInterval);
-      this.taskWatchInterval = null;
-    }
+    // Stop the per-session timers (task watch + title re-assert)
+    this.stopSessionTimers();
 
     // Unregister worker
     this.queue.unregisterWorker(this.state.workerId);
@@ -885,6 +912,19 @@ export class ClaudeWorkerService {
       // Worker waits indefinitely until Claude calls end_worker_session
       let sessionEnded = false;
 
+      // Competing-writer (issue #23): the spawned `claude` process inherits this
+      // TTY (stdio: "inherit") and writes its OWN terminal title ("Execute Task
+      // #N.N…"). We can't stop it from writing — so instead of backing off, the
+      // worker WINS by re-asserting its banner on a tight cadence. Whatever Claude
+      // paints is overwritten within titleAssertIntervalMs, so the worker's
+      // `worker-N | …` banner is the one that persists on screen. The banner string
+      // is cached (currentTitle, already painted once by workOnTask before spawn),
+      // so this re-emit is a cheap stdout write with no DB query; the 2s watch loop
+      // below refreshes the content (status segment).
+      this.titleAssertInterval = setInterval(() => {
+        if (this.currentTitle) this.setTerminalTitle(this.currentTitle);
+      }, this.config.titleAssertIntervalMs);
+
       this.taskWatchInterval = setInterval(async () => {
         const task = await this.findTaskById(taskId);
         if (!task) {
@@ -893,7 +933,8 @@ export class ClaudeWorkerService {
           return;
         }
 
-        // Update terminal title with current status
+        // Refresh the banner content (picks up status changes); titleAssertInterval
+        // keeps re-emitting it between ticks so the worker keeps winning the TTY.
         await this.updateTitle();
 
         // Heartbeat the log so a stuck/blocked worker is visible from the file.
@@ -905,11 +946,8 @@ export class ClaudeWorkerService {
           if (!sessionEnded) {
             sessionEnded = true;
 
-            // Stop task watch
-            if (this.taskWatchInterval) {
-              clearInterval(this.taskWatchInterval);
-              this.taskWatchInterval = null;
-            }
+            // Stop the session timers (task watch + title re-assert)
+            this.stopSessionTimers();
 
             sessionLog.signaledComplete();
             console.log(term.green("\n✓ Claude signaled session complete via end_worker_session"));
@@ -919,11 +957,8 @@ export class ClaudeWorkerService {
       }, 2000);
 
       claudeProcess.on("exit", async (code: number | null) => {
-        // Stop task watch if still running
-        if (this.taskWatchInterval) {
-          clearInterval(this.taskWatchInterval);
-          this.taskWatchInterval = null;
-        }
+        // Stop the session timers if still running
+        this.stopSessionTimers();
 
         console.log("\n" + term.cyan("═".repeat(60)));
         console.log(term.dim(`Claude session ended (exit code: ${code})`));
@@ -943,10 +978,7 @@ export class ClaudeWorkerService {
         this.state.currentClaudeProcess = null;
         sessionLog.errored(error);
 
-        if (this.taskWatchInterval) {
-          clearInterval(this.taskWatchInterval);
-          this.taskWatchInterval = null;
-        }
+        this.stopSessionTimers();
 
         await this.releaseTask(taskId);
         resolve();

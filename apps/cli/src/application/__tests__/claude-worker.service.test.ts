@@ -309,6 +309,77 @@ describe("ClaudeWorkerService.workOnTask — authoritative resolution + worktree
     expect(createWorktreeSpy).not.toHaveBeenCalled();
   });
 
+  it("aggressively re-asserts its banner so the worker title wins the TTY (issue #23)", async () => {
+    // The spawned `claude` process inherits the TTY and writes its OWN title
+    // ("Execute Task…"). We can't suppress it, so the worker WINS by re-asserting
+    // its banner on a tight cadence (titleAssertIntervalMs) — whatever Claude
+    // paints is overwritten quickly. Across a window with an UNCHANGED status the
+    // worker must keep re-emitting its banner (many writes), NOT back off.
+    vi.useFakeTimers();
+
+    const fakeSource = makeFakeSource();
+    const queue = makeFakeQueue();
+    const sourceProvider = {
+      getOrCreate: vi.fn().mockReturnValue(fakeSource),
+      closeAll: vi.fn(),
+    };
+    const projectsResolver = {
+      getProjectBySlug: vi.fn().mockImplementation(() => Effect.succeed(trueProjectInfo)),
+    };
+
+    // Keep the spawned process ALIVE so the intervals keep ticking; emit exit later
+    // (the beforeEach mock auto-exits — override it).
+    spawnSpy.mockImplementation(() => {
+      const proc = new EventEmitter() as EventEmitter & { kill: () => void };
+      proc.kill = vi.fn();
+      return proc;
+    });
+
+    // Tight re-assert cadence so a 2s window produces many deterministic emits.
+    const service = new ClaudeWorkerService(
+      queue as never,
+      sourceProvider as never,
+      projectsResolver as never,
+      { titleAssertIntervalMs: 200 }
+    );
+    // Capture every OSC title write (both the 2s content refresh and the re-asserts).
+    const titleWrites: string[] = [];
+    vi.spyOn(
+      service as unknown as { setTerminalTitle: (t: string) => void },
+      "setTerminalTitle"
+    ).mockImplementation((t: string) => {
+      titleWrites.push(t);
+    });
+
+    // Kick off the orchestration but DON'T await — it resolves only on proc exit.
+    const done = (
+      service as unknown as {
+        workOnTask: (taskId: string, projectSlug: string) => Promise<void>;
+      }
+    ).workOnTask(TASK_ID, WRONG_SLUG);
+
+    // Flush the async setup (initial banner paint), then run one full watch tick
+    // (2s) during which the 200ms re-assert interval fires ~10 times — status
+    // UNCHANGED the whole time.
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2000);
+
+    // The worker keeps re-asserting (wins): many writes despite a constant status.
+    // The rejected "back off" behavior would produce ≤ 2 here.
+    expect(titleWrites.length).toBeGreaterThanOrEqual(5);
+    // And what it re-asserts is the WORKER's banner, not Claude's "Execute Task…".
+    expect(titleWrites.at(-1)).toContain("#7.3");
+    expect(titleWrites.at(-1)).toContain("Do the thing");
+
+    // End the session and let workOnTask resolve.
+    const spawnedProc = spawnSpy.mock.results.at(-1)?.value as EventEmitter & {
+      kill: () => void;
+    };
+    spawnedProc.emit("exit", 0);
+    await done;
+    stopPolling(service);
+  });
+
   it("adopts an existing worktree on re-claim without recreating it", async () => {
     taskRow.worktreePath = TRUE_WORKTREE;
     taskRow.branchName = "issue-7/task-3-x";
