@@ -44,8 +44,13 @@ export function useTaskMetadata(
     enabled: isEnabled,
   });
 
-  const isLoading = historyQuery.isLoading || logsQuery.isLoading || dependenciesQuery.isLoading;
   const error = historyQuery.error || logsQuery.error || dependenciesQuery.error;
+  // Error must dominate over loading: if any query has failed, surface the error
+  // rather than the spinner. Otherwise a perpetually-retrying failed query (the
+  // global 2s refetchInterval keeps re-fetching) would mask the error and the tab
+  // would hang on "Loading metadata…" forever.
+  const isLoading =
+    !error && (historyQuery.isLoading || logsQuery.isLoading || dependenciesQuery.isLoading);
 
   const data: TaskMetadata | undefined =
     historyQuery.data && logsQuery.data && dependenciesQuery.data

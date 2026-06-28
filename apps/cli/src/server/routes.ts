@@ -19,6 +19,7 @@ import { getProjectEndpoint } from "./endpoints/get-project.js";
 import { getIssueDetailsEndpoint } from "./endpoints/get-issue-details.js";
 import { taskDependencies } from "./endpoints/task-dependencies.js";
 import { taskHistory } from "./endpoints/task-history.js";
+import { taskLogs } from "./endpoints/task-logs.js";
 import { listTasks } from "./endpoints/list-tasks.js";
 import { abandonTaskEndpoint } from "./endpoints/abandon-task.js";
 import { transitionTaskEndpoint } from "./endpoints/transition-task.js";
@@ -54,6 +55,11 @@ export const routes: RouteEntry[] = [
     method: "GET",
     pattern: "/api/projects/:project/tasks/:taskId/history",
     program: taskHistory,
+  },
+  {
+    method: "GET",
+    pattern: "/api/projects/:project/tasks/:taskId/logs",
+    program: taskLogs,
   },
   { method: "GET", pattern: "/api/tasks", program: listTasks },
   { method: "POST", pattern: "/api/tasks/:taskId/abandon", program: abandonTaskEndpoint },
