@@ -38,6 +38,7 @@ import {
 } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import { getGlobalDatabasePath } from "@dev-workflow/git/track-directory-resolver.js";
 import { WorkerSessionLog } from "@dev-workflow/git/worker-session-log.js";
+import { DflUpgradeDetector } from "../infrastructure/dfl-upgrade-detector.js";
 import { Effect } from "@dev-workflow/effect";
 import { PromptResolver } from "../prompts/prompt-resolver.js";
 import {
@@ -88,6 +89,8 @@ export interface WorkerConfig {
   staleThresholdSeconds?: number;
   /** Extra flags forwarded verbatim to every spawned `claude` invocation (before the prompt) */
   claudeArgs?: string[];
+  /** Running dfl build version (the `__DFL_VERSION__` define) — used to detect an installed-version change and self-restart. */
+  runningVersion?: string;
 }
 
 /**
@@ -159,8 +162,15 @@ export class ClaudeWorkerService {
   private currentTitle = "";
   private isShuttingDown = false;
   private resolveShutdown: (() => void) | null = null;
+  /** True while a poll tick's async work is still in flight — prevents the timer from overlapping ticks (e.g. claiming twice, or re-execing while a claim is mid-flight). */
+  private pollTickInFlight = false;
+  /** True once a self-restart has been triggered — stops further poll activity until the process exits. */
+  private isRestarting = false;
 
   private readonly config: Required<WorkerConfig>;
+
+  /** Detects when the installed dfl bundle is a different version than this build. */
+  private readonly upgradeDetector: DflUpgradeDetector;
 
   constructor(
     queue: WorkerQueueDb,
@@ -178,7 +188,9 @@ export class ClaudeWorkerService {
       titleAssertIntervalMs: config.titleAssertIntervalMs ?? 1000,
       staleThresholdSeconds: config.staleThresholdSeconds ?? 10,
       claudeArgs: config.claudeArgs ?? [],
+      runningVersion: config.runningVersion ?? "0.0.0-dev",
     };
+    this.upgradeDetector = new DflUpgradeDetector(this.config.runningVersion);
   }
 
   // ==========================================================================
@@ -462,11 +474,32 @@ export class ClaudeWorkerService {
     console.log("Polling for tasks...");
 
     this.pollInterval = setInterval(async () => {
-      if (this.isShuttingDown || this.state.status === "DRAINING") {
+      if (this.isShuttingDown || this.state.status === "DRAINING" || this.isRestarting) {
         return;
       }
 
-      await this.tryClaimTask();
+      // Don't overlap ticks: a tick whose async work (e.g. the availability
+      // check between claiming a queue row and marking it WORKING) outruns the
+      // poll interval must finish before the next one starts. Otherwise a
+      // re-entrant tick could claim a second task or re-exec while a claim is
+      // mid-flight (the queue row is already ours but currentTaskId isn't set).
+      if (this.pollTickInFlight) {
+        return;
+      }
+      this.pollTickInFlight = true;
+
+      try {
+        // Between tasks / while idle is the natural boundary to adopt a freshly
+        // installed dfl build. If we restart here, the process is on its way
+        // out — don't also try to claim a task.
+        if (this.maybeRestartForUpgrade()) {
+          return;
+        }
+
+        await this.tryClaimTask();
+      } finally {
+        this.pollTickInFlight = false;
+      }
     }, this.config.pollIntervalMs);
   }
 
@@ -1041,6 +1074,97 @@ export class ClaudeWorkerService {
     if (!this.isShuttingDown && this.state.status !== "DRAINING") {
       console.log(term.dim("\nReturning to polling for next task..."));
       this.startPolling();
+    }
+  }
+
+  // ==========================================================================
+  // Self-restart on dfl upgrade
+  // ==========================================================================
+
+  /**
+   * At a natural boundary (idle, between tasks), check whether the dfl bundle
+   * installed on disk is a different version than the one this worker is running
+   * and, if so, re-exec into it. Returns true when a restart was triggered so
+   * the poll loop knows to stop (the process is on its way out). Never restarts
+   * mid-task: the poll loop only runs while idle, and this re-checks defensively.
+   */
+  private maybeRestartForUpgrade(): boolean {
+    if (this.isShuttingDown || this.state.status === "DRAINING" || this.state.currentTaskId) {
+      return false;
+    }
+    const upgrade = this.upgradeDetector.detectUpgrade();
+    if (!upgrade) {
+      return false;
+    }
+    console.log(
+      term.yellow(
+        `\ndfl updated on disk (${upgrade.from} → ${upgrade.to}); restarting worker into the new build...`
+      )
+    );
+    // Latch so no further poll activity (claim or another restart) runs before
+    // the process exits; cleared only if the spawn fails (see reExec).
+    this.isRestarting = true;
+    this.reExec();
+    return true;
+  }
+
+  /**
+   * Re-exec this worker into the freshly-installed dfl bundle, preserving the
+   * worker name and forwarded claude args. We only reach here while idle (the
+   * poll-tick guards ensure no task — and no in-flight claim — is live), so the
+   * new process registers fresh and resumes polling; any queue entry left
+   * behind is recovered by the existing stale-reclaim path.
+   *
+   * Node has no execve, so we spawn the replacement sharing this terminal and
+   * exit once it's up. If the spawn fails we clear the restart latch and stay
+   * on the current build rather than leaving the worker dead.
+   */
+  private reExec(): void {
+    const args = [
+      this.upgradeDetector.installedBundlePath,
+      "claude",
+      "--name",
+      this.state.workerName,
+      ...this.config.claudeArgs,
+    ];
+    console.log(term.dim(`Re-exec: ${process.execPath} ${args.join(" ")}`));
+
+    const child = spawn(process.execPath, args, { stdio: "inherit", env: process.env });
+
+    child.once("spawn", () => {
+      // The new worker is up and owns the terminal — tear down this process so
+      // it takes over cleanly.
+      this.clearTimers();
+      this.queue.unregisterWorker(this.state.workerId);
+      process.exit(0);
+    });
+
+    child.once("error", (error: Error) => {
+      // Spawn failed — release the latch so the still-running poll loop resumes.
+      this.isRestarting = false;
+      console.error(
+        term.red(`Failed to re-exec into the new dfl build: ${error}. Staying on current build.`)
+      );
+    });
+  }
+
+  /** Clear all background intervals (poll, heartbeat, task-watch, title-assert) if running. */
+  private clearTimers(): void {
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
+    }
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+    if (this.taskWatchInterval) {
+      clearInterval(this.taskWatchInterval);
+      this.taskWatchInterval = null;
+    }
+    if (this.titleAssertInterval) {
+      clearInterval(this.titleAssertInterval);
+      this.titleAssertInterval = null;
     }
   }
 }

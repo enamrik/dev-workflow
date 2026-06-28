@@ -18,6 +18,8 @@ import {
 export interface StartWorkerOptions {
   name?: string;
   claudeArgs?: string[];
+  /** Running dfl build version (the `__DFL_VERSION__` define) — used to detect installed-version drift and self-restart. */
+  runningVersion?: string;
 }
 
 export interface WorkerLogsOptions {
@@ -99,6 +101,7 @@ export class WorkerCommand {
         {
           name: options.name,
           claudeArgs: options.claudeArgs ?? [],
+          runningVersion: options.runningVersion,
         }
       );
 
