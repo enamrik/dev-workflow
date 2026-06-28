@@ -80,7 +80,9 @@ vi.mock("@dev-workflow/tracking", async (importOriginal) => {
 });
 
 import { Effect } from "@dev-workflow/effect";
-import { ClaudeWorkerService, buildReExecArgs } from "../claude-worker.service.js";
+import { ClaudeWorkerService } from "../claude-worker.service.js";
+import { WorkerExitCode } from "../worker-supervisor.js";
+import { DflUpgradeDetector } from "../../infrastructure/dfl-upgrade-detector.js";
 
 // --- Constants --------------------------------------------------------------
 
@@ -622,172 +624,121 @@ describe("ClaudeWorkerService — worker identity adoption (#47)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildReExecArgs — the self-restart re-exec arg reconstruction.
+// maybeRestartForUpgrade — supervisor-driven self-restart (#48).
 //
-// Guards issue #38: the worker re-execs into a freshly-installed dfl bundle on
-// a dfl update. The passthrough args (everything after `--` on the original
-// `dfl claude` invocation) MUST be re-fenced behind their own `--` so the
-// re-exec'd `dfl claude` forwards them to the inner claude instead of parsing
-// them as its own options (which dies with `unknown option`).
+// The in-process re-exec (#38/#42) is GONE. The child no longer relaunches
+// itself; instead, at an idle boundary, it detects a freshly-installed bundle
+// and exits with WorkerExitCode.RESTART_FOR_UPGRADE (10). The supervisor
+// (interpretExit 10 → relaunch) re-spawns it on the new bundle. There is no
+// DFL_WORKER_SELF_RESTART gate anymore — the supervisor makes the relaunch
+// TTY-safe.
+//
+// No-loop invariant: the child compares its OWN running VERSION (not the
+// supervisor's frozen envelope flag), so DflUpgradeDetector.isUpgrade(v, v) is
+// false post-relaunch and no further exit fires.
 // ---------------------------------------------------------------------------
 
-describe("buildReExecArgs", () => {
-  const BUNDLE = "/install/cli.js";
-  const NAME = "worker-1";
-
-  it("re-inserts the `--` separator before passthrough args so dfl claude doesn't parse them", () => {
-    const args = buildReExecArgs(BUNDLE, NAME, [
-      "--model",
-      "opus",
-      "--dangerously-skip-permissions",
-    ]);
-
-    expect(args).toEqual([
-      BUNDLE,
-      "claude",
-      "--name",
-      NAME,
-      "--",
-      "--model",
-      "opus",
-      "--dangerously-skip-permissions",
-    ]);
-    // The separator appears exactly once, immediately before the passthrough args.
-    expect(args.filter((a) => a === "--")).toHaveLength(1);
-    expect(args.indexOf("--")).toBe(args.indexOf("--model") - 1);
-  });
-
-  it("omits the trailing `--` when there are no passthrough args", () => {
-    const args = buildReExecArgs(BUNDLE, NAME, []);
-
-    expect(args).toEqual([BUNDLE, "claude", "--name", NAME]);
-    expect(args).not.toContain("--");
-  });
-
-  it("preserves passthrough args verbatim, including a `--` they contain", () => {
-    const args = buildReExecArgs(BUNDLE, NAME, ["--flag", "--", "trailing"]);
-
-    // Our fence `--` is prepended; the user's own args (incl. their `--`) follow untouched.
-    expect(args).toEqual([BUNDLE, "claude", "--name", NAME, "--", "--flag", "--", "trailing"]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// reExec() handoff — Node has no execve, so the replacement build is a child
-// the parent must SEE come up before exiting. The old code exited on "spawn"
-// alone, so a child that died on startup (e.g. the #38 `unknown option`) left
-// the worker dead. These guard the grace-window handoff.
-// ---------------------------------------------------------------------------
-
-describe("reExec handoff", () => {
+describe("maybeRestartForUpgrade — supervisor relaunch on upgrade (#48)", () => {
   let exitSpy: MockInstance<(code?: string | number | null | undefined) => never>;
 
-  const driveReExec = (claudeArgs: string[] = []) => {
-    const queue = { unregisterWorker: vi.fn() };
-    const service = new ClaudeWorkerService(queue as never, {} as never, {} as never, {
-      claudeArgs,
-    });
-    // Controllable child — we drive spawn/exit by hand (no auto-exit).
-    const child = new EventEmitter() as EventEmitter & { kill: () => void };
-    child.kill = vi.fn();
-    spawnSpy.mockImplementationOnce(() => child);
-    // The self-restart latch is set by maybeRestartForUpgrade before reExec runs.
-    (service as unknown as { isRestarting: boolean }).isRestarting = true;
-    (service as unknown as { reExec: () => void }).reExec();
-    return { service, queue, child };
-  };
-
-  const isRestarting = (service: ClaudeWorkerService) =>
-    (service as unknown as { isRestarting: boolean }).isRestarting;
-
   beforeEach(() => {
+    // process.exit must NOT actually exit the test process; capture the code.
     exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
   });
-
   afterEach(() => {
     exitSpy.mockRestore();
-    vi.useRealTimers();
   });
 
-  it("stays alive on the current build when the re-exec'd child exits during startup", () => {
-    const { service, queue, child } = driveReExec(["--model", "opus"]);
+  type Detector = { detectUpgrade: () => unknown };
+  type ServiceInternals = {
+    upgradeDetector: Detector;
+    state: { status: string; currentTaskId: string | null };
+    isShuttingDown: boolean;
+    maybeRestartForUpgrade: () => boolean;
+  };
 
-    child.emit("spawn"); // spawn() succeeded...
-    child.emit("exit", 1, null); // ...but the new build died immediately (bad arg).
-
-    // The worker abandons the handoff rather than dying: latch released so the
-    // poll loop resumes, no process.exit, and it stays registered.
-    expect(isRestarting(service)).toBe(false);
-    expect(exitSpy).not.toHaveBeenCalled();
-    expect(queue.unregisterWorker).not.toHaveBeenCalled();
-  });
-
-  it("stays alive when the child can't be spawned at all (error event)", () => {
-    const { service, queue, child } = driveReExec();
-
-    child.emit("error", new Error("ENOENT"));
-
-    expect(isRestarting(service)).toBe(false);
-    expect(exitSpy).not.toHaveBeenCalled();
-    expect(queue.unregisterWorker).not.toHaveBeenCalled();
-  });
-
-  it("hands off (unregisters + exits) once the child survives the grace window", () => {
-    vi.useFakeTimers();
-    const { queue, child } = driveReExec();
-
-    child.emit("spawn");
-    // Before the grace window elapses we have NOT committed to the handoff.
-    expect(exitSpy).not.toHaveBeenCalled();
-
-    vi.advanceTimersByTime(500);
-
-    // Survived startup → tear down so the new build takes over the terminal.
-    expect(queue.unregisterWorker).toHaveBeenCalledTimes(1);
-    expect(exitSpy).toHaveBeenCalledWith(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// #42: in-process self-restart is DISABLED by default. The spawn+exit re-exec
-// orphans the worker (loses TTY foreground) → post-restart claude sessions
-// instant-exit → infinite claim/reclaim loop. Gated behind DFL_WORKER_SELF_RESTART=1
-// until a TTY-safe relauncher (supervisor, #37) exists.
-// ---------------------------------------------------------------------------
-
-describe("maybeRestartForUpgrade — self-restart disabled by default (#42)", () => {
-  const ENV = "DFL_WORKER_SELF_RESTART";
-  let prevEnv: string | undefined;
-
-  beforeEach(() => {
-    prevEnv = process.env[ENV];
-  });
-  afterEach(() => {
-    if (prevEnv === undefined) delete process.env[ENV];
-    else process.env[ENV] = prevEnv;
-  });
-
-  // A service that is idle AND has an upgrade available — so the ONLY thing that
-  // can stop a restart is the #42 gate.
-  const idleServiceWithUpgrade = () => {
+  // Build a service and overwrite its detector. `upgrade` controls whether an
+  // upgrade is reported. The queue records unregisterWorker so we can assert the
+  // worker released its registration before exiting.
+  const makeService = (upgrade: boolean) => {
     const queue = { unregisterWorker: vi.fn() };
     const service = new ClaudeWorkerService(queue as never, {} as never, {} as never, {});
-    (service as unknown as { upgradeDetector: { detectUpgrade: () => unknown } }).upgradeDetector =
-      {
-        detectUpgrade: () => ({ from: "0.0.0-dev+gaaa", to: "0.0.0-dev+gbbb" }),
-      };
-    return service;
+    (service as unknown as ServiceInternals).upgradeDetector = {
+      detectUpgrade: () => (upgrade ? { from: "0.0.0-dev+gaaa", to: "0.0.0-dev+gbbb" } : null),
+    };
+    return { service, queue };
   };
+  const internals = (service: ClaudeWorkerService) => service as unknown as ServiceInternals;
   const callMaybeRestart = (service: ClaudeWorkerService) =>
-    (service as unknown as { maybeRestartForUpgrade: () => boolean }).maybeRestartForUpgrade();
+    internals(service).maybeRestartForUpgrade();
 
-  it("does NOT restart when DFL_WORKER_SELF_RESTART is unset, even with an upgrade available", () => {
-    delete process.env[ENV];
-    expect(callMaybeRestart(idleServiceWithUpgrade())).toBe(false);
+  it("idle + upgrade detected → exits with RESTART_FOR_UPGRADE (10) and unregisters", () => {
+    const { service, queue } = makeService(true);
+
+    callMaybeRestart(service);
+
+    expect(queue.unregisterWorker).toHaveBeenCalledTimes(1);
+    expect(exitSpy).toHaveBeenCalledWith(WorkerExitCode.RESTART_FOR_UPGRADE);
+    expect(exitSpy).toHaveBeenCalledWith(10);
   });
 
-  it("does NOT restart when DFL_WORKER_SELF_RESTART is set to something other than '1'", () => {
-    process.env[ENV] = "true";
-    expect(callMaybeRestart(idleServiceWithUpgrade())).toBe(false);
+  it("no upgrade → does not exit, returns false", () => {
+    const { service, queue } = makeService(false);
+
+    expect(callMaybeRestart(service)).toBe(false);
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(queue.unregisterWorker).not.toHaveBeenCalled();
+  });
+
+  it("mid-task (currentTaskId set) → does not exit even with an upgrade", () => {
+    const { service, queue } = makeService(true);
+    internals(service).state.currentTaskId = "task-busy";
+
+    expect(callMaybeRestart(service)).toBe(false);
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(queue.unregisterWorker).not.toHaveBeenCalled();
+  });
+
+  it("DRAINING → does not exit even with an upgrade", () => {
+    const { service, queue } = makeService(true);
+    internals(service).state.status = "DRAINING";
+
+    expect(callMaybeRestart(service)).toBe(false);
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(queue.unregisterWorker).not.toHaveBeenCalled();
+  });
+
+  it("isShuttingDown → does not exit even with an upgrade", () => {
+    const { service, queue } = makeService(true);
+    internals(service).isShuttingDown = true;
+
+    expect(callMaybeRestart(service)).toBe(false);
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(queue.unregisterWorker).not.toHaveBeenCalled();
+  });
+
+  it("no-gate regression (#42 retired): DFL_WORKER_SELF_RESTART unset + idle + upgrade → DOES exit 10", () => {
+    const prev = process.env["DFL_WORKER_SELF_RESTART"];
+    delete process.env["DFL_WORKER_SELF_RESTART"];
+    try {
+      const { service } = makeService(true);
+
+      callMaybeRestart(service);
+
+      // Inverse of the deleted #42 test: with the gate gone, an unset env no
+      // longer suppresses the restart.
+      expect(exitSpy).toHaveBeenCalledWith(WorkerExitCode.RESTART_FOR_UPGRADE);
+    } finally {
+      if (prev === undefined) delete process.env["DFL_WORKER_SELF_RESTART"];
+      else process.env["DFL_WORKER_SELF_RESTART"] = prev;
+    }
+  });
+
+  it("no-loop invariant: isUpgrade(v, v) is false (running == installed → no upgrade)", () => {
+    // Post-relaunch the child runs the NEW bundle, so its own VERSION equals the
+    // installed version → no upgrade → no exit. This is what stops an infinite
+    // relaunch loop.
+    expect(DflUpgradeDetector.isUpgrade("1.2.3", "1.2.3")).toBe(false);
+    expect(DflUpgradeDetector.isUpgrade("1.2.3", "1.2.4")).toBe(true);
   });
 });

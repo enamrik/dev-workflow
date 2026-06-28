@@ -45,6 +45,7 @@ import {
   WORKER_TASK_PROMPT_DEFAULT,
   WORKER_TASK_PROMPT_NAME,
 } from "../prompts/worker-task-prompt.js";
+import { WorkerExitCode } from "./worker-supervisor.js";
 import type { WorkerQueueDb } from "@dev-workflow/dispatch/worker-queue-db.js";
 import type { WorkerStatus } from "@dev-workflow/dispatch/worker.js";
 
@@ -63,41 +64,6 @@ const term = {
   green: (text: string) => `${CSI}32m${text}${CSI}0m`,
   red: (text: string) => `${CSI}31m${text}${CSI}0m`,
 };
-
-// ============================================================================
-// Re-exec arg reconstruction
-// ============================================================================
-
-/**
- * Grace window (ms) the parent waits after spawning the replacement build
- * before tearing itself down. Spawning succeeds even when the new build dies
- * on startup (e.g. a bad arg), so we only commit to the handoff once the child
- * has survived this window; an exit within it aborts the handoff.
- */
-const REEXEC_HANDOFF_GRACE_MS = 500;
-
-/**
- * Build the argv (after `process.execPath`) for re-exec'ing a worker into a
- * freshly-installed dfl bundle. The passthrough `claudeArgs` — everything the
- * user put after `--` on the original `dfl claude` invocation (e.g. `--model`,
- * `--dangerously-skip-permissions`) — must be fenced behind their own `--`
- * separator so the re-exec'd `dfl claude` forwards them to the inner claude
- * process instead of parsing them as its own options (which fails with
- * `unknown option`). Empty `claudeArgs` → no trailing separator.
- */
-export function buildReExecArgs(
-  bundlePath: string,
-  workerName: string,
-  claudeArgs: string[]
-): string[] {
-  return [
-    bundlePath,
-    "claude",
-    "--name",
-    workerName,
-    ...(claudeArgs.length > 0 ? ["--", ...claudeArgs] : []),
-  ];
-}
 
 // ============================================================================
 // Types
@@ -203,8 +169,6 @@ export class ClaudeWorkerService {
   private resolveShutdown: (() => void) | null = null;
   /** True while a poll tick's async work is still in flight — prevents the timer from overlapping ticks (e.g. claiming twice, or re-execing while a claim is mid-flight). */
   private pollTickInFlight = false;
-  /** True once a self-restart has been triggered — stops further poll activity until the process exits. */
-  private isRestarting = false;
 
   private readonly config: Required<WorkerConfig>;
 
@@ -518,15 +482,15 @@ export class ClaudeWorkerService {
     console.log("Polling for tasks...");
 
     this.pollInterval = setInterval(async () => {
-      if (this.isShuttingDown || this.state.status === "DRAINING" || this.isRestarting) {
+      if (this.isShuttingDown || this.state.status === "DRAINING") {
         return;
       }
 
       // Don't overlap ticks: a tick whose async work (e.g. the availability
       // check between claiming a queue row and marking it WORKING) outruns the
       // poll interval must finish before the next one starts. Otherwise a
-      // re-entrant tick could claim a second task or re-exec while a claim is
-      // mid-flight (the queue row is already ours but currentTaskId isn't set).
+      // re-entrant tick could claim a second task while a claim is mid-flight
+      // (the queue row is already ours but currentTaskId isn't set).
       if (this.pollTickInFlight) {
         return;
       }
@@ -1127,20 +1091,21 @@ export class ClaudeWorkerService {
   /**
    * At a natural boundary (idle, between tasks), check whether the dfl bundle
    * installed on disk is a different version than the one this worker is running
-   * and, if so, re-exec into it. Returns true when a restart was triggered so
-   * the poll loop knows to stop (the process is on its way out). Never restarts
-   * mid-task: the poll loop only runs while idle, and this re-checks defensively.
+   * and, if so, exit with {@link WorkerExitCode.RESTART_FOR_UPGRADE} so the
+   * SUPERVISOR relaunches the child on the freshly-installed bundle (TTY-safe —
+   * the supervisor owns the terminal foreground; the in-process re-exec it
+   * replaces orphaned the new worker and spun an infinite claim/exit loop, #42).
+   *
+   * The comparison is against THIS build's own VERSION (the runningVersion the
+   * child sourced from the __DFL_VERSION__ define), not the supervisor's frozen
+   * envelope flag — so after a relaunch running==installed and no further exit
+   * fires. That self-correction is what prevents an infinite relaunch loop (#48).
+   *
+   * Returns true when an upgrade restart was triggered (the process is exiting),
+   * so the poll loop stops; never restarts mid-task — guarded below and the poll
+   * loop only runs while idle.
    */
   private maybeRestartForUpgrade(): boolean {
-    // #42: self-restart is DISABLED by default. Node has no execve, so reExec()
-    // spawns a replacement child and exits the parent — which orphans the new
-    // worker (it is no longer the terminal's foreground process). Its interactive
-    // `claude` sessions then hit EOF on the TTY and instant-exit, spinning the
-    // worker in an infinite claim -> exit -> reclaim loop. Re-enable only behind a
-    // TTY-safe relauncher (the supervisor, #37); opt in with DFL_WORKER_SELF_RESTART=1.
-    if (process.env["DFL_WORKER_SELF_RESTART"] !== "1") {
-      return false;
-    }
     if (this.isShuttingDown || this.state.status === "DRAINING" || this.state.currentTaskId) {
       return false;
     }
@@ -1153,82 +1118,13 @@ export class ClaudeWorkerService {
         `\ndfl updated on disk (${upgrade.from} → ${upgrade.to}); restarting worker into the new build...`
       )
     );
-    // Latch so no further poll activity (claim or another restart) runs before
-    // the process exits; cleared only if the spawn fails (see reExec).
-    this.isRestarting = true;
-    this.reExec();
-    return true;
-  }
-
-  /**
-   * Re-exec this worker into the freshly-installed dfl bundle, preserving the
-   * worker name and forwarded claude args. We only reach here while idle (the
-   * poll-tick guards ensure no task — and no in-flight claim — is live), so the
-   * new process registers fresh and resumes polling; any queue entry left
-   * behind is recovered by the existing stale-reclaim path.
-   *
-   * Node has no execve, so we spawn the replacement sharing this terminal and
-   * exit once it's up. If the spawn fails we clear the restart latch and stay
-   * on the current build rather than leaving the worker dead.
-   */
-  private reExec(): void {
-    const args = buildReExecArgs(
-      this.upgradeDetector.installedBundlePath,
-      this.state.workerName,
-      this.config.claudeArgs
-    );
-    console.log(term.dim(`Re-exec: ${process.execPath} ${args.join(" ")}`));
-
-    const child = spawn(process.execPath, args, { stdio: "inherit", env: process.env });
-
-    // Node has no execve, so the replacement is a child that must actually come
-    // up before we exit. `spawn()` succeeding (the "spawn" event) only means the
-    // process started — a bad re-exec arg makes it die immediately afterward, so
-    // exiting on "spawn" alone would leave the worker dead. Instead we hand the
-    // terminal over only after the child survives a short grace window; an exit
-    // (or error) within it aborts the handoff and keeps us on the current build.
-    let handoffTimer: ReturnType<typeof setTimeout> | null = null;
-    let settled = false;
-
-    const stayOnCurrentBuild = (reason: string): void => {
-      if (settled) return;
-      settled = true;
-      if (handoffTimer) {
-        clearTimeout(handoffTimer);
-        handoffTimer = null;
-      }
-      // Release the latch so the still-running poll loop resumes.
-      this.isRestarting = false;
-      console.error(term.red(`${reason} Staying on current build.`));
-    };
-
-    child.once("spawn", () => {
-      handoffTimer = setTimeout(() => {
-        // A stay-alive path always clears this timer, so reaching here means the
-        // child survived the grace window. The guard makes that invariant
-        // explicit and defends against any future path that settles otherwise.
-        if (settled) return;
-        handoffTimer = null;
-        settled = true;
-        // The new worker survived startup and owns the terminal — tear down this
-        // process so it takes over cleanly.
-        this.clearTimers();
-        this.queue.unregisterWorker(this.state.workerId);
-        process.exit(0);
-      }, REEXEC_HANDOFF_GRACE_MS);
-    });
-
-    child.once("exit", (code, signal) => {
-      // The replacement died before the grace window elapsed — the re-exec
-      // failed (e.g. `unknown option`). If the window already elapsed we'd have
-      // exited above, so reaching here is always an early/failed handoff.
-      const how = code !== null ? `exited (code ${code})` : `was killed (signal ${signal})`;
-      stayOnCurrentBuild(`Re-exec child ${how} during startup.`);
-    });
-
-    child.once("error", (error: Error) => {
-      stayOnCurrentBuild(`Failed to re-exec into the new dfl build: ${error}.`);
-    });
+    // Tear down our timers and release our registration, then exit with the
+    // upgrade code. The supervisor (interpretExit 10 → relaunch) re-spawns the
+    // child on the new bundle; any queue entry left behind is recovered by the
+    // existing stale-reclaim path.
+    this.clearTimers();
+    this.queue.unregisterWorker(this.state.workerId);
+    process.exit(WorkerExitCode.RESTART_FOR_UPGRADE);
   }
 
   /** Clear all background intervals (poll, heartbeat, task-watch, title-assert) if running. */

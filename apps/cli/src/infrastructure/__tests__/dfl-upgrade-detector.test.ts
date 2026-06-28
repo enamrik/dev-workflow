@@ -97,9 +97,4 @@ describe("DflUpgradeDetector.detectUpgrade (mtime-gated, execs the bundle)", () 
     // Second call without any further on-disk change → gated out, returns null.
     expect(detector.detectUpgrade()).toBeNull();
   });
-
-  it("exposes the installed bundle path for re-exec", () => {
-    const detector = new DflUpgradeDetector("1.0.0", installDir);
-    expect(detector.installedBundlePath).toBe(cliPath);
-  });
 });

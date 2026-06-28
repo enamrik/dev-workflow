@@ -78,13 +78,11 @@ const MAX_BACKOFF_MS = 30_000;
  * the hidden `__worker-run` verb.
  *
  * `scriptPath` MUST come first — it's the dfl CLI bundle (the running
- * `process.argv[1]`), so the child launches as `node <scriptPath> __worker-run …`
- * (mirrors buildReExecArgs prepending the bundle path). Without it the child
- * would be `node __worker-run …`, which Node reads as a script filename →
- * MODULE_NOT_FOUND, and the worker never runs.
+ * `process.argv[1]`), so the child launches as `node <scriptPath> __worker-run …`.
+ * Without it the child would be `node __worker-run …`, which Node reads as a
+ * script filename → MODULE_NOT_FOUND, and the worker never runs.
  *
- * The trailing `--` fence is LOAD-BEARING (mirrors buildReExecArgs in
- * claude-worker.service.ts): the passthrough `claudeArgs` — everything the user
+ * The trailing `--` fence is LOAD-BEARING: the passthrough `claudeArgs` — everything the user
  * put after `--` on the original `dfl claude` invocation (e.g. `--model`,
  * `--dangerously-skip-permissions`) — must be fenced behind their own `--` so
  * the child's commander forwards them to the inner `claude` process instead of

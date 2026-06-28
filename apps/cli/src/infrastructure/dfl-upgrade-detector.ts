@@ -46,11 +46,6 @@ export class DflUpgradeDetector {
     this.lastSeenMtimeMs = this.bundleMtimeMs();
   }
 
-  /** Absolute path of the installed `cli.js` — the binary to re-exec into. */
-  get installedBundlePath(): string {
-    return this.installedCliPath;
-  }
-
   /**
    * Pure decision: should we restart from `running` into `installed`?
    * Restart only when we can read a concrete installed version that strictly

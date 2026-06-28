@@ -115,7 +115,14 @@ program
       options: { workerId?: string; name?: string; runningVersion?: string },
       cmd: Command
     ) => {
-      await runWorkerRun({ ...options, claudeArgs: cmd.args });
+      // The child compares its OWN running VERSION (the __DFL_VERSION__ define in
+      // THIS bundle) against the installed bundle — never the supervisor's frozen
+      // --running-version envelope flag (the supervisor doesn't restart itself, so
+      // that value stays old). Using VERSION makes the upgrade check self-correcting:
+      // after the supervisor relaunches the child on the new bundle, running==installed
+      // → no exit, so there is no infinite relaunch loop. The --running-version flag is
+      // kept plumbed but vestigial (#48).
+      await runWorkerRun({ ...options, runningVersion: VERSION, claudeArgs: cmd.args });
     }
   );
 
