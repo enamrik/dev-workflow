@@ -6,6 +6,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-queue-db.js";
 import { DbSourceProvider, ProjectsResolver } from "@dev-workflow/tracking";
 import { ClaudeWorkerService } from "../application/claude-worker.service.js";
@@ -18,6 +19,8 @@ import {
 
 export interface StartWorkerOptions {
   name?: string;
+  /** Stable worker identity supplied by the supervisor so a relaunched child resumes its own claim (#47). Minted by the child when absent. */
+  workerId?: string;
   claudeArgs?: string[];
   /** Running dfl build version (the `__DFL_VERSION__` define) — used to detect installed-version drift and self-restart. */
   runningVersion?: string;
@@ -101,6 +104,7 @@ export class WorkerCommand {
         this.projectsResolver,
         {
           name: options.name,
+          workerId: options.workerId,
           claudeArgs: options.claudeArgs ?? [],
           runningVersion: options.runningVersion,
         }
@@ -122,8 +126,15 @@ export class WorkerCommand {
    * this method never runs that loop in-process.
    */
   async supervise(options: StartWorkerOptions = {}): Promise<void> {
+    // Mint the worker identity ONCE here (not in the supervisor loop, which
+    // stays DB-free) and thread it through the envelope to every relaunch.
+    // Reusing the SAME id + name lets a relaunched child resume its own
+    // in-flight claim instead of minting a fresh UUID (#47).
+    const workerId = randomUUID();
+    const name = options.name ?? this.workerQueueDb.getNextWorkerName();
     const envelope: WorkerRunEnvelope = {
-      name: options.name,
+      workerId,
+      name,
       claudeArgs: options.claudeArgs ?? [],
       runningVersion: options.runningVersion ?? "0.0.0-dev",
     };

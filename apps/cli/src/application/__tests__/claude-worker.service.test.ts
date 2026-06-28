@@ -538,6 +538,90 @@ describe("ClaudeWorkerService.tryAutoClaimReadyTask — order by priority then a
 });
 
 // ---------------------------------------------------------------------------
+// Worker identity adoption (#47): the supervisor mints a stable id ONCE and
+// threads it to every child relaunch. The child must ADOPT config.workerId so
+// its start()-time resume (findClaimByWorker(this.state.workerId)) matches a
+// claim left by a prior relaunch carrying the same id — instead of minting a
+// fresh UUID each launch.
+// ---------------------------------------------------------------------------
+
+describe("ClaudeWorkerService — worker identity adoption (#47)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** A queue that records register/resume calls and keeps start() idle (no claim). */
+  function makeIdentityQueue() {
+    return {
+      getNextWorkerName: vi.fn().mockReturnValue("worker-fallback"),
+      findClaimByWorker: vi.fn().mockReturnValue(null),
+      registerWorker: vi.fn(),
+      updateHeartbeat: vi.fn(),
+      updateStatus: vi.fn(),
+      unregisterWorker: vi.fn(),
+      claimTask: vi.fn().mockReturnValue(null),
+      findByTaskId: vi.fn().mockReturnValue(null),
+      close: vi.fn(),
+    };
+  }
+
+  const noopProviders = () => ({
+    sourceProvider: { getOrCreate: vi.fn(), closeAll: vi.fn() },
+    projectsResolver: { getAllProjects: vi.fn().mockReturnValue(Effect.succeed([])) },
+  });
+
+  /** Run start() far enough to register, then stop its background timers. */
+  async function registerAndQuiesce(service: ClaudeWorkerService): Promise<void> {
+    void (service as unknown as { start: () => Promise<void> }).start();
+    // Flush the synchronous register + the async updateTitle microtasks.
+    await Promise.resolve();
+    await Promise.resolve();
+    (service as unknown as { clearTimers: () => void }).clearTimers();
+  }
+
+  it("adopts config.workerId (registers with it) and does NOT auto-generate a name when one is supplied", async () => {
+    const queue = makeIdentityQueue();
+    const { sourceProvider, projectsResolver } = noopProviders();
+
+    const service = new ClaudeWorkerService(
+      queue as never,
+      sourceProvider as never,
+      projectsResolver as never,
+      { workerId: "supervised-id-123", name: "worker-7" }
+    );
+
+    await registerAndQuiesce(service);
+
+    // Registered under the SUPERVISED id and supplied name.
+    expect(queue.registerWorker).toHaveBeenCalledWith("supervised-id-123", "worker-7", process.pid);
+    // Resume lookup used the SAME supervised id (the #47 resume hook).
+    expect(queue.findClaimByWorker).toHaveBeenCalledWith("supervised-id-123");
+    // A supplied name means no auto-generation.
+    expect(queue.getNextWorkerName).not.toHaveBeenCalled();
+  });
+
+  it("mints a UUID when no workerId is supplied (registers with a real UUID, not empty)", async () => {
+    const queue = makeIdentityQueue();
+    const { sourceProvider, projectsResolver } = noopProviders();
+
+    const service = new ClaudeWorkerService(
+      queue as never,
+      sourceProvider as never,
+      projectsResolver as never,
+      { name: "worker-7" }
+    );
+
+    await registerAndQuiesce(service);
+
+    const registeredId = queue.registerWorker.mock.calls[0]?.[0] as string;
+    // A v4 UUID — non-empty and matching the canonical shape.
+    expect(registeredId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    // Resume lookup used that same minted id.
+    expect(queue.findClaimByWorker).toHaveBeenCalledWith(registeredId);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // buildReExecArgs — the self-restart re-exec arg reconstruction.
 //
 // Guards issue #38: the worker re-execs into a freshly-installed dfl bundle on

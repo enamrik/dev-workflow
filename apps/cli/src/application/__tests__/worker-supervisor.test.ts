@@ -59,8 +59,9 @@ describe("interpretExit", () => {
 describe("buildWorkerRunArgs", () => {
   const SCRIPT = "/path/to/cli.js";
 
-  it("leads with the CLI script path, then the verb, running-version, and name", () => {
+  it("leads with the CLI script path, then the verb, worker-id, name, and running-version", () => {
     const envelope: WorkerRunEnvelope = {
+      workerId: "id-3",
       name: "worker-3",
       claudeArgs: [],
       runningVersion: "1.2.3",
@@ -68,6 +69,8 @@ describe("buildWorkerRunArgs", () => {
     expect(buildWorkerRunArgs(SCRIPT, envelope)).toEqual([
       SCRIPT,
       "__worker-run",
+      "--worker-id",
+      "id-3",
       "--name",
       "worker-3",
       "--running-version",
@@ -76,20 +79,31 @@ describe("buildWorkerRunArgs", () => {
   });
 
   it("never leads with the bare verb (regression: node <verb> → MODULE_NOT_FOUND)", () => {
-    const args = buildWorkerRunArgs(SCRIPT, { claudeArgs: [], runningVersion: "1.0.0" });
+    const args = buildWorkerRunArgs(SCRIPT, {
+      workerId: "id-1",
+      name: "w",
+      claudeArgs: [],
+      runningVersion: "1.0.0",
+    });
     expect(args[0]).toBe(SCRIPT);
     expect(args[0]).not.toBe("__worker-run");
     expect(args[1]).toBe("__worker-run");
   });
 
-  it("omits --name when no name is provided", () => {
-    const args = buildWorkerRunArgs(SCRIPT, { claudeArgs: [], runningVersion: "9.9.9" });
-    expect(args).toEqual([SCRIPT, "__worker-run", "--running-version", "9.9.9"]);
-    expect(args).not.toContain("--name");
+  it("emits --worker-id immediately before --name", () => {
+    const args = buildWorkerRunArgs(SCRIPT, {
+      workerId: "id-9",
+      name: "worker-9",
+      claudeArgs: [],
+      runningVersion: "9.9.9",
+    });
+    expect(args.indexOf("--worker-id")).toBe(args.indexOf("--name") - 2);
+    expect(args[args.indexOf("--worker-id") + 1]).toBe("id-9");
   });
 
   it("fences non-empty claudeArgs behind a trailing -- in order", () => {
     const args = buildWorkerRunArgs(SCRIPT, {
+      workerId: "id-1",
       name: "w",
       claudeArgs: ["--model", "opus", "--dangerously-skip-permissions"],
       runningVersion: "1.0.0",
@@ -97,6 +111,8 @@ describe("buildWorkerRunArgs", () => {
     expect(args).toEqual([
       SCRIPT,
       "__worker-run",
+      "--worker-id",
+      "id-1",
       "--name",
       "w",
       "--running-version",
@@ -109,14 +125,24 @@ describe("buildWorkerRunArgs", () => {
   });
 
   it("emits NO trailing -- when claudeArgs is empty", () => {
-    const args = buildWorkerRunArgs(SCRIPT, { claudeArgs: [], runningVersion: "1.0.0" });
+    const args = buildWorkerRunArgs(SCRIPT, {
+      workerId: "id-1",
+      name: "w",
+      claudeArgs: [],
+      runningVersion: "1.0.0",
+    });
     expect(args).not.toContain("--");
   });
 
   it("always includes --running-version", () => {
-    expect(buildWorkerRunArgs(SCRIPT, { claudeArgs: [], runningVersion: "0.0.0-dev" })).toContain(
-      "--running-version"
-    );
+    expect(
+      buildWorkerRunArgs(SCRIPT, {
+        workerId: "id-1",
+        name: "w",
+        claudeArgs: [],
+        runningVersion: "0.0.0-dev",
+      })
+    ).toContain("--running-version");
   });
 });
 
@@ -148,7 +174,19 @@ function makeFakeSpawner(exits: ScriptedExit[]) {
   return { spawnFn, spawned };
 }
 
-const envelope: WorkerRunEnvelope = { claudeArgs: [], runningVersion: "1.0.0" };
+const envelope: WorkerRunEnvelope = {
+  workerId: "stable-worker-id",
+  name: "worker-1",
+  claudeArgs: [],
+  runningVersion: "1.0.0",
+};
+
+/** Pull the --worker-id value out of a recorded spawn call's args. */
+function workerIdArg(args: string[] | undefined): string | undefined {
+  if (!args) return undefined;
+  const idx = args.indexOf("--worker-id");
+  return idx >= 0 ? args[idx + 1] : undefined;
+}
 
 describe("WorkerSupervisor.run", () => {
   it("returns 0 and does not relaunch on a clean (code 0) exit", async () => {
@@ -231,5 +269,38 @@ describe("WorkerSupervisor.run", () => {
 
     // attempt 0..4 → 1000 * 2^attempt, capped at 30000.
     expect(sleepFn.mock.calls.map((c) => c[0])).toEqual([1000, 2000, 4000, 8000, 16000]);
+  });
+
+  // #47: the envelope is built ONCE and reused for every relaunch, so the SAME
+  // --worker-id rides every spawn. This is the guarantee that lets a relaunched
+  // child resume its own in-flight claim instead of minting a fresh UUID.
+  it("threads the SAME --worker-id through every relaunch after RESTART_FOR_UPGRADE", async () => {
+    const { spawnFn } = makeFakeSpawner([
+      { code: WorkerExitCode.RESTART_FOR_UPGRADE, signal: null },
+      { code: 0, signal: null },
+    ]);
+    const sleepFn = vi.fn().mockResolvedValue(undefined);
+
+    await new WorkerSupervisor(spawnFn, sleepFn).run(envelope);
+
+    expect(spawnFn).toHaveBeenCalledTimes(2);
+    const ids = spawnFn.mock.calls.map((c) => workerIdArg(c[1]));
+    expect(ids).toEqual([envelope.workerId, envelope.workerId]);
+  });
+
+  it("threads the SAME --worker-id through every crash-backoff relaunch", async () => {
+    const { spawnFn } = makeFakeSpawner([
+      { code: 1, signal: null },
+      { code: 1, signal: null },
+      { code: 0, signal: null },
+    ]);
+    const sleepFn = vi.fn().mockResolvedValue(undefined);
+
+    await new WorkerSupervisor(spawnFn, sleepFn).run(envelope);
+
+    expect(spawnFn).toHaveBeenCalledTimes(3);
+    const ids = spawnFn.mock.calls.map((c) => workerIdArg(c[1]));
+    expect(ids).toEqual([envelope.workerId, envelope.workerId, envelope.workerId]);
+    expect(new Set(ids).size).toBe(1);
   });
 });

@@ -109,6 +109,8 @@ export function buildReExecArgs(
 export interface WorkerConfig {
   /** Worker name (auto-generated if not provided) */
   name?: string;
+  /** Stable worker identity supplied by the supervisor so a relaunched child resumes its own claim (#47). A fresh UUID is minted when absent. */
+  workerId?: string;
   /** Heartbeat interval in milliseconds (default: 5000ms = 5s) */
   heartbeatIntervalMs?: number;
   /** Poll interval in milliseconds (default: 2000ms = 2s) */
@@ -178,7 +180,9 @@ export class ClaudeWorkerService {
   private globalSource: DbSource | null = null;
 
   private state: WorkerState = {
-    workerId: randomUUID(),
+    // Set from this.config.workerId in the constructor (so the supervised id is
+    // adopted); the empty placeholder is never observed externally.
+    workerId: "",
     workerName: "",
     status: "IDLE",
     currentTaskId: null,
@@ -218,6 +222,7 @@ export class ClaudeWorkerService {
     this.projectsResolver = projectsResolver;
     this.config = {
       name: config.name ?? "",
+      workerId: config.workerId ?? randomUUID(),
       heartbeatIntervalMs: config.heartbeatIntervalMs ?? 5000,
       pollIntervalMs: config.pollIntervalMs ?? 2000,
       titleAssertIntervalMs: config.titleAssertIntervalMs ?? 1000,
@@ -225,6 +230,10 @@ export class ClaudeWorkerService {
       claudeArgs: config.claudeArgs ?? [],
       runningVersion: config.runningVersion ?? "0.0.0-dev",
     };
+    // Adopt the (possibly supervised) worker identity so start()'s resume logic
+    // (findClaimByWorker(this.state.workerId)) matches a claim left by a prior
+    // relaunch carrying the same id (#47).
+    this.state.workerId = this.config.workerId;
     this.upgradeDetector = new DflUpgradeDetector(this.config.runningVersion);
   }
 

@@ -106,12 +106,18 @@ program
 program
   .command("__worker-run", { hidden: true })
   .description("Internal: run the worker loop as a supervised child process")
+  .option("--worker-id <id>", "Stable worker identity supplied by the supervisor")
   .option("--name <name>", "Worker name")
   .option("--running-version <version>", "Running dfl build version")
   .passThroughOptions()
-  .action(async (options: { name?: string; runningVersion?: string }, cmd: Command) => {
-    await runWorkerRun({ ...options, claudeArgs: cmd.args });
-  });
+  .action(
+    async (
+      options: { workerId?: string; name?: string; runningVersion?: string },
+      cmd: Command
+    ) => {
+      await runWorkerRun({ ...options, claudeArgs: cmd.args });
+    }
+  );
 
 program
   .command("clean-claude-config")

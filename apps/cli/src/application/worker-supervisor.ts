@@ -41,7 +41,14 @@ export enum WorkerExitCode {
  * once from the CLI options and reused for every relaunch in the loop.
  */
 export interface WorkerRunEnvelope {
-  name?: string;
+  /**
+   * Stable worker identity minted ONCE by the supervisor and threaded to every
+   * child relaunch. Reusing the SAME id across relaunches is what lets a
+   * relaunched child resume its own in-flight claim (findClaimByWorker) instead
+   * of minting a fresh UUID (#47).
+   */
+  workerId: string;
+  name: string;
   claudeArgs: string[];
   runningVersion: string;
 }
@@ -88,7 +95,10 @@ export function buildWorkerRunArgs(scriptPath: string, envelope: WorkerRunEnvelo
   return [
     scriptPath,
     "__worker-run",
-    ...(envelope.name ? ["--name", envelope.name] : []),
+    "--worker-id",
+    envelope.workerId,
+    "--name",
+    envelope.name,
     "--running-version",
     envelope.runningVersion,
     ...(envelope.claudeArgs.length > 0 ? ["--", ...envelope.claudeArgs] : []),

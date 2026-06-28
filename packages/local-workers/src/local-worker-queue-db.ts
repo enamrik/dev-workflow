@@ -102,6 +102,10 @@ export class GlobalDbWorkerQueueDb implements WorkerQueueDb {
   registerWorker(id: string, name: string, pid?: number): Worker {
     const now = new Date().toISOString();
 
+    // Idempotent by id: a relaunched worker carrying the SAME id (#47) — or one
+    // whose prior row survived a crash — must re-register without a PK conflict.
+    // Upsert resets the live fields (name/status/heartbeat/pid) but PRESERVES
+    // createdAt so the row's original birth time is not rewritten on relaunch.
     this.db
       .insert(workers)
       .values({
@@ -112,16 +116,29 @@ export class GlobalDbWorkerQueueDb implements WorkerQueueDb {
         pid: pid ?? null,
         createdAt: now,
       })
+      .onConflictDoUpdate({
+        target: workers.id,
+        set: {
+          name,
+          status: "IDLE",
+          lastHeartbeat: now,
+          pid: pid ?? null,
+        },
+      })
       .run();
 
-    return {
-      id,
-      name,
-      status: "IDLE",
-      lastHeartbeat: now,
-      pid: pid ?? null,
-      createdAt: now,
-    };
+    // Return the persisted row so createdAt reflects the preserved original on
+    // re-register, not the `now` we just attempted to insert.
+    return (
+      this.findWorkerById(id) ?? {
+        id,
+        name,
+        status: "IDLE",
+        lastHeartbeat: now,
+        pid: pid ?? null,
+        createdAt: now,
+      }
+    );
   }
 
   unregisterWorker(id: string): void {
