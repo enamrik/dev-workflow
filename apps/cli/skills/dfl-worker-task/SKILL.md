@@ -207,7 +207,16 @@ After implementing the task, create a PR and optionally submit for review.
    - **Why:** Ensures your PR is up-to-date with main, reduces merge conflicts, and catches integration issues early
 
 5. **Create the PR:**
-   - Call `create_pr` with task ID
+   - Call `create_pr` with task ID and a `title` that begins with the task ref:
+     `[#<issue>.<task>] <concise summary>` (e.g. `[#15.1] Add OAuth callback handler`).
+     You have the issue + task numbers from `load_task_session` / your worker prompt.
+   - **Why this form:** an issue can have several tasks (and several PRs), so the issue
+     number alone is ambiguous — the `[#15.1]` prefix maps the PR to a specific task at a
+     glance. This is personal tooling, not gated on conventional-commit release automation,
+     so the leading prefix is preferred over a `fix(#15.1): …` conventional-commit scope
+     (that scope form is an acceptable alternative if release automation is ever adopted).
+   - `create_pr` passes your title through unchanged, and as a safety net prefixes the ref
+     itself if you omit it — so a PR is never left referencing only the issue.
    - This pushes the branch and creates the PR with GitHub issue linking
    - **Task status stays IN_PROGRESS** - this is intentional to let GitHub's automation set "In progress" first
    - Show the PR URL to user
@@ -399,7 +408,7 @@ Summary: Added OAuth flow, callback handler, tests (92% coverage)
 Acceptance Criteria: ✓ All met
 Validation: PASSED
 
-PR #42 created. Task still IN_PROGRESS.
+PR #42 created: "[#5.1] Add OAuth callback handler". Task still IN_PROGRESS.
 Submit for review now?
 ```
 
