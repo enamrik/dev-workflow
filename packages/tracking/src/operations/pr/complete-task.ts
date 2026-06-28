@@ -103,14 +103,21 @@ function checkAndMaybeCloseIssue(
       return { allTasksComplete, issueClosed: false, issueNumber: null };
     }
 
+    // Auto-close on last-task completion is a SYSTEM invariant (all tasks
+    // terminal → issue done), so the worker/autonomous flow needs no human
+    // prompt. SPIKE issues are excluded: their deliverable is a doc/roadmap
+    // that intentionally stays OPEN for follow-ups. Callers that want an issue
+    // kept open pass autoCloseIssue:false (the default).
     let issueClosed = false;
-    if (autoCloseIssue && allTasksComplete && issue.status !== "CLOSED") {
+    if (autoCloseIssue && allTasksComplete && !issue.isClosed && !issue.isSpike) {
       // Abandon incomplete tasks (defensive — should be none since allTasksComplete)
       const incompleteTasks = yield* taskDomainService.getIncompleteTasksForIssue(issue.id);
       for (const t of incompleteTasks) {
         yield* taskDomainService.abandon(t.id, "Issue closed", "claude-code");
       }
-      yield* issueDomainService.update(issue.id, { status: "CLOSED" });
+      // Reuse the validating domain close (the same path close_issue uses)
+      // rather than a raw status write.
+      yield* issueDomainService.close(issue.id);
       issueClosed = true;
     }
 
