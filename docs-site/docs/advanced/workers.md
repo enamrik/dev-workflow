@@ -4,16 +4,16 @@ sidebar_position: 2
 
 # Background Workers
 
-Background workers are Claude instances that automatically poll for and execute dispatched tasks.
+Background workers are Claude instances that automatically poll for and execute READY tasks.
 
 ## Overview
 
 ```
-┌─────────────────┐     dispatch_task()     ┌─────────────────┐
-│   Main Claude   │ ───────────────────────▶│  Dispatch Queue │
+┌─────────────────┐   move_issue_to_ready() ┌─────────────────┐
+│   Main Claude   │ ───────────────────────▶│   READY tasks   │
 │    Session      │                         └────────┬────────┘
 └─────────────────┘                                  │
-                                                     │ poll
+                                                     │ poll & auto-claim
                                                      ▼
                     ┌──────────────────────────────────────────┐
                     │              Worker Pool                  │
@@ -36,7 +36,6 @@ dfl claude --name worker-1
 | Option          | Description                                  |
 | --------------- | -------------------------------------------- |
 | `--name <name>` | Worker name (auto-generated if not provided) |
-| `--auto-claim`  | Automatically claim READY tasks              |
 
 ### Multiple Workers
 
@@ -53,21 +52,21 @@ dfl claude --name worker-2
 dfl claude --name worker-3
 ```
 
-## Dispatching Tasks
+## Starting Work on a Task
 
 ### From Main Session
 
 ```typescript
-dispatch_task({
-  taskId: "task-uuid",
+move_issue_to_ready({
+  issueNumber: 5,
 });
 ```
 
 ### What Happens
 
-1. Task is added to dispatch queue
-2. Workers poll the queue
-3. First available worker claims the task
+1. The task is marked READY
+2. Workers poll for READY tasks whose dependencies are satisfied
+3. First available worker auto-claims the task
 4. Worker executes task via `dfl-worker-task` skill
 5. Worker signals completion
 
@@ -174,15 +173,11 @@ Stats:
   Claimed: 0
 ```
 
-## Auto-Claim Mode
+## Auto-Claim
 
-With `--auto-claim`, workers automatically claim READY tasks when dependencies complete:
-
-```bash
-dfl claude --name worker-1 --auto-claim
-```
-
-This enables fully autonomous task execution across dependency chains.
+Workers automatically claim READY tasks once their dependencies complete — this is the
+default and only behavior. Mark a task READY (`move_issue_to_ready`) and a running worker
+picks it up, enabling fully autonomous task execution across dependency chains.
 
 ## Error Handling
 
@@ -248,17 +243,17 @@ claude
 > "Create feature for user authentication"
 > "Plan issue #5"
 > "Yes, approve the plan"
-> "Dispatch task #5.1"
-> "Dispatch task #5.2"
-> "Dispatch task #5.3"
+> "Start task #5.1"
+> "Start task #5.2"
+> "Start task #5.3"
 
 # Terminal 2-4: Workers
-dfl claude --name worker-1 --auto-claim
-dfl claude --name worker-2 --auto-claim
-dfl claude --name worker-3 --auto-claim
+dfl claude --name worker-1
+dfl claude --name worker-2
+dfl claude --name worker-3
 
 # Workers automatically:
-# - Pick up dispatched tasks
+# - Auto-claim READY tasks
 # - Execute in parallel (respecting dependencies)
 # - Create PRs
 # - Complete when merged
@@ -283,7 +278,6 @@ dfl claude --name worker-3 --auto-claim
 If workers compete for same tasks:
 
 - Reduce worker count
-- Use auto-claim strategically
 - Sequence dependent tasks
 
 ## Next Steps

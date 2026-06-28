@@ -289,12 +289,6 @@ export {
   type DispatchStatus,
 } from "./operations/dispatch/get-dispatch-status.js";
 export {
-  dispatchTask,
-  DispatchTaskSchema as DispatchTaskOperationSchema,
-  type DispatchTaskInput,
-  type DispatchTaskResult,
-} from "./operations/dispatch/dispatch-task.js";
-export {
   endWorkerSession,
   EndWorkerSessionSchema as EndWorkerSessionOperationSchema,
   type EndWorkerSessionInput,

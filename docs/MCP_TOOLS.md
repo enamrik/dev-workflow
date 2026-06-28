@@ -899,23 +899,9 @@ List all available issue/task types.
 
 ## Dispatch
 
-### dispatch_task
-
-Add a task to the dispatch queue for worker execution.
-
-| Parameter | Type   | Required | Description           |
-| --------- | ------ | -------- | --------------------- |
-| `taskId`  | string | Yes      | Task UUID to dispatch |
-
-**Behavior:**
-
-- Idempotent - returns existing entry if task is already queued
-- Only BACKLOG or READY tasks can be dispatched
-- Workers poll and claim tasks from this queue
-
-**Use Case:** Use instead of `load_task_session` when you want a background worker to pick up the task.
-
----
+Work is started by marking a task **READY** (`move_issue_to_ready`). A running worker
+auto-claims any READY task whose dependencies are satisfied — there is no explicit
+enqueue step. The internal worker queue is populated automatically when a worker claims.
 
 ### end_worker_session
 
@@ -960,8 +946,8 @@ Signal that the Claude worker session is complete.
 ### Worker Flow
 
 ```
-1. dispatch_task → Add to worker queue
-2. [Worker claims task]
+1. move_issue_to_ready → Mark the task READY (dependency-gated)
+2. [Running worker auto-claims the READY task]
 3. load_task_session (with workerId) → Start in isolated mode
 4. [Complete all work, create PR, wait for merge]
 5. complete_task → Finish task

@@ -1,19 +1,21 @@
 ---
 name: dfl-work-task
-description: Start working on a task - automatically dispatches to workers if available, otherwise executes inline. Auto-invoked when user wants to "start task", "work on task", "begin task", "pick up task", etc. (project)
-allowed-tools: mcp:dev-workflow-tracker:dispatch_task, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_task, mcp:dev-workflow-tracker:move_issue_to_backlog
+description: Start working on a task - marks it READY so a running worker auto-claims it, or executes inline on request. Auto-invoked when user wants to "start task", "work on task", "begin task", "pick up task", etc. (project)
+allowed-tools: mcp:dev-workflow-tracker:move_issue_to_ready, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_task
 ---
 
 # Work Task Skill
 
-This skill handles the **dispatch decision** when a user wants to start working on a task.
+This skill **starts work** on a task. There is exactly ONE way to start work: mark the
+task **READY** via `move_issue_to_ready`. A running worker auto-claims any READY task
+once its dependencies are satisfied — you do not enqueue or dispatch anything yourself.
 
 **Flow:**
 
-1. Check for inline execution hints → if present, skip dispatch
-2. Try to dispatch the task to a worker
-3. If dispatch succeeds (workers online) → report success and STOP
-4. If no workers available → invoke `dfl-worker-task` skill for inline execution
+1. Check for inline execution hints → if present, skip the worker path and run inline
+2. If the task is still PLANNED → move it to backlog first
+3. Mark the task READY (`move_issue_to_ready`) → a running worker auto-claims it
+4. Report and STOP
 
 ## When to Invoke
 
@@ -32,7 +34,7 @@ This skill handles the **dispatch decision** when a user wants to start working 
 
 ## Inline Execution Hints
 
-Users can bypass worker dispatch by using keywords that indicate they want the task to run locally:
+Users can run the task locally in this session instead of leaving it for a worker:
 
 **Inline execution keywords:**
 
@@ -40,12 +42,11 @@ Users can bypass worker dispatch by using keywords that indicate they want the t
 - "run here", "here"
 - "run locally", "locally"
 - "run in this session", "in this session"
-- "don't dispatch", "no dispatch"
 - "work on it myself", "I'll work on it"
 
-**Example:** "start task 1 inline" or "work on the task here" → skip dispatch, execute locally
+**Example:** "start task 1 inline" or "work on the task here" → skip the worker path, execute locally.
 
-When you detect these hints, skip the dispatch attempt entirely and go straight to `dfl-worker-task`.
+When you detect these hints, skip marking the task READY and go straight to `dfl-worker-task`.
 
 ## Process
 
@@ -58,80 +59,39 @@ When you detect these hints, skip the dispatch attempt entirely and go straight 
 ### Step 2: Check Task Status
 
 - **If task is PLANNED:** The plan hasn't been approved yet.
-  - Ask the user: "This task is still planned. Are you satisfied with the plan? Ready to start working on it?"
-  - If user confirms → call `move_issue_to_backlog` to make tasks available
-  - This transitions all PLANNED tasks to BACKLOG and creates GitHub issues (unless user requests `skipGitHubSync: true`)
-- **If task is BACKLOG or READY:** Proceed with dispatch attempt
+  - Ask: "This task is still planned. Are you satisfied with the plan? Ready to start working on it?"
+  - If user confirms → call `move_issue_to_backlog` (transitions all PLANNED tasks to BACKLOG and creates GitHub issues unless `skipGitHubSync: true` is requested), then proceed to Step 4.
+- **If task is BACKLOG:** Proceed to Step 3.
+- **If task is already READY:** It is already eligible — a running worker will auto-claim it once dependencies are satisfied. Report that and STOP.
 
 ### Step 3: Check for Inline Execution Hints
 
-Before attempting dispatch, check if the user's request contains inline execution hints (see list above).
+Before marking the task READY, check if the user's request contains inline execution hints (see list above).
 
-**If inline hints detected:** Skip dispatch entirely → proceed to Step 5 (inline execution)
+- **If inline hints detected:** Skip the worker path → proceed to Step 5 (inline execution)
+- **If no inline hints:** Proceed to Step 4
 
-**If no inline hints:** Proceed to Step 4 (dispatch attempt)
+### Step 4: Mark the Task READY
 
-### Step 4: Try Dispatch to Worker
+Call `move_issue_to_ready` with the issue number.
 
-Call `dispatch_task` with the task ID.
-
-#### ⚠️ CRITICAL: Dispatch Success = You Are DONE
-
-**Once `dispatch_task` returns `success: true`, your job is COMPLETE.**
+Once it succeeds, **your job is COMPLETE.** The task is now READY:
 
 - Do NOT continue to execute the task
 - Do NOT invoke `dfl-worker-task`
 - Do NOT check on the task or wait for it
-- The task is now in the queue - a worker will handle it (or the user will run one later)
 
-This applies **regardless of**:
-
-- Whether workers are currently online (`workerSummary.total` may be 0)
-- Whether the task was already queued (`alreadyQueued: true`)
-- Whether a worker has claimed it yet (`claimedByWorker` may be null)
-
-#### Interpreting dispatch_task Response
-
-The response includes:
-
-| Field               | Meaning                                            |
-| ------------------- | -------------------------------------------------- |
-| `success`           | Task is in the queue - **you are done**            |
-| `alreadyQueued`     | Task was already in queue (idempotent)             |
-| `queueEntry.status` | PENDING (unclaimed) or CLAIMED                     |
-| `claimedByWorker`   | Worker that claimed the task (if any)              |
-| `workerSummary`     | Live worker counts: total, idle, working, draining |
+A running worker auto-claims the task once all prerequisite tasks are COMPLETED or
+ABANDONED. If no worker is running, the task simply stays READY until one starts.
 
 #### Reporting to User
 
-Use `workerSummary` for accurate feedback, then **ask the user what they want to do next**:
-
 ```
-// workerSummary.idle > 0
-Task dispatched. 2 idle workers available to pick it up.
+Task marked ready. A running worker will pick it up once its dependencies are satisfied.
+
+If no worker is running, start one with `./scripts/start-worker.sh` — or I can run this task here instead.
 
 What would you like to do next?
-
-// workerSummary.total == 0
-Task queued. No workers are currently online.
-
-Would you like to:
-- Start a worker with `./scripts/start-worker.sh`
-- Work on something else
-- Run this task inline instead?
-
-// claimedByWorker is set
-Task was already claimed by worker "worker-abc" and is being worked on.
-
-What would you like to do next?
-
-// alreadyQueued && queueEntry.isStale
-Task is queued but the claiming worker may be stale.
-
-Would you like to:
-- Check worker status with `get_dispatch_status`
-- Start a fresh worker
-- Work on something else?
 ```
 
 **After reporting, wait for user direction.** Do not proceed to inline execution on your own.
@@ -141,14 +101,11 @@ Would you like to:
 Only execute inline (Step 5) when:
 
 1. User explicitly requested inline execution (keywords like "run here", "inline", "locally")
-2. `dispatch_task` returns an **error** (task not found, invalid status, etc.)
-3. User responds to your prompt asking to "run inline" after dispatch succeeded
-
-**A successful dispatch with zero online workers is NOT a reason to execute inline.** The task is queued and will be picked up when workers come online. Report the status and ask the user what they want to do.
+2. User responds to your prompt asking to run it here after the task was marked READY
 
 ### Step 5: Execute Inline via dfl-worker-task
 
-Execute inline when the user has explicitly requested it (either upfront or after dispatch).
+Execute inline when the user has explicitly requested it (either upfront or afterward).
 
 Use the Skill tool: `skill: "dfl-worker-task", args: "start task #N"`
 
@@ -161,51 +118,21 @@ This passes control to the worker-task skill which handles:
 
 ## Key Points
 
-- **This skill does NOT execute tasks** - it only decides where they run
-- **Workers get tasks via dispatch queue** - they use `dfl-worker-task` directly
-- **Inline execution uses `dfl-worker-task`** - no duplication of execution logic
-- **Dispatch is attempted first** - workers are preferred when available
-- **NEVER pass `workerId` to `load_task_session`** - only workers pass workerId (they receive it in their prompt). This skill runs for users, not workers.
+- **This skill does NOT execute tasks** — it marks them READY (or hands off to inline execution)
+- **READY is the single way to start work** — a running worker auto-claims READY, dependency-satisfied tasks
+- **Inline execution uses `dfl-worker-task`** — no duplication of execution logic
+- **NEVER pass `workerId` to `load_task_session`** — only workers pass workerId (they receive it in their prompt). This skill runs for users, not workers.
 
 ## Example Interactions
 
-### Task Dispatched - Workers Available
+### Task Marked Ready
 
 **User:** "Start working on task 1"
 
 ```
-Task dispatched. 2 idle workers available to pick it up.
+Task marked ready. A running worker will pick it up once its dependencies are satisfied.
 
-What would you like to do next?
-```
-
-### Task Dispatched - No Workers Online
-
-**User:** "Start working on task 1"
-
-```
-Task queued. No workers are currently online.
-
-Would you like to:
-- Start a worker with `./scripts/start-worker.sh`
-- Work on something else
-- Run this task inline instead?
-```
-
-**User:** "Run it inline"
-
-```
-Starting task locally...
-
-[Control passes to dfl-worker-task]
-```
-
-### Task Already Being Worked On
-
-**User:** "Start working on task 1"
-
-```
-Task was already claimed by worker "worker-abc" and is being worked on.
+If no worker is running, start one with `./scripts/start-worker.sh` — or I can run this task here instead.
 
 What would you like to do next?
 ```
@@ -220,8 +147,18 @@ Starting task locally (inline execution requested)...
 [Control passes to dfl-worker-task]
 ```
 
+### User Requests Inline After Marking Ready
+
+**User:** "Run it inline"
+
+```
+Starting task locally...
+
+[Control passes to dfl-worker-task]
+```
+
 ## Notes
 
-- Workers use `dfl-worker-task` directly - they never go through this dispatch skill
-- This separation makes it impossible for workers to accidentally re-dispatch
-- All execution logic lives in `dfl-worker-task` - this skill is just a router
+- Workers use `dfl-worker-task` directly — they never go through this skill
+- This separation makes it impossible for workers to accidentally re-trigger work routing
+- All execution logic lives in `dfl-worker-task` — this skill is just a router

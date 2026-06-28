@@ -743,10 +743,10 @@ Updated description.
   });
 
   // ===========================================================================
-  // Dispatch/Worker Tools (3 tools)
+  // Dispatch/Worker Tools (2 tools)
   // ===========================================================================
 
-  describe("Dispatch/Worker Tools (3 tools)", () => {
+  describe("Dispatch/Worker Tools (2 tools)", () => {
     let dispatchableTaskId: string;
 
     beforeAll(async () => {
@@ -774,19 +774,11 @@ Updated description.
       const planData = plan.data as { tasks: Array<{ id: string }> };
       dispatchableTaskId = planData.tasks[0]!.id;
 
-      // Move to backlog to make task dispatchable
+      // Move to backlog so the task exists in a workable state
       await executor.callTool("move_issue_to_backlog", {
         issueNumber: issueData.issue.number,
         skipGitHubSync: true,
       });
-    });
-
-    it("dispatch_task - adds task to dispatch queue", async () => {
-      const result = await executor.callTool("dispatch_task", {
-        taskId: dispatchableTaskId,
-      });
-
-      expect(result.success).toBe(true);
     });
 
     it("get_dispatch_status - gets worker and queue status", async () => {
@@ -799,7 +791,7 @@ Updated description.
         stats: { total: number };
       };
       expect(data.queue).toBeDefined();
-      expect(data.stats.total).toBeGreaterThanOrEqual(1);
+      expect(data.workers).toBeDefined();
     });
 
     it("end_worker_session - signals worker completion", async () => {

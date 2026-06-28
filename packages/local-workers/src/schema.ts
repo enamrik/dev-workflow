@@ -48,7 +48,7 @@ export const workers = sqliteTable("workers", {
  * Workers poll this queue and atomically claim unclaimed or stale-claimed tasks.
  *
  * Flow:
- * 1. dispatch_task(taskId, projectSlug) → INSERT with status=PENDING
+ * 1. A READY task is enqueued (WorkerQueueDb.enqueue) → INSERT with status=PENDING
  * 2. Worker polls → finds PENDING or stale WORKING task
  * 3. Worker claims → UPDATE status=WORKING, worker_id, claimed_at
  * 4. Task reaches terminal state → DELETE from queue

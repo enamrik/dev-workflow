@@ -83,11 +83,7 @@ import {
   handleDeleteType,
 } from "./type-tools.js";
 
-import {
-  handleDispatchTask,
-  handleGetDispatchStatus,
-  handleEndWorkerSession,
-} from "./dispatch-tools.js";
+import { handleGetDispatchStatus, handleEndWorkerSession } from "./dispatch-tools.js";
 
 /**
  * Tool registry type - maps tool names to bound handlers.
@@ -173,7 +169,6 @@ export function createToolsRegistry(container: McpContainer): ToolsRegistry {
     delete_type: createMcpTool(handleDeleteType, container),
 
     // Dispatch tools
-    dispatch_task: createMcpTool(handleDispatchTask, container),
     get_dispatch_status: createMcpTool(handleGetDispatchStatus, container),
     end_worker_session: createMcpTool(handleEndWorkerSession, container),
   };

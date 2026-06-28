@@ -27,8 +27,8 @@ Workers are background Claude Code processes that automatically pick up and exec
             └─────────────┘   └─────────────┘
 ```
 
-1. **You dispatch tasks** via `dispatch_task` or `dfl-work-task` skill
-2. **Workers poll** the queue for available tasks
+1. **You mark a task READY** via `move_issue_to_ready` or the `dfl-work-task` skill
+2. **Workers poll** for READY tasks whose dependencies are satisfied
 3. **Worker claims** a task atomically (prevents double-claiming)
 4. **Worker spawns Claude** to execute the task
 5. **Claude completes** the task lifecycle (implement → PR → merge)
@@ -85,7 +85,7 @@ dfl worker --name worker-2
 
 ### Using the Skill
 
-The `dfl-work-task` skill automatically dispatches to workers if available:
+The `dfl-work-task` skill marks the task READY so a running worker can pick it up:
 
 ```
 "Start task #5.2"
@@ -93,33 +93,23 @@ The `dfl-work-task` skill automatically dispatches to workers if available:
 
 Claude will:
 
-1. Check if workers are running
-2. If yes → dispatch task and report
-3. If no → ask if you want inline execution
+1. If the task is still PLANNED → move it to backlog first
+2. Mark the task READY (`move_issue_to_ready`)
+3. A running worker auto-claims it once dependencies are satisfied (or, if inline
+   execution was requested, run it here via `dfl-worker-task`)
 
-### Manual Dispatch
+### Marking a Task Ready
 
 Use the MCP tool directly:
 
 ```
-dispatch_task(taskId: "uuid-of-task")
+move_issue_to_ready(issueNumber: N)
 ```
 
 Requirements:
 
-- Task must be in BACKLOG or READY status
-- Task cannot already be in the queue
-
-Returns:
-
-```json
-{
-  "success": true,
-  "alreadyQueued": false,
-  "entry": { "taskId": "...", "status": "PENDING", ... },
-  "message": "Task added to dispatch queue. A worker will pick it up."
-}
-```
+- The task must already be in BACKLOG (PLANNED tasks must first be moved to backlog)
+- A worker auto-claims the task only after all prerequisite tasks are COMPLETED or ABANDONED
 
 ## Worker Lifecycle
 

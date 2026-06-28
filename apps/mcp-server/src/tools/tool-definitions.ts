@@ -82,11 +82,7 @@ import {
   DeleteTypeSchema,
 } from "./type-tools.js";
 
-import {
-  DispatchTaskSchema,
-  GetDispatchStatusSchema,
-  EndWorkerSessionSchema,
-} from "./dispatch-tools.js";
+import { GetDispatchStatusSchema, EndWorkerSessionSchema } from "./dispatch-tools.js";
 
 // =============================================================================
 // Issue Tool Definitions
@@ -416,11 +412,6 @@ export const typeToolDefinitions = [
 // =============================================================================
 
 export const dispatchToolDefinitions = [
-  createToolDefinition(
-    "dispatch_task",
-    "⚠️ Prefer 'dfl-work-task' skill for proper workflow. Add a task to the dispatch queue for worker execution. Workers will poll and claim tasks from this queue. Idempotent - returns existing entry if task is already queued. Use this instead of load_task_session when you want a background worker to pick up the task.",
-    DispatchTaskSchema
-  ),
   createToolDefinition(
     "get_dispatch_status",
     "Get status of worker sessions and dispatch queue. Workers are Claude instances polling for tasks - NOT git worktrees (use list_worktrees for that). Returns: (1) all registered workers with status (IDLE/WORKING/DRAINING), isAlive, and currentTaskId; (2) worker summary counts (total, idle, working, draining); (3) dispatch queue entries showing which tasks are pending or being worked on; (4) queue stats (total, unclaimed, claimed, stale).",

@@ -679,15 +679,9 @@ delete_type({
 
 ## Dispatch Tools
 
-### dispatch_task
-
-Add task to dispatch queue.
-
-```typescript
-dispatch_task({
-  taskId: string, // Required
-});
-```
+Work is started by marking a task READY with `move_issue_to_ready`. A running worker
+auto-claims any READY task whose dependencies are satisfied — there is no explicit
+enqueue tool.
 
 ### get_dispatch_status
 

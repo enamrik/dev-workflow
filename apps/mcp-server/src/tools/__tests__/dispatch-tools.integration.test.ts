@@ -9,25 +9,18 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { Effect } from "@dev-workflow/effect";
 import { createContainer, asValue, InjectionMode } from "awilix";
 import type { AwilixContainer } from "awilix";
 import {
   TaskDomainService,
   type DbClient,
   type DbSource,
-  DispatchTaskOperationSchema as DispatchTaskSchema,
   EndWorkerSessionOperationSchema as EndWorkerSessionSchema,
 } from "@dev-workflow/tracking";
-import { projects } from "@dev-workflow/database/schema.js";
 import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-queue-db.js";
 import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import { createTestIssue, createTestPlan, createTestTask } from "../../test/helpers.js";
-import {
-  handleDispatchTask,
-  handleGetDispatchStatus,
-  handleEndWorkerSession,
-} from "../../tools/dispatch-tools.js";
+import { handleGetDispatchStatus, handleEndWorkerSession } from "../../tools/dispatch-tools.js";
 import { createMcpTool } from "../../di/bootstrap.js";
 
 /**
@@ -48,7 +41,6 @@ describe("Dispatch Tools Integration", () => {
   let testContainer: AwilixContainer<DispatchTestCradle>;
 
   // Bound tools for testing
-  let dispatchTask: ReturnType<typeof createMcpTool>;
   let getDispatchStatus: ReturnType<typeof createMcpTool>;
   let endWorkerSession: ReturnType<typeof createMcpTool>;
 
@@ -78,7 +70,6 @@ describe("Dispatch Tools Integration", () => {
     });
 
     // Bind handlers to test container - tests the full pipeline
-    dispatchTask = createMcpTool(handleDispatchTask, testContainer);
     getDispatchStatus = createMcpTool(handleGetDispatchStatus, testContainer);
     endWorkerSession = createMcpTool(handleEndWorkerSession, testContainer);
   });
@@ -204,153 +195,6 @@ describe("Dispatch Tools Integration", () => {
     });
   });
 
-  describe("handleDispatchTask", () => {
-    it("should dispatch a task and return queue entry", async () => {
-      // Create issue, plan, and task
-      const issue = await createTestIssue(client.issues);
-      const plan = await createTestPlan(client.plans, issue.id);
-      const task = await createTestTask(client.tasks, plan.id, {
-        title: "Test Task",
-        status: "BACKLOG",
-      });
-
-      const result = await dispatchTask({ taskId: task.id });
-
-      expect(result.isError).toBeUndefined();
-      const content = JSON.parse(result.content[0].text);
-
-      expect(content.success).toBe(true);
-      expect(content.alreadyQueued).toBe(false);
-
-      // Should return queue entry details
-      expect(content.queueEntry).toBeDefined();
-      expect(content.queueEntry.taskId).toBe(task.id);
-      expect(content.queueEntry.status).toBe("PENDING");
-      expect(content.queueEntry.workerId).toBeNull();
-
-      // No worker claimed yet
-      expect(content.claimedByWorker).toBeNull();
-    });
-
-    it("should return alreadyQueued=true for duplicate dispatch", async () => {
-      // Create issue, plan, and task
-      const issue = await createTestIssue(client.issues);
-      const plan = await createTestPlan(client.plans, issue.id);
-      const task = await createTestTask(client.tasks, plan.id, {
-        title: "Test Task",
-        status: "BACKLOG",
-      });
-
-      // Dispatch task twice
-      await dispatchTask({ taskId: task.id });
-      const result = await dispatchTask({ taskId: task.id });
-
-      expect(result.isError).toBeUndefined();
-      const content = JSON.parse(result.content[0].text);
-
-      expect(content.success).toBe(true);
-      expect(content.alreadyQueued).toBe(true);
-      expect(content.queueEntry).toBeDefined();
-    });
-
-    it("should return claimedByWorker when task is claimed", async () => {
-      // Create issue, plan, and task
-      const issue = await createTestIssue(client.issues);
-      const plan = await createTestPlan(client.plans, issue.id);
-      const task = await createTestTask(client.tasks, plan.id, {
-        title: "Test Task",
-        status: "BACKLOG",
-      });
-
-      // Register worker and dispatch task using workerQueueDb
-      workerQueueDb.registerWorker("worker-1", "worker-1");
-      workerQueueDb.enqueue(task.id, "test-project");
-      workerQueueDb.claimTask("worker-1");
-
-      // Dispatch again (already queued and claimed)
-      const result = await dispatchTask({ taskId: task.id });
-
-      expect(result.isError).toBeUndefined();
-      const content = JSON.parse(result.content[0].text);
-
-      expect(content.alreadyQueued).toBe(true);
-      expect(content.queueEntry.status).toBe("WORKING");
-      expect(content.queueEntry.workerId).toBe("worker-1");
-
-      // Should include claiming worker details
-      expect(content.claimedByWorker).toBeDefined();
-      expect(content.claimedByWorker.id).toBe("worker-1");
-      expect(content.claimedByWorker.name).toBe("worker-1");
-      expect(content.claimedByWorker.status).toBeDefined();
-    });
-
-    it("should reject dispatch for non-BACKLOG/READY tasks", async () => {
-      // Create issue, plan, and task with IN_PROGRESS status
-      const issue = await createTestIssue(client.issues);
-      const plan = await createTestPlan(client.plans, issue.id);
-      const task = await createTestTask(client.tasks, plan.id, {
-        title: "Test Task",
-        status: "BACKLOG",
-      });
-      // Start the task so it's IN_PROGRESS
-      await Effect.runPromise(
-        client.tasks.updateStatus(task.id, "IN_PROGRESS", "test-session", "Started")
-      );
-
-      const result = await dispatchTask({ taskId: task.id });
-
-      expect(result.isError).toBe(true);
-      const content = JSON.parse(result.content[0].text);
-      expect(content.error).toContain("IN_PROGRESS");
-    });
-
-    it("should reject dispatch for non-existent task", async () => {
-      const result = await dispatchTask({ taskId: "non-existent-uuid" });
-
-      expect(result.isError).toBe(true);
-      const content = JSON.parse(result.content[0].text);
-      expect(content.error).toContain("not found");
-    });
-
-    it("enqueues the task's TRUE project slug even when dispatched via a different project's context", async () => {
-      // The task belongs to a project whose slug is NOT the serving MCP
-      // server's cwd-resolved slug ("test-project", bound in the cradle). The
-      // dispatch op must derive the owning slug from the task itself and
-      // enqueue THAT, never the caller's (cross-project) slug.
-      const TRUE_SLUG = "true-owner-aaaaaa";
-
-      // Register a projects row whose id matches the default test client's
-      // project id, so the tasks → … → projects join resolves to TRUE_SLUG.
-      testDb.db
-        .insert(projects)
-        .values({
-          id: "test-project-abc123",
-          gitRootHash: "hash-true",
-          name: "True Owner",
-          slug: TRUE_SLUG,
-          isArchived: false,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        })
-        .run();
-
-      const issue = await createTestIssue(client.issues);
-      const plan = await createTestPlan(client.plans, issue.id);
-      const task = await createTestTask(client.tasks, plan.id, {
-        title: "Cross-project task",
-        status: "READY",
-      });
-
-      const result = await dispatchTask({ taskId: task.id });
-      expect(result.isError).toBeUndefined();
-
-      // The stored queue slug must be the task's TRUE owner, not "test-project".
-      const entry = workerQueueDb.findByTaskId(task.id);
-      expect(entry?.projectSlug).toBe(TRUE_SLUG);
-      expect(entry?.projectSlug).not.toBe("test-project");
-    });
-  });
-
   describe("handleEndWorkerSession", () => {
     it("should set claudeDone flag for a worker's task", async () => {
       // Create issue, plan, and task
@@ -413,19 +257,6 @@ describe("Dispatch Tools Integration", () => {
  * Schema Validation Tests for Dispatch Tools
  */
 describe("Dispatch Tool Schema Validation", () => {
-  describe("DispatchTaskSchema", () => {
-    it("should accept valid task dispatch", () => {
-      const input = { taskId: "uuid-here", projectSlug: "test-project" };
-      const result = DispatchTaskSchema.safeParse(input);
-      expect(result.success).toBe(true);
-    });
-
-    it("should reject missing taskId", () => {
-      const result = DispatchTaskSchema.safeParse({});
-      expect(result.success).toBe(false);
-    });
-  });
-
   describe("GetDispatchStatus", () => {
     it("accepts no arguments (no schema needed)", () => {
       // getDispatchStatus takes no input - no schema to validate
