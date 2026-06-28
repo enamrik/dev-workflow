@@ -55,7 +55,12 @@ export const SubmitForReviewSchema = z.object({
 
 export const CompleteTaskSchema = z.object({
   taskId: z.string().describe("Task UUID"),
-  sessionId: z.string().describe("Claude session ID"),
+  sessionId: z
+    .string()
+    .optional()
+    .describe(
+      "Claude session ID. Optional when force=true — e.g. completing locally-finished work that never had a worker session."
+    ),
   finalLogEntry: z
     .string()
     .describe(
