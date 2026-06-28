@@ -117,6 +117,20 @@ export function createTestDatabase(projectId: string = TEST_PROJECT_ID): TestDat
         .get();
       return result?.slug ?? null;
     },
+    findTaskAssociationById: (taskId: string) => {
+      const result = drizzleDb
+        .select({
+          issueNumber: schema.issues.number,
+          taskNumber: schema.tasks.number,
+          taskTitle: schema.tasks.title,
+        })
+        .from(schema.tasks)
+        .innerJoin(schema.plans, schema.sql`${schema.plans.id} = ${schema.tasks.planId}`)
+        .innerJoin(schema.issues, schema.sql`${schema.issues.id} = ${schema.plans.issueId}`)
+        .where(schema.sql`${schema.tasks.id} = ${taskId}`)
+        .get();
+      return result ?? null;
+    },
     createClient: (pid: string) => new DrizzleDbClient(drizzleDb, pid),
     close: () => sqlite.close(),
   };

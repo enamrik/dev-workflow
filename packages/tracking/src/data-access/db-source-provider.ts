@@ -38,7 +38,7 @@ import {
 import { resolveMigrationsFolder } from "@dev-workflow/database/migrations-folder.js";
 import { openSqliteDatabase } from "@dev-workflow/database/open-database.js";
 
-import type { DbSource } from "./db-source.js";
+import type { DbSource, TaskAssociation } from "./db-source.js";
 import type { DbClient } from "./db-client.js";
 import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
 
@@ -179,6 +179,22 @@ export class DbSourceProvider extends Service<DbSourceProvider>()("sourceProvide
           .get();
 
         return result?.slug ?? null;
+      },
+
+      findTaskAssociationById: (taskId: string): TaskAssociation | null => {
+        const result = drizzleDb
+          .select({
+            issueNumber: issuesTable.number,
+            taskNumber: tasksTable.number,
+            taskTitle: tasksTable.title,
+          })
+          .from(tasksTable)
+          .innerJoin(plansTable, sql`${plansTable.id} = ${tasksTable.planId}`)
+          .innerJoin(issuesTable, sql`${issuesTable.id} = ${plansTable.issueId}`)
+          .where(sql`${tasksTable.id} = ${taskId}`)
+          .get();
+
+        return result ?? null;
       },
 
       createClient: (projectId: string): DbClient => {

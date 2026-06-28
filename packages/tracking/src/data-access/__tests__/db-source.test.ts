@@ -189,6 +189,32 @@ describe("DbSource.findProjectSlugByTaskId", () => {
 });
 
 // =============================================================================
+// findTaskAssociationById
+// =============================================================================
+
+describe("DbSource.findTaskAssociationById", () => {
+  it("resolves a task to its compact issue/task association", () => {
+    seedProject(source, "proj-uuid-real", "real-project-aaaaaa");
+    seedTaskChain(source, {
+      projectId: "proj-uuid-real",
+      issueId: "issue-1",
+      planId: "plan-1",
+      taskId: "task-1",
+    });
+
+    expect(source.findTaskAssociationById("task-1")).toEqual({
+      issueNumber: 1,
+      taskNumber: 1,
+      taskTitle: "Task",
+    });
+  });
+
+  it("returns null for an unknown task id", () => {
+    expect(source.findTaskAssociationById("does-not-exist")).toBeNull();
+  });
+});
+
+// =============================================================================
 // resolveProjectInfoByTaskId (composition entry point)
 // =============================================================================
 
