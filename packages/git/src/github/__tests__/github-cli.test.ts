@@ -10,7 +10,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EventEmitter } from "node:events";
 import { spawn } from "node:child_process";
 import { Effect } from "@dev-workflow/effect";
-import { NodeGitHubCLI } from "../github-cli.js";
+import { NodeGitHubCLI, parsePRNumberFromUrl } from "../github-cli.js";
 
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 
@@ -48,6 +48,47 @@ function captureSpawn(stdout = ""): Captured {
   }) as unknown as typeof spawn);
   return captured;
 }
+
+/**
+ * Capture EVERY `gh` invocation, emitting a scripted stdout per call (in order).
+ * Needed for createPR, which now spawns `gh pr create` then `gh pr view`.
+ */
+function captureSpawnSequence(stdouts: string[]): Captured[] {
+  const calls: Captured[] = [];
+  let index = 0;
+  mockSpawn.mockImplementation(((
+    cmd: string,
+    args: readonly string[],
+    options: { env?: NodeJS.ProcessEnv; shell?: boolean | string }
+  ) => {
+    calls.push({ cmd, args, env: options.env, shell: options.shell });
+    const stdout = stdouts[index] ?? "";
+    index += 1;
+    const proc = new EventEmitter() as EventEmitter & {
+      stdout: EventEmitter;
+      stderr: EventEmitter;
+    };
+    proc.stdout = new EventEmitter();
+    proc.stderr = new EventEmitter();
+    queueMicrotask(() => {
+      if (stdout) proc.stdout.emit("data", Buffer.from(stdout));
+      proc.emit("close", 0);
+    });
+    return proc;
+  }) as unknown as typeof spawn);
+  return calls;
+}
+
+const PR_VIEW_JSON = JSON.stringify({
+  number: 123,
+  title: "feat: thing",
+  url: "https://github.com/o/r/pull/123",
+  state: "OPEN",
+  isDraft: false,
+  headRefName: "feature",
+  baseRefName: "main",
+  mergedAt: null,
+});
 
 describe("NodeGitHubCLI env threading", () => {
   beforeEach(() => {
@@ -98,29 +139,88 @@ describe("NodeGitHubCLI no-shell invocation", () => {
       "",
     ].join("\n");
 
-    const prJson = JSON.stringify({
-      number: 123,
-      title: "feat: thing",
-      url: "https://github.com/o/r/pull/123",
-      state: "OPEN",
-      isDraft: false,
-      headRefName: "feature",
-      baseRefName: "main",
-    });
-    const captured = captureSpawn(prJson);
+    // Call 1: `gh pr create` prints the new PR URL. Call 2: `gh pr view --json`.
+    const calls = captureSpawnSequence(["https://github.com/o/r/pull/123", PR_VIEW_JSON]);
 
     const pr = await Effect.runPromise(
       new NodeGitHubCLI("/repo").createPR("feature", "main", "feat: thing", body)
     );
 
+    const createCall = calls[0]!;
     // No shell, and the body survives intact as one discrete argument.
-    expect(captured.shell).toBeFalsy();
-    const bodyIdx = captured.args?.indexOf("--body") ?? -1;
+    expect(createCall.shell).toBeFalsy();
+    const bodyIdx = createCall.args?.indexOf("--body") ?? -1;
     expect(bodyIdx).toBeGreaterThanOrEqual(0);
-    expect(captured.args?.[bodyIdx + 1]).toBe(body);
+    expect(createCall.args?.[bodyIdx + 1]).toBe(body);
 
-    // The created PR is parsed and returned (so the operation can record it).
+    // The created PR is read back via gh pr view and returned (so the operation
+    // can record it without manual fallback).
     expect(pr.number).toBe(123);
     expect(pr.url).toBe("https://github.com/o/r/pull/123");
+  });
+});
+
+describe("NodeGitHubCLI createPR argv", () => {
+  beforeEach(() => {
+    mockSpawn.mockReset();
+  });
+
+  it("invokes `gh pr create` WITHOUT --json (it is unsupported there)", async () => {
+    const calls = captureSpawnSequence(["https://github.com/o/r/pull/123", PR_VIEW_JSON]);
+
+    await Effect.runPromise(
+      new NodeGitHubCLI("/repo").createPR("feature", "main", "feat: thing", "body")
+    );
+
+    const createCall = calls[0]!;
+    expect(createCall.args?.slice(0, 2)).toEqual(["pr", "create"]);
+    // The regression guard: `gh pr create` does not accept --json.
+    expect(createCall.args).not.toContain("--json");
+  });
+
+  it("reads PR metadata back via `gh pr view --json` after creating", async () => {
+    const calls = captureSpawnSequence(["https://github.com/o/r/pull/123", PR_VIEW_JSON]);
+
+    const pr = await Effect.runPromise(
+      new NodeGitHubCLI("/repo").createPR("feature", "main", "feat: thing", "body")
+    );
+
+    // Second call fetches metadata for the just-created PR number from the URL.
+    const viewCall = calls[1]!;
+    expect(viewCall.args?.slice(0, 3)).toEqual(["pr", "view", "123"]);
+    expect(viewCall.args).toContain("--json");
+
+    expect(pr).toMatchObject({
+      number: 123,
+      url: "https://github.com/o/r/pull/123",
+      state: "OPEN",
+      merged: false,
+      headBranch: "feature",
+      baseBranch: "main",
+    });
+  });
+
+  it("fails when gh prints no parseable PR URL", async () => {
+    captureSpawnSequence([""]); // create succeeds (exit 0) but emits no URL
+
+    await expect(
+      Effect.runPromise(
+        new NodeGitHubCLI("/repo").createPR("feature", "main", "feat: thing", "body")
+      )
+    ).rejects.toThrow(/could not parse its number/);
+  });
+});
+
+describe("parsePRNumberFromUrl", () => {
+  it("extracts the number from a gh pr create URL", () => {
+    expect(parsePRNumberFromUrl("https://github.com/owner/repo/pull/506")).toBe(506);
+  });
+
+  it("tolerates surrounding whitespace/newlines", () => {
+    expect(parsePRNumberFromUrl("\nhttps://github.com/o/r/pull/42\n")).toBe(42);
+  });
+
+  it("returns null when there is no /pull/<n> segment", () => {
+    expect(parsePRNumberFromUrl("not a url")).toBeNull();
   });
 });
