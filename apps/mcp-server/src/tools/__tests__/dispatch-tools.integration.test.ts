@@ -16,12 +16,30 @@ import {
   type DbClient,
   type DbSource,
   EndWorkerSessionOperationSchema as EndWorkerSessionSchema,
+  TailWorkerLogOperationSchema as TailWorkerLogSchema,
 } from "@dev-workflow/tracking";
+import { workerLogsDir } from "@dev-workflow/git/worker-session-log.js";
 import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-queue-db.js";
 import { createTestDatabase, type TestDatabase } from "../../test/setup.js";
 import { createTestIssue, createTestPlan, createTestTask } from "../../test/helpers.js";
-import { handleGetDispatchStatus, handleEndWorkerSession } from "../../tools/dispatch-tools.js";
+import {
+  handleGetDispatchStatus,
+  handleEndWorkerSession,
+  handleTailWorkerLog,
+} from "../../tools/dispatch-tools.js";
 import { createMcpTool } from "../../di/bootstrap.js";
+
+/** Write a worker log file (matching WorkerSessionLog's filename scheme) with the given lines. */
+function seedWorkerLog(workerName: string, taskNumber: number, lines: string[]): string {
+  const dir = workerLogsDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(
+    dir,
+    `${workerName}__issue-1-task-${taskNumber}__20260628T00000${taskNumber}0Z__abcd1234.log`
+  );
+  fs.writeFileSync(file, lines.map((l) => `${l}\n`).join(""));
+  return file;
+}
 
 /**
  * Test cradle interface - subset of McpCradle for dispatch tools
@@ -43,8 +61,17 @@ describe("Dispatch Tools Integration", () => {
   // Bound tools for testing
   let getDispatchStatus: ReturnType<typeof createMcpTool>;
   let endWorkerSession: ReturnType<typeof createMcpTool>;
+  let tailWorkerLog: ReturnType<typeof createMcpTool>;
+
+  // Isolate worker logs under a temp DFL_HOME so tests never touch ~/.dfl.
+  let logHome: string;
+  let prevDflHome: string | undefined;
 
   beforeEach(() => {
+    prevDflHome = process.env["DFL_HOME"];
+    logHome = fs.mkdtempSync(path.join(os.tmpdir(), "dfl-dispatch-log-"));
+    process.env["DFL_HOME"] = logHome;
+
     testDb = createTestDatabase();
     client = testDb.client;
 
@@ -72,6 +99,7 @@ describe("Dispatch Tools Integration", () => {
     // Bind handlers to test container - tests the full pipeline
     getDispatchStatus = createMcpTool(handleGetDispatchStatus, testContainer);
     endWorkerSession = createMcpTool(handleEndWorkerSession, testContainer);
+    tailWorkerLog = createMcpTool(handleTailWorkerLog, testContainer);
   });
 
   afterEach(() => {
@@ -82,6 +110,12 @@ describe("Dispatch Tools Integration", () => {
       // Ignore cleanup errors
     }
     testDb.cleanup();
+    fs.rmSync(logHome, { recursive: true, force: true });
+    if (prevDflHome === undefined) {
+      delete process.env["DFL_HOME"];
+    } else {
+      process.env["DFL_HOME"] = prevDflHome;
+    }
   });
 
   describe("handleGetDispatchStatus", () => {
@@ -295,6 +329,86 @@ describe("Dispatch Tools Integration", () => {
       expect(content.error).toContain("does not own");
     });
   });
+
+  describe("handleTailWorkerLog", () => {
+    it("returns a graceful found:false when no logs exist", async () => {
+      const result = await tailWorkerLog({ workerName: "worker-1" });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.found).toBe(false);
+      expect(content.path).toBeNull();
+      expect(content.content).toBe("");
+      expect(content.message).toContain("worker-1");
+    });
+
+    it("tails the latest log resolved by worker name", async () => {
+      seedWorkerLog("worker-1", 1, ["line a", "line b", "line c", "line d"]);
+
+      const result = await tailWorkerLog({ workerName: "worker-1", lines: 2 });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.found).toBe(true);
+      expect(content.workerName).toBe("worker-1");
+      expect(content.lines).toBe(2);
+      expect(content.totalLines).toBe(4);
+      expect(content.content).toBe("line c\nline d");
+      expect(content.path).toContain("worker-1__");
+    });
+
+    it("resolves the worker name from a workerId", async () => {
+      workerQueueDb.registerWorker("worker-uuid-1", "worker-7");
+      seedWorkerLog("worker-7", 1, ["hello from worker-7"]);
+
+      const result = await tailWorkerLog({ workerId: "worker-uuid-1" });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.found).toBe(true);
+      expect(content.workerName).toBe("worker-7");
+      expect(content.content).toBe("hello from worker-7");
+    });
+
+    it("resolves the worker name from a taskId via the claiming worker", async () => {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
+        title: "Test Task",
+        status: "BACKLOG",
+      });
+
+      workerQueueDb.registerWorker("worker-uuid-2", "worker-9");
+      workerQueueDb.enqueue(task.id, "test-project");
+      workerQueueDb.claimTask("worker-uuid-2");
+      seedWorkerLog("worker-9", 1, ["tick status=IN_PROGRESS"]);
+
+      const result = await tailWorkerLog({ taskId: task.id });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.found).toBe(true);
+      expect(content.workerName).toBe("worker-9");
+      expect(content.content).toContain("IN_PROGRESS");
+    });
+
+    it("returns found:false when the task has not been claimed", async () => {
+      const issue = await createTestIssue(client.issues);
+      const plan = await createTestPlan(client.plans, issue.id);
+      const task = await createTestTask(client.tasks, plan.id, {
+        title: "Test Task",
+        status: "BACKLOG",
+      });
+      workerQueueDb.enqueue(task.id, "test-project");
+
+      const result = await tailWorkerLog({ taskId: task.id });
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+      expect(content.found).toBe(false);
+      expect(content.message).toContain("not been claimed");
+    });
+  });
 });
 
 /**
@@ -325,6 +439,26 @@ describe("Dispatch Tool Schema Validation", () => {
       const input = { workerId: "worker-uuid" };
       const result = EndWorkerSessionSchema.safeParse(input);
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe("TailWorkerLogSchema", () => {
+    it("accepts an empty object (all selectors optional)", () => {
+      expect(TailWorkerLogSchema.safeParse({}).success).toBe(true);
+    });
+
+    it("accepts a selector with a lines count", () => {
+      const result = TailWorkerLogSchema.safeParse({ workerName: "worker-1", lines: 100 });
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects lines above the cap", () => {
+      const result = TailWorkerLogSchema.safeParse({ lines: 5000 });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects a non-positive lines count", () => {
+      expect(TailWorkerLogSchema.safeParse({ lines: 0 }).success).toBe(false);
     });
   });
 });

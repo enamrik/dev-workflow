@@ -13,7 +13,7 @@ import {
   listWorkerLogs,
   latestLogPath,
   workerLogsDir,
-} from "../infrastructure/worker-session-log.js";
+} from "@dev-workflow/git/worker-session-log.js";
 
 export interface StartWorkerOptions {
   name?: string;

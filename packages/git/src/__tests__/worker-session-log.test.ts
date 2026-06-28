@@ -15,6 +15,7 @@ import {
   workerLogsDir,
   listWorkerLogs,
   latestLogPath,
+  tailLogFile,
 } from "../worker-session-log.js";
 
 let home: string;
@@ -165,5 +166,32 @@ describe("listWorkerLogs / latestLogPath", () => {
     expect(onlyW1.every((l) => l.workerName === "worker-1")).toBe(true);
 
     expect(latestLogPath("worker-2")).toContain("worker-2__");
+  });
+});
+
+describe("tailLogFile", () => {
+  it("returns a graceful empty tail when the file does not exist", () => {
+    const tail = tailLogFile(path.join(home, "does-not-exist.log"), 50);
+    expect(tail.lines).toEqual([]);
+    expect(tail.totalLines).toBe(0);
+  });
+
+  it("returns the last N lines without counting the trailing newline", () => {
+    const file = path.join(home, "sample.log");
+    // Append-only logs always end with a newline (see write()).
+    writeFileSync(file, "a\nb\nc\nd\n");
+
+    const tail = tailLogFile(file, 2);
+    expect(tail.lines).toEqual(["c", "d"]);
+    expect(tail.totalLines).toBe(4);
+  });
+
+  it("returns all lines when N exceeds the file length", () => {
+    const file = path.join(home, "short.log");
+    writeFileSync(file, "only\n");
+
+    const tail = tailLogFile(file, 50);
+    expect(tail.lines).toEqual(["only"]);
+    expect(tail.totalLines).toBe(1);
   });
 });

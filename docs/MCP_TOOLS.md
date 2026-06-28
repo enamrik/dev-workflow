@@ -2,7 +2,7 @@
 
 > This guide is part of the [dev-workflow documentation](../README.md).
 
-Comprehensive reference for all 53 MCP tools available via the Model Context Protocol. These tools enable Claude to manage the complete development workflow.
+Comprehensive reference for all 55 MCP tools available via the Model Context Protocol. These tools enable Claude to manage the complete development workflow.
 
 ## Table of Contents
 
@@ -16,7 +16,7 @@ Comprehensive reference for all 53 MCP tools available via the Model Context Pro
 - [Worktrees](#worktrees) (2 tools)
 - [Merge](#merge) (1 tool)
 - [Types](#types) (1 tool)
-- [Dispatch](#dispatch) (2 tools)
+- [Dispatch](#dispatch) (3 tools)
 
 ---
 
@@ -902,6 +902,40 @@ List all available issue/task types.
 Work is started by marking a task **READY** (`move_issue_to_ready`). A running worker
 auto-claims any READY task whose dependencies are satisfied — there is no explicit
 enqueue step. The internal worker queue is populated automatically when a worker claims.
+
+### get_dispatch_status
+
+Get the status of worker sessions and the dispatch queue. Takes no parameters.
+
+**Returns:**
+
+- All registered workers with status (IDLE/WORKING/DRAINING), `isAlive`, and `currentTaskId`
+- Worker summary counts (total, idle, working, draining)
+- Dispatch queue entries (which tasks are pending or being worked on)
+- Queue stats (total, unclaimed, claimed, stale)
+
+### tail_worker_log
+
+Read the tail of a worker's session log to see what it's doing — and whether it's
+progressing, blocked, or stuck — **without shell access**. Pair it with
+`get_dispatch_status`: list the workers there, then tail the one you care about.
+
+| Parameter    | Type   | Required | Description                                                 |
+| ------------ | ------ | -------- | ----------------------------------------------------------- |
+| `workerName` | string | No       | Worker name (e.g. `worker-1`) to resolve the latest log for |
+| `workerId`   | string | No       | Worker UUID to resolve the latest log for                   |
+| `taskId`     | string | No       | Task UUID; resolves to the worker that claimed it           |
+| `lines`      | number | No       | Number of trailing lines to return (default 50, max 2000)   |
+
+**Behavior:**
+
+- Resolves the latest matching log under `<DFL_HOME>/track/worker-logs/` using the
+  same resolution as the `dfl worker:logs` CLI (single source of truth)
+- Selector precedence when more than one is given: `workerName` > `workerId` > `taskId`
+- With none of `workerName`/`workerId`/`taskId`, returns the most-recent log across all workers
+- Logs are lifecycle/heartbeat events (claimed → session-started → status ticks →
+  ended/exit), not the verbatim Claude transcript
+- Returns `found: false` with a `message` (and the `logsDir`) when no matching log exists
 
 ### end_worker_session
 

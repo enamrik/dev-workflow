@@ -16,7 +16,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { resolveGlobalTrackDir } from "@dev-workflow/git/track-directory-resolver.js";
+import { resolveGlobalTrackDir } from "./track-directory-resolver.js";
 
 /** How a task was claimed — mirrors ClaimSource on the worker service. */
 type ClaimSource = "queue" | "auto-claim";
@@ -186,4 +186,36 @@ export function listWorkerLogs(
 /** Path to the most-recent log (optionally for a worker name), or null if none. */
 export function latestLogPath(workerName?: string): string | null {
   return listWorkerLogs(workerName)[0]?.path ?? null;
+}
+
+/** Result of tailing a log file: the trailing lines and how many the file holds. */
+export interface LogTail {
+  /** The last `lines.length` lines of the file, in file order. */
+  lines: string[];
+  /** Total number of (non-empty-trailing) lines in the file. */
+  totalLines: number;
+}
+
+/**
+ * Read the last `lines` lines of a log file. A trailing newline (every line is
+ * written with one — see write()) does not count as an empty final line.
+ * Returns an empty tail if the file is missing or unreadable, so callers get a
+ * graceful result rather than an exception.
+ */
+export function tailLogFile(filePath: string, lines: number): LogTail {
+  let content: string;
+  try {
+    content = fs.readFileSync(filePath, "utf8");
+  } catch {
+    return { lines: [], totalLines: 0 };
+  }
+
+  const all = content.split("\n");
+  // Append-only logs end with a newline, producing a trailing "" element; drop it.
+  if (all.length > 0 && all[all.length - 1] === "") {
+    all.pop();
+  }
+
+  const tail = lines >= all.length ? all : all.slice(all.length - lines);
+  return { lines: tail, totalLines: all.length };
 }
