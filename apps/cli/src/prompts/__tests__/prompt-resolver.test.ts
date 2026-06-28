@@ -75,6 +75,11 @@ restate the steps so it cannot drift from the skill.
 **Critical reminder (the skill relies on this):** when you call \`load_task_session\`, you
 MUST pass \`workerId="worker-7"\` for task-queue validation.
 
+**During PR_REVIEW, stay active — don't just wait for merge.** Per the skill, run its
+PR_REVIEW loop: poll your PR's review comments + bot reviews + CI, address each
+(reply/fix/push), and loop until there are no unaddressed comments and the PR is merged —
+then complete and end. Follow the skill for the mechanics.
+
 **Terminal action: \`end_worker_session()\`.** This is your FINAL action — think of it as
 \`process.exit()\`. Call it once your one dispatched task reaches a terminal state
 (COMPLETED after the PR is merged, or ABANDONED). \`complete_task\` is NOT the end: the
@@ -194,6 +199,10 @@ describe("PromptResolver", () => {
     expect(out).toContain("end_worker_session()");
     expect(out).toContain("`complete_task` is NOT the end");
     expect(out).toContain("Do NOT solicit more work, close issues, or pick up the");
+    // Issue #40: during PR_REVIEW the worker actively monitors + addresses reviews/CI
+    // until merged (mechanics live in the skill; the prompt only points to them).
+    expect(out).toContain("During PR_REVIEW, stay active");
+    expect(out).toContain("run its\nPR_REVIEW loop");
     expect(out).not.toContain("Once merged, call complete_task with a finalLogEntry summary");
     expect(out).not.toContain("{{");
   });

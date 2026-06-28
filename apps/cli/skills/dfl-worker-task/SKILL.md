@@ -230,17 +230,38 @@ When user confirms they want to submit for review:
    - PR is open and ready for review
    - User can still push changes to the PR branch (see below)
 
-### Pushing Additional Changes to a PR
+### Monitor and Address PR Review (PR_REVIEW Loop)
 
-When user needs to push more changes (e.g., review feedback):
+Once the task is in PR_REVIEW, **do NOT passively wait for the PR to be merged.** Actively
+loop — poll for feedback, address every actionable item, push, repeat — until there are no
+unaddressed comments and the PR is merged. This mirrors the human review-triage mandate
+(CLAUDE.md Mandate #2). Workers run this loop autonomously; interactive sessions run it too,
+surfacing anything ambiguous to the user.
 
-1. Make the requested changes
-2. Rebase on main and re-run validation (same as PR creation step 4)
-3. Commit and push: `git push` (or `git push --force-with-lease` after rebase)
-4. **Display PR summary:**
-   - Call `get_task_pr_status` to get current PR state
-   - Show PR title, URL, and key status info
-   - This helps users maintain visibility of the PR after each push
+**Each iteration** (replace `<n>` with the PR number; get `<owner>/<repo>` from
+`gh repo view --json nameWithOwner -q .nameWithOwner`):
+
+1. **Poll every feedback source** (include bot reviewers — Copilot, Claude review):
+   - Line comments (resolvable threads): `gh api repos/<owner>/<repo>/pulls/<n>/comments --paginate`
+   - Review submissions: `gh api repos/<owner>/<repo>/pulls/<n>/reviews --paginate`
+   - PR-level comments: `gh api repos/<owner>/<repo>/issues/<n>/comments --paginate`
+   - CI status: `gh pr checks`
+2. **Triage each finding** — verify it against the CURRENT code at `HEAD`, not a superseded
+   sha (beware stale comments pinned to an old commit). Fix the real ones; dismiss the rest
+   with a one-line reason.
+3. **Fix actionable items in code**, then rebase + re-run `make prep` (same as PR creation
+   step 4 above) and push (`git push`, or `git push --force-with-lease` after a rebase).
+4. **Reply to every finding** so the human can resolve it ("fixed in `<sha>` + how" or "not
+   worth fixing because …"):
+   - Line comments are threads → reply in-thread: `gh api -X POST repos/<owner>/<repo>/pulls/<n>/comments -f body=... -F in_reply_to=<comment_id>`
+   - Review bodies + PR-level comments are not threaded → reply with a normal PR comment: `gh pr comment <n> --body ...`
+5. **Re-check after every push** — each push can spawn a fresh bot review. Call
+   `get_task_pr_status` for current PR state, then re-fetch and re-triage until a poll
+   returns no new or unanswered comments AND the PR is merged.
+
+A green-CI PR with unread or unanswered review comments is NOT done — keep looping (a human
+or automation does the actual merge; the worker does not self-merge). Only once the PR is
+merged do you proceed to "To Complete a Task" below.
 
 ### To Complete a Task
 
@@ -251,7 +272,7 @@ When user needs to push more changes (e.g., review feedback):
 
 1. **Verify PR is merged:**
    - Call `get_task_pr_status`
-   - If not merged → tell user to merge the PR first
+   - If not merged → return to the PR_REVIEW loop above (address open comments/CI, push) until it merges. Never complete a PR that isn't merged.
 
 2. **Complete the task:**
    - Call `complete_task` with task ID, session ID, and `finalLogEntry`
@@ -290,7 +311,7 @@ end_worker_session({
 **Complete Worker Flow:**
 
 1. Load task → implement → create PR → submit for review
-2. Wait for PR merge → `complete_task` with `autoCloseIssue: true` (auto-closes if all tasks done)
+2. Run the PR_REVIEW loop (poll + address comments/CI, push) until merged → `complete_task` with `autoCloseIssue: true` (auto-closes if all tasks done)
 3. **`end_worker_session()` ← TERMINAL (nothing after this)**
 
 ### To Abandon a Task
