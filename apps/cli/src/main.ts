@@ -14,7 +14,8 @@ import { runInit } from "./commands/init-command-def.js";
 import { runUpdate } from "./commands/update-command-def.js";
 import { runUninit } from "./commands/uninit-command-def.js";
 import { runUI, runUIStop, runUIStatus } from "./commands/ui-command-def.js";
-import { runWorkers, runClaudeWorker, runWorkerLogs } from "./commands/worker-command-def.js";
+import { runWorkers, runSuperviseWorker, runWorkerLogs } from "./commands/worker-command-def.js";
+import { runWorkerRun } from "./commands/worker-run-command-def.js";
 import { runMCP } from "./commands/mcp-command-def.js";
 import { runCleanClaudeConfig } from "./commands/claude-config-command-def.js";
 import { runGithubIdentity } from "./commands/github-identity-command-def.js";
@@ -93,7 +94,23 @@ program
   .option("--name <name>", "Worker name (auto-generates worker-1, worker-2, etc. if not provided)")
   .passThroughOptions()
   .action(async (options: { name?: string }, cmd: Command) => {
-    await runClaudeWorker({ ...options, claudeArgs: cmd.args, runningVersion: VERSION });
+    // The `claude` verb is the long-lived SUPERVISOR; it spawns the worker loop
+    // as a replaceable child via the hidden `__worker-run` verb below.
+    await runSuperviseWorker({ ...options, claudeArgs: cmd.args, runningVersion: VERSION });
+  });
+
+// Hidden child verb: the replaceable worker process the supervisor spawns. Same
+// surface as `claude` (--name + passthrough), plus --running-version which the
+// supervisor passes through buildWorkerRunArgs. Hidden so it never shows in
+// help — it is an internal handoff target, not a user-facing command.
+program
+  .command("__worker-run", { hidden: true })
+  .description("Internal: run the worker loop as a supervised child process")
+  .option("--name <name>", "Worker name")
+  .option("--running-version <version>", "Running dfl build version")
+  .passThroughOptions()
+  .action(async (options: { name?: string; runningVersion?: string }, cmd: Command) => {
+    await runWorkerRun({ ...options, claudeArgs: cmd.args });
   });
 
 program

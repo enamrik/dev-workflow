@@ -27,13 +27,15 @@ export const handleWorkers = createCliHandler({
 });
 
 /**
- * Handler for claude (start worker) command.
+ * Handler for the `claude` command — runs the long-lived worker SUPERVISOR,
+ * which spawns the worker loop as a replaceable child (the hidden
+ * `__worker-run` verb) and relaunches it per the exit-code protocol.
  */
-export const handleClaudeWorker = createCliHandler({
+export const handleSuperviseWorker = createCliHandler({
   handler: (options: StartWorkerOptions) =>
     Effect.gen(function* () {
       const workerCommand = yield* WorkerCommandTag;
-      yield* Effect.promise(() => workerCommand.start(options));
+      yield* Effect.promise(() => workerCommand.supervise(options));
     }),
   middleware: defaultMiddleware,
 });
@@ -54,5 +56,5 @@ export const handleWorkerLogs = createCliHandler({
  * Executable runners.
  */
 export const runWorkers = createCliCommand(handleWorkers);
-export const runClaudeWorker = createCliCommand(handleClaudeWorker);
+export const runSuperviseWorker = createCliCommand(handleSuperviseWorker);
 export const runWorkerLogs = createCliCommand(handleWorkerLogs);

@@ -9,6 +9,7 @@ import { spawn } from "node:child_process";
 import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-queue-db.js";
 import { DbSourceProvider, ProjectsResolver } from "@dev-workflow/tracking";
 import { ClaudeWorkerService } from "../application/claude-worker.service.js";
+import { WorkerSupervisor, type WorkerRunEnvelope } from "../application/worker-supervisor.js";
 import {
   listWorkerLogs,
   latestLogPath,
@@ -109,6 +110,26 @@ export class WorkerCommand {
     } catch (error) {
       console.error("Error running Claude worker:", error);
       process.exit(1);
+    }
+  }
+
+  /**
+   * Run as the long-lived worker SUPERVISOR (`dfl claude`).
+   *
+   * The supervisor owns the terminal foreground and spawns the worker loop as a
+   * replaceable child (the hidden `__worker-run` verb), relaunching it per the
+   * exit-code protocol. start() (above) is the child that does the actual work;
+   * this method never runs that loop in-process.
+   */
+  async supervise(options: StartWorkerOptions = {}): Promise<void> {
+    const envelope: WorkerRunEnvelope = {
+      name: options.name,
+      claudeArgs: options.claudeArgs ?? [],
+      runningVersion: options.runningVersion ?? "0.0.0-dev",
+    };
+    const code = await new WorkerSupervisor().run(envelope);
+    if (code !== 0) {
+      process.exit(code);
     }
   }
 
