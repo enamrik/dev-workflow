@@ -416,6 +416,34 @@ describe("canAbandon()", () => {
     expect(result.allowed).toBe(false);
     expect(result.reason).toContain("already in terminal state ABANDONED");
   });
+
+  it("should allow when requesting session owns the task", () => {
+    const task = makeTask({ status: "IN_PROGRESS", sessionId: "session-abc" });
+    const result = task.canAbandon("session-abc");
+    expect(result.allowed).toBe(true);
+    expect(result.reason).toBeUndefined();
+  });
+
+  it("should reject when requesting session does not own the task", () => {
+    const task = makeTask({ status: "IN_PROGRESS", sessionId: "session-abc" });
+    const result = task.canAbandon("session-xyz");
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain("not associated with session session-xyz");
+  });
+
+  it("should reject when task has no session and a session is supplied", () => {
+    const task = makeTask({ status: "PLANNED" });
+    const result = task.canAbandon("invalid-session");
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain("not associated with session invalid-session");
+  });
+
+  it("should bypass ownership check with force=true", () => {
+    const task = makeTask({ status: "IN_PROGRESS", sessionId: "session-abc" });
+    const result = task.canAbandon("session-xyz", true);
+    expect(result.allowed).toBe(true);
+    expect(result.reason).toBeUndefined();
+  });
 });
 
 // =============================================================================

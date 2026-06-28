@@ -95,8 +95,10 @@ describe("Comprehensive MCP Tool Coverage", () => {
     });
 
     it("search_issues - searches by keyword", async () => {
+      // Issue #1's title was updated earlier in this sequential suite, but its
+      // description ("Testing all MCP tools systematically") is never mutated.
       const result = await executor.callTool("search_issues", {
-        query: "comprehensive",
+        query: "systematically",
       });
 
       expect(result.success).toBe(true);
@@ -125,8 +127,8 @@ describe("Comprehensive MCP Tool Coverage", () => {
       const result = await executor.callTool("list_templates", {});
 
       expect(result.success).toBe(true);
-      const data = result.data as { templates: Array<{ filename: string }> };
-      expect(Array.isArray(data.templates)).toBe(true);
+      const data = result.data as { details: Array<{ filename: string }> };
+      expect(Array.isArray(data.details)).toBe(true);
     });
 
     it("create_template - creates a new template", async () => {
@@ -305,8 +307,8 @@ Updated description.
       });
 
       expect(result.success).toBe(true);
-      const data = result.data as { issue: { status: string } };
-      expect(data.issue.status).toBe("OPEN");
+      const data = result.data as { issueStatus: string };
+      expect(data.issueStatus).toBe("OPEN");
     });
 
     it("move_issue_to_ready - marks issue ready for work", async () => {
@@ -348,8 +350,8 @@ Updated description.
       });
 
       expect(result.success).toBe(true);
-      const data = result.data as { task: { title: string } };
-      expect(data.task.title).toBe("Test issue tools");
+      const data = result.data as { title: string };
+      expect(data.title).toBe("Test issue tools");
     });
 
     it("update_task - updates task properties", async () => {
@@ -378,8 +380,8 @@ Updated description.
       });
 
       expect(result.success).toBe(true);
-      const data = result.data as { conflicts: unknown[] };
-      expect(Array.isArray(data.conflicts)).toBe(true);
+      const data = result.data as { warnings: unknown[] };
+      expect(Array.isArray(data.warnings)).toBe(true);
     });
 
     it("load_task_session - starts task execution", async () => {
@@ -470,8 +472,9 @@ Updated description.
       });
 
       expect(result.success).toBe(true);
-      const data = result.data as { snapshots: unknown[] };
-      expect(Array.isArray(data.snapshots)).toBe(true);
+      // get_snapshot_history returns the snapshot array directly as `data`.
+      const data = result.data as unknown[];
+      expect(Array.isArray(data)).toBe(true);
     });
 
     it("view_snapshot - views issue at specific version", async () => {
@@ -601,8 +604,8 @@ Updated description.
       const result = await executor.callTool("list_worktrees", {});
 
       expect(result.success).toBe(true);
-      const data = result.data as { worktrees: unknown[] };
-      expect(Array.isArray(data.worktrees)).toBe(true);
+      const data = result.data as { taskWorktrees: unknown[] };
+      expect(Array.isArray(data.taskWorktrees)).toBe(true);
     });
 
     it("prune_stale_worktrees - cleans up stale worktrees", async () => {
@@ -687,8 +690,8 @@ Updated description.
       });
 
       expect(result.success).toBe(true);
-      const data = result.data as { mergedIssue: { number: number } };
-      expect(data.mergedIssue).toBeDefined();
+      const data = result.data as { resultIssueNumber: number; resultIssueId: string };
+      expect(data.resultIssueNumber).toBeDefined();
     });
   });
 
@@ -950,8 +953,8 @@ describe("Error Case Coverage", () => {
     const plan = await executor.callTool("get_plan", {
       issueNumber: data.issue.number,
     });
-    const planData = plan.data as { plan: { tasks: Array<{ id: string }> } };
-    const taskId = planData.plan.tasks[0]!.id;
+    const planData = plan.data as { tasks: Array<{ id: string }> };
+    const taskId = planData.tasks[0]!.id;
 
     // Try to abandon without starting - should fail
     const result = await executor.callTool("abandon_task", {
@@ -982,8 +985,8 @@ describe("Error Case Coverage", () => {
     const plan = await executor.callTool("get_plan", {
       issueNumber: data.issue.number,
     });
-    const planData = plan.data as { plan: { tasks: Array<{ id: string }> } };
-    const taskId = planData.plan.tasks[0]!.id;
+    const planData = plan.data as { tasks: Array<{ id: string }> };
+    const taskId = planData.tasks[0]!.id;
 
     // Try to complete without being in PR_REVIEW
     const result = await executor.callTool("complete_task", {

@@ -281,11 +281,20 @@ export class Task {
    *
    * Any non-terminal task can be abandoned.
    */
-  canAbandon(): TransitionCheck {
+  canAbandon(requestingSessionId?: string, force = false): TransitionCheck {
     if (this.isTerminal) {
       return {
         allowed: false,
         reason: `Cannot abandon task: task is already in terminal state ${this.status}.`,
+      };
+    }
+
+    // Session ownership: only the session that owns the task may abandon it,
+    // unless force=true is used to bypass the check (e.g. drifted state).
+    if (!force && requestingSessionId !== undefined && this.sessionId !== requestingSessionId) {
+      return {
+        allowed: false,
+        reason: `Task is not associated with session ${requestingSessionId}. Current session: ${this.sessionId ?? "none"}. Use force=true to bypass session ownership validation.`,
       };
     }
 

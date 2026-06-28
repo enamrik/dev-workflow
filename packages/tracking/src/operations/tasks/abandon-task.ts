@@ -19,11 +19,13 @@ import { Effect } from "@dev-workflow/effect";
 
 export const abandonTaskSchema = z.object({
   taskId: z.string().min(1),
+  sessionId: z.string().min(1).optional(),
   reason: z.string().optional(),
   abandonedBy: z.string().optional(),
+  force: z.boolean().optional().default(false),
 });
 
-export type AbandonTaskInput = z.infer<typeof abandonTaskSchema>;
+export type AbandonTaskInput = z.input<typeof abandonTaskSchema>;
 
 // =============================================================================
 // Types
@@ -42,17 +44,18 @@ export function abandonTask(input: AbandonTaskInput) {
   return Effect.gen(function* () {
     const {
       taskId,
+      sessionId,
       reason = "Task abandoned",
       abandonedBy = "system",
+      force,
     } = validateInput(abandonTaskSchema, input);
     const taskDomainService = yield* TaskDomainService;
     const gitWorktreeService = yield* GitWorktreeService;
 
     const task = yield* taskDomainService.getOrThrow(taskId);
-    if (task.isTerminal) {
-      return yield* Effect.fail(
-        new BusinessRuleError(`Task is already in terminal state: ${task.status}`)
-      );
+    const abandonCheck = task.canAbandon(sessionId, force);
+    if (!abandonCheck.allowed) {
+      return yield* Effect.fail(new BusinessRuleError(abandonCheck.reason!));
     }
 
     // Clean up worktree (all tasks use isolated mode with worktrees)
