@@ -35,6 +35,8 @@ import {
   type GitWorktreeService,
 } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import { NodeGitHubCLI, type GitHubCLI } from "@dev-workflow/git/github/github-cli.js";
+import { GitHubIdentityResolver } from "@dev-workflow/git/github/github-identity.js";
+import { GitOperations } from "@dev-workflow/git/operations/git-operations.js";
 import { resolveGlobalTrackDir } from "@dev-workflow/git/track-directory-resolver.js";
 import type { WorkerQueueDb } from "@dev-workflow/dispatch/worker-queue-db.js";
 import { GlobalDbWorkerQueueDb } from "@dev-workflow/local-workers/local-worker-queue-db.js";
@@ -139,6 +141,25 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
     gitRoot,
   };
 
+  // Resolve this repo's per-project GitHub identity (configured via
+  // `dev-workflow.githubUser` in .git/config). When set, git push + PR ops run
+  // as that account via a per-command token — no global `gh auth switch`, so
+  // concurrent projects on different accounts never clobber each other. When
+  // unset (or the account's token can't be fetched), token stays undefined and
+  // gh/git fall back to the ambient active account (prior behavior).
+  const gitOps = new GitOperations();
+  const configuredGitHubUser = gitOps.readGitHubUserFromGitConfig(gitRoot);
+  const gitHubToken = configuredGitHubUser
+    ? new GitHubIdentityResolver(gitOps).resolve(gitRoot)?.token
+    : undefined;
+  if (configuredGitHubUser && !gitHubToken) {
+    console.warn(
+      `[dfl] dev-workflow.githubUser is "${configuredGitHubUser}" but no gh token could be ` +
+        `fetched for it (is that account logged in? run \`gh auth login\`). ` +
+        `Falling back to the active gh account for git/PR operations.`
+    );
+  }
+
   // Create container with PROXY injection mode.
   // PROXY mode supports destructured parameters in asFunction callbacks,
   // while CLASSIC mode requires named parameters matching registration keys.
@@ -189,13 +210,15 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
       })
     ).singleton(),
 
-    // External integrations
+    // External integrations — both get the per-project GitHub token (when
+    // configured) so push/PR run as this repo's account without a global switch.
     gitWorktreeService: asFunction(
-      ({ projectRoot }: { projectRoot: string }) => new NodeGitWorktreeService(projectRoot)
+      ({ projectRoot }: { projectRoot: string }) =>
+        new NodeGitWorktreeService(projectRoot, gitHubToken)
     ).singleton(),
 
     githubCLI: asFunction(
-      ({ projectRoot }: { projectRoot: string }) => new NodeGitHubCLI(projectRoot)
+      ({ projectRoot }: { projectRoot: string }) => new NodeGitHubCLI(projectRoot, gitHubToken)
     ).singleton(),
 
     workerQueueDb: asFunction(() => new GlobalDbWorkerQueueDb()).singleton(),

@@ -17,6 +17,7 @@ import { runUI, runUIStop, runUIStatus } from "./commands/ui-command-def.js";
 import { runWorkers, runClaudeWorker, runWorkerLogs } from "./commands/worker-command-def.js";
 import { runMCP } from "./commands/mcp-command-def.js";
 import { runCleanClaudeConfig } from "./commands/claude-config-command-def.js";
+import { runGithubIdentity } from "./commands/github-identity-command-def.js";
 import { runSetup } from "./commands/setup-command-def.js";
 import { runUninstall } from "./commands/uninstall-command-def.js";
 import { printVersionBanner } from "./version-banner.js";
@@ -101,6 +102,15 @@ program
   .option("--dry-run", "Show what would be removed without making changes")
   .action(async (options: { dryRun?: boolean }) => {
     await runCleanClaudeConfig(options);
+  });
+
+program
+  .command("github-identity [user]")
+  .description(
+    "Set or show the GitHub account dfl uses for this repo's push/PR (per-project, no global gh switch)"
+  )
+  .action(async (user?: string) => {
+    await runGithubIdentity({ user });
   });
 
 program

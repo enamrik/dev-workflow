@@ -139,12 +139,49 @@ export function generateWorktreeNames(
 }
 
 /**
+ * Git subcommands that hit the remote and therefore need authentication.
+ * Only these get the per-project credential helper forced on; local-only
+ * commands (worktree add, rev-parse, branch -D, …) run unchanged.
+ */
+const NETWORK_GIT_OPS = new Set(["push", "fetch", "pull", "clone", "ls-remote"]);
+
+/**
+ * Decorate a git argv with the per-project GitHub identity for network ops.
+ *
+ * When a token is present and the command talks to the remote, we force `gh`
+ * as the credential helper for that single invocation:
+ *   `-c credential.helper=`        clears any inherited/global helper
+ *   `-c credential.helper=!gh auth git-credential`  uses gh, which returns the
+ *                                  token from GH_TOKEN (set on the child env).
+ * This authenticates as the project's account WITHOUT a global `gh auth switch`
+ * and without persisting the token to .git/config or the argv of the push. The
+ * upstream remote (`origin`) is preserved — we don't rewrite the URL.
+ *
+ * Pure and exported so the decoration can be unit-tested without spawning git.
+ */
+export function decorateGitArgsForIdentity(args: string[], githubToken?: string): string[] {
+  if (!githubToken || args.length === 0 || !NETWORK_GIT_OPS.has(args[0]!)) {
+    return args;
+  }
+  return ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential", ...args];
+}
+
+/**
  * Node.js implementation of GitWorktreeService
  *
  * Uses git CLI for all operations.
  */
 export class NodeGitWorktreeService implements GitWorktreeService {
-  constructor(private readonly projectRoot: string) {}
+  /**
+   * @param projectRoot - Repository root for git invocations.
+   * @param githubToken - When set, network git ops authenticate as this
+   *   project's configured account via a per-command credential (no global
+   *   `gh auth switch`). When undefined, git uses the ambient credentials.
+   */
+  constructor(
+    private readonly projectRoot: string,
+    private readonly githubToken?: string
+  ) {}
 
   checkGitAvailable(): Effect<boolean> {
     return Effect.promise(async () => {
@@ -425,10 +462,19 @@ export class NodeGitWorktreeService implements GitWorktreeService {
   }
 
   private async _run(args: string[], cwd?: string): Promise<GitCommandResult> {
+    const finalArgs = decorateGitArgsForIdentity(args, this.githubToken);
+    // Spread process.env to preserve the injected PATH (so gh/git resolve);
+    // overlay GH_TOKEN only when a per-project identity is configured. git
+    // ignores GH_TOKEN itself, but the forced `gh auth git-credential` helper
+    // reads it for network ops.
+    const env = this.githubToken
+      ? { ...globalThis.process.env, GH_TOKEN: this.githubToken }
+      : globalThis.process.env;
     return new Promise((resolve) => {
-      const process = spawn("git", args, {
+      const process = spawn("git", finalArgs, {
         cwd: cwd ?? this.projectRoot,
         stdio: ["pipe", "pipe", "pipe"],
+        env,
       });
 
       let stdout = "";
