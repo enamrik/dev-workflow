@@ -73,6 +73,11 @@ restate the steps so it cannot drift from the skill.
 **Critical reminder (the skill relies on this):** when you call \`load_task_session\`, you
 MUST pass \`workerId="{{workerId}}"\` for task-queue validation.
 
+**During PR_REVIEW, stay active — don't just wait for merge.** Per the skill, run its
+PR_REVIEW loop: poll your PR's review comments + bot reviews + CI, address each
+(reply/fix/push), and loop until there are no unaddressed comments and the PR is merged —
+then complete and end. Follow the skill for the mechanics.
+
 **Terminal action: \`end_worker_session()\`.** This is your FINAL action — think of it as
 \`process.exit()\`. Call it once your one dispatched task reaches a terminal state
 (COMPLETED after the PR is merged, or ABANDONED). \`complete_task\` is NOT the end: the
