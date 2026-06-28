@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { clsx } from "clsx";
 import { Tooltip } from "../ui";
-import { isTerminal, isActive } from "@/lib/types";
+import { isTerminal, isActive, isDoneStatus } from "@/lib/types";
 import type { ProjectIssueWithTasks, Task, ComputedIssueStatus } from "@/lib/types";
 
 interface IssuePreviewTarget {
@@ -197,15 +197,19 @@ function IssueCard({ item, onIssueClick }: IssueCardProps) {
 }
 
 export function WorkQueueRibbon({ issuesWithTasks, onIssueClick }: WorkQueueRibbonProps) {
-  // Compute status for each issue (CLOSED issues already filtered at API level)
-  const issuesWithStatus: IssueWithStatus[] = issuesWithTasks.map(
-    ({ issue, tasks, projectSlug }) => ({
+  // Compute status for each issue (CLOSED issues already filtered at API level),
+  // then drop issues with no active or available work. CLOSED is already gone;
+  // this also removes OPEN-but-all-tasks-done issues (TASKS_DONE) that linger
+  // until manually closed — the work queue is for active/available work only.
+  // (The kanban Done column keeps showing those tasks via its own data path.)
+  const issuesWithStatus: IssueWithStatus[] = issuesWithTasks
+    .map(({ issue, tasks, projectSlug }) => ({
       issue,
       tasks,
       computedStatus: computeIssueStatus(issue.status, tasks),
       projectSlug,
-    })
-  );
+    }))
+    .filter((item) => !isDoneStatus(item.computedStatus));
 
   // Sort by status order (PLANNED on left, TASKS_DONE on right)
   const sortedIssues = [...issuesWithStatus].sort((a, b) => {
@@ -240,8 +244,9 @@ export function WorkQueueRibbon({ issuesWithTasks, onIssueClick }: WorkQueueRibb
     CLOSED: "Closed",
   };
 
-  // CLOSED issues are filtered at API level - only active statuses shown
-  const orderedStatuses: ComputedIssueStatus[] = ["TASKS_DONE", "IN_PROGRESS", "OPEN", "PLANNED"];
+  // CLOSED and TASKS_DONE (all-tasks-done) issues are filtered out at the API
+  // level (getActiveIssuesWithTasks) — the work queue shows only active work.
+  const orderedStatuses: ComputedIssueStatus[] = ["IN_PROGRESS", "OPEN", "PLANNED"];
 
   return (
     <div className="sticky bottom-0 flex-shrink-0 border-t border-gray-200 bg-gray-50 px-3 md:px-4 py-2 md:py-3 z-10 rounded-b-lg">

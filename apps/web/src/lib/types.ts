@@ -381,6 +381,15 @@ export function isIssueDone(issue: Issue, tasks: Task[]): boolean {
 }
 
 /**
+ * Whether a computed status represents a "done" issue — no active or available
+ * work left (TASKS_DONE or CLOSED). For callers that already computed the
+ * status; reads the trait table so "done" stays defined in one place.
+ */
+export function isDoneStatus(status: ComputedIssueStatus): boolean {
+  return COMPUTED_ISSUE_STATUS_TRAITS[status].done;
+}
+
+/**
  * Check if an issue has active work in progress.
  * Requires task list to compute.
  */

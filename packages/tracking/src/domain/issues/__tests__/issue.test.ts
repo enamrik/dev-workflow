@@ -283,6 +283,38 @@ describe("Issue.computeStatus()", () => {
 });
 
 // =============================================================================
+// Issue.isDoneStatus()
+// =============================================================================
+
+describe("Issue.isDoneStatus()", () => {
+  const testCases: Array<{ status: ComputedIssueStatus; expected: boolean }> = [
+    { status: "PLANNED", expected: false },
+    { status: "OPEN", expected: false },
+    { status: "IN_PROGRESS", expected: false },
+    { status: "TASKS_DONE", expected: true },
+    { status: "CLOSED", expected: true },
+  ];
+
+  for (const { status, expected } of testCases) {
+    it(`should return ${expected} for ${status}`, () => {
+      expect(Issue.isDoneStatus(status)).toBe(expected);
+    });
+  }
+
+  it("treats an OPEN issue whose tasks are all terminal as done (TASKS_DONE)", () => {
+    const issue = makeIssue({ status: "OPEN" });
+    const tasks = [makeTaskLike({ status: "COMPLETED" }), makeTaskLike({ status: "ABANDONED" })];
+    expect(Issue.isDoneStatus(Issue.computeStatus(issue, tasks))).toBe(true);
+  });
+
+  it("treats an OPEN issue with available (BACKLOG/READY) tasks as not done", () => {
+    const issue = makeIssue({ status: "OPEN" });
+    const tasks = [makeTaskLike({ status: "READY" }), makeTaskLike({ status: "BACKLOG" })];
+    expect(Issue.isDoneStatus(Issue.computeStatus(issue, tasks))).toBe(false);
+  });
+});
+
+// =============================================================================
 // checkCanClose()
 // =============================================================================
 

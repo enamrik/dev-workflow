@@ -12,10 +12,10 @@
 import { z } from "zod";
 import type { ComputedIssueStatus, IssuePriority } from "../../domain/issues/issue.js";
 import {
+  Issue,
   isIssueClosed,
   isIssueInPlanning,
   issueHasActiveWork,
-  computeIssueStatus,
   PRIORITY_WEIGHTS,
 } from "../../domain/issues/issue.js";
 import { DomainExecutorFactory } from "../../domain/domain-executor.js";
@@ -253,7 +253,12 @@ export function getWorkQueue(input: GetWorkQueueInput) {
         ).length;
       }
 
-      const computedStatus = computeIssueStatus(issue, tasks);
+      const computedStatus = Issue.computeStatus(issue, tasks);
+
+      // Skip issues with no active or available work. CLOSED is already filtered
+      // out above; this also drops OPEN-but-all-tasks-done issues (TASKS_DONE)
+      // that linger until manually closed — the work queue is for active work.
+      if (Issue.isDoneStatus(computedStatus)) continue;
 
       scoredIssues.push({
         number: issue.number,

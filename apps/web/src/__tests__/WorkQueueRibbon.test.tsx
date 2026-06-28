@@ -58,6 +58,33 @@ describe("WorkQueueRibbon", () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it("excludes OPEN-but-all-tasks-done (TASKS_DONE) issues from the work queue (#39)", () => {
+    // OPEN issue whose only task is terminal → computed TASKS_DONE → no active
+    // or available work, so it must not appear in the work queue ribbon.
+    const tasksDoneIssue: ProjectIssueWithTasks = {
+      ...mockIssue,
+      issue: { ...mockIssue.issue, id: "issue-2", number: 99, title: "All Tasks Done" },
+      tasks: [{ ...mockIssue.tasks[0]!, id: "task-done", status: "COMPLETED" }],
+    };
+
+    render(<WorkQueueRibbon issuesWithTasks={[mockIssue, tasksDoneIssue]} />);
+
+    // Only the active issue (#42) is counted/rendered; the done issue (#99) is gone.
+    expect(screen.getByText(/1 issue/)).toBeInTheDocument();
+    expect(screen.queryByText(/#99/)).not.toBeInTheDocument();
+    expect(screen.getByText(/#42/)).toBeInTheDocument();
+  });
+
+  it("renders nothing when every issue is all-tasks-done", () => {
+    const tasksDoneIssue: ProjectIssueWithTasks = {
+      ...mockIssue,
+      tasks: [{ ...mockIssue.tasks[0]!, id: "task-done", status: "COMPLETED" }],
+    };
+
+    const { container } = render(<WorkQueueRibbon issuesWithTasks={[tasksDoneIssue]} />);
+    expect(container.firstChild).toBeNull();
+  });
+
   describe("click behavior without onIssueClick", () => {
     it("renders issue card as full link when no callback provided", () => {
       render(<WorkQueueRibbon issuesWithTasks={[mockIssue]} />);

@@ -250,6 +250,17 @@ export class Issue {
     return getEffectiveIssueStatus(issue, tasks);
   }
 
+  /**
+   * Whether a computed status represents a "done" issue — one with no active
+   * or available work left. True for TASKS_DONE (all tasks terminal, issue not
+   * yet closed) and CLOSED. Reads the computed-status trait table so the
+   * meaning of "done" stays in one place; consumers that already computed the
+   * status (work queue, board ribbon) pass it in rather than recomputing.
+   */
+  static isDoneStatus(status: ComputedIssueStatus): boolean {
+    return COMPUTED_ISSUE_STATUS_TRAITS[status].done;
+  }
+
   // ---------------------------------------------------------------------------
   // Instance methods (need cross-aggregate data passed in)
   // ---------------------------------------------------------------------------
