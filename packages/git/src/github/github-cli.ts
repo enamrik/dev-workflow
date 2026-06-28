@@ -101,7 +101,16 @@ export class GitHubCLI extends Service<GitHubCLI>()("githubCLI") {}
 // =============================================================================
 
 export class NodeGitHubCLI implements GitHubCLI {
-  constructor(private readonly cwd?: string) {}
+  /**
+   * @param cwd - Working directory for `gh` invocations.
+   * @param githubToken - When set, passed per-command as `GH_TOKEN` so `gh`
+   *   acts as this project's configured account without a global
+   *   `gh auth switch`. When undefined, `gh` uses the ambient active account.
+   */
+  constructor(
+    private readonly cwd?: string,
+    private readonly githubToken?: string
+  ) {}
 
   checkAvailable(): Effect<boolean> {
     return Effect.gen(
@@ -300,12 +309,17 @@ export class NodeGitHubCLI implements GitHubCLI {
 
   run(args: string[]): Effect<GitHubCLIResult> {
     const cwd = this.cwd;
+    // Spread process.env so PATH (the MCP server injects an absolute PATH so
+    // gh/git resolve regardless of launch context) survives; overlay GH_TOKEN
+    // only when a per-project identity is configured.
+    const env = this.githubToken ? { ...process.env, GH_TOKEN: this.githubToken } : process.env;
     return Effect.promise(
       () =>
         new Promise<GitHubCLIResult>((resolve) => {
           const proc = spawn("gh", args, {
             cwd,
             shell: true,
+            env,
           });
 
           let stdout = "";

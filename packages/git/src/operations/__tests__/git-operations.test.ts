@@ -72,3 +72,26 @@ describe("GitOperations.getMainRepoRoot", () => {
     expect(gitOps.readSlugFromGitConfig(mainRoot)).toBe("main-project-abc123");
   });
 });
+
+describe("GitOperations github identity (.git/config dev-workflow.githubUser)", () => {
+  it("returns null when no per-project identity is configured", () => {
+    const gitOps = new GitOperations();
+    expect(gitOps.readGitHubUserFromGitConfig(mainRepo)).toBeNull();
+  });
+
+  it("round-trips the configured gh account username", () => {
+    const gitOps = new GitOperations();
+    gitOps.writeGitHubUserToGitConfig(mainRepo, "octocat");
+    expect(gitOps.readGitHubUserFromGitConfig(mainRepo)).toBe("octocat");
+  });
+
+  it("is readable via --local from inside a worktree (shared common config)", () => {
+    const gitOps = new GitOperations();
+    const worktree = path.join(tmpDir, "wt-ghuser");
+
+    gitOps.writeGitHubUserToGitConfig(mainRepo, "enamrik");
+    git(mainRepo, `worktree add "${worktree}"`);
+
+    expect(gitOps.readGitHubUserFromGitConfig(worktree)).toBe("enamrik");
+  });
+});

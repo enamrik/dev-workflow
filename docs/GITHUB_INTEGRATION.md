@@ -95,6 +95,74 @@ update_settings(action: "disable_github")
 
 Preserves configuration but stops syncing. Existing GitHub issues remain.
 
+## Per-project GitHub identity
+
+`git push` and PR creation (including from workers) normally use whichever `gh`
+account is **globally active**. When different repos need different accounts, the
+usual fix — `gh auth switch` — is global: it clobbers the account every other
+project and session is using. dev-workflow avoids this by letting each repo
+declare its own GitHub identity and applying it **per command**.
+
+### How `gh` selects identity per command (the finding)
+
+`gh` does not require a global active account to be changed in order to act as a
+different user. Two levers (confirmed on `gh` 2.92.0) make per-command identity
+possible:
+
+- **`GH_TOKEN` (env var)** — overrides the account `gh` uses for a single
+  invocation. Set it on one `gh` child process and that process authenticates as
+  the token's owner; the globally active account is untouched.
+- **`gh auth token --user <user> --hostname github.com`** — prints a specific
+  logged-in account's token straight from `gh`'s keyring, **without** switching
+  the active account. (The account must have been logged in once via
+  `gh auth login`.)
+
+For **`git push`**, git itself ignores `GH_TOKEN`, so dev-workflow forces `gh` as
+git's credential helper for that one invocation:
+
+```
+git -c credential.helper= \
+    -c credential.helper='!gh auth git-credential' \
+    push -u origin <branch>          # with GH_TOKEN=<token> in the env
+```
+
+`gh auth git-credential` returns `username=x-access-token` and the `GH_TOKEN`
+value as the password, so the push authenticates as the configured account. No
+URL is rewritten (so `origin` is preserved) and the token is never written to
+`.git/config` or the push argv.
+
+### Configuring it
+
+The identity is the `gh` account **username**, stored in the repo's `.git/config`
+under `dev-workflow.githubUser` (alongside `dev-workflow.slug`):
+
+```bash
+dfl github-identity <gh-username>    # e.g. dfl github-identity enamrik
+dfl github-identity                  # show the current value
+```
+
+This is equivalent to `git config --local dev-workflow.githubUser <gh-username>`.
+The value lives in the **main** repo's config and is read with `git config --local`,
+so worktrees pick it up automatically.
+
+### Behavior
+
+- When set, dev-workflow resolves the account's token (`gh auth token --user`)
+  once per MCP session and threads it as `GH_TOKEN` into every `gh` invocation
+  and every network `git` op (push / fetch / ls-remote). **No `gh auth switch`
+  is ever run** — the global active account is unchanged before and after.
+- Works for **worker-driven** PR/push too: workers create PRs through the MCP
+  `create_pr` tool, which uses the same per-project token.
+- Two repos configured for different accounts operate concurrently without
+  interfering — each `gh`/`git` command carries its own token.
+- If `dev-workflow.githubUser` is **unset**, or the configured account isn't
+  logged in (token fetch fails), dev-workflow falls back to the ambient active
+  `gh` account (prior behavior) and logs a warning.
+
+> **Note:** the per-project token applies to **HTTPS** GitHub remotes. SSH
+> remotes (`git@github.com:…`) authenticate with SSH keys, which `gh`/`GH_TOKEN`
+> don't govern; use an HTTPS `origin` if you need per-project identity for push.
+
 ## GitHub Projects Integration
 
 ### Column Mapping

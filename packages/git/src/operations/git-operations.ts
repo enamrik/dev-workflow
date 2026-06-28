@@ -6,7 +6,7 @@
  */
 
 import * as path from "node:path";
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 
 /**
  * Git operations - runs git commands via child_process
@@ -140,6 +140,44 @@ export class GitOperations {
    */
   writeSlugToGitConfig(gitRoot: string, slug: string): void {
     execSync(`git config --local dev-workflow.slug "${slug}"`, {
+      cwd: gitRoot,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  }
+
+  /**
+   * Read the per-project GitHub identity (a `gh` account username) from
+   * .git/config. This is the account dfl uses for this repo's push/PR
+   * operations via a per-command token — never a global `gh auth switch`.
+   * Returns null when no identity is configured (callers fall back to the
+   * ambient active gh account).
+   *
+   * Lives next to `dev-workflow.slug` and read with `--local`, which resolves
+   * against the shared common config, so it works from inside a worktree too.
+   */
+  readGitHubUserFromGitConfig(gitRoot: string): string | null {
+    try {
+      const result = execSync("git config --local dev-workflow.githubUser", {
+        cwd: gitRoot,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      }).trim();
+      return result || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write the per-project GitHub identity (a `gh` account username) to
+   * .git/config under `dev-workflow.githubUser`.
+   *
+   * Uses execFileSync (no shell) since the username is CLI-supplied — avoids
+   * any shell interpretation of the value.
+   */
+  writeGitHubUserToGitConfig(gitRoot: string, user: string): void {
+    execFileSync("git", ["config", "--local", "dev-workflow.githubUser", user], {
       cwd: gitRoot,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
