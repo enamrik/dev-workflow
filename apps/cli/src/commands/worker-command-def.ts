@@ -7,7 +7,7 @@
 import { createCliHandler, createCliCommand, defaultMiddleware } from "../di/bootstrap.js";
 import { Effect } from "@dev-workflow/effect";
 import { WorkerCommandTag } from "../di/cli-tags.js";
-import type { StartWorkerOptions } from "./worker-command.js";
+import type { StartWorkerOptions, WorkerLogsOptions } from "./worker-command.js";
 
 /**
  * Options for workers list command (currently no options)
@@ -39,7 +39,20 @@ export const handleClaudeWorker = createCliHandler({
 });
 
 /**
+ * Handler for worker:logs command — locate/tail per-task worker session logs.
+ */
+export const handleWorkerLogs = createCliHandler({
+  handler: (options: WorkerLogsOptions) =>
+    Effect.gen(function* () {
+      const workerCommand = yield* WorkerCommandTag;
+      yield* Effect.promise(() => workerCommand.logs(options));
+    }),
+  middleware: defaultMiddleware,
+});
+
+/**
  * Executable runners.
  */
 export const runWorkers = createCliCommand(handleWorkers);
 export const runClaudeWorker = createCliCommand(handleClaudeWorker);
+export const runWorkerLogs = createCliCommand(handleWorkerLogs);

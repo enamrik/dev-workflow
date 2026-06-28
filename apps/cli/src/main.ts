@@ -14,7 +14,7 @@ import { runInit } from "./commands/init-command-def.js";
 import { runUpdate } from "./commands/update-command-def.js";
 import { runUninit } from "./commands/uninit-command-def.js";
 import { runUI, runUIStop, runUIStatus } from "./commands/ui-command-def.js";
-import { runWorkers, runClaudeWorker } from "./commands/worker-command-def.js";
+import { runWorkers, runClaudeWorker, runWorkerLogs } from "./commands/worker-command-def.js";
 import { runMCP } from "./commands/mcp-command-def.js";
 import { runCleanClaudeConfig } from "./commands/claude-config-command-def.js";
 import { runSetup } from "./commands/setup-command-def.js";
@@ -78,6 +78,13 @@ program
   .command("workers")
   .description("List registered workers and dispatch queue (for debugging)")
   .action(runWorkers);
+
+program
+  .command("worker:logs")
+  .description("Show per-task worker session log paths (newest first), or tail the latest")
+  .option("--name <name>", "Filter to a specific worker name")
+  .option("--tail", "Follow the latest log with tail -f")
+  .action(runWorkerLogs);
 
 program
   .command("claude")

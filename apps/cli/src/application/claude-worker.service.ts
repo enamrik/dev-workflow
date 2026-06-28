@@ -34,6 +34,7 @@ import {
   generateWorktreeNames,
 } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import { getGlobalDatabasePath } from "@dev-workflow/git/track-directory-resolver.js";
+import { WorkerSessionLog } from "../infrastructure/worker-session-log.js";
 import { Effect } from "@dev-workflow/effect";
 import { PromptResolver } from "../prompts/prompt-resolver.js";
 import {
@@ -97,6 +98,8 @@ export interface WorkerState {
   /** Project authoritatively resolved from the task (the source of truth while working). */
   currentProjectInfo: ProjectInfo | null;
   currentClaudeProcess: ChildProcess | null;
+  /** Per-task lifecycle log for the in-flight session (null while idle). */
+  currentSessionLog: WorkerSessionLog | null;
 }
 
 // ============================================================================
@@ -134,6 +137,7 @@ export class ClaudeWorkerService {
     currentProjectSlug: null,
     currentProjectInfo: null,
     currentClaudeProcess: null,
+    currentSessionLog: null,
   };
 
   private heartbeatInterval: NodeJS.Timeout | null = null;
@@ -658,6 +662,17 @@ export class ClaudeWorkerService {
     const taskNumber = task.number ?? "?";
     const sourceLabel = claimSource === "auto-claim" ? " (auto-claimed)" : "";
 
+    // Begin capturing this session's lifecycle to a per-task log file. Use the
+    // authoritatively-resolved owner slug (projectInfo.slug), not the queue hint.
+    const sessionLog = new WorkerSessionLog({
+      workerName: this.state.workerName,
+      workerId: this.state.workerId,
+      issueNumber,
+      taskNumber,
+    });
+    sessionLog.claimed(claimSource, projectInfo.slug);
+    this.state.currentSessionLog = sessionLog;
+
     console.log(`Working on task #${issueNumber}.${taskNumber}: ${task.title}${sourceLabel}`);
     console.log(`Project: ${projectInfo.slug} (${projectInfo.gitRoot})`);
     if (projectSlug !== projectInfo.slug) {
@@ -684,7 +699,7 @@ export class ClaudeWorkerService {
     const prompt = this.buildClaudePrompt(taskId, issueNumber, taskNumber, projectInfo.gitRoot);
 
     // Spawn Claude process inside the task's worktree (not the main repo).
-    await this.spawnClaudeSession(taskId, prompt, worktreePath);
+    await this.spawnClaudeSession(taskId, prompt, worktreePath, sessionLog);
   }
 
   /**
@@ -796,8 +811,15 @@ export class ClaudeWorkerService {
   /**
    * Spawn a Claude session
    */
-  private async spawnClaudeSession(taskId: string, prompt: string, cwd: string): Promise<void> {
+  private async spawnClaudeSession(
+    taskId: string,
+    prompt: string,
+    cwd: string,
+    sessionLog: WorkerSessionLog
+  ): Promise<void> {
     console.log(term.dim(`\n--- Claude session starting ---\n`));
+    console.log(`  logs: ${sessionLog.path}`);
+    sessionLog.sessionStarted(cwd);
 
     return new Promise<void>((resolve) => {
       // Spawn Claude interactively with the prompt
@@ -824,6 +846,9 @@ export class ClaudeWorkerService {
         // Update terminal title with current status
         await this.updateTitle();
 
+        // Heartbeat the log so a stuck/blocked worker is visible from the file.
+        sessionLog.progressTick(task.status);
+
         // Check for claudeDone flag from the dispatch queue
         const queueEntry = this.queue.findByTaskId(taskId);
         if (queueEntry?.claudeDone) {
@@ -836,6 +861,7 @@ export class ClaudeWorkerService {
               this.taskWatchInterval = null;
             }
 
+            sessionLog.signaledComplete();
             console.log(term.green("\n✓ Claude signaled session complete via end_worker_session"));
             this.terminateSession(claudeProcess, task.status);
           }
@@ -854,8 +880,9 @@ export class ClaudeWorkerService {
         console.log(term.cyan("═".repeat(60)) + "\n");
 
         this.state.currentClaudeProcess = null;
+        sessionLog.sessionEnded(code);
 
-        // Release the task from the queue
+        // Release the task from the queue (also flushes + closes the session log)
         await this.releaseTask(taskId);
 
         resolve();
@@ -864,6 +891,7 @@ export class ClaudeWorkerService {
       claudeProcess.on("error", async (error: Error) => {
         console.error(term.red("Failed to spawn Claude process:"), error);
         this.state.currentClaudeProcess = null;
+        sessionLog.errored(error);
 
         if (this.taskWatchInterval) {
           clearInterval(this.taskWatchInterval);
@@ -906,10 +934,17 @@ export class ClaudeWorkerService {
       );
     }
 
-    // Reset state
+    // Reset state. Flush + close the session log here so EVERY release path
+    // (normal exit, spawn error, AND early bail-outs that constructed the log
+    // but never spawned — e.g. ensureWorktree returning null) tears the stream
+    // down in one place rather than relying on each caller to remember.
     this.state.currentTaskId = null;
     this.state.currentProjectSlug = null;
     this.state.currentProjectInfo = null;
+    if (this.state.currentSessionLog) {
+      await this.state.currentSessionLog.close();
+      this.state.currentSessionLog = null;
+    }
     this.currentSource = null;
 
     // Only reset to IDLE if not draining

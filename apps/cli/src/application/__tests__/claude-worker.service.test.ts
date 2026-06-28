@@ -29,7 +29,20 @@ const { spawnSpy, createWorktreeSpy, updateWorktreeInfoSpy, isTaskAvailableSpy }
 vi.mock("node:child_process", () => ({ spawn: spawnSpy }));
 
 // The worktree directory should look absent so ensureWorktree creates it.
-vi.mock("node:fs", () => ({ existsSync: vi.fn().mockReturnValue(false) }));
+// WorkerSessionLog also touches the fs (it captures the session lifecycle to a
+// per-task log); stub those calls so no real files are written during the test.
+vi.mock("node:fs", () => ({
+  existsSync: vi.fn().mockReturnValue(false),
+  mkdirSync: vi.fn(),
+  readdirSync: vi.fn().mockReturnValue([]),
+  statSync: vi.fn().mockReturnValue({ mtimeMs: 0 }),
+  unlinkSync: vi.fn(),
+  createWriteStream: vi.fn().mockReturnValue({
+    write: vi.fn(),
+    on: vi.fn(),
+    end: vi.fn().mockImplementation((cb?: () => void) => cb?.()),
+  }),
+}));
 
 vi.mock("@dev-workflow/git/worktrees/git-worktree-service.js", () => ({
   // Mirror the real signature: returns { branchName, worktreePath } (relative).
@@ -48,6 +61,8 @@ vi.mock("@dev-workflow/git/track-directory-resolver.js", () => ({
   // The prompt resolver consults this for the shared-override location; point it
   // at a path with no prompt files so buildClaudePrompt uses the embedded default.
   resolveGlobalDflHome: () => "/fake/dfl-home",
+  // WorkerSessionLog resolves its worker-logs dir from here.
+  resolveGlobalTrackDir: () => "/fake/dfl-home/track",
 }));
 
 // TaskDomainService is constructed inside the worker only to persist worktree
