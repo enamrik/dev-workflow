@@ -11,8 +11,11 @@
  *
  * The "At Task Start" step directs the worker to LOAD and reconcile the existing
  * plan (returned by load_task_session) against current code rather than re-deriving
- * an approach from scratch (issue #8). Operators can override the whole prompt via
- * a per-repo or shared `worker-task.md` file (see {@link PromptResolver}).
+ * an approach from scratch (issue #8). The lifecycle itself delegates to the
+ * dfl-worker-task skill as the single source of truth — the prompt no longer
+ * restates the steps, so it cannot drift from the skill and end at the wrong
+ * terminal action (issue #36). Operators can override the whole prompt via a
+ * per-repo or shared `worker-task.md` file (see {@link PromptResolver}).
  */
 
 export const WORKER_TASK_PROMPT_NAME = "worker-task";
@@ -59,22 +62,25 @@ Before creating the PR, sync your task branch with the latest main so the PR is 
 - Re-run \`make prep\` after rebasing and confirm it still passes
 - Only then create_pr
 
-## Task Lifecycle
+## Task Lifecycle — Delegate to the Skill
 
-Use the dfl-worker-task skill to work through the lifecycle:
+**Your REQUIRED first action: invoke the \`dfl-worker-task\` skill (via the Skill tool).**
+It is the single source of truth for the task lifecycle — load, implement, PR, submit
+for review, complete, and terminate. Follow it exactly. Do NOT drive the lifecycle from
+these instructions, from memory, or from CLAUDE.md; this prompt deliberately does not
+restate the steps so it cannot drift from the skill.
 
-1. Load the task with load_task_session
-   - **CRITICAL: You MUST pass workerId="{{workerId}}" to load_task_session**
-2. Review the existing plan (returned by load_task_session) against the current code and refine the strategy — do NOT re-plan from scratch
-3. Implement the task according to the refined plan
-4. Spawn Adversarial Review agent before PR
-5. Sync with main (REQUIRED): \`git fetch origin main\`, rebase your task branch onto \`origin/main\`, resolve any conflicts, and re-run make prep — do this before create_pr so the PR is based on current main
-6. Create PR and submit for review
-7. WAIT for the PR to be merged (check with get_task_pr_status)
-8. Once merged, call complete_task with a finalLogEntry summary
+**Critical reminder (the skill relies on this):** when you call \`load_task_session\`, you
+MUST pass \`workerId="{{workerId}}"\` for task-queue validation.
 
-**REMINDER: When calling load_task_session, include workerId="{{workerId}}"**
+**Terminal action: \`end_worker_session()\`.** This is your FINAL action — think of it as
+\`process.exit()\`. Call it once your one dispatched task reaches a terminal state
+(COMPLETED after the PR is merged, or ABANDONED). \`complete_task\` is NOT the end: the
+worker process only terminates cleanly after \`end_worker_session()\`. NEVER output text or
+call any tool after it.
 
-The user is monitoring this worker session and can respond to your prompts.
+**Scope = exactly this one task.** Do NOT solicit more work, close issues, or pick up the
+next queued task in this session. When your dispatched task is terminal, call
+\`end_worker_session()\` and stop.
 
-A task is only complete when it reaches COMPLETED status (PR merged and complete_task called), not when it enters PR_REVIEW.`;
+The user is monitoring this worker session and can respond to your prompts.`;

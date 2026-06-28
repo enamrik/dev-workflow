@@ -894,8 +894,7 @@ export class ClaudeWorkerService {
    * The prompt is operator-customizable: it resolves via {@link PromptResolver}
    * against a per-repo override (`<gitRoot>/.dfl/prompts/worker-task.md`), then a
    * shared override (`<DFL_HOME-or-~/.dfl>/prompts/worker-task.md`), falling back
-   * to the embedded {@link WORKER_TASK_PROMPT_DEFAULT}. With no override files,
-   * the result is byte-identical to the previously inlined prompt.
+   * to the embedded {@link WORKER_TASK_PROMPT_DEFAULT} when no override files exist.
    *
    * @param gitRoot owning project's git root for the per-repo override layer
    */
