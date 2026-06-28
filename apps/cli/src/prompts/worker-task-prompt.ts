@@ -50,6 +50,15 @@ Spawn an **Adversarial Review agent** to:
 - Verify acceptance criteria are actually met
 - Identify anything that might fail in review
 
+### Sync With Main Before PR (REQUIRED)
+Before creating the PR, sync your task branch with the latest main so the PR is based on current main and merges cleanly:
+- Commit your work first — rebase fails on a dirty tree
+- \`git fetch origin main\`
+- Rebase your task branch onto \`origin/main\` (rebase, NOT merge — main uses squash merges, so a rebased branch squash-merges cleanly)
+- Resolve any conflicts now, in-context — you have the change loaded; do not defer them to merge time
+- Re-run \`make prep\` after rebasing and confirm it still passes
+- Only then create_pr
+
 ## Task Lifecycle
 
 Use the dfl-worker-task skill to work through the lifecycle:
@@ -59,9 +68,10 @@ Use the dfl-worker-task skill to work through the lifecycle:
 2. Review the existing plan (returned by load_task_session) against the current code and refine the strategy — do NOT re-plan from scratch
 3. Implement the task according to the refined plan
 4. Spawn Adversarial Review agent before PR
-5. Create PR and submit for review
-6. WAIT for the PR to be merged (check with get_task_pr_status)
-7. Once merged, call complete_task with a finalLogEntry summary
+5. Sync with main (REQUIRED): \`git fetch origin main\`, rebase your task branch onto \`origin/main\`, resolve any conflicts, and re-run make prep — do this before create_pr so the PR is based on current main
+6. Create PR and submit for review
+7. WAIT for the PR to be merged (check with get_task_pr_status)
+8. Once merged, call complete_task with a finalLogEntry summary
 
 **REMINDER: When calling load_task_session, include workerId="{{workerId}}"**
 
