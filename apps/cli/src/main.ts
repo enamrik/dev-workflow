@@ -93,7 +93,7 @@ program
   .option("--name <name>", "Worker name (auto-generates worker-1, worker-2, etc. if not provided)")
   .passThroughOptions()
   .action(async (options: { name?: string }, cmd: Command) => {
-    await runClaudeWorker({ ...options, claudeArgs: cmd.args });
+    await runClaudeWorker({ ...options, claudeArgs: cmd.args, runningVersion: VERSION });
   });
 
 program
