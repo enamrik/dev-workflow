@@ -179,13 +179,16 @@ export function createPR(input: CreatePRInput) {
       return yield* Effect.fail(new BusinessRuleError(`Failed to push branch: ${message}`));
     }
 
-    // Build PR title
-    let prTitle: string;
-    if (title) {
-      prTitle = title;
-    } else {
-      prTitle = task.title;
-    }
+    // Build PR title. Every task PR carries a `[#<issue>.<task>]` ref prefix so the
+    // PR maps to a specific task at a glance (issue #26) — an issue can have several
+    // tasks/PRs, so the issue number alone is ambiguous. We respect an explicit title
+    // but guarantee the prefix is present, and default to the task title otherwise.
+    // This is the single source of truth for the format; the dfl-worker-task skill and
+    // worker prompt tell the worker to pass a matching title, but a forgotten title
+    // still gets the ref here. (github-cli passes this title to `gh pr create` verbatim.)
+    const taskRef = `[#${issue.number}.${task.number}]`;
+    const titleText = title ?? task.title;
+    const prTitle = titleText.startsWith(taskRef) ? titleText : `${taskRef} ${titleText}`;
 
     // Build PR body
     let prBody = body ?? task.description;
