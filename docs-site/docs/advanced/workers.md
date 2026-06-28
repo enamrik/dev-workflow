@@ -259,6 +259,51 @@ dfl claude --name worker-3
 # - Complete when merged
 ```
 
+## Customizing Worker Prompts
+
+The prompt a worker hands to its spawned Claude session is an **editable file**. You can
+customize it without rebuilding dfl. The `worker-task` prompt is resolved by precedence —
+**first match wins**:
+
+1. **Per-repo override** — `<gitRoot>/.dfl/prompts/worker-task.md`
+   (relative to the task's owning project, so each repo can tune its own worker prompt)
+2. **Shared override** — `<DFL_HOME>/prompts/worker-task.md`, defaulting to
+   `~/.dfl/prompts/worker-task.md` when `DFL_HOME` is unset
+3. **Shipped default** — the prompt embedded in dfl (used when no override file exists)
+
+A per-repo file replaces a shared file, which replaces the shipped default. There is no
+merging — the highest-precedence file that exists is used in full. A fresh install with no
+override files behaves exactly as before (the embedded default is byte-identical to the
+historical inline prompt).
+
+### Placeholders
+
+Prompt files may use `{{key}}` placeholders, replaced before the session starts. Unknown
+placeholders are left untouched. Available keys for `worker-task`:
+
+| Placeholder       | Replaced with                                 |
+| ----------------- | --------------------------------------------- |
+| `{{workerId}}`    | the worker's id (pass to `load_task_session`) |
+| `{{issueNumber}}` | the issue number                              |
+| `{{taskNumber}}`  | the task number within the issue              |
+| `{{taskId}}`      | the task's stable id                          |
+
+### Creating an override
+
+dfl does **not** scaffold these files — create them only to override. To customize the
+shared prompt for all repos:
+
+```bash
+mkdir -p ~/.dfl/prompts
+# Start from the shipped default, then edit:
+$EDITOR ~/.dfl/prompts/worker-task.md
+```
+
+For a single repo, place the file at `<repo>/.dfl/prompts/worker-task.md` instead.
+
+> **Note:** `DFL_HOME` (when set) relocates the shared prompts directory to
+> `<DFL_HOME>/prompts`, mirroring how it relocates dfl's data root.
+
 ## Troubleshooting
 
 ### Worker Not Picking Up Tasks

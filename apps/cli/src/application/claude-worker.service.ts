@@ -35,6 +35,11 @@ import {
 } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import { getGlobalDatabasePath } from "@dev-workflow/git/track-directory-resolver.js";
 import { Effect } from "@dev-workflow/effect";
+import { PromptResolver } from "../prompts/prompt-resolver.js";
+import {
+  WORKER_TASK_PROMPT_DEFAULT,
+  WORKER_TASK_PROMPT_NAME,
+} from "../prompts/worker-task-prompt.js";
 import type { WorkerQueueDb } from "@dev-workflow/dispatch/worker-queue-db.js";
 import type { WorkerStatus } from "@dev-workflow/dispatch/worker.js";
 
@@ -112,6 +117,7 @@ export class ClaudeWorkerService {
   private readonly queue: WorkerQueueDb;
   private readonly sourceProvider: DbSourceProvider;
   private readonly projectsResolver: ProjectsResolver;
+  private readonly promptResolver = new PromptResolver();
 
   // Current project's tracking db (set when working on a task)
   private currentSource: DbSource | null = null;
@@ -673,8 +679,9 @@ export class ClaudeWorkerService {
       return;
     }
 
-    // Build the prompt for Claude
-    const prompt = this.buildClaudePrompt(taskId, issueNumber, taskNumber);
+    // Build the prompt for Claude (per-repo overrides resolved against the
+    // task's owning project gitRoot).
+    const prompt = this.buildClaudePrompt(taskId, issueNumber, taskNumber, projectInfo.gitRoot);
 
     // Spawn Claude process inside the task's worktree (not the main repo).
     await this.spawnClaudeSession(taskId, prompt, worktreePath);
@@ -757,63 +764,33 @@ export class ClaudeWorkerService {
   }
 
   /**
-   * Build the prompt to pass to Claude
+   * Build the prompt to pass to Claude.
+   *
+   * The prompt is operator-customizable: it resolves via {@link PromptResolver}
+   * against a per-repo override (`<gitRoot>/.dfl/prompts/worker-task.md`), then a
+   * shared override (`<DFL_HOME-or-~/.dfl>/prompts/worker-task.md`), falling back
+   * to the embedded {@link WORKER_TASK_PROMPT_DEFAULT}. With no override files,
+   * the result is byte-identical to the previously inlined prompt.
+   *
+   * @param gitRoot owning project's git root for the per-repo override layer
    */
   private buildClaudePrompt(
     taskId: string,
     issueNumber: number | string,
-    taskNumber: number | string
+    taskNumber: number | string,
+    gitRoot: string
   ): string {
-    const workerId = this.state.workerId;
-
-    return `You are running as a worker process for dev-workflow. A task has been dispatched to you.
-
-**WORKER ID: ${workerId}**
-
-Start working on task #${issueNumber}.${taskNumber} (ID: ${taskId}).
-
-## Agent-First Workflow
-
-**USE AGENTS AGGRESSIVELY.** Spawn Task agents to parallelize work and catch issues early:
-
-### At Task Start (REQUIRED)
-Before writing ANY code, spawn a **Plan agent** to:
-- Analyze the task requirements and acceptance criteria
-- Research the codebase for relevant patterns, existing implementations
-- Identify files to modify, dependencies, potential risks
-- Propose an implementation approach
-
-### During Implementation
-When discoveries diverge from the plan (new complexity, unexpected patterns):
-- Spawn a **Research agent** to investigate the new finding
-- Update your approach based on findings before continuing
-- Don't barrel forward with a broken mental model
-
-### Before PR Submission (REQUIRED)
-Spawn an **Adversarial Review agent** to:
-- Review all changes as a skeptical code reviewer
-- Check for edge cases, error handling, security issues
-- Verify acceptance criteria are actually met
-- Identify anything that might fail in review
-
-## Task Lifecycle
-
-Use the dfl-worker-task skill to work through the lifecycle:
-
-1. Load the task with load_task_session
-   - **CRITICAL: You MUST pass workerId="${workerId}" to load_task_session**
-2. Spawn Plan agent to research and plan approach
-3. Implement the task according to plan
-4. Spawn Adversarial Review agent before PR
-5. Create PR and submit for review
-6. WAIT for the PR to be merged (check with get_task_pr_status)
-7. Once merged, call complete_task with a finalLogEntry summary
-
-**REMINDER: When calling load_task_session, include workerId="${workerId}"**
-
-The user is monitoring this worker session and can respond to your prompts.
-
-A task is only complete when it reaches COMPLETED status (PR merged and complete_task called), not when it enters PR_REVIEW.`;
+    return this.promptResolver.resolve(
+      WORKER_TASK_PROMPT_NAME,
+      WORKER_TASK_PROMPT_DEFAULT,
+      {
+        workerId: this.state.workerId,
+        issueNumber,
+        taskNumber,
+        taskId,
+      },
+      gitRoot
+    );
   }
 
   /**

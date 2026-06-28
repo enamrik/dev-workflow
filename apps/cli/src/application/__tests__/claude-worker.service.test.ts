@@ -45,6 +45,9 @@ vi.mock("@dev-workflow/git/worktrees/git-worktree-service.js", () => ({
 
 vi.mock("@dev-workflow/git/track-directory-resolver.js", () => ({
   getGlobalDatabasePath: () => "/fake/global/workflow.db",
+  // The prompt resolver consults this for the shared-override location; point it
+  // at a path with no prompt files so buildClaudePrompt uses the embedded default.
+  resolveGlobalDflHome: () => "/fake/dfl-home",
 }));
 
 // TaskDomainService is constructed inside the worker only to persist worktree

@@ -4,6 +4,21 @@ import * as os from "node:os";
 import { execSync } from "node:child_process";
 
 /**
+ * Get the global dfl home directory — the root that contains `track/` (data:
+ * databases, project configs, worktrees) and sibling dirs like `prompts/`.
+ * Overridable for sandboxed/isolated runs via DFL_HOME.
+ *
+ * @returns DFL_HOME if set, otherwise ~/.dfl
+ */
+export function resolveGlobalDflHome(): string {
+  const override = process.env["DFL_HOME"];
+  if (override) {
+    return path.resolve(override);
+  }
+  return path.join(os.homedir(), ".dfl");
+}
+
+/**
  * Get the global track directory — dfl's data root (databases, project configs, worktrees).
  * Overridable for sandboxed/isolated runs via DFL_HOME.
  *
