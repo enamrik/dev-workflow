@@ -89,6 +89,8 @@ export function listAllTasksForBoard(input: ListAllTasksForBoardInput) {
       try {
         const db = yield* Effect.promise(() => getDbClient(project, sourceProvider));
         const boardService = new BoardQueryService(db);
+
+        // Active issues (excludes CLOSED) power the work queue + active columns.
         const boardData = yield* boardService.getActiveIssuesWithTasks();
 
         for (const { issue, plan, tasks, milestone } of boardData) {
@@ -112,24 +114,24 @@ export function listAllTasksForBoard(input: ListAllTasksForBoardInput) {
             projectName: project.name,
             projectSlug: project.slug,
           });
+        }
 
-          for (const task of tasks) {
-            if (task.status !== "COMPLETED" && task.status !== "ABANDONED") continue;
-            const completionDate = task.completedAt ?? task.abandonedAt;
-            if (!completionDate || completionDate < cutoffDateStr) continue;
-
-            completedTasks.push(
-              Object.assign(Task.from(task), {
-                projectId: issue.projectId,
-                projectName: project.name,
-                projectSlug: project.slug,
-                issueNumber: issue.number,
-                issueTitle: issue.title,
-                issueType: issue.type,
-                issueStatus: issue.status,
-              })
-            );
-          }
+        // Done column: recently finished tasks across ALL issues, including
+        // those whose issue has since been CLOSED (which the active-issues
+        // query above intentionally omits).
+        const recentlyCompleted = yield* boardService.getRecentlyCompletedTasks(cutoffDateStr);
+        for (const completed of recentlyCompleted) {
+          completedTasks.push(
+            Object.assign(Task.from(completed.task), {
+              projectId: completed.projectId,
+              projectName: project.name,
+              projectSlug: project.slug,
+              issueNumber: completed.issueNumber,
+              issueTitle: completed.issueTitle,
+              issueType: completed.issueType,
+              issueStatus: completed.issueStatus,
+            })
+          );
         }
       } catch {
         // Skip inaccessible projects
