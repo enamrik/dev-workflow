@@ -17,6 +17,18 @@ import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
 import { Service } from "@dev-workflow/effect";
 
 /**
+ * Compact issue/task association for a task ID.
+ *
+ * Just the fields needed to answer "which issue/task is this?" — no heavy
+ * fields (description / acceptanceCriteria / implementationPlan).
+ */
+export interface TaskAssociation {
+  issueNumber: number;
+  taskNumber: number;
+  taskTitle: string;
+}
+
+/**
  * Database source - owns the connection and global repositories
  */
 export interface DbSource {
@@ -50,6 +62,18 @@ export interface DbSource {
    * @returns The owning project's slug, or null if the task does not exist
    */
   findProjectSlugByTaskId(taskId: string): string | null;
+
+  /**
+   * Resolve a task ID to its compact issue/task association.
+   *
+   * Joins tasks → plans → issues on the (global) tracking database and returns
+   * only `issueNumber`, `taskNumber`, and `taskTitle` — enough to answer
+   * "which issue/task is this?" without loading the heavy task payload.
+   *
+   * @param taskId - Task ID to resolve
+   * @returns The compact association, or null if the task does not exist
+   */
+  findTaskAssociationById(taskId: string): TaskAssociation | null;
 
   /**
    * Create a project-scoped client

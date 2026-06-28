@@ -126,6 +126,10 @@ describe("Dispatch Tools Integration", () => {
       expect(worker1.status).toBe("IDLE");
       expect(worker1.isAlive).toBe(true);
       expect(worker1.currentTaskId).toBeNull();
+      // Idle worker (no current task) has a null association
+      expect(worker1.issueNumber).toBeNull();
+      expect(worker1.taskNumber).toBeNull();
+      expect(worker1.taskTitle).toBeNull();
 
       const worker2 = content.workers.find((w: { id: string }) => w.id === "worker-2");
       expect(worker2).toBeDefined();
@@ -158,6 +162,15 @@ describe("Dispatch Tools Integration", () => {
       expect(content.queue[0].status).toBe("PENDING");
       expect(content.queue[0].workerId).toBeNull();
 
+      // Compact issue/task association is inlined (no follow-up get_task needed)
+      expect(content.queue[0].issueNumber).toBe(issue.number);
+      expect(content.queue[0].taskNumber).toBe(task.number);
+      expect(content.queue[0].taskTitle).toBe("Test Task");
+      // Heavy fields are NOT included in this compact view
+      expect(content.queue[0]).not.toHaveProperty("description");
+      expect(content.queue[0]).not.toHaveProperty("acceptanceCriteria");
+      expect(content.queue[0]).not.toHaveProperty("implementationPlan");
+
       expect(content.queueStats.total).toBe(1);
       expect(content.queueStats.unclaimed).toBe(1);
     });
@@ -188,10 +201,41 @@ describe("Dispatch Tools Integration", () => {
       expect(worker).toBeDefined();
       expect(worker.currentTaskId).toBe(task.id);
 
+      // Worker carries the compact issue/task association inline
+      expect(worker.issueNumber).toBe(issue.number);
+      expect(worker.taskNumber).toBe(task.number);
+      expect(worker.taskTitle).toBe("Test Task");
+
       // Queue should show claimed status
       expect(content.queue[0].status).toBe("WORKING");
       expect(content.queue[0].workerId).toBe("worker-1");
       expect(content.queue[0].workerName).toBe("worker-1");
+    });
+
+    it("returns a null association when the claimed task no longer exists in tracking", async () => {
+      // Enqueue/claim a task id that has no row in the tracking DB (e.g. it was
+      // hard-deleted). The worker and queue entry hold a non-null currentTaskId,
+      // but the join finds nothing, so the association must propagate as null.
+      const orphanTaskId = crypto.randomUUID();
+      workerQueueDb.registerWorker("worker-1", "worker-1");
+      workerQueueDb.enqueue(orphanTaskId, "test-project");
+      workerQueueDb.claimTask("worker-1");
+
+      const result = await getDispatchStatus({});
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse(result.content[0].text);
+
+      const worker = content.workers.find((w: { id: string }) => w.id === "worker-1");
+      expect(worker.currentTaskId).toBe(orphanTaskId);
+      expect(worker.issueNumber).toBeNull();
+      expect(worker.taskNumber).toBeNull();
+      expect(worker.taskTitle).toBeNull();
+
+      expect(content.queue[0].taskId).toBe(orphanTaskId);
+      expect(content.queue[0].issueNumber).toBeNull();
+      expect(content.queue[0].taskNumber).toBeNull();
+      expect(content.queue[0].taskTitle).toBeNull();
     });
   });
 

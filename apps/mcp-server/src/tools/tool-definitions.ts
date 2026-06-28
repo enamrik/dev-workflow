@@ -414,7 +414,7 @@ export const typeToolDefinitions = [
 export const dispatchToolDefinitions = [
   createToolDefinition(
     "get_dispatch_status",
-    "Get status of worker sessions and dispatch queue. Workers are Claude instances polling for tasks - NOT git worktrees (use list_worktrees for that). Returns: (1) all registered workers with status (IDLE/WORKING/DRAINING), isAlive, and currentTaskId; (2) worker summary counts (total, idle, working, draining); (3) dispatch queue entries showing which tasks are pending or being worked on; (4) queue stats (total, unclaimed, claimed, stale).",
+    "Get status of worker sessions and dispatch queue. Workers are Claude instances polling for tasks - NOT git worktrees (use list_worktrees for that). Returns: (1) all registered workers with status (IDLE/WORKING/DRAINING), isAlive, currentTaskId, and a compact inline issue/task association (issueNumber, taskNumber, taskTitle - null for idle workers); (2) worker summary counts (total, idle, working, draining); (3) dispatch queue entries showing which tasks are pending or being worked on, each with the same inline issueNumber/taskNumber/taskTitle association; (4) queue stats (total, unclaimed, claimed, stale). The inline association means a single call tells you which worker is on which issue/task - no follow-up get_task is needed.",
     GetDispatchStatusSchema
   ),
   createToolDefinition(
