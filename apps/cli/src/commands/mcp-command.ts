@@ -26,7 +26,11 @@ export class MCPCommand {
     // session's project dir). stdin + stdout are inherited so the JSON-RPC stream flows
     // through untouched; stderr is piped so we can tee its diagnostics — keeping them
     // visible to Claude Code AND persisting them to mcp.log for -32000 post-mortems.
-    const mcpProcess = spawn("node", [mcpServerPath], {
+    // Spawn the inner server via this process's own node binary (absolute path),
+    // never a bare "node" lookup. A GUI-launched Claude Code inherits a minimal
+    // PATH without asdf/nvm shims, so bare "node" ENOENTs and the server dies
+    // with -32000. process.execPath is always the node that's already running us.
+    const mcpProcess = spawn(process.execPath, [mcpServerPath], {
       stdio: ["inherit", "inherit", "pipe"],
       env: process.env,
     });
