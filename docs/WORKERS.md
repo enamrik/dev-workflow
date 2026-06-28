@@ -227,6 +227,17 @@ Each worker displays its status in the terminal title:
 | `worker-1 \| #5.2 Add OAuth \| IN_PROGRESS` | Working on task          |
 | `worker-1 \| draining...`                   | Shutting down gracefully |
 
+> **The worker banner wins the title.** The spawned Claude session inherits the
+> worker's terminal (`stdio: "inherit"`) and writes its own title (e.g.
+> `Execute Task #5.2…`). Suppressing Claude's title write isn't available, so the
+> worker instead **wins** the competition: while a task runs it re-asserts its
+> `worker-N | …` banner on a tight cadence (`titleAssertIntervalMs`, default 1s),
+> overwriting whatever Claude paints. The banner string is cached, so each
+> re-assert is a cheap stdout write; the 2s watch loop refreshes its content
+> (status segment). Net effect: the worker's banner is the one that persists on
+> screen for the duration of the task. (Claude's title may briefly flash between
+> re-asserts — lower `titleAssertIntervalMs` to win harder.)
+
 ### Programmatic
 
 Use MCP tools:
