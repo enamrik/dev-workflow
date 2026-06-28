@@ -16,11 +16,12 @@ import { WORKER_TASK_PROMPT_DEFAULT, WORKER_TASK_PROMPT_NAME } from "../worker-t
 const DEFAULT = "default body {{name}}";
 
 /**
- * The exact prompt text the worker produced BEFORE externalization (with the
- * sample vars substituted). Resolving the embedded default with those vars must
- * be byte-identical — externalizing the prompt changed only its storage.
+ * The exact worker prompt text (with the sample vars substituted). Resolving the
+ * embedded default with those vars must equal this — a full-text regression guard
+ * for the shipped worker prompt, including the refocused "load + reconcile the
+ * existing plan" task-start step (issue #8).
  */
-const LEGACY_WORKER_PROMPT = `You are running as a worker process for dev-workflow. A task has been dispatched to you.
+const EXPECTED_WORKER_PROMPT = `You are running as a worker process for dev-workflow. A task has been dispatched to you.
 
 **WORKER ID: worker-7**
 
@@ -31,11 +32,14 @@ Start working on task #12.3 (ID: task-abc).
 **USE AGENTS AGGRESSIVELY.** Spawn Task agents to parallelize work and catch issues early:
 
 ### At Task Start (REQUIRED)
-Before writing ANY code, spawn a **Plan agent** to:
-- Analyze the task requirements and acceptance criteria
-- Research the codebase for relevant patterns, existing implementations
-- Identify files to modify, dependencies, potential risks
-- Propose an implementation approach
+A plan ALREADY EXISTS for this task — \`load_task_session\` returns its approach and
+per-task implementation plan. Do NOT re-plan from scratch. Before writing ANY code,
+spawn a **Plan agent** to:
+- Pull down the existing plan (the plan-time approach + implementation plan) and the task's acceptance criteria
+- Read the CURRENT code in the files the plan targets
+- Reconcile the plan against what changed since it was written (new files, merged dependencies, drift) and update the strategy accordingly
+- Surface any step that no longer fits BEFORE implementing
+The output is a refined, validated execution strategy that builds on the existing plan — not a fresh re-derivation.
 
 ### During Implementation
 When discoveries diverge from the plan (new complexity, unexpected patterns):
@@ -56,8 +60,8 @@ Use the dfl-worker-task skill to work through the lifecycle:
 
 1. Load the task with load_task_session
    - **CRITICAL: You MUST pass workerId="worker-7" to load_task_session**
-2. Spawn Plan agent to research and plan approach
-3. Implement the task according to plan
+2. Review the existing plan (returned by load_task_session) against the current code and refine the strategy — do NOT re-plan from scratch
+3. Implement the task according to the refined plan
 4. Spawn Adversarial Review agent before PR
 5. Create PR and submit for review
 6. WAIT for the PR to be merged (check with get_task_pr_status)
@@ -153,13 +157,18 @@ describe("PromptResolver", () => {
     expect(out).toBe("#12.3");
   });
 
-  it("worker-task default is byte-identical to the pre-externalization prompt", () => {
+  it("worker-task default resolves+interpolates to the expected worker prompt", () => {
     const out = resolver.resolve(
       WORKER_TASK_PROMPT_NAME,
       WORKER_TASK_PROMPT_DEFAULT,
       { workerId: "worker-7", issueNumber: 12, taskNumber: 3, taskId: "task-abc" },
       gitRoot
     );
-    expect(out).toBe(LEGACY_WORKER_PROMPT);
+    expect(out).toBe(EXPECTED_WORKER_PROMPT);
+    // Issue #8: the task-start step loads + reconciles the existing plan rather
+    // than re-deriving an approach from scratch.
+    expect(out).toContain("A plan ALREADY EXISTS");
+    expect(out).toContain("Do NOT re-plan from scratch");
+    expect(out).not.toContain("{{");
   });
 });

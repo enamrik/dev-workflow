@@ -9,8 +9,10 @@
  * Placeholders use `{{key}}` syntax; see {@link PromptResolver}. Supported keys:
  *   {{workerId}}, {{issueNumber}}, {{taskNumber}}, {{taskId}}
  *
- * IMPORTANT: keep this text byte-identical to the previously inlined prompt
- * (modulo `${...}` → `{{...}}`). Content changes belong in a separate issue.
+ * The "At Task Start" step directs the worker to LOAD and reconcile the existing
+ * plan (returned by load_task_session) against current code rather than re-deriving
+ * an approach from scratch (issue #8). Operators can override the whole prompt via
+ * a per-repo or shared `worker-task.md` file (see {@link PromptResolver}).
  */
 
 export const WORKER_TASK_PROMPT_NAME = "worker-task";
@@ -26,11 +28,14 @@ Start working on task #{{issueNumber}}.{{taskNumber}} (ID: {{taskId}}).
 **USE AGENTS AGGRESSIVELY.** Spawn Task agents to parallelize work and catch issues early:
 
 ### At Task Start (REQUIRED)
-Before writing ANY code, spawn a **Plan agent** to:
-- Analyze the task requirements and acceptance criteria
-- Research the codebase for relevant patterns, existing implementations
-- Identify files to modify, dependencies, potential risks
-- Propose an implementation approach
+A plan ALREADY EXISTS for this task — \`load_task_session\` returns its approach and
+per-task implementation plan. Do NOT re-plan from scratch. Before writing ANY code,
+spawn a **Plan agent** to:
+- Pull down the existing plan (the plan-time approach + implementation plan) and the task's acceptance criteria
+- Read the CURRENT code in the files the plan targets
+- Reconcile the plan against what changed since it was written (new files, merged dependencies, drift) and update the strategy accordingly
+- Surface any step that no longer fits BEFORE implementing
+The output is a refined, validated execution strategy that builds on the existing plan — not a fresh re-derivation.
 
 ### During Implementation
 When discoveries diverge from the plan (new complexity, unexpected patterns):
@@ -51,8 +56,8 @@ Use the dfl-worker-task skill to work through the lifecycle:
 
 1. Load the task with load_task_session
    - **CRITICAL: You MUST pass workerId="{{workerId}}" to load_task_session**
-2. Spawn Plan agent to research and plan approach
-3. Implement the task according to plan
+2. Review the existing plan (returned by load_task_session) against the current code and refine the strategy — do NOT re-plan from scratch
+3. Implement the task according to the refined plan
 4. Spawn Adversarial Review agent before PR
 5. Create PR and submit for review
 6. WAIT for the PR to be merged (check with get_task_pr_status)
