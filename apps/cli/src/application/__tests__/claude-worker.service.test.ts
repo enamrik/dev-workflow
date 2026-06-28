@@ -13,7 +13,7 @@
  *       pre-created via the shared worktree service and persisted on the task.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { EventEmitter } from "node:events";
 
 // --- Hoisted spies so the module mocks can reference them -------------------
@@ -80,7 +80,7 @@ vi.mock("@dev-workflow/tracking", async (importOriginal) => {
 });
 
 import { Effect } from "@dev-workflow/effect";
-import { ClaudeWorkerService } from "../claude-worker.service.js";
+import { ClaudeWorkerService, buildReExecArgs } from "../claude-worker.service.js";
 
 // --- Constants --------------------------------------------------------------
 
@@ -534,5 +534,132 @@ describe("ClaudeWorkerService.tryAutoClaimReadyTask — order by priority then a
     const order = await enqueueOrderFor(source);
 
     expect(order).toEqual(["older-task", "newer-task"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildReExecArgs — the self-restart re-exec arg reconstruction.
+//
+// Guards issue #38: the worker re-execs into a freshly-installed dfl bundle on
+// a dfl update. The passthrough args (everything after `--` on the original
+// `dfl claude` invocation) MUST be re-fenced behind their own `--` so the
+// re-exec'd `dfl claude` forwards them to the inner claude instead of parsing
+// them as its own options (which dies with `unknown option`).
+// ---------------------------------------------------------------------------
+
+describe("buildReExecArgs", () => {
+  const BUNDLE = "/install/cli.js";
+  const NAME = "worker-1";
+
+  it("re-inserts the `--` separator before passthrough args so dfl claude doesn't parse them", () => {
+    const args = buildReExecArgs(BUNDLE, NAME, [
+      "--model",
+      "opus",
+      "--dangerously-skip-permissions",
+    ]);
+
+    expect(args).toEqual([
+      BUNDLE,
+      "claude",
+      "--name",
+      NAME,
+      "--",
+      "--model",
+      "opus",
+      "--dangerously-skip-permissions",
+    ]);
+    // The separator appears exactly once, immediately before the passthrough args.
+    expect(args.filter((a) => a === "--")).toHaveLength(1);
+    expect(args.indexOf("--")).toBe(args.indexOf("--model") - 1);
+  });
+
+  it("omits the trailing `--` when there are no passthrough args", () => {
+    const args = buildReExecArgs(BUNDLE, NAME, []);
+
+    expect(args).toEqual([BUNDLE, "claude", "--name", NAME]);
+    expect(args).not.toContain("--");
+  });
+
+  it("preserves passthrough args verbatim, including a `--` they contain", () => {
+    const args = buildReExecArgs(BUNDLE, NAME, ["--flag", "--", "trailing"]);
+
+    // Our fence `--` is prepended; the user's own args (incl. their `--`) follow untouched.
+    expect(args).toEqual([BUNDLE, "claude", "--name", NAME, "--", "--flag", "--", "trailing"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reExec() handoff — Node has no execve, so the replacement build is a child
+// the parent must SEE come up before exiting. The old code exited on "spawn"
+// alone, so a child that died on startup (e.g. the #38 `unknown option`) left
+// the worker dead. These guard the grace-window handoff.
+// ---------------------------------------------------------------------------
+
+describe("reExec handoff", () => {
+  let exitSpy: MockInstance<(code?: string | number | null | undefined) => never>;
+
+  const driveReExec = (claudeArgs: string[] = []) => {
+    const queue = { unregisterWorker: vi.fn() };
+    const service = new ClaudeWorkerService(queue as never, {} as never, {} as never, {
+      claudeArgs,
+    });
+    // Controllable child — we drive spawn/exit by hand (no auto-exit).
+    const child = new EventEmitter() as EventEmitter & { kill: () => void };
+    child.kill = vi.fn();
+    spawnSpy.mockImplementationOnce(() => child);
+    // The self-restart latch is set by maybeRestartForUpgrade before reExec runs.
+    (service as unknown as { isRestarting: boolean }).isRestarting = true;
+    (service as unknown as { reExec: () => void }).reExec();
+    return { service, queue, child };
+  };
+
+  const isRestarting = (service: ClaudeWorkerService) =>
+    (service as unknown as { isRestarting: boolean }).isRestarting;
+
+  beforeEach(() => {
+    exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+  });
+
+  afterEach(() => {
+    exitSpy.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it("stays alive on the current build when the re-exec'd child exits during startup", () => {
+    const { service, queue, child } = driveReExec(["--model", "opus"]);
+
+    child.emit("spawn"); // spawn() succeeded...
+    child.emit("exit", 1, null); // ...but the new build died immediately (bad arg).
+
+    // The worker abandons the handoff rather than dying: latch released so the
+    // poll loop resumes, no process.exit, and it stays registered.
+    expect(isRestarting(service)).toBe(false);
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(queue.unregisterWorker).not.toHaveBeenCalled();
+  });
+
+  it("stays alive when the child can't be spawned at all (error event)", () => {
+    const { service, queue, child } = driveReExec();
+
+    child.emit("error", new Error("ENOENT"));
+
+    expect(isRestarting(service)).toBe(false);
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(queue.unregisterWorker).not.toHaveBeenCalled();
+  });
+
+  it("hands off (unregisters + exits) once the child survives the grace window", () => {
+    vi.useFakeTimers();
+    const { queue, child } = driveReExec();
+
+    child.emit("spawn");
+    // Before the grace window elapses we have NOT committed to the handoff.
+    expect(exitSpy).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(500);
+
+    // Survived startup → tear down so the new build takes over the terminal.
+    expect(queue.unregisterWorker).toHaveBeenCalledTimes(1);
+    expect(exitSpy).toHaveBeenCalledWith(0);
   });
 });
