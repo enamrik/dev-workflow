@@ -47,6 +47,13 @@ export class DirectToolExecutor {
   public readonly testDir: string;
   public readonly trackDir: string;
   public readonly dbPath: string;
+  /**
+   * Isolated Claude config home for this test. `dev-workflow init` shells out to
+   * `claude mcp add --scope user`, which writes to `$CLAUDE_CONFIG_DIR/.claude.json`
+   * (and skills install under `$CLAUDE_CONFIG_DIR/skills`). Pointing CLAUDE_CONFIG_DIR at
+   * a throwaway dir under the test root keeps the run from clobbering the real ~/.claude.json.
+   */
+  public readonly claudeConfigDir: string;
   public projectSlug: string = "";
   public projectId: string = "";
 
@@ -58,6 +65,7 @@ export class DirectToolExecutor {
     this.testDir = testDir;
     this.trackDir = join(testDir, ".track");
     this.dbPath = join(this.trackDir, "workflow.db");
+    this.claudeConfigDir = join(testDir, ".claude-config");
     this.cleanupOnSuccess = !options.keepOnSuccess;
   }
 
@@ -113,8 +121,9 @@ export class DirectToolExecutor {
       stdio: "pipe",
     });
 
-    // 4. Set up isolated track directory
+    // 4. Set up isolated track directory + isolated Claude config home
     mkdirSync(this.trackDir, { recursive: true });
+    mkdirSync(this.claudeConfigDir, { recursive: true });
     process.env["DFL_HOME"] = this.trackDir;
 
     // 5. Compute project slug from git
@@ -127,7 +136,7 @@ export class DirectToolExecutor {
     execSync(`node ${cliPath} init`, {
       cwd: this.testDir,
       stdio: "pipe",
-      env: { ...process.env, DFL_HOME: this.trackDir },
+      env: { ...process.env, DFL_HOME: this.trackDir, CLAUDE_CONFIG_DIR: this.claudeConfigDir },
     });
 
     // 7. Create MCP container and tools registry

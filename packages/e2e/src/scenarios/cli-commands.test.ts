@@ -9,12 +9,13 @@
  * 2. update - Update skills, migrations
  * 3. uninit - Remove Claude integration
  * 4. mcp - Start MCP server
- * 5. ui - Start web UI
- * 6. ui:install - Install as PM2 service
- * 7. ui:uninstall - Remove PM2 service
- * 8. workers - List workers
- * 9. claude - Run as worker
- * 10. clean-claude-config - Clean stale configs
+ * 5. ui - Start web UI daemon
+ * 6. workers - List workers
+ * 7. claude - Run as worker
+ * 8. clean-claude-config - Clean stale configs
+ *
+ * Every CLI invocation runs with CLAUDE_CONFIG_DIR pointed at an isolated dir under the test
+ * root so init's `claude mcp add` and skills install never touch the real ~/.claude.json.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -26,6 +27,17 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const CLI_PATH = resolve(__dirname, "../../../../apps/cli/dist/main.js");
+
+/**
+ * Isolated Claude config home for this test run. `dev-workflow init`/`update` shell out to
+ * `claude mcp add --scope user`, which writes to `$CLAUDE_CONFIG_DIR/.claude.json`, and install
+ * skills under `$CLAUDE_CONFIG_DIR/skills`. Pointing CLAUDE_CONFIG_DIR at a dir under the test
+ * root keeps every CLI invocation from clobbering the user's real ~/.claude.json, and lets the
+ * init test assert skills landed under `testDir/.claude/skills`.
+ *
+ * Set once in beforeAll and injected into every runCli/startCli invocation below.
+ */
+let claudeConfigDir: string;
 
 /**
  * Helper to run CLI commands and capture output
@@ -45,7 +57,7 @@ function runCli(
   try {
     const stdout = execSync(cmd, {
       cwd: options.cwd ?? process.cwd(),
-      env: { ...process.env, ...options.env },
+      env: { ...process.env, CLAUDE_CONFIG_DIR: claudeConfigDir, ...options.env },
       encoding: "utf-8",
       timeout,
       stdio: ["pipe", "pipe", "pipe"],
@@ -76,7 +88,7 @@ function startCli(
 ): ChildProcess {
   const proc = spawn("node", [CLI_PATH, ...args], {
     cwd: options.cwd ?? process.cwd(),
-    env: { ...process.env, ...options.env },
+    env: { ...process.env, CLAUDE_CONFIG_DIR: claudeConfigDir, ...options.env },
     stdio: ["pipe", "pipe", "pipe"],
   });
   return proc;
@@ -132,6 +144,10 @@ describe("CLI Commands E2E", () => {
     // Create isolated test directory
     testDir = realpathSync(mkdtempSync(join(tmpdir(), "dev-workflow-cli-e2e-")));
     trackDir = join(testDir, ".track");
+    // Isolated Claude config home: init installs skills to `$CLAUDE_CONFIG_DIR/skills`, so
+    // pointing it at `testDir/.claude` makes skills land under `testDir/.claude/skills` (asserted
+    // by the init/uninit tests) and keeps MCP registration out of the real ~/.claude.json.
+    claudeConfigDir = join(testDir, ".claude");
 
     // Initialize git repo
     execSync("git init", { cwd: testDir, stdio: "pipe" });
@@ -357,46 +373,7 @@ describe("CLI Commands E2E", () => {
   });
 
   // ===========================================================================
-  // 7. ui:install command (requires PM2 - skip if not available)
-  // ===========================================================================
-
-  describe("ui:install command", () => {
-    it("attempts PM2 service installation", () => {
-      const result = runCli(["ui:install"], {
-        cwd: testDir,
-        env: { DFL_HOME: trackDir },
-        expectError: true, // May fail if PM2 not installed
-      });
-
-      // Either succeeds or fails with PM2-related message
-      expect(
-        result.exitCode === 0 ||
-          result.stderr.includes("pm2") ||
-          result.stderr.includes("PM2") ||
-          result.stderr.includes("not found")
-      ).toBe(true);
-    });
-  });
-
-  // ===========================================================================
-  // 8. ui:uninstall command
-  // ===========================================================================
-
-  describe("ui:uninstall command", () => {
-    it("attempts PM2 service removal", () => {
-      const result = runCli(["ui:uninstall"], {
-        cwd: testDir,
-        env: { DFL_HOME: trackDir },
-        expectError: true, // May fail if PM2 not installed or service not running
-      });
-
-      // Either succeeds or fails gracefully
-      expect(result).toBeDefined();
-    });
-  });
-
-  // ===========================================================================
-  // 9. claude command (worker mode)
+  // 7. claude command (worker mode)
   // ===========================================================================
 
   describe("claude command", () => {
@@ -438,7 +415,7 @@ describe("CLI Commands E2E", () => {
   });
 
   // ===========================================================================
-  // 10. uninit command (run last)
+  // 8. uninit command (run last)
   // ===========================================================================
 
   describe("uninit command", () => {

@@ -38,6 +38,12 @@ export class UninstallService {
             await this.fileSystem.rmdir(path.join(skillsBaseDir, entry.name), { recursive: true });
           }
         }
+        // Drop the now-empty skills/ dir so uninit leaves no dangling dev-workflow scaffolding
+        // behind (only when WE emptied it — never remove a dir that still holds other skills).
+        const remaining = await this.fileSystem.readdirWithFileTypes(skillsBaseDir);
+        if (remaining.length === 0) {
+          await this.fileSystem.rmdir(skillsBaseDir, { recursive: true });
+        }
       }
     } catch (error) {
       throw new UninstallError("Failed to remove skills", error);
