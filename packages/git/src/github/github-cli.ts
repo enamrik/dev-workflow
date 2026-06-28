@@ -47,6 +47,20 @@ export class GitHubCLIError extends Error {
 }
 
 // =============================================================================
+// Helpers
+// =============================================================================
+
+/**
+ * Extract the PR number from a `gh pr create` stdout URL
+ * (e.g. "https://github.com/owner/repo/pull/506" -> 506).
+ * Returns null when no `/pull/<number>` segment is present.
+ */
+export function parsePRNumberFromUrl(stdout: string): number | null {
+  const match = stdout.match(/\/pull\/(\d+)/);
+  return match ? Number(match[1]) : null;
+}
+
+// =============================================================================
 // Service Interface
 // =============================================================================
 
@@ -145,8 +159,10 @@ export class NodeGitHubCLI implements GitHubCLI {
         if (draft) {
           args.push("--draft");
         }
-        args.push("--json", "number,title,url,state,isDraft,headRefName,baseRefName");
 
+        // `gh pr create` does NOT support --json — it prints the new PR's URL to
+        // stdout. We read that URL, then fetch structured metadata with
+        // `gh pr view --json` (via getPR) so the PR is recorded on the task.
         const result = yield* this.run(args);
         if (!result.success) {
           return yield* Effect.fail(
@@ -158,26 +174,22 @@ export class NodeGitHubCLI implements GitHubCLI {
           );
         }
 
-        const data = JSON.parse(result.stdout) as {
-          number: number;
-          title: string;
-          url: string;
-          state: string;
-          isDraft: boolean;
-          headRefName: string;
-          baseRefName: string;
-        };
+        const prNumber = parsePRNumberFromUrl(result.stdout);
+        if (prNumber === null) {
+          return yield* Effect.fail(
+            new GitHubCLIError(
+              `PR created but could not parse its number from gh output: ${result.stdout}`
+            )
+          );
+        }
 
-        return {
-          number: data.number,
-          title: data.title,
-          url: data.url,
-          state: data.state as "OPEN" | "CLOSED" | "MERGED",
-          merged: data.state === "MERGED",
-          isDraft: data.isDraft,
-          headBranch: data.headRefName,
-          baseBranch: data.baseRefName,
-        };
+        const pr = yield* this.getPR(prNumber);
+        if (pr === null) {
+          return yield* Effect.fail(
+            new GitHubCLIError(`PR #${prNumber} created but could not be read back via gh pr view`)
+          );
+        }
+        return pr;
       }.bind(this)
     );
   }
