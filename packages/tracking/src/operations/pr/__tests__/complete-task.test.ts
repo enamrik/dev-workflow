@@ -41,8 +41,11 @@ const TS = "2026-01-01T00:00:00.000Z";
 let source: DbSource;
 let client: DbClient;
 
-/** Seed an OPEN issue + plan + a single IN_PROGRESS task that owns a worktree. */
-function seed(taskId: string): void {
+/**
+ * Seed an OPEN issue + plan + a single IN_PROGRESS task that owns a worktree.
+ * The issue type defaults to BUG; pass "SPIKE" to exercise the auto-close skip.
+ */
+function seed(taskId: string, issueType: "BUG" | "SPIKE" = "BUG"): void {
   source
     .getDb()
     .insert(issues)
@@ -52,7 +55,7 @@ function seed(taskId: string): void {
       number: 1,
       title: "Issue 1",
       description: "desc",
-      type: "BUG",
+      type: issueType,
       priority: "MEDIUM",
       status: "OPEN",
       createdAt: TS,
@@ -209,5 +212,91 @@ describe("completeTask — worktree cleanup honesty (issue #31)", () => {
     const task = await Effect.runPromise(client.tasks.findById(taskId));
     expect(task?.status).toBe("COMPLETED");
     expect(task?.worktreePath).toBe(WORKTREE_PATH);
+  });
+});
+
+describe("completeTask — auto-close on last-task completion (issue #41)", () => {
+  /** Mock with the seeded worktree registered so completion cleans up cleanly. */
+  function gitWithWorktree(): MockGitWorktreeService {
+    return new MockGitWorktreeService({
+      projectRoot: "/test/project",
+      initialWorktrees: [
+        {
+          path: WORKTREE_PATH,
+          branch: BRANCH_NAME,
+          head: "abc123",
+          isMain: false,
+          diskUsageBytes: 1024,
+        },
+      ],
+    });
+  }
+
+  it("auto-closes a non-SPIKE issue when its last task completes", async () => {
+    const taskId = "task-last";
+    seed(taskId);
+
+    const result = await Effect.runPromise(
+      completeTask({
+        taskId,
+        sessionId: "session-1",
+        finalLogEntry: "done",
+        force: true,
+        autoCloseIssue: true,
+      }),
+      buildDeps(gitWithWorktree())
+    );
+
+    expect(result.allTasksComplete).toBe(true);
+    expect(result.issueClosed).toBe(true);
+    expect(result.message).toContain("Issue #1 has been closed");
+
+    const issue = await Effect.runPromise(client.issues.findByNumber(1));
+    expect(issue?.status).toBe("CLOSED");
+  });
+
+  it("does NOT auto-close a SPIKE issue even when its last task completes", async () => {
+    const taskId = "task-spike";
+    seed(taskId, "SPIKE");
+
+    const result = await Effect.runPromise(
+      completeTask({
+        taskId,
+        sessionId: "session-1",
+        finalLogEntry: "done",
+        force: true,
+        autoCloseIssue: true,
+      }),
+      buildDeps(gitWithWorktree())
+    );
+
+    // All tasks are terminal, but the SPIKE issue intentionally stays OPEN.
+    expect(result.allTasksComplete).toBe(true);
+    expect(result.issueClosed).toBe(false);
+
+    const issue = await Effect.runPromise(client.issues.findByNumber(1));
+    expect(issue?.status).toBe("OPEN");
+  });
+
+  it("keeps the issue open when autoCloseIssue is false (explicit keep-open)", async () => {
+    const taskId = "task-keep-open";
+    seed(taskId);
+
+    const result = await Effect.runPromise(
+      completeTask({
+        taskId,
+        sessionId: "session-1",
+        finalLogEntry: "done",
+        force: true,
+        autoCloseIssue: false,
+      }),
+      buildDeps(gitWithWorktree())
+    );
+
+    expect(result.allTasksComplete).toBe(true);
+    expect(result.issueClosed).toBe(false);
+
+    const issue = await Effect.runPromise(client.issues.findByNumber(1));
+    expect(issue?.status).toBe("OPEN");
   });
 });

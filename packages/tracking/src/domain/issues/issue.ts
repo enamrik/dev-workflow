@@ -223,6 +223,16 @@ export class Issue {
     return ISSUE_STATUS_TRAITS[this.status].isPlanning;
   }
 
+  /**
+   * Whether the issue is a SPIKE.
+   *
+   * SPIKE deliverables are docs/roadmaps that intentionally stay OPEN after
+   * their tasks finish, so they are excluded from last-task auto-close.
+   */
+  get isSpike(): boolean {
+    return this.type === "SPIKE";
+  }
+
   // ---------------------------------------------------------------------------
   // Static methods (cross-aggregate — need Task[] from another aggregate)
   // ---------------------------------------------------------------------------
