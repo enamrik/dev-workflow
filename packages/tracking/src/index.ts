@@ -18,7 +18,7 @@ export { runSqliteMigrations, checkpointSqliteDatabase } from "./data-access/sql
 // =============================================================================
 // Domain Types
 // =============================================================================
-export { Issue } from "./domain/issues/issue.js";
+export { Issue, PRIORITY_WEIGHTS, comparePriorityDesc } from "./domain/issues/issue.js";
 export type {
   IssueType,
   IssuePriority,

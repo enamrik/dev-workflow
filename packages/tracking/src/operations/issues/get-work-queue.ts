@@ -10,12 +10,13 @@
  */
 
 import { z } from "zod";
-import type { ComputedIssueStatus } from "../../domain/issues/issue.js";
+import type { ComputedIssueStatus, IssuePriority } from "../../domain/issues/issue.js";
 import {
   isIssueClosed,
   isIssueInPlanning,
   issueHasActiveWork,
   computeIssueStatus,
+  PRIORITY_WEIGHTS,
 } from "../../domain/issues/issue.js";
 import { DomainExecutorFactory } from "../../domain/domain-executor.js";
 import { validateInput } from "../validation.js";
@@ -24,13 +25,6 @@ import { Effect } from "@dev-workflow/effect";
 // =============================================================================
 // Constants
 // =============================================================================
-
-const PRIORITY_WEIGHTS: Record<string, number> = {
-  CRITICAL: 40,
-  HIGH: 30,
-  MEDIUM: 20,
-  LOW: 10,
-};
 
 const STATUS_WEIGHTS: Record<string, number> = {
   IN_PROGRESS: 100,
@@ -109,7 +103,7 @@ interface TaskWithContext {
 // =============================================================================
 
 function calculateIssueScore(
-  issue: { status: string; priority: string; createdAt: string; milestoneId?: string },
+  issue: { status: string; priority: IssuePriority; createdAt: string; milestoneId?: string },
   milestoneEndDates: Map<string, string>
 ): number {
   let score = 0;

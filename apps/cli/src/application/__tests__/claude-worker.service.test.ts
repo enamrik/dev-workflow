@@ -346,3 +346,122 @@ describe("ClaudeWorkerService.workOnTask — authoritative resolution + worktree
     expect(opts.cwd).toBe(TRUE_WORKTREE);
   });
 });
+
+describe("ClaudeWorkerService.tryAutoClaimReadyTask — order by priority then age", () => {
+  const autoProjectInfo = {
+    projectId: "proj-auto",
+    slug: "auto-project-cccccc",
+    name: "Auto Project",
+    sourceInfo: { connectionString: "sqlite:///repos/auto/workflow.db" },
+    gitRoot: "/repos/auto",
+  };
+
+  // A READY task with the fields tryAutoClaimReadyTask reads. Priority is NOT
+  // on the task — it's resolved from the parent issue via plan→issue below.
+  function readyTask(id: string, planId: string, createdAt: string) {
+    return { id, planId, createdAt, title: id, status: "READY", dependsOn: [] };
+  }
+
+  /**
+   * Build a fake source whose client serves the READY tasks plus the
+   * plan→issue resolution used to inherit each task's priority.
+   *
+   * @param tasks       READY tasks in the (arbitrary) order findMany returns them
+   * @param planToIssue planId → issueId
+   * @param issueToPrio issueId → priority
+   */
+  function makeAutoClaimSource(
+    tasks: ReturnType<typeof readyTask>[],
+    planToIssue: Record<string, string>,
+    issueToPrio: Record<string, string>
+  ) {
+    return {
+      types: {},
+      createClient: vi.fn().mockReturnValue({
+        tasks: {
+          findMany: vi.fn().mockImplementation(() => Effect.succeed(tasks)),
+        },
+        plans: {
+          findById: vi
+            .fn()
+            .mockImplementation((id: string) =>
+              Effect.succeed(planToIssue[id] ? { id, issueId: planToIssue[id] } : null)
+            ),
+        },
+        issues: {
+          findById: vi
+            .fn()
+            .mockImplementation((id: string) =>
+              Effect.succeed(issueToPrio[id] ? { id, priority: issueToPrio[id] } : null)
+            ),
+        },
+      }),
+    };
+  }
+
+  /**
+   * Run the auto-claim loop with claimTask losing every race, so the loop
+   * enqueues every eligible candidate in claim order without spawning Claude.
+   * The order of `queue.enqueue` calls IS the order auto-claim considered.
+   */
+  async function enqueueOrderFor(
+    source: ReturnType<typeof makeAutoClaimSource>
+  ): Promise<string[]> {
+    const queue = {
+      findByTaskId: vi.fn().mockReturnValue(null),
+      enqueue: vi.fn(),
+      claimTask: vi.fn().mockReturnValue(null), // always lose the race → keep looping
+    };
+    const sourceProvider = { getOrCreate: vi.fn().mockReturnValue(source) };
+    const projectsResolver = {
+      getAllProjects: vi.fn().mockReturnValue(Effect.succeed([autoProjectInfo])),
+    };
+
+    const service = new ClaudeWorkerService(
+      queue as never,
+      sourceProvider as never,
+      projectsResolver as never
+    );
+
+    await (
+      service as unknown as { tryAutoClaimReadyTask: () => Promise<unknown> }
+    ).tryAutoClaimReadyTask();
+
+    return queue.enqueue.mock.calls.map((call) => call[0] as string);
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("claims a HIGH-priority READY task before a LOW one, even when LOW is older", async () => {
+    // findMany returns LOW first (and LOW is older) — priority must still win.
+    const low = readyTask("low-task", "plan-low", "2024-01-01T00:00:00.000Z");
+    const high = readyTask("high-task", "plan-high", "2024-02-01T00:00:00.000Z");
+    const source = makeAutoClaimSource(
+      [low, high],
+      { "plan-low": "issue-low", "plan-high": "issue-high" },
+      { "issue-low": "LOW", "issue-high": "HIGH" }
+    );
+
+    const order = await enqueueOrderFor(source);
+
+    expect(order[0]).toBe("high-task");
+    expect(order).toEqual(["high-task", "low-task"]);
+  });
+
+  it("breaks ties between equal-priority tasks by oldest-first (createdAt asc)", async () => {
+    // Both MEDIUM; findMany returns the newer one first to prove the sort reorders.
+    const newer = readyTask("newer-task", "plan-newer", "2024-03-01T00:00:00.000Z");
+    const older = readyTask("older-task", "plan-older", "2024-01-01T00:00:00.000Z");
+    const source = makeAutoClaimSource(
+      [newer, older],
+      { "plan-newer": "issue-newer", "plan-older": "issue-older" },
+      { "issue-newer": "MEDIUM", "issue-older": "MEDIUM" }
+    );
+
+    const order = await enqueueOrderFor(source);
+
+    expect(order).toEqual(["older-task", "newer-task"]);
+  });
+});

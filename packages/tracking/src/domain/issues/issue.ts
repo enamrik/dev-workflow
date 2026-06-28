@@ -11,6 +11,28 @@ export type IssuePriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type IssueStatus = "PLANNED" | "OPEN" | "IN_PROGRESS" | "CLOSED";
 
 /**
+ * Relative weight of each priority — higher means more important.
+ *
+ * Single source of truth for ordering and scoring by priority. Consumers that
+ * rank work (the work queue, auto-claim) read from here rather than hardcoding
+ * their own map, so the CRITICAL→HIGH→MEDIUM→LOW ordering lives in one place.
+ */
+export const PRIORITY_WEIGHTS: Record<IssuePriority, number> = {
+  CRITICAL: 40,
+  HIGH: 30,
+  MEDIUM: 20,
+  LOW: 10,
+};
+
+/**
+ * Comparator ordering priorities most-important-first
+ * (CRITICAL → HIGH → MEDIUM → LOW). Use as the primary key in `Array#sort`.
+ */
+export function comparePriorityDesc(a: IssuePriority, b: IssuePriority): number {
+  return PRIORITY_WEIGHTS[b] - PRIORITY_WEIGHTS[a];
+}
+
+/**
  * Computed issue status based on task states.
  *
  * This enriches the stored IssueStatus with derived states:
