@@ -65,6 +65,41 @@ const term = {
 };
 
 // ============================================================================
+// Re-exec arg reconstruction
+// ============================================================================
+
+/**
+ * Grace window (ms) the parent waits after spawning the replacement build
+ * before tearing itself down. Spawning succeeds even when the new build dies
+ * on startup (e.g. a bad arg), so we only commit to the handoff once the child
+ * has survived this window; an exit within it aborts the handoff.
+ */
+const REEXEC_HANDOFF_GRACE_MS = 500;
+
+/**
+ * Build the argv (after `process.execPath`) for re-exec'ing a worker into a
+ * freshly-installed dfl bundle. The passthrough `claudeArgs` — everything the
+ * user put after `--` on the original `dfl claude` invocation (e.g. `--model`,
+ * `--dangerously-skip-permissions`) — must be fenced behind their own `--`
+ * separator so the re-exec'd `dfl claude` forwards them to the inner claude
+ * process instead of parsing them as its own options (which fails with
+ * `unknown option`). Empty `claudeArgs` → no trailing separator.
+ */
+export function buildReExecArgs(
+  bundlePath: string,
+  workerName: string,
+  claudeArgs: string[]
+): string[] {
+  return [
+    bundlePath,
+    "claude",
+    "--name",
+    workerName,
+    ...(claudeArgs.length > 0 ? ["--", ...claudeArgs] : []),
+  ];
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -1119,31 +1154,62 @@ export class ClaudeWorkerService {
    * on the current build rather than leaving the worker dead.
    */
   private reExec(): void {
-    const args = [
+    const args = buildReExecArgs(
       this.upgradeDetector.installedBundlePath,
-      "claude",
-      "--name",
       this.state.workerName,
-      ...this.config.claudeArgs,
-    ];
+      this.config.claudeArgs
+    );
     console.log(term.dim(`Re-exec: ${process.execPath} ${args.join(" ")}`));
 
     const child = spawn(process.execPath, args, { stdio: "inherit", env: process.env });
 
+    // Node has no execve, so the replacement is a child that must actually come
+    // up before we exit. `spawn()` succeeding (the "spawn" event) only means the
+    // process started — a bad re-exec arg makes it die immediately afterward, so
+    // exiting on "spawn" alone would leave the worker dead. Instead we hand the
+    // terminal over only after the child survives a short grace window; an exit
+    // (or error) within it aborts the handoff and keeps us on the current build.
+    let handoffTimer: ReturnType<typeof setTimeout> | null = null;
+    let settled = false;
+
+    const stayOnCurrentBuild = (reason: string): void => {
+      if (settled) return;
+      settled = true;
+      if (handoffTimer) {
+        clearTimeout(handoffTimer);
+        handoffTimer = null;
+      }
+      // Release the latch so the still-running poll loop resumes.
+      this.isRestarting = false;
+      console.error(term.red(`${reason} Staying on current build.`));
+    };
+
     child.once("spawn", () => {
-      // The new worker is up and owns the terminal — tear down this process so
-      // it takes over cleanly.
-      this.clearTimers();
-      this.queue.unregisterWorker(this.state.workerId);
-      process.exit(0);
+      handoffTimer = setTimeout(() => {
+        // A stay-alive path always clears this timer, so reaching here means the
+        // child survived the grace window. The guard makes that invariant
+        // explicit and defends against any future path that settles otherwise.
+        if (settled) return;
+        handoffTimer = null;
+        settled = true;
+        // The new worker survived startup and owns the terminal — tear down this
+        // process so it takes over cleanly.
+        this.clearTimers();
+        this.queue.unregisterWorker(this.state.workerId);
+        process.exit(0);
+      }, REEXEC_HANDOFF_GRACE_MS);
+    });
+
+    child.once("exit", (code, signal) => {
+      // The replacement died before the grace window elapsed — the re-exec
+      // failed (e.g. `unknown option`). If the window already elapsed we'd have
+      // exited above, so reaching here is always an early/failed handoff.
+      const how = code !== null ? `exited (code ${code})` : `was killed (signal ${signal})`;
+      stayOnCurrentBuild(`Re-exec child ${how} during startup.`);
     });
 
     child.once("error", (error: Error) => {
-      // Spawn failed — release the latch so the still-running poll loop resumes.
-      this.isRestarting = false;
-      console.error(
-        term.red(`Failed to re-exec into the new dfl build: ${error}. Staying on current build.`)
-      );
+      stayOnCurrentBuild(`Failed to re-exec into the new dfl build: ${error}.`);
     });
   }
 
