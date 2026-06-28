@@ -663,3 +663,47 @@ describe("reExec handoff", () => {
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// #42: in-process self-restart is DISABLED by default. The spawn+exit re-exec
+// orphans the worker (loses TTY foreground) → post-restart claude sessions
+// instant-exit → infinite claim/reclaim loop. Gated behind DFL_WORKER_SELF_RESTART=1
+// until a TTY-safe relauncher (supervisor, #37) exists.
+// ---------------------------------------------------------------------------
+
+describe("maybeRestartForUpgrade — self-restart disabled by default (#42)", () => {
+  const ENV = "DFL_WORKER_SELF_RESTART";
+  let prevEnv: string | undefined;
+
+  beforeEach(() => {
+    prevEnv = process.env[ENV];
+  });
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env[ENV];
+    else process.env[ENV] = prevEnv;
+  });
+
+  // A service that is idle AND has an upgrade available — so the ONLY thing that
+  // can stop a restart is the #42 gate.
+  const idleServiceWithUpgrade = () => {
+    const queue = { unregisterWorker: vi.fn() };
+    const service = new ClaudeWorkerService(queue as never, {} as never, {} as never, {});
+    (service as unknown as { upgradeDetector: { detectUpgrade: () => unknown } }).upgradeDetector =
+      {
+        detectUpgrade: () => ({ from: "0.0.0-dev+gaaa", to: "0.0.0-dev+gbbb" }),
+      };
+    return service;
+  };
+  const callMaybeRestart = (service: ClaudeWorkerService) =>
+    (service as unknown as { maybeRestartForUpgrade: () => boolean }).maybeRestartForUpgrade();
+
+  it("does NOT restart when DFL_WORKER_SELF_RESTART is unset, even with an upgrade available", () => {
+    delete process.env[ENV];
+    expect(callMaybeRestart(idleServiceWithUpgrade())).toBe(false);
+  });
+
+  it("does NOT restart when DFL_WORKER_SELF_RESTART is set to something other than '1'", () => {
+    process.env[ENV] = "true";
+    expect(callMaybeRestart(idleServiceWithUpgrade())).toBe(false);
+  });
+});

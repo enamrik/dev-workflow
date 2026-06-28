@@ -1123,6 +1123,15 @@ export class ClaudeWorkerService {
    * mid-task: the poll loop only runs while idle, and this re-checks defensively.
    */
   private maybeRestartForUpgrade(): boolean {
+    // #42: self-restart is DISABLED by default. Node has no execve, so reExec()
+    // spawns a replacement child and exits the parent — which orphans the new
+    // worker (it is no longer the terminal's foreground process). Its interactive
+    // `claude` sessions then hit EOF on the TTY and instant-exit, spinning the
+    // worker in an infinite claim -> exit -> reclaim loop. Re-enable only behind a
+    // TTY-safe relauncher (the supervisor, #37); opt in with DFL_WORKER_SELF_RESTART=1.
+    if (process.env["DFL_WORKER_SELF_RESTART"] !== "1") {
+      return false;
+    }
     if (this.isShuttingDown || this.state.status === "DRAINING" || this.state.currentTaskId) {
       return false;
     }
