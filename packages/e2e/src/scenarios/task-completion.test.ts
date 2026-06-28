@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { DirectToolExecutor } from "../harness/direct-executor.js";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 
 describe("E2E: Task Completion", () => {
   let executor: DirectToolExecutor;
@@ -92,6 +93,19 @@ describe("E2E: Task Completion", () => {
     const taskDuring = taskDuringResult.data as { status: string };
     expect(taskDuring.status).toBe("IN_PROGRESS");
 
+    // 7b. The session created a real worktree — capture it so we can prove it is
+    // gone after force-completion (regression: force-complete used to report
+    // "Worktree cleaned up" while leaving the worktree registered + on disk).
+    const loadData = loadResult.data as { worktreePath: string };
+    const worktreePath = loadData.worktreePath;
+    expect(worktreePath).toBeTruthy();
+    expect(existsSync(worktreePath)).toBe(true);
+
+    const worktreesBefore = (await executor.callTool("list_worktrees", {})).data as {
+      taskWorktrees: Array<{ path: string }>;
+    };
+    expect(worktreesBefore.taskWorktrees.some((w) => w.path === worktreePath)).toBe(true);
+
     // 8. Complete the task (force=true to skip PR verification in test)
     const completeResult = await executor.completeTask({
       task_id: taskId,
@@ -104,6 +118,20 @@ describe("E2E: Task Completion", () => {
       console.error("Complete task failed:", completeResult.error, completeResult.raw);
     }
     expect(completeResult.success).toBe(true);
+
+    // 8b. Force-complete must remove the worktree just like normal completion,
+    // and must report that truthfully (both the structured flag and the message).
+    const completeData = completeResult.data as { worktreeRemoved: boolean; message: string };
+    expect(completeData.worktreeRemoved).toBe(true);
+    expect(completeData.message).toContain("Worktree cleaned up");
+
+    // Off disk...
+    expect(existsSync(worktreePath)).toBe(false);
+    // ...and unregistered (no orphaned worktree left behind).
+    const worktreesAfter = (await executor.callTool("list_worktrees", {})).data as {
+      taskWorktrees: Array<{ path: string }>;
+    };
+    expect(worktreesAfter.taskWorktrees.some((w) => w.path === worktreePath)).toBe(false);
 
     // 9. Verify task is COMPLETED
     const taskAfterResult = await executor.getTask({ task_id: taskId });

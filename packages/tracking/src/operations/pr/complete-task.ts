@@ -71,6 +71,8 @@ export interface CompleteTaskResult {
   issueClosed: boolean;
   issueNumber: number | null;
   forced?: boolean;
+  /** Whether the task's git worktree was actually removed during completion. */
+  worktreeRemoved: boolean;
   message: string;
 }
 
@@ -237,14 +239,28 @@ function completeIsolatedModeTask(
       console.warn("Failed to pull main, continuing with cleanup");
     }
 
-    // Clean up worktree (all tasks use isolated mode with worktrees)
+    // Clean up worktree (all tasks use isolated mode with worktrees).
+    //
+    // removeWorktree fails through the typed Effect error channel
+    // (GitWorktreeError), which short-circuits this generator — a plain JS
+    // try/catch cannot intercept it. Use Effect.catchAll so a cleanup failure
+    // degrades to "not removed" (warn + continue) instead of aborting the whole
+    // completion, and so the reported outcome reflects what actually happened.
+    let worktreeRemoved = false;
     if (task.worktreePath) {
-      try {
-        yield* gitWorktreeService.removeWorktree(task.worktreePath, true);
-      } catch {
-        console.warn(`Failed to cleanup worktree: ${task.worktreePath}`);
+      worktreeRemoved = yield* Effect.catchAll(
+        Effect.map(gitWorktreeService.removeWorktree(task.worktreePath, true), () => true),
+        (error) => {
+          console.warn(`Failed to cleanup worktree ${task.worktreePath}: ${error.message}`);
+          return Effect.succeed(false);
+        }
+      );
+      // Only drop the DB worktree pointer once the worktree is actually gone.
+      // Clearing it on a failed removal would orphan the worktree untracked;
+      // keeping it lets recovery (e.g. prune_stale_worktrees) still find it.
+      if (worktreeRemoved) {
+        yield* taskDomainService.clearWorktreeInfo(taskId);
       }
-      yield* taskDomainService.clearWorktreeInfo(taskId);
     }
 
     if (prMerged && task.prNumber) {
@@ -276,9 +292,16 @@ function completeIsolatedModeTask(
       task.planId
     );
 
+    // Report the worktree outcome truthfully — only claim cleanup when it happened.
+    const worktreeNote = !task.worktreePath
+      ? ""
+      : worktreeRemoved
+        ? " Worktree cleaned up."
+        : " Worktree cleanup FAILED — remove it manually.";
+
     let message = force
-      ? `Task force-completed.${task.prNumber ? ` PR #${task.prNumber} status: ${prMerged ? "merged" : "not verified"}.` : ""} Worktree cleaned up.`
-      : `Task completed. PR #${task.prNumber} was merged, worktree cleaned up.`;
+      ? `Task force-completed.${task.prNumber ? ` PR #${task.prNumber} status: ${prMerged ? "merged" : "not verified"}.` : ""}${worktreeNote}`
+      : `Task completed. PR #${task.prNumber} was merged.${worktreeNote}`;
 
     if (issueStatus.issueClosed) {
       message += ` Issue #${issueStatus.issueNumber} has been closed.`;
@@ -302,6 +325,7 @@ function completeIsolatedModeTask(
       issueClosed: issueStatus.issueClosed,
       issueNumber: issueStatus.issueNumber,
       forced: force,
+      worktreeRemoved,
       message,
     } satisfies CompleteTaskResult;
   });
