@@ -24,7 +24,10 @@ import {
   TaskDomainService,
   TypeDomainService,
   resolveProjectInfoByTaskId,
+  comparePriorityDesc,
   type DbSource,
+  type DbClient,
+  type IssuePriority,
   type ProjectInfo,
   type Task,
 } from "@dev-workflow/tracking";
@@ -545,10 +548,12 @@ export class ClaudeWorkerService {
           typeDomainService
         );
 
-        // Find READY tasks
+        // Find READY tasks, ordered so higher-priority work is claimed first:
+        // by inherited issue priority (CRITICAL→HIGH→MEDIUM→LOW) then oldest-first.
         const readyTasks = await Effect.runPromise(client.tasks.findMany({ status: "READY" }));
+        const orderedTasks = await this.orderReadyTasksByPriority(client, readyTasks);
 
-        for (const task of readyTasks) {
+        for (const task of orderedTasks) {
           // Skip if already in dispatch queue
           const existing = this.queue.findByTaskId(task.id);
           if (existing) {
@@ -599,6 +604,51 @@ export class ClaudeWorkerService {
     }
 
     return null;
+  }
+
+  /**
+   * Order READY candidates for auto-claim: by inherited issue priority
+   * (CRITICAL→HIGH→MEDIUM→LOW) then oldest-first (createdAt ascending) as a
+   * tiebreaker, so higher-priority work is claimed before lower-priority work.
+   *
+   * Tasks carry no priority of their own — priority is inherited from the
+   * parent issue via task → plan → issue. Priority is resolved once per plan
+   * and cached so tasks sharing a plan don't each re-fetch it. Tasks whose
+   * issue can't be resolved fall back to LOW so they sort last but are still
+   * considered.
+   */
+  private async orderReadyTasksByPriority(client: DbClient, tasks: Task[]): Promise<Task[]> {
+    const priorityByPlanId = new Map<string, IssuePriority>();
+    const resolvePriority = async (planId: string): Promise<IssuePriority> => {
+      const cached = priorityByPlanId.get(planId);
+      if (cached) return cached;
+
+      const plan = await Effect.runPromise(client.plans.findById(planId));
+      const issue = plan ? await Effect.runPromise(client.issues.findById(plan.issueId)) : null;
+      if (!issue) {
+        // A READY task whose plan/issue can't be resolved is an integrity
+        // violation; surface it rather than silently deprioritizing to LOW.
+        console.error(
+          term.dim(`Could not resolve issue priority for plan ${planId}; defaulting to LOW`)
+        );
+      }
+      const priority: IssuePriority = issue?.priority ?? "LOW";
+      priorityByPlanId.set(planId, priority);
+      return priority;
+    };
+
+    const ranked: Array<{ task: Task; priority: IssuePriority }> = [];
+    for (const task of tasks) {
+      ranked.push({ task, priority: await resolvePriority(task.planId) });
+    }
+
+    return ranked
+      .sort((a, b) => {
+        const byPriority = comparePriorityDesc(a.priority, b.priority);
+        if (byPriority !== 0) return byPriority;
+        return new Date(a.task.createdAt).getTime() - new Date(b.task.createdAt).getTime();
+      })
+      .map((entry) => entry.task);
   }
 
   /**
