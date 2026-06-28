@@ -1,4 +1,5 @@
 import { execSync, spawnSync } from "node:child_process";
+import * as path from "node:path";
 
 const SERVER_NAME = "dev-workflow-tracker";
 
@@ -44,7 +45,20 @@ export function registerMcpServer(cliPath: string, cwd: string): void {
     args.push(`--env=DFL_HOME=${dataDir}`);
   }
 
-  args.push(SERVER_NAME, "--", "node", cliPath, "mcp");
+  // Pin PATH so the server AND its subprocesses resolve regardless of how Claude Code was
+  // launched. A GUI-launched session inherits a minimal PATH (no asdf/nvm/Homebrew), which
+  // breaks two things: (1) node itself, fixed by registering the absolute node binary below;
+  // (2) the gh/git subprocesses the server shells out to for PR/merge bookkeeping, which need
+  // Homebrew + system dirs on PATH. nodeDir (the active node's own bin) is first so the server's
+  // own child node processes resolve to the same runtime.
+  const nodeDir = path.dirname(process.execPath);
+  args.push(`--env=PATH=${nodeDir}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`);
+
+  // Register the absolute node binary (process.execPath), never a bare "node" — the registered
+  // command is what Claude Code spawns, and a bare "node" ENOENTs under a GUI session's PATH.
+  // Trade-off: this pins the node that ran `dfl init`/`update`, so removing that node version
+  // (e.g. an asdf uninstall) makes it stale — `dfl update` re-registers and heals it.
+  args.push(SERVER_NAME, "--", process.execPath, cliPath, "mcp");
 
   const result = spawnSync("claude", args, { cwd, stdio: "inherit", timeout: 30000 });
   if (result.error) {
