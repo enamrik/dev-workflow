@@ -82,7 +82,11 @@ import {
   DeleteTypeSchema,
 } from "./type-tools.js";
 
-import { GetDispatchStatusSchema, EndWorkerSessionSchema } from "./dispatch-tools.js";
+import {
+  GetDispatchStatusSchema,
+  EndWorkerSessionSchema,
+  TailWorkerLogSchema,
+} from "./dispatch-tools.js";
 
 // =============================================================================
 // Issue Tool Definitions
@@ -421,5 +425,10 @@ export const dispatchToolDefinitions = [
     "end_worker_session",
     "Signal that the Claude worker session is complete. This is the TERMINAL action for worker tasks - nothing should be done after calling this. Sets the claudeDone flag which workers poll for before terminating. Think of this like process.exit() - there is no 'after'. Must be called after complete_task or abandon_task.",
     EndWorkerSessionSchema
+  ),
+  createToolDefinition(
+    "tail_worker_log",
+    "Read the tail of a worker's session log to see what it's doing (and whether it's progressing, blocked, or stuck) WITHOUT shell access. Combine with get_dispatch_status: list workers there, then tail the one you care about. Select by workerName, workerId, or taskId (resolves to the worker that claimed it); with none, returns the most-recent log across all workers. Logs are lifecycle/heartbeat events (claimed, session-started, status ticks, ended/exit), not the verbatim Claude transcript. Returns the last N lines (default 50, max 2000) plus the resolved file path; returns found:false with a message when no matching log exists.",
+    TailWorkerLogSchema
   ),
 ];

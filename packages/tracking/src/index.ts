@@ -296,6 +296,14 @@ export {
   type EndWorkerSessionResult,
 } from "./operations/dispatch/end-worker-session.js";
 export {
+  tailWorkerLog,
+  TailWorkerLogSchema as TailWorkerLogOperationSchema,
+  DEFAULT_TAIL_LINES,
+  MAX_TAIL_LINES,
+  type TailWorkerLogInput,
+  type TailWorkerLogResult,
+} from "./operations/dispatch/tail-worker-log.js";
+export {
   generatePlan,
   GeneratePlanSchema as GeneratePlanOperationSchema,
   type GeneratePlanInput,

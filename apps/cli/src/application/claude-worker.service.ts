@@ -34,7 +34,7 @@ import {
   generateWorktreeNames,
 } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import { getGlobalDatabasePath } from "@dev-workflow/git/track-directory-resolver.js";
-import { WorkerSessionLog } from "../infrastructure/worker-session-log.js";
+import { WorkerSessionLog } from "@dev-workflow/git/worker-session-log.js";
 import { Effect } from "@dev-workflow/effect";
 import { PromptResolver } from "../prompts/prompt-resolver.js";
 import {
