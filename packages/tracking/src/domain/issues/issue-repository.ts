@@ -5,7 +5,7 @@
  * Pure data access — no business logic, no external sync.
  */
 
-import { eq, max, and, sql, like, or } from "drizzle-orm";
+import { eq, max, and, sql, like, or, notInArray } from "drizzle-orm";
 import { issues, type IssueRow } from "@dev-workflow/database/schema.js";
 import {
   Issue,
@@ -183,6 +183,9 @@ export class DrizzleIssueRepository implements IssueRepository {
       // Apply additional SQL filters for status, type, and milestone (scalar columns)
       if (filters?.status) {
         conditions.push(eq(issues.status, filters.status));
+      }
+      if (filters?.excludeStatuses && filters.excludeStatuses.length > 0) {
+        conditions.push(notInArray(issues.status, filters.excludeStatuses));
       }
       if (filters?.type) {
         conditions.push(eq(issues.type, filters.type));

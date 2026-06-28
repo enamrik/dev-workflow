@@ -119,6 +119,7 @@ export {
   type BoardColumn,
   type BoardTask,
   type BoardIssueWithTasks,
+  type CompletedBoardTask,
   type WorkerCounts,
   type WorkerTaskAssignment,
 } from "./board/board-query-service.js";

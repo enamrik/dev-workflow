@@ -30,6 +30,21 @@ export interface BoardIssueWithTasks {
 }
 
 /**
+ * A terminal (completed/abandoned) task with its issue context, for the
+ * board's Done column. Unlike BoardIssueWithTasks, this is sourced from ALL
+ * issues — including terminal (CLOSED) ones — so recently finished work
+ * surfaces in Done even after its issue is closed.
+ */
+export interface CompletedBoardTask {
+  task: Task;
+  projectId: string;
+  issueNumber: number;
+  issueTitle: string;
+  issueType: string;
+  issueStatus: string;
+}
+
+/**
  * Worker assignment info for a task
  */
 export interface WorkerTaskAssignment {
@@ -143,6 +158,45 @@ export class BoardQueryService {
     return Effect.gen(function* () {
       const issues = yield* self.db.issues.findMany({});
       return yield* self.enrichIssuesWithTasksAndMilestones(issues);
+    });
+  }
+
+  /**
+   * Get recently finished tasks across ALL issues — including terminal
+   * (CLOSED) issues — for the board's Done column.
+   *
+   * This intentionally differs from getActiveIssuesWithTasks() (which powers
+   * the work queue and active columns and excludes CLOSED issues): the Done
+   * column must still surface recently completed/abandoned work whose issue
+   * has since been closed. Uses the Task.isTerminal trait rather than
+   * hardcoded status checks.
+   *
+   * @param since ISO timestamp; only tasks completed/abandoned on or after this are returned.
+   */
+  getRecentlyCompletedTasks(since: string): Effect<CompletedBoardTask[]> {
+    const self = this;
+    return Effect.gen(function* () {
+      const allIssuesWithTasks = yield* self.getIssuesWithTasks();
+
+      const completed: CompletedBoardTask[] = [];
+      for (const { issue, tasks } of allIssuesWithTasks) {
+        for (const task of tasks) {
+          if (!task.isTerminal) continue;
+          const completionDate = task.completedAt ?? task.abandonedAt;
+          if (!completionDate || completionDate < since) continue;
+
+          completed.push({
+            task,
+            projectId: issue.projectId,
+            issueNumber: issue.number,
+            issueTitle: issue.title,
+            issueType: issue.type,
+            issueStatus: issue.status,
+          });
+        }
+      }
+
+      return completed;
     });
   }
 
