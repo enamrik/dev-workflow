@@ -316,9 +316,12 @@ export class NodeGitHubCLI implements GitHubCLI {
     return Effect.promise(
       () =>
         new Promise<GitHubCLIResult>((resolve) => {
+          // No `shell: true` — spawn execs gh directly with the argv array, so
+          // body/title content (backticks, $, parens, quotes, newlines) is passed
+          // verbatim as discrete arguments and is never re-tokenized by a shell.
+          // This is the same no-shell pattern NodeGitWorktreeService uses for git.
           const proc = spawn("gh", args, {
             cwd,
-            shell: true,
             env,
           });
 
