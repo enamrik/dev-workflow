@@ -4,7 +4,7 @@
  * Takes DrizzleDb (dialect-agnostic) and creates project-scoped repositories.
  * Created via DbSource.createClient(projectId).
  *
- * Global repositories (projects, types, globalSettings) are on DbSource.
+ * Global repositories (projects, types, globalSettings, milestones) are on DbSource.
  */
 
 import type { DbClient } from "./db-client.js";
@@ -12,7 +12,6 @@ import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
 import type { IssueRepository } from "../domain/issues/issue.js";
 import type { PlanRepository } from "../domain/plans/plan.js";
 import type { TaskRepository } from "../domain/tasks/task.js";
-import type { MilestoneRepository } from "../domain/milestones/milestone.js";
 import type { SnapshotRepository } from "../domain/snapshots/snapshot.js";
 import type { ExecutionLogRepository } from "../domain/execution-log.js";
 
@@ -20,7 +19,6 @@ import type { ExecutionLogRepository } from "../domain/execution-log.js";
 import { DrizzleIssueRepository } from "../domain/issues/issue-repository.js";
 import { DrizzlePlanRepository } from "../domain/plans/plan-repository.js";
 import { DrizzleTaskRepository } from "../domain/tasks/task-repository.js";
-import { DrizzleMilestoneRepository } from "../domain/milestones/milestone-repository.js";
 import { DrizzleSnapshotRepository } from "../domain/snapshots/snapshot-repository.js";
 import { DrizzleExecutionLogRepository } from "../domain/execution-log-repository.js";
 
@@ -34,7 +32,6 @@ export class DrizzleDbClient implements DbClient {
   readonly issues: IssueRepository;
   readonly plans: PlanRepository;
   readonly tasks: TaskRepository;
-  readonly milestones: MilestoneRepository;
   readonly snapshots: SnapshotRepository;
   readonly executionLogs: ExecutionLogRepository;
 
@@ -50,7 +47,6 @@ export class DrizzleDbClient implements DbClient {
   ) {
     // Project-scoped repositories
     this.issues = new DrizzleIssueRepository(db, projectId);
-    this.milestones = new DrizzleMilestoneRepository(db, projectId);
     this.snapshots = new DrizzleSnapshotRepository(db, projectId);
 
     // Non-scoped repositories (still on DbClient for operational use)

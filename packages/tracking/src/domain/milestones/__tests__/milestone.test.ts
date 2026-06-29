@@ -5,7 +5,6 @@ import type { MilestoneIssueStats } from "../milestone.js";
 function makeMilestone(overrides: Partial<Milestone> = {}): Milestone {
   return Milestone.from({
     id: "test-id",
-    projectId: "project-1",
     number: 1,
     title: "Test milestone",
     description: "Test description",
@@ -34,7 +33,6 @@ describe("Milestone", () => {
       const milestone = makeMilestone();
 
       expect(milestone.id).toBe("test-id");
-      expect(milestone.projectId).toBe("project-1");
       expect(milestone.number).toBe(1);
       expect(milestone.title).toBe("Test milestone");
       expect(milestone.description).toBe("Test description");
@@ -56,7 +54,6 @@ describe("Milestone", () => {
 
       expect(json).toEqual({
         id: "test-id",
-        projectId: "project-1",
         number: 1,
         title: "Test milestone",
         description: "Test description",

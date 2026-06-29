@@ -23,11 +23,6 @@ export function MilestoneCard({ data }: MilestoneCardProps) {
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-gray-500">M{milestone.number}</span>
           <span className="font-semibold text-gray-800">{milestone.title}</span>
-          {milestone.projectName && (
-            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
-              {milestone.projectName}
-            </span>
-          )}
         </div>
         <Badge variant="status" value={milestone.status} />
       </div>
@@ -60,14 +55,20 @@ export function MilestoneCard({ data }: MilestoneCardProps) {
         {issues.length > 0 ? (
           <ul className="space-y-2">
             {issues.map((issue) => (
-              <li key={issue.number} className="flex items-center gap-2 text-sm">
+              <li
+                key={`${issue.projectSlug}-${issue.number}`}
+                className="flex items-center gap-2 text-sm"
+              >
                 <Link
-                  href={`/projects/${encodeURIComponent(milestone.projectSlug ?? milestone.projectId)}/issues/${issue.number}`}
+                  href={`/projects/${encodeURIComponent(issue.projectSlug)}/issues/${issue.number}`}
                   className="text-blue-600 hover:underline font-medium"
                 >
                   #{issue.number}
                 </Link>
                 <span className="text-gray-700 truncate flex-1">{truncate(issue.title, 40)}</span>
+                <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded whitespace-nowrap">
+                  {issue.projectName}
+                </span>
                 <Badge variant="status" value={issue.computedStatus} />
               </li>
             ))}

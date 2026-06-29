@@ -47,6 +47,8 @@ export { Milestone } from "./domain/milestones/milestone.js";
 export type {
   MilestoneRepository,
   MilestoneIssueStats,
+  MilestoneIssue,
+  MilestoneIssueGateway,
   DateValidation,
   CreateMilestoneParams,
   UpdateMilestoneParams,
@@ -254,6 +256,7 @@ export {
   GetMilestoneSchema as GetMilestoneOperationSchema,
   type GetMilestoneInput,
   type GetMilestoneResult,
+  type GetMilestoneIssue,
 } from "./operations/milestones/get-milestone.js";
 export {
   listMilestones,
@@ -527,7 +530,7 @@ export {
 // =============================================================================
 // Repositories (for direct access when needed)
 // =============================================================================
-export { DrizzleIssueRepository } from "./domain/issues/issue-repository.js";
+export { DrizzleIssueRepository, mapRowToIssue } from "./domain/issues/issue-repository.js";
 export { DrizzleTaskRepository } from "./domain/tasks/task-repository.js";
 export { DrizzlePlanRepository } from "./domain/plans/plan-repository.js";
 export { DrizzleMilestoneRepository } from "./domain/milestones/milestone-repository.js";

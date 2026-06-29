@@ -22,11 +22,6 @@ export function MilestoneRow({ data, onClick, isMobile = false }: MilestoneRowPr
               <span className="font-bold text-gray-500">M{milestone.number}</span>
               <div className="font-medium text-gray-800">{milestone.title}</div>
             </div>
-            {milestone.projectName && (
-              <span className="inline-block px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-500">
-                {milestone.projectName}
-              </span>
-            )}
           </div>
           <Badge variant="status" value={milestone.status} />
         </div>
@@ -56,11 +51,6 @@ export function MilestoneRow({ data, onClick, isMobile = false }: MilestoneRowPr
       </td>
       <td className="py-3 px-3">
         <div className="font-medium text-gray-800">{milestone.title}</div>
-        {milestone.projectName && (
-          <span className="inline-block mt-1 px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-500">
-            {milestone.projectName}
-          </span>
-        )}
       </td>
       <td className="py-3 px-3 w-56">
         <span className="text-xs text-gray-600 whitespace-nowrap">

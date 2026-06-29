@@ -16,7 +16,7 @@ import {
 } from "@dev-workflow/tracking";
 import type { WorkerQueueDb } from "@dev-workflow/dispatch/worker-queue-db.js";
 import { WorkerQueueDbTag } from "../service-tags.js";
-import { getDbClient, filterProjects } from "./helpers.js";
+import { getDbSource, filterProjects } from "./helpers.js";
 
 // =============================================================================
 // Schema
@@ -87,8 +87,9 @@ export function listAllTasksForBoard(input: ListAllTasksForBoardInput) {
 
     for (const project of projects) {
       try {
-        const db = yield* Effect.promise(() => getDbClient(project, sourceProvider));
-        const boardService = new BoardQueryService(db);
+        const source = yield* Effect.promise(() => getDbSource(project, sourceProvider));
+        const db = source.createClient(project.projectId);
+        const boardService = new BoardQueryService(db, source.milestones);
 
         // Active issues (excludes CLOSED) power the work queue + active columns.
         const boardData = yield* boardService.getActiveIssuesWithTasks();

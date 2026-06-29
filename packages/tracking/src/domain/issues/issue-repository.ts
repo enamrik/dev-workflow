@@ -38,7 +38,7 @@ function mapRowToSyncState(row: IssueRow): SyncState | undefined {
   };
 }
 
-function mapRowToIssue(row: IssueRow): Issue {
+export function mapRowToIssue(row: IssueRow): Issue {
   const data: IssueData = {
     id: row.id,
     projectId: row.projectId,

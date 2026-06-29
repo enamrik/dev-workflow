@@ -13,6 +13,7 @@ import type { ProjectRepository } from "../domain/projects/project.js";
 import type { IssuePriority } from "../domain/issues/issue.js";
 import type { TypeRepository } from "../domain/types/type-definition.js";
 import type { GlobalSettingsRepository } from "../domain/global-settings-repository.js";
+import type { MilestoneRepository, MilestoneIssueGateway } from "../domain/milestones/milestone.js";
 import type { DbClient } from "./db-client.js";
 import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
 import { Service } from "@dev-workflow/effect";
@@ -45,6 +46,18 @@ export interface DbSource {
   readonly projects: ProjectRepository;
   readonly types: TypeRepository;
   readonly globalSettings: GlobalSettingsRepository;
+
+  /**
+   * Milestones are global - a single milestone can group issues from any
+   * project, so the repository lives here (not on the project-scoped DbClient).
+   */
+  readonly milestones: MilestoneRepository;
+
+  /**
+   * Cross-project issue port for milestones: read a milestone's member issues
+   * (with project context) and write a single issue's milestone link.
+   */
+  readonly milestoneIssues: MilestoneIssueGateway;
 
   /**
    * Get the underlying Drizzle database instance.

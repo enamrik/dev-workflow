@@ -3,6 +3,7 @@
  */
 
 import type { Effect } from "@dev-workflow/effect";
+import type { Issue } from "../issues/issue.js";
 
 export type MilestoneStatus = "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "DELAYED";
 
@@ -21,8 +22,7 @@ export type MilestoneStatus = "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "DELAYED
 // eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export interface Milestone {
   readonly id: string; // UUID
-  readonly projectId: string; // Project identifier
-  readonly number: number; // Sequential number per project (M1, M2, etc.)
+  readonly number: number; // Sequential number, globally unique across all projects (M1, M2, etc.)
   readonly title: string;
   readonly description: string;
   readonly startDate: string; // ISO date YYYY-MM-DD
@@ -188,10 +188,10 @@ export interface MilestoneRepository {
   /**
    * Create a new milestone
    *
-   * Automatically assigns number based on existing milestones for the project.
+   * Automatically assigns a globally-unique number based on existing milestones.
    *
-   * @param milestone - Milestone data (without id, projectId, number, createdAt, updatedAt which are generated)
-   * @returns The created milestone with id, projectId, number, and timestamps assigned
+   * @param milestone - Milestone data (without id, number, createdAt, updatedAt which are generated)
+   * @returns The created milestone with id, number, and timestamps assigned
    */
   create(milestone: CreateMilestoneParams): Effect<Milestone>;
 
@@ -222,9 +222,10 @@ export interface MilestoneRepository {
   findMany(filters?: MilestoneFilters): Effect<Milestone[]>;
 
   /**
-   * Get the next milestone number for the project
+   * Get the next globally-unique milestone number.
    *
-   * Used internally by create() to assign sequential milestone numbers.
+   * Used internally by create() to assign sequential milestone numbers across
+   * all projects.
    *
    * @returns The next milestone number (MAX(number) + 1, or 1 if no milestones exist)
    */
@@ -247,4 +248,52 @@ export interface MilestoneRepository {
    * @param id - Milestone UUID
    */
   delete(id: string): Effect<void>;
+}
+
+// =============================================================================
+// MilestoneIssueGateway
+// =============================================================================
+
+/**
+ * An issue assigned to a milestone, tagged with the project that owns it.
+ *
+ * Milestones are global and can group issues from any project, so callers need
+ * the owning project's slug/name to render cross-project links and labels.
+ */
+export interface MilestoneIssue {
+  readonly issue: Issue;
+  readonly projectId: string;
+  readonly projectSlug: string;
+  readonly projectName: string;
+}
+
+/**
+ * Cross-project issue port for milestones.
+ *
+ * Milestones live globally but their issue membership spans every project, so
+ * the milestone domain cannot use a project-scoped IssueRepository. This gateway
+ * is the narrow set of cross-project issue operations a milestone needs: read
+ * all member issues (with project context) and write a single issue's milestone
+ * link. It is implemented by the global DbSource, which holds the shared db.
+ */
+export interface MilestoneIssueGateway {
+  /**
+   * Find every (non-deleted) issue assigned to a milestone, across all projects,
+   * each tagged with its owning project's id/slug/name.
+   */
+  findIssuesByMilestoneId(milestoneId: string): Effect<MilestoneIssue[]>;
+
+  /**
+   * Clear the milestone association from every issue assigned to it, across all
+   * projects (UPDATE issues SET milestone_id = NULL WHERE milestone_id = ?).
+   *
+   * @returns The number of issues that were unassigned
+   */
+  clearMilestoneFromIssues(milestoneId: string): Effect<number>;
+
+  /**
+   * Set (or clear, when null) the milestone link on a single issue, regardless
+   * of which project owns it.
+   */
+  setIssueMilestone(issueId: string, milestoneId: string | null): Effect<void>;
 }

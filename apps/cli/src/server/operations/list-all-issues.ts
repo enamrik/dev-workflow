@@ -13,7 +13,7 @@ import {
   type ComputedIssueStatus,
   type TaskCounts,
 } from "@dev-workflow/tracking";
-import { getDbClient, filterProjects } from "./helpers.js";
+import { getDbSource, filterProjects } from "./helpers.js";
 
 // =============================================================================
 // Schema
@@ -58,7 +58,8 @@ export function listAllIssues(input: ListAllIssuesInput) {
 
     for (const project of projects) {
       try {
-        const db = yield* Effect.promise(() => getDbClient(project, sourceProvider));
+        const source = yield* Effect.promise(() => getDbSource(project, sourceProvider));
+        const db = source.createClient(project.projectId);
         const issues = yield* db.issues.findMany({});
         const statusService = new IssueStatusService(db);
 
@@ -68,7 +69,7 @@ export function listAllIssues(input: ListAllIssuesInput) {
           let milestoneNumber: number | undefined;
           let milestoneTitle: string | undefined;
           if (issue.milestoneId) {
-            const milestone = yield* db.milestones.findById(issue.milestoneId);
+            const milestone = yield* source.milestones.findById(issue.milestoneId);
             if (milestone) {
               milestoneNumber = milestone.number;
               milestoneTitle = milestone.title;

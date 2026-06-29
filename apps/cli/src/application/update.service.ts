@@ -119,9 +119,7 @@ export class UpdateService {
       const snapshotStmt = db.prepare("UPDATE snapshots SET project_id = ? WHERE project_id = ?");
       snapshotStmt.run(project.id, oldProjectId);
 
-      // Also update milestones
-      const milestoneStmt = db.prepare("UPDATE milestones SET project_id = ? WHERE project_id = ?");
-      milestoneStmt.run(project.id, oldProjectId);
+      // Milestones are global (no project_id) — nothing to re-key here.
 
       return { migrated: result.changes ?? 0, oldProjectId };
     } finally {
