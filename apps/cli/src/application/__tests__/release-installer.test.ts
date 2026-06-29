@@ -8,11 +8,13 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { ReleaseInstaller } from "../release-installer.js";
-import type { FileSystem } from "../../infrastructure/file-system.js";
+import { NodeFileSystem, type FileSystem } from "../../infrastructure/file-system.js";
 
 function createMockFileSystem(): FileSystem {
   return {
@@ -188,5 +190,109 @@ describe("ReleaseInstaller installed-version read + no-op", () => {
     expect(result).toEqual({ version: "4.0.0", changed: false });
     // Only the metadata call happened — no asset download.
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ReleaseInstaller installRelease lifecycle (real tarball + atomic swap)", () => {
+  let dflDir: string;
+  let binDir: string;
+  let archiveBytes: Buffer;
+  let archiveSha: string;
+  let assetName: string;
+  let prevInstallDir: string | undefined;
+  let prevBinDir: string | undefined;
+
+  /** Build a real `install/cli.js` tarball stamped with `version`. */
+  const buildArchive = (version: string): void => {
+    const src = mkdtempSync(path.join(tmpdir(), "dfl-archive-src-"));
+    mkdirSync(path.join(src, "install"), { recursive: true });
+    writeFileSync(
+      path.join(src, "install", "cli.js"),
+      `process.stdout.write(${JSON.stringify(version)} + "\\n");\n`
+    );
+    const out = mkdtempSync(path.join(tmpdir(), "dfl-archive-out-"));
+    const archive = path.join(out, "artifact.tar.gz");
+    execFileSync("tar", ["-czf", archive, "-C", src, "install"]);
+    archiveBytes = readFileSync(archive);
+    archiveSha = createHash("sha256").update(archiveBytes).digest("hex");
+    rmSync(src, { recursive: true, force: true });
+    rmSync(out, { recursive: true, force: true });
+  };
+
+  /** Stub fetch: asset download returns the archive bytes; `.sha256` per `sha`. */
+  const stubFetch = (sha: { ok: boolean; value?: string }): void => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith(".sha256")) {
+          return sha.ok
+            ? { ok: true, text: async () => `${sha.value}  ${assetName}\n` }
+            : { ok: false, status: 404 };
+        }
+        return { ok: true, arrayBuffer: async () => new Uint8Array(archiveBytes).buffer };
+      })
+    );
+  };
+
+  beforeEach(() => {
+    dflDir = mkdtempSync(path.join(tmpdir(), "dfl-install-root-"));
+    binDir = mkdtempSync(path.join(tmpdir(), "dfl-bin-"));
+    prevInstallDir = process.env["DFL_INSTALL_DIR"];
+    prevBinDir = process.env["DFL_BIN_DIR"];
+    process.env["DFL_INSTALL_DIR"] = dflDir;
+    process.env["DFL_BIN_DIR"] = binDir;
+    assetName = ReleaseInstaller.assetName(ReleaseInstaller.platformSlug());
+    buildArchive("1.2.3");
+  });
+
+  afterEach(() => {
+    const restore = (key: string, prev: string | undefined): void => {
+      if (prev === undefined) delete process.env[key];
+      else process.env[key] = prev;
+    };
+    restore("DFL_INSTALL_DIR", prevInstallDir);
+    restore("DFL_BIN_DIR", prevBinDir);
+    rmSync(dflDir, { recursive: true, force: true });
+    rmSync(binDir, { recursive: true, force: true });
+    vi.unstubAllGlobals();
+  });
+
+  it("downloads, extracts into install/, and writes the launcher", async () => {
+    stubFetch({ ok: true, value: archiveSha });
+    const installer = new ReleaseInstaller(new NodeFileSystem());
+
+    const result = await installer.installRelease({ version: "1.2.3" });
+
+    expect(result).toEqual({ version: "1.2.3", changed: true });
+    expect(existsSync(path.join(dflDir, "install", "cli.js"))).toBe(true);
+    const launcher = readFileSync(path.join(binDir, "dfl"), "utf-8");
+    expect(launcher).toContain(`exec node "${path.join(dflDir, "install", "cli.js")}"`);
+    // No staging/backup scratch dirs left behind.
+    expect(existsSync(path.join(dflDir, `.install-staging-${process.pid}`))).toBe(false);
+    expect(existsSync(path.join(dflDir, `.install-backup-${process.pid}`))).toBe(false);
+  });
+
+  it("tolerates a missing checksum sidecar (older releases)", async () => {
+    stubFetch({ ok: false });
+    const installer = new ReleaseInstaller(new NodeFileSystem());
+
+    const result = await installer.installRelease({ version: "1.2.3" });
+
+    expect(result.changed).toBe(true);
+    expect(existsSync(path.join(dflDir, "install", "cli.js"))).toBe(true);
+  });
+
+  it("aborts on a checksum mismatch without touching the existing install", async () => {
+    // Seed a prior working install that must survive a failed update.
+    mkdirSync(path.join(dflDir, "install"), { recursive: true });
+    writeFileSync(path.join(dflDir, "install", "cli.js"), "OLD");
+    stubFetch({ ok: true, value: "deadbeef" });
+    const installer = new ReleaseInstaller(new NodeFileSystem());
+
+    await expect(installer.installRelease({ version: "1.2.3" })).rejects.toThrow(
+      /Checksum mismatch/
+    );
+    // The old install is intact.
+    expect(readFileSync(path.join(dflDir, "install", "cli.js"), "utf-8")).toBe("OLD");
   });
 });

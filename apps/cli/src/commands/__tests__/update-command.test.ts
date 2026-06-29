@@ -93,16 +93,18 @@ describe("UpdateCommand", () => {
     expect(updateService.updateSkills).toHaveBeenCalled();
   });
 
-  it("is a full no-op (skips phase 2) when already on the target version", async () => {
+  it("skips the download but still reconciles when already on the target version", async () => {
     const installer = createMockReleaseInstaller({ version: "1.2.3", changed: false });
     const command = new UpdateCommand(updateService, uiService, installer);
 
     await command.execute({});
 
     expect(installer.installRelease).toHaveBeenCalled();
-    expect(updateService.updateSkills).not.toHaveBeenCalled();
-    expect(updateService.runMigrations).not.toHaveBeenCalled();
-    expect(uiService.restart).not.toHaveBeenCalled();
+    // Phase 2 is idempotent and runs even on a no-op install (heals
+    // skills/MCP/migrations drift on the same version).
+    expect(updateService.updateSkills).toHaveBeenCalled();
+    expect(updateService.runMigrations).toHaveBeenCalled();
+    expect(uiService.restart).toHaveBeenCalled();
   });
 
   it("--list prints releases without installing or reconciling", async () => {

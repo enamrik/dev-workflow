@@ -20,6 +20,14 @@ export interface UpdateOptions {
 
 /**
  * Handler - thin wrapper that yields the command from Effect context.
+ *
+ * NOTE: `withConfigMiddleware` means `dfl update` (including `--list`) must run
+ * inside an initialized project — the historical behavior, and where the
+ * autonomous loop runs it. Phase 1 (artifact install) and `--list` are
+ * conceptually global, but decoupling them requires lazy/optional config
+ * resolution (the `updateService` DI factory eagerly needs the project's
+ * databaseConnectionString). That's a bootstrap-pattern change tracked as
+ * follow-up rather than forking a second config-less runner here.
  */
 export const handleUpdate = createCliHandler({
   handler: (options: UpdateOptions) =>

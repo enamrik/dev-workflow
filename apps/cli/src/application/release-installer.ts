@@ -21,10 +21,11 @@
 
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, chmodSync, rmSync, renameSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { FileSystem } from "../infrastructure/file-system.js";
+import { readInstalledBundleVersion } from "../infrastructure/installed-version.js";
 
 /** GitHub `owner/repo` the released artifacts are published under. */
 const REPO = "enamrik/dev-workflow";
@@ -136,7 +137,7 @@ export class ReleaseInstaller {
     if (!res.ok) {
       throw new ReleaseInstallError(
         `Could not resolve the latest release (GitHub API HTTP ${res.status}). ` +
-          `Pass --version <v> to install a specific release.`
+          `Pass --version <v> to install a specific release, or set GH_TOKEN to raise the rate limit.`
       );
     }
     const data = (await res.json()) as { tag_name?: string };
@@ -152,7 +153,10 @@ export class ReleaseInstaller {
       headers: this.githubHeaders(),
     });
     if (!res.ok) {
-      throw new ReleaseInstallError(`Could not list releases (GitHub API HTTP ${res.status}).`);
+      throw new ReleaseInstallError(
+        `Could not list releases (GitHub API HTTP ${res.status}). ` +
+          `Set GH_TOKEN to raise the rate limit.`
+      );
     }
     const data = (await res.json()) as Array<{ tag_name?: string; published_at?: string | null }>;
     return data
@@ -165,26 +169,13 @@ export class ReleaseInstaller {
   }
 
   /**
-   * Read the version of the currently-installed bundle by exec'ing it with
-   * `--version`, or null if it can't be determined (no install yet / broken
-   * bundle). Same approach as DflUpgradeDetector — the version is baked into
-   * the bundle, not a marker file.
+   * Version of the currently-installed bundle (normalized, no leading `v`), or
+   * null if it can't be determined. Delegates to the shared bundle-version
+   * reader so this and DflUpgradeDetector can't drift.
    */
   readInstalledVersion(): string | null {
-    try {
-      const out = execFileSync(
-        process.execPath,
-        [path.join(this.installDir, "cli.js"), "--version"],
-        {
-          encoding: "utf-8",
-          stdio: ["ignore", "pipe", "ignore"],
-        }
-      );
-      const version = out.trim();
-      return version.length > 0 ? ReleaseInstaller.normalizeVersion(version) : null;
-    } catch {
-      return null;
-    }
+    const raw = readInstalledBundleVersion(path.join(this.installDir, "cli.js"));
+    return raw ? ReleaseInstaller.normalizeVersion(raw) : null;
   }
 
   // ===========================================================================
@@ -286,19 +277,59 @@ export class ReleaseInstaller {
   }
 
   /**
-   * Extract the tarball into `~/.dfl`, replacing only `install/` and leaving
-   * sibling data (`track/`) untouched. The archive's single top-level dir is
-   * `install`, so extracting into `~/.dfl` yields `~/.dfl/install`.
+   * Apply the tarball to `~/.dfl/install`, replacing only `install/` and leaving
+   * sibling data (`track/`) untouched.
+   *
+   * Crash-safe, unlike install.sh's rm-then-extract: a failed/partial extract
+   * must never leave the user without a working `dfl` (update runs OVER a live
+   * install). So we extract into a staging dir on the SAME filesystem, verify
+   * the bundle is intact, then atomically rename the new tree into place —
+   * restoring the previous install if the swap itself fails. The archive's
+   * single top-level dir is `install`, so extracting into staging yields
+   * `staging/install`.
    */
   private async extractInstall(archivePath: string): Promise<void> {
-    if (await this.fileSystem.exists(this.installDir)) {
-      await this.fileSystem.rmdir(this.installDir, { recursive: true });
-    }
     await this.fileSystem.mkdir(this.dflDir, { recursive: true });
+    // Staging + backup live under dflDir so every rename is intra-filesystem
+    // (cross-device renames throw EXDEV). pid-suffixed to avoid clobbering a
+    // concurrent run.
+    const staging = path.join(this.dflDir, `.install-staging-${process.pid}`);
+    const backup = path.join(this.dflDir, `.install-backup-${process.pid}`);
+    rmSync(staging, { recursive: true, force: true });
+    rmSync(backup, { recursive: true, force: true });
+    await this.fileSystem.mkdir(staging, { recursive: true });
+
     try {
-      execFileSync("tar", ["-xzf", archivePath, "-C", this.dflDir], { stdio: "ignore" });
-    } catch (error) {
-      throw new ReleaseInstallError(`Failed to extract ${path.basename(archivePath)}`, error);
+      try {
+        execFileSync("tar", ["-xzf", archivePath, "-C", staging], { stdio: "ignore" });
+      } catch (error) {
+        throw new ReleaseInstallError(`Failed to extract ${path.basename(archivePath)}`, error);
+      }
+      const stagedInstall = path.join(staging, "install");
+      if (!(await this.fileSystem.exists(path.join(stagedInstall, "cli.js")))) {
+        throw new ReleaseInstallError(
+          "Extracted artifact is missing install/cli.js — aborting (install left unchanged)."
+        );
+      }
+
+      // Atomic swap: move the old install aside, move the new one in, drop the
+      // backup. If the second rename fails, restore the backup so a working
+      // install always remains.
+      const hadInstall = await this.fileSystem.exists(this.installDir);
+      if (hadInstall) {
+        renameSync(this.installDir, backup);
+      }
+      try {
+        renameSync(stagedInstall, this.installDir);
+      } catch (error) {
+        if (hadInstall) {
+          renameSync(backup, this.installDir);
+        }
+        throw new ReleaseInstallError("Failed to swap in the new install directory", error);
+      }
+    } finally {
+      rmSync(staging, { recursive: true, force: true });
+      rmSync(backup, { recursive: true, force: true });
     }
   }
 

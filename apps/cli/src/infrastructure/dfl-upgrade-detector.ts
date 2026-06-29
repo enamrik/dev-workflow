@@ -15,10 +15,10 @@
  * actual install event, never on every poll tick.
  */
 
-import { execFileSync } from "node:child_process";
 import { statSync } from "node:fs";
 import * as path from "node:path";
 import { resolveGlobalDflHome } from "@dev-workflow/git/track-directory-resolver.js";
+import { readInstalledBundleVersion } from "./installed-version.js";
 
 /** A detected transition from the running version to a different installed one. */
 export interface UpgradeTransition {
@@ -91,16 +91,7 @@ export class DflUpgradeDetector {
 
   /** Read the installed bundle's version, or null if it can't be determined. */
   private readInstalledVersion(): string | null {
-    try {
-      const out = execFileSync(process.execPath, [this.installedCliPath, "--version"], {
-        encoding: "utf-8",
-        stdio: ["ignore", "pipe", "ignore"],
-      });
-      const version = out.trim();
-      return version.length > 0 ? version : null;
-    } catch {
-      return null;
-    }
+    return readInstalledBundleVersion(this.installedCliPath);
   }
 
   /** Current mtime (ms) of the installed bundle, or null if it doesn't exist. */

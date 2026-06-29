@@ -43,15 +43,17 @@ export class UpdateCommand {
       const targetLabel = options.version ? `version ${options.version}` : "the latest release";
       console.log(`🔄 Updating dev-workflow to ${targetLabel}...`);
       const result = await this.releaseInstaller.installRelease({ version: options.version });
-      if (!result.changed) {
-        // Already on the target version — full no-op (phase 2 already ran when
-        // this version was first installed). Nothing to download or reconcile.
-        console.log(`✓ Already on version ${result.version}. Nothing to do.`);
-        return;
+      if (result.changed) {
+        console.log(`✓ Installed dev-workflow ${result.version}`);
+      } else {
+        // The artifact install is the no-op here (already on target — nothing to
+        // download). Phase 2 still runs: reconciliation is idempotent and heals
+        // global skills / per-project MCP registration / migrations that can be
+        // missing even when the bundle version already matches.
+        console.log(`✓ Already on version ${result.version} — no download needed. Reconciling...`);
       }
-      console.log(`✓ Installed dev-workflow ${result.version}`);
 
-      // ----- Phase 2: reconcile against the freshly-applied bundle -----
+      // ----- Phase 2: reconcile against the applied bundle -----
       // Migrate track directory from old naming to new naming (must be first)
       const dirMigration = await this.updateService.migrateTrackDirectory();
       if (dirMigration.migrated) {
