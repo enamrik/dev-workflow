@@ -3,8 +3,9 @@
  *
  * Verifies phase 1 (ReleaseInstaller) runs before phase 2 (UpdateService
  * reconciliation), that --version is forwarded, that an already-on-target
- * result short-circuits phase 2 (full no-op), and that --list neither installs
- * nor reconciles.
+ * result short-circuits phase 2 (full no-op), that --list neither installs
+ * nor reconciles, and that --from routes phase 1 to the SourceBuildInstaller
+ * while still sharing phase 2.
  */
 
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
@@ -12,6 +13,7 @@ import { UpdateCommand } from "../update-command.js";
 import type { UpdateService } from "../../application/update.service.js";
 import type { UIService } from "../../application/ui.service.js";
 import type { ReleaseInstaller, InstallResult } from "../../application/release-installer.js";
+import type { SourceBuildInstaller } from "../../application/source-build-installer.js";
 
 beforeAll(() => {
   vi.spyOn(process, "exit").mockImplementation((code) => {
@@ -54,19 +56,30 @@ function createMockReleaseInstaller(result: InstallResult): ReleaseInstaller {
   } as unknown as ReleaseInstaller;
 }
 
+function createMockSourceBuildInstaller(result: InstallResult): SourceBuildInstaller {
+  return {
+    installFromSource: vi.fn().mockResolvedValue(result),
+  } as unknown as SourceBuildInstaller;
+}
+
 describe("UpdateCommand", () => {
   let updateService: UpdateService;
   let uiService: UIService;
+  let sourceBuildInstaller: SourceBuildInstaller;
 
   beforeEach(() => {
     vi.clearAllMocks();
     updateService = createMockUpdateService();
     uiService = createMockUiService();
+    sourceBuildInstaller = createMockSourceBuildInstaller({
+      version: "0.0.0-dev+gabc123",
+      changed: true,
+    });
   });
 
   it("installs the latest release, then reconciles (phase 1 before phase 2)", async () => {
     const installer = createMockReleaseInstaller({ version: "1.2.3", changed: true });
-    const command = new UpdateCommand(updateService, uiService, installer);
+    const command = new UpdateCommand(updateService, uiService, installer, sourceBuildInstaller);
 
     await command.execute({});
 
@@ -85,7 +98,7 @@ describe("UpdateCommand", () => {
 
   it("forwards --version to the installer", async () => {
     const installer = createMockReleaseInstaller({ version: "1.0.0", changed: true });
-    const command = new UpdateCommand(updateService, uiService, installer);
+    const command = new UpdateCommand(updateService, uiService, installer, sourceBuildInstaller);
 
     await command.execute({ version: "1.0.0" });
 
@@ -95,7 +108,7 @@ describe("UpdateCommand", () => {
 
   it("skips the download but still reconciles when already on the target version", async () => {
     const installer = createMockReleaseInstaller({ version: "1.2.3", changed: false });
-    const command = new UpdateCommand(updateService, uiService, installer);
+    const command = new UpdateCommand(updateService, uiService, installer, sourceBuildInstaller);
 
     await command.execute({});
 
@@ -109,12 +122,45 @@ describe("UpdateCommand", () => {
 
   it("--list prints releases without installing or reconciling", async () => {
     const installer = createMockReleaseInstaller({ version: "1.2.3", changed: true });
-    const command = new UpdateCommand(updateService, uiService, installer);
+    const command = new UpdateCommand(updateService, uiService, installer, sourceBuildInstaller);
 
     await command.execute({ list: true });
 
     expect(installer.listReleases).toHaveBeenCalled();
     expect(installer.installRelease).not.toHaveBeenCalled();
     expect(updateService.updateSkills).not.toHaveBeenCalled();
+  });
+
+  it("--from routes phase 1 to the source build, then shares phase 2 reconciliation", async () => {
+    const installer = createMockReleaseInstaller({ version: "1.2.3", changed: true });
+    const command = new UpdateCommand(updateService, uiService, installer, sourceBuildInstaller);
+
+    await command.execute({ from: "/some/worktree" });
+
+    // Phase 1 routes to the source build, NOT the release installer.
+    expect(sourceBuildInstaller.installFromSource).toHaveBeenCalledWith({ from: "/some/worktree" });
+    expect(installer.installRelease).not.toHaveBeenCalled();
+
+    // Phase 2 (shared reconciliation) still runs after the source build.
+    expect(updateService.updateSkills).toHaveBeenCalled();
+    expect(updateService.runMigrations).toHaveBeenCalled();
+    expect(updateService.updateMCPServer).toHaveBeenCalled();
+    expect(uiService.restart).toHaveBeenCalled();
+
+    // Phase 1 must run before phase 2.
+    const installOrder = (sourceBuildInstaller.installFromSource as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0]!;
+    const reconcileOrder = (updateService.updateSkills as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0]!;
+    expect(installOrder).toBeLessThan(reconcileOrder);
+  });
+
+  it("--from . defaults the source to the current directory", async () => {
+    const installer = createMockReleaseInstaller({ version: "1.2.3", changed: true });
+    const command = new UpdateCommand(updateService, uiService, installer, sourceBuildInstaller);
+
+    await command.execute({ from: "." });
+
+    expect(sourceBuildInstaller.installFromSource).toHaveBeenCalledWith({ from: "." });
   });
 });

@@ -46,11 +46,15 @@ program
 program
   .command("update")
   .description(
-    "Install the latest released dfl artifact (or --version <v>) from GitHub Releases, then reconcile skills/templates/MCP/migrations"
+    "Install the latest released dfl artifact (or --version <v>, or --from <path> for a local build), then reconcile skills/templates/MCP/migrations"
   )
   .option("--version <version>", "Install a specific release version instead of the latest")
   .option("--list", "List recent available releases and exit")
-  .action(async (options: { version?: string; list?: boolean }) => {
+  .option(
+    "--from <path>",
+    "Build + install from a local dev-workflow source tree/worktree (dogfood), then reconcile"
+  )
+  .action(async (options: { version?: string; list?: boolean; from?: string }) => {
     await runUpdate(options);
   });
 
