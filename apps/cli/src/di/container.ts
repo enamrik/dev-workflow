@@ -37,6 +37,7 @@ import { NodeUserPrompt, type UserPrompt } from "../infrastructure/user-prompt.j
 import { UninstallService } from "../application/uninstall.service.js";
 import { InstallService } from "../application/install.service.js";
 import { UpdateService } from "../application/update.service.js";
+import { ReleaseInstaller } from "../application/release-installer.js";
 import { ClaudeConfigService } from "../application/claude-config.service.js";
 import { UIService } from "../application/ui.service.js";
 
@@ -80,6 +81,7 @@ export interface CliCradle {
   uninstallService: UninstallService;
   installService: InstallService;
   updateService: UpdateService;
+  releaseInstaller: ReleaseInstaller;
   claudeConfigService: ClaudeConfigService;
   uiService: UIService;
   userPrompt: UserPrompt;
@@ -203,6 +205,10 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
       }
     ).scoped(),
 
+    releaseInstaller: asFunction(({ fileSystem }: { fileSystem: FileSystem }) => {
+      return new ReleaseInstaller(fileSystem);
+    }).scoped(),
+
     claudeConfigService: asFunction(() => new ClaudeConfigService()).scoped(),
 
     uiService: asFunction(
@@ -241,8 +247,16 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
     ).scoped(),
 
     updateCommand: asFunction(
-      ({ updateService, uiService }: { updateService: UpdateService; uiService: UIService }) => {
-        return new UpdateCommand(updateService, uiService);
+      ({
+        updateService,
+        uiService,
+        releaseInstaller,
+      }: {
+        updateService: UpdateService;
+        uiService: UIService;
+        releaseInstaller: ReleaseInstaller;
+      }) => {
+        return new UpdateCommand(updateService, uiService, releaseInstaller);
       }
     ).scoped(),
 

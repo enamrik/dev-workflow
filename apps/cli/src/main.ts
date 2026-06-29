@@ -45,8 +45,14 @@ program
 
 program
   .command("update")
-  .description("Update dev-workflow to latest version (skills, agents, migrations)")
-  .action(runUpdate);
+  .description(
+    "Install the latest released dfl artifact (or --version <v>) from GitHub Releases, then reconcile skills/templates/MCP/migrations"
+  )
+  .option("--version <version>", "Install a specific release version instead of the latest")
+  .option("--list", "List recent available releases and exit")
+  .action(async (options: { version?: string; list?: boolean }) => {
+    await runUpdate(options);
+  });
 
 program
   .command("uninit")

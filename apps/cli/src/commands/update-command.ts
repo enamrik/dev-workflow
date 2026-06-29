@@ -1,26 +1,57 @@
 /**
- * UpdateCommand - Update dev-workflow to latest version
+ * UpdateCommand - Two-phase `dfl update`.
  *
- * Updates skills, templates, migrations, and MCP server registration.
+ * PHASE 1 (ReleaseInstaller): fetch + apply the released artifact — install the
+ *   latest GitHub release (or --version <v>) into ~/.dfl/install and rewrite the
+ *   launcher. No npm. No-op when already on the target version.
+ * PHASE 2 (UpdateService): reconcile against the freshly-applied bundle — skills,
+ *   templates, migrations, MCP registration. Runs only AFTER phase 1.
+ *
  * Receives all dependencies via constructor injection.
  */
 
 import { UpdateService } from "../application/update.service.js";
 import { UIService } from "../application/ui.service.js";
+import { ReleaseInstaller } from "../application/release-installer.js";
+
+/** Options accepted by `dfl update`. */
+export interface UpdateExecuteOptions {
+  /** Install a specific release version instead of the latest. */
+  version?: string;
+  /** List recent releases and exit (read-only; no install/reconcile). */
+  list?: boolean;
+}
 
 export class UpdateCommand {
   constructor(
     private readonly updateService: UpdateService,
-    private readonly uiService: UIService
+    private readonly uiService: UIService,
+    private readonly releaseInstaller: ReleaseInstaller
   ) {}
 
   /**
    * Update dev-workflow installation.
    */
-  async execute(): Promise<void> {
+  async execute(options: UpdateExecuteOptions = {}): Promise<void> {
     try {
-      console.log("🔄 Updating dev-workflow...");
+      if (options.list) {
+        await this.listReleases();
+        return;
+      }
 
+      // ----- Phase 1: fetch + apply the released artifact -----
+      const targetLabel = options.version ? `version ${options.version}` : "the latest release";
+      console.log(`🔄 Updating dev-workflow to ${targetLabel}...`);
+      const result = await this.releaseInstaller.installRelease({ version: options.version });
+      if (!result.changed) {
+        // Already on the target version — full no-op (phase 2 already ran when
+        // this version was first installed). Nothing to download or reconcile.
+        console.log(`✓ Already on version ${result.version}. Nothing to do.`);
+        return;
+      }
+      console.log(`✓ Installed dev-workflow ${result.version}`);
+
+      // ----- Phase 2: reconcile against the freshly-applied bundle -----
       // Migrate track directory from old naming to new naming (must be first)
       const dirMigration = await this.updateService.migrateTrackDirectory();
       if (dirMigration.migrated) {
@@ -72,6 +103,20 @@ export class UpdateCommand {
     } catch (error) {
       console.error("Error during update:", error);
       process.exit(1);
+    }
+  }
+
+  /** Print recent releases (newest first), the read-only `--list` path. */
+  private async listReleases(): Promise<void> {
+    const releases = await this.releaseInstaller.listReleases();
+    if (releases.length === 0) {
+      console.log("No releases found.");
+      return;
+    }
+    console.log("Recent dev-workflow releases (newest first):");
+    for (const release of releases) {
+      const date = release.publishedAt ? release.publishedAt.slice(0, 10) : "unknown date";
+      console.log(`  ${release.version}  (${date})`);
     }
   }
 }

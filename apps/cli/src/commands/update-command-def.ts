@@ -9,18 +9,23 @@ import { Effect } from "@dev-workflow/effect";
 import { UpdateCommandTag } from "../di/cli-tags.js";
 
 /**
- * Options for the update command (currently no options)
+ * Options for the update command.
  */
-export type UpdateOptions = Record<string, never>;
+export interface UpdateOptions {
+  /** Install a specific release version instead of the latest. */
+  version?: string;
+  /** List recent releases and exit. */
+  list?: boolean;
+}
 
 /**
  * Handler - thin wrapper that yields the command from Effect context.
  */
 export const handleUpdate = createCliHandler({
-  handler: (_options: UpdateOptions) =>
+  handler: (options: UpdateOptions) =>
     Effect.gen(function* () {
       const updateCommand = yield* UpdateCommandTag;
-      yield* Effect.promise(() => updateCommand.execute());
+      yield* Effect.promise(() => updateCommand.execute(options));
     }),
   middleware: withConfigMiddleware,
 });
