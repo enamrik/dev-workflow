@@ -26,7 +26,6 @@ import {
   resolveProjectInfoByTaskId,
   comparePriorityDesc,
   type DbSource,
-  type DbClient,
   type IssuePriority,
   type ProjectInfo,
   type Task,
@@ -169,6 +168,8 @@ export class ClaudeWorkerService {
   private resolveShutdown: (() => void) | null = null;
   /** True while a poll tick's async work is still in flight — prevents the timer from overlapping ticks (e.g. claiming twice, or re-execing while a claim is mid-flight). */
   private pollTickInFlight = false;
+  /** Plan IDs already warned about as unresolvable, so the "defaulting to LOW" fallback is logged at most once per plan instead of on every ~2s poll tick. */
+  private readonly warnedUnresolvablePlanIds = new Set<string>();
 
   private readonly config: Required<WorkerConfig>;
 
@@ -619,7 +620,7 @@ export class ClaudeWorkerService {
         // Find READY tasks, ordered so higher-priority work is claimed first:
         // by inherited issue priority (CRITICAL→HIGH→MEDIUM→LOW) then oldest-first.
         const readyTasks = await Effect.runPromise(client.tasks.findMany({ status: "READY" }));
-        const orderedTasks = await this.orderReadyTasksByPriority(client, readyTasks);
+        const orderedTasks = this.orderReadyTasksByPriority(source, readyTasks);
 
         for (const task of orderedTasks) {
           // Skip if already in dispatch queue
@@ -684,31 +685,39 @@ export class ClaudeWorkerService {
    * and cached so tasks sharing a plan don't each re-fetch it. Tasks whose
    * issue can't be resolved fall back to LOW so they sort last but are still
    * considered.
+   *
+   * Resolution goes through {@link DbSource.findIssuePriorityByPlanId} — a
+   * global plan→issue join — rather than the project-scoped `DbClient.issues`.
+   * READY tasks are read from the shared tracking DB across every project, so a
+   * scoped issue lookup returns null for any task whose issue lives in a
+   * different project, which is what produced the spurious per-tick
+   * "defaulting to LOW" warnings.
    */
-  private async orderReadyTasksByPriority(client: DbClient, tasks: Task[]): Promise<Task[]> {
+  private orderReadyTasksByPriority(source: DbSource, tasks: Task[]): Task[] {
     const priorityByPlanId = new Map<string, IssuePriority>();
-    const resolvePriority = async (planId: string): Promise<IssuePriority> => {
+    const resolvePriority = (planId: string): IssuePriority => {
       const cached = priorityByPlanId.get(planId);
       if (cached) return cached;
 
-      const plan = await Effect.runPromise(client.plans.findById(planId));
-      const issue = plan ? await Effect.runPromise(client.issues.findById(plan.issueId)) : null;
-      if (!issue) {
+      const resolved = source.findIssuePriorityByPlanId(planId);
+      if (resolved === null && !this.warnedUnresolvablePlanIds.has(planId)) {
         // A READY task whose plan/issue can't be resolved is an integrity
-        // violation; surface it rather than silently deprioritizing to LOW.
+        // violation; surface it ONCE per plan rather than on every ~2s poll
+        // tick (and rather than silently deprioritizing to LOW unnoticed).
+        this.warnedUnresolvablePlanIds.add(planId);
         console.error(
           term.dim(`Could not resolve issue priority for plan ${planId}; defaulting to LOW`)
         );
       }
-      const priority: IssuePriority = issue?.priority ?? "LOW";
+      const priority: IssuePriority = resolved ?? "LOW";
       priorityByPlanId.set(planId, priority);
       return priority;
     };
 
-    const ranked: Array<{ task: Task; priority: IssuePriority }> = [];
-    for (const task of tasks) {
-      ranked.push({ task, priority: await resolvePriority(task.planId) });
-    }
+    const ranked: Array<{ task: Task; priority: IssuePriority }> = tasks.map((task) => ({
+      task,
+      priority: resolvePriority(task.planId),
+    }));
 
     return ranked
       .sort((a, b) => {

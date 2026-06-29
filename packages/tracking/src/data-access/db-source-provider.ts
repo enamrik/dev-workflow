@@ -40,6 +40,7 @@ import { openSqliteDatabase } from "@dev-workflow/database/open-database.js";
 
 import type { DbSource, TaskAssociation } from "./db-source.js";
 import type { DbClient } from "./db-client.js";
+import type { IssuePriority } from "../domain/issues/issue.js";
 import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
 
 import { DrizzleDbClient } from "./drizzle-db-client.js";
@@ -195,6 +196,17 @@ export class DbSourceProvider extends Service<DbSourceProvider>()("sourceProvide
           .get();
 
         return result ?? null;
+      },
+
+      findIssuePriorityByPlanId: (planId: string): IssuePriority | null => {
+        const result = drizzleDb
+          .select({ priority: issuesTable.priority })
+          .from(plansTable)
+          .innerJoin(issuesTable, sql`${issuesTable.id} = ${plansTable.issueId}`)
+          .where(sql`${plansTable.id} = ${planId}`)
+          .get();
+
+        return (result?.priority as IssuePriority) ?? null;
       },
 
       createClient: (projectId: string): DbClient => {
