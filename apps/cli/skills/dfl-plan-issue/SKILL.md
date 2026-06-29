@@ -1,7 +1,7 @@
 ---
 name: dfl-plan-issue
 description: Generate implementation plans with properly-scoped tasks. Auto-invoked when user wants to "plan issue", "create implementation plan", "break down into tasks", "plan #N", etc. (project)
-allowed-tools: mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:generate_plan, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:list_types, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:get_template
+allowed-tools: mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:generate_plan, mcp:dev-workflow-tracker:get_plan, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:list_types, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:get_template, mcp:dev-workflow-tracker:current_project, mcp:dev-workflow-tracker:select_project, mcp:dev-workflow-tracker:list_projects
 ---
 
 # Plan Issue Skill
@@ -13,6 +13,16 @@ allowed-tools: mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:gene
 This indicates the MCP server is connected to the wrong database. **Do NOT work around it** with manual database updates, `gh` CLI, or any other method - this creates corrupt, inconsistent state.
 
 **Action:** Tell the user: "The MCP server appears to be connected to the wrong database. Please restart your Claude session to reconnect, then we can resume."
+
+---
+
+## Active Project Guard (CRITICAL)
+
+**Before generating a plan or moving an issue to backlog, confirm you're targeting the right project.** The MCP server can be pointed at a project that differs from the folder you're in.
+
+1. Call `current_project`. If `mismatch === true`, the active project differs from your current folder.
+2. When mismatched, CONFIRM with the user first: "You're in <cwd.name> but the active project is <active.name> — plan this in <active.name>?"
+3. To switch projects, call `select_project({ slug })` (use `list_projects` to find the slug).
 
 ---
 

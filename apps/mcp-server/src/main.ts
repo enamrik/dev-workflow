@@ -11,12 +11,13 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
-// Import DI container and types
-import { createMcpContainer, type McpContainer } from "./di/container.js";
+// Import project resolution + server-level control state
 import { resolveConfigFromGit, ProjectConfigError } from "@dev-workflow/tracking";
+import { ServerControl } from "./server-control.js";
 
 // Import tool definitions and registry
 import {
+  controlToolDefinitions,
   issueToolDefinitions,
   planToolDefinitions,
   taskToolDefinitions,
@@ -29,11 +30,6 @@ import {
   dispatchToolDefinitions,
 } from "./tools/tool-definitions.js";
 import { errorResponse } from "./tools/types.js";
-import {
-  createToolsRegistry,
-  createDegradedToolsRegistry,
-  type ToolsRegistry,
-} from "./tools/tools-registry.js";
 
 // =============================================================================
 // Project Resolution
@@ -65,14 +61,11 @@ async function resolveProjectSlug(): Promise<string> {
   return config.slug;
 }
 
-// Awilix container and tools registry (initialized in main).
-// `tools` starts as a degraded registry so a tool call that arrives before main()
-// finishes resolving the project (or when there is no project) gets a clean error
-// rather than crashing on an undefined handler.
-let container: McpContainer;
-let tools: ToolsRegistry = createDegradedToolsRegistry(
-  "dev-workflow MCP server is still starting up; retry in a moment."
-);
+// Server-level control state: owns the active project, the cwd-resolved project
+// (the mismatch signal), the per-slug container/registry cache, and the live
+// tools registry the dispatcher serves. Starts degraded so a tool call that
+// arrives before main() resolves the project gets a clean error, not a crash.
+const serverControl = new ServerControl();
 
 // Create MCP server
 const server = new Server(
@@ -90,6 +83,7 @@ const server = new Server(
 // List available tools
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
+    ...controlToolDefinitions,
     ...issueToolDefinitions,
     ...planToolDefinitions,
     ...taskToolDefinitions,
@@ -108,7 +102,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> => {
   const { name, arguments: args } = request.params;
 
-  const tool = tools[name];
+  // Server-level control tools run FIRST so they work even when the per-project
+  // registry is degraded — they are the escape hatch for switching/inspecting
+  // the active project from any directory.
+  if (serverControl.isControlTool(name)) {
+    return serverControl.handleControlTool(name, args ?? {});
+  }
+
+  // Hot dispatch path (unchanged): look up the bound handler for the active project.
+  const tool = serverControl.tools[name];
   if (!tool) {
     return errorResponse(`Unknown tool: ${name}`);
   }
@@ -147,36 +149,38 @@ async function main() {
   await server.connect(transport);
   console.error("dev-workflow MCP server running on stdio");
 
-  // Resolve which project this server is serving (cwd-based unless pinned via env).
+  // Compute the cwd-resolved project ONCE — the "where you physically are" signal
+  // that powers the cross-project guard. Independent of the active project below
+  // (which may be pinned via DFL_PROJECT_SLUG), so a pinned server still reports an
+  // honest cwd-vs-active mismatch.
+  await serverControl.resolveCwdSlug(process.cwd());
+
+  // Resolve which project this server serves at startup (cwd-based unless pinned via env).
   let slug: string;
   try {
     slug = await resolveProjectSlug();
   } catch (error) {
     const reason = degradeReason(error);
     console.error(reason);
-    tools = createDegradedToolsRegistry(reason);
+    serverControl.degrade(reason);
     return; // stay connected + degraded
   }
 
   console.error(`Loading config from slug: ${slug}`);
 
   try {
-    // Create Awilix container - this wires up all dependencies
-    container = await createMcpContainer(slug);
-    // Create tools registry - binds all handlers to container
-    tools = createToolsRegistry(container);
+    // Build (or reuse) the project's container + registry and make it active.
+    await serverControl.setActiveProject(slug);
   } catch (error) {
     const reason = `Failed to initialize for project "${slug}": ${
       error instanceof Error ? error.message : String(error)
     }. Run 'dfl init' to (re)create its config.`;
     console.error(reason);
-    tools = createDegradedToolsRegistry(reason);
+    serverControl.degrade(reason);
     return; // stay connected + degraded
   }
 
-  const cradle = container.cradle;
-  console.error(`Project: ${cradle.project.name} (${cradle.project.id.slice(0, 8)}...)`);
-  console.error(`Database: ${cradle.config.databasePath}`);
+  console.error(`Active project: ${slug}`);
 }
 
 main().catch((error) => {
@@ -184,13 +188,13 @@ main().catch((error) => {
   process.exit(1);
 });
 
-// Cleanup on exit
+// Cleanup on exit — close all DB connections opened across selected projects.
 process.on("SIGINT", () => {
-  container?.cradle.dbSource.close();
+  serverControl.close();
   process.exit(0);
 });
 
 process.on("SIGTERM", () => {
-  container?.cradle.dbSource.close();
+  serverControl.close();
   process.exit(0);
 });
