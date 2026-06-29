@@ -1,7 +1,7 @@
 ---
 name: dfl-manage-issue
 description: "⚠️ For NEW work requests, use 'dfl-work-request' first - it routes here automatically. This skill handles the mechanics: requirements separation, template selection, priority/milestone assignment. Only invoke directly for EDITING existing issues: 'update issue #N', 'add acceptance criteria to #5', 'change priority of #3'. (project)"
-allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:close_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:import_github_issue, mcp:dev-workflow-tracker:merge_issues
+allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:get_issue, mcp:dev-workflow-tracker:update_issue, mcp:dev-workflow-tracker:close_issue, mcp:dev-workflow-tracker:list_templates, mcp:dev-workflow-tracker:list_milestones, mcp:dev-workflow-tracker:get_milestone, mcp:dev-workflow-tracker:assign_issue_to_milestone, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:import_github_issue, mcp:dev-workflow-tracker:merge_issues, mcp:dev-workflow-tracker:current_project, mcp:dev-workflow-tracker:select_project, mcp:dev-workflow-tracker:list_projects
 ---
 
 # Manage Issue Skill
@@ -13,6 +13,16 @@ allowed-tools: mcp:dev-workflow-tracker:create_issue, mcp:dev-workflow-tracker:g
 This indicates the MCP server is connected to the wrong database. **Do NOT work around it** with manual database updates, `gh` CLI, or any other method - this creates corrupt, inconsistent state.
 
 **Action:** Tell the user: "The MCP server appears to be connected to the wrong database. Please restart your Claude session to reconnect, then we can resume."
+
+---
+
+## Active Project Guard (CRITICAL)
+
+**Before creating, updating, or merging any issue (or assigning it to a milestone), confirm you're targeting the right project.** The MCP server can be pointed at a project that differs from the folder you're in.
+
+1. Call `current_project`. If `mismatch === true`, the active project differs from your current folder.
+2. When mismatched, CONFIRM with the user before the mutation: "You're in <cwd.name> but the active project is <active.name> — create/update this in <active.name>?"
+3. To work on a different project, call `select_project({ slug })` first (use `list_projects` to find the slug).
 
 ---
 

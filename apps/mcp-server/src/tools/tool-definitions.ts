@@ -5,6 +5,7 @@
  * generated from the Zod schemas colocated in each tool file.
  */
 
+import { z } from "zod";
 import { createToolDefinition } from "./schema-utils.js";
 
 // Import schemas from handler files
@@ -87,6 +88,48 @@ import {
   EndWorkerSessionSchema,
   TailWorkerLogSchema,
 } from "./dispatch-tools.js";
+
+// =============================================================================
+// Server Control Tool Definitions
+// =============================================================================
+//
+// These are SERVER-LEVEL tools (handled before the per-project registry, so they
+// work even when no project is loaded / the registry is degraded). They switch
+// which project the MCP serves and expose the cwd-vs-active mismatch the skills
+// guard against. Defined here as zod schemas → tool definitions, matching every
+// other tool's shape.
+
+const SelectProjectSchema = z.object({
+  slug: z.string().describe("Project slug to switch the MCP server to (see list_projects)."),
+});
+
+const CurrentProjectSchema = z.object({});
+
+const ListProjectsSchema = z.object({});
+
+export const controlToolDefinitions = [
+  createToolDefinition(
+    "select_project",
+    "Switch which dev-workflow project this MCP server operates on, at runtime, from ANY " +
+      "directory — overrides cwd, no restart needed. Returns the now-active project, your " +
+      "current folder's project, and whether they MISMATCH (with guard language when they do). " +
+      "Use this to act on a project other than the one your folder belongs to.",
+    SelectProjectSchema
+  ),
+  createToolDefinition(
+    "current_project",
+    "Report the active project (what issue/task/milestone tools act on), the project your " +
+      "current folder resolves to, and whether they mismatch. Check this before mutating an " +
+      "entity to confirm you're operating on the intended project.",
+    CurrentProjectSchema
+  ),
+  createToolDefinition(
+    "list_projects",
+    "List all registered dev-workflow projects (slug, name, gitRoot), marking which is active. " +
+      "Use to discover the slug to pass to select_project.",
+    ListProjectsSchema
+  ),
+];
 
 // =============================================================================
 // Issue Tool Definitions

@@ -1,7 +1,7 @@
 ---
 name: dfl-work-task
 description: Start working on a task - marks it READY so a running worker auto-claims it, or executes inline on request. Auto-invoked when user wants to "start task", "work on task", "begin task", "pick up task", etc. (project)
-allowed-tools: mcp:dev-workflow-tracker:move_issue_to_ready, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_task
+allowed-tools: mcp:dev-workflow-tracker:move_issue_to_ready, mcp:dev-workflow-tracker:move_issue_to_backlog, mcp:dev-workflow-tracker:list_available_tasks, mcp:dev-workflow-tracker:get_task, mcp:dev-workflow-tracker:current_project, mcp:dev-workflow-tracker:select_project, mcp:dev-workflow-tracker:list_projects
 ---
 
 # Work Task Skill
@@ -16,6 +16,14 @@ once its dependencies are satisfied — you do not enqueue or dispatch anything 
 2. If the task is still PLANNED → move it to backlog first
 3. Mark the task READY (`move_issue_to_ready`) → a running worker auto-claims it
 4. Report and STOP
+
+## Active Project Guard (CRITICAL)
+
+**Before dispatching or starting a task, confirm you're targeting the right project.** The MCP server can be pointed at a project that differs from the folder you're in.
+
+1. Call `current_project`. If `mismatch === true`, the active project differs from your current folder.
+2. When mismatched, CONFIRM with the user first: "You're in <cwd.name> but the active project is <active.name> — start this task in <active.name>?"
+3. To switch projects, call `select_project({ slug })` (use `list_projects` to find the slug).
 
 ## When to Invoke
 
