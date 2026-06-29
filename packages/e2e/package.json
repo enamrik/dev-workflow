@@ -13,13 +13,13 @@
   },
   "devDependencies": {
     "@dev-workflow/database": "workspace:*",
-    "@dev-workflow/tracking": "workspace:*",
     "@dev-workflow/git": "workspace:*",
     "@dev-workflow/mcp-server": "workspace:*",
+    "@dev-workflow/tracking": "workspace:*",
     "@playwright/test": "^1.40.0",
     "@types/better-sqlite3": "^7.6.8",
     "@types/node": "^20.10.6",
-    "better-sqlite3": "^12.5.0",
+    "better-sqlite3": "^12.11.1",
     "typescript": "^5.3.3",
     "vitest": "^2.0.0"
   }

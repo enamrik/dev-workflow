@@ -57,9 +57,10 @@ function requireExists(p, hint) {
 }
 
 // Node versions whose ABI we ship a better-sqlite3 binary for. The installer requires
-// Node >=20; this covers 20–25. Each maps to a NODE_MODULE_VERSION via node-abi, and the
+// Node >=20; this covers 20–26. Each maps to a NODE_MODULE_VERSION via node-abi, and the
 // binary is stored under build/Release-v<ABI>/ for openSqliteDatabase to select at runtime.
-const SUPPORTED_NODE_VERSIONS = ["20.0.0", "22.0.0", "23.0.0", "24.0.0", "25.0.0"];
+// (better-sqlite3 >=12.11 publishes the Node 26 / ABI v147 prebuild.)
+const SUPPORTED_NODE_VERSIONS = ["20.0.0", "22.0.0", "23.0.0", "24.0.0", "25.0.0", "26.0.0"];
 
 /**
  * Produce a better-sqlite3 package dir carrying prebuilt binaries for the target
