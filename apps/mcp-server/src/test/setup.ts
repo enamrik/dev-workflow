@@ -16,10 +16,15 @@ import {
   DrizzleProjectRepository,
   DrizzleTypeRepository,
   DrizzleGlobalSettingsRepository,
+  DrizzleMilestoneRepository,
+  mapRowToIssue,
   type DbClient,
   type DbSource,
   type IssuePriority,
+  type MilestoneIssue,
+  type MilestoneIssueGateway,
 } from "@dev-workflow/tracking";
+import { Effect } from "@dev-workflow/effect";
 import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
 
 /** Default project ID for tests */
@@ -97,6 +102,59 @@ export function createTestDatabase(projectId: string = TEST_PROJECT_ID): TestDat
   const projects = new DrizzleProjectRepository(drizzleDb);
   const types = new DrizzleTypeRepository(drizzleDb);
   const globalSettings = new DrizzleGlobalSettingsRepository(drizzleDb);
+  const milestones = new DrizzleMilestoneRepository(drizzleDb);
+
+  // Cross-project issue port for milestones (mirrors DbSourceProvider)
+  const milestoneIssues: MilestoneIssueGateway = {
+    findIssuesByMilestoneId: (milestoneId: string) =>
+      Effect.promise(async () => {
+        const rows = drizzleDb
+          .select({
+            issue: schema.issues,
+            projectSlug: schema.projects.slug,
+            projectName: schema.projects.name,
+          })
+          .from(schema.issues)
+          .innerJoin(
+            schema.projects,
+            schema.sql`${schema.projects.id} = ${schema.issues.projectId}`
+          )
+          .where(
+            schema.sql`${schema.issues.milestoneId} = ${milestoneId} AND ${schema.issues.isDeleted} = 0`
+          )
+          .all();
+        return rows.map(
+          (row): MilestoneIssue => ({
+            issue: mapRowToIssue(row.issue),
+            projectId: row.issue.projectId,
+            projectSlug: row.projectSlug,
+            projectName: row.projectName,
+          })
+        );
+      }),
+    clearMilestoneFromIssues: (milestoneId: string) =>
+      Effect.promise(async () => {
+        const affected = drizzleDb
+          .select({ id: schema.issues.id })
+          .from(schema.issues)
+          .where(schema.sql`${schema.issues.milestoneId} = ${milestoneId}`)
+          .all();
+        drizzleDb
+          .update(schema.issues)
+          .set({ milestoneId: null })
+          .where(schema.sql`${schema.issues.milestoneId} = ${milestoneId}`)
+          .run();
+        return affected.length;
+      }),
+    setIssueMilestone: (issueId: string, milestoneId: string | null) =>
+      Effect.promise(async () => {
+        drizzleDb
+          .update(schema.issues)
+          .set({ milestoneId })
+          .where(schema.sql`${schema.issues.id} = ${issueId}`)
+          .run();
+      }),
+  };
 
   // Create DbSource
   const source: DbSource = {
@@ -106,6 +164,8 @@ export function createTestDatabase(projectId: string = TEST_PROJECT_ID): TestDat
     projects,
     types,
     globalSettings,
+    milestones,
+    milestoneIssues,
     getDb: () => drizzleDb,
     findProjectSlugByTaskId: (taskId: string): string | null => {
       const result = drizzleDb

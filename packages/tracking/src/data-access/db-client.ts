@@ -3,7 +3,7 @@
  *
  * Provides access to project-scoped repositories. Created via DbSource.createClient(projectId).
  *
- * For global repositories (projects, types, globalSettings), use DbSource directly.
+ * For global repositories (projects, types, globalSettings, milestones), use DbSource directly.
  *
  * Usage:
  * ```typescript
@@ -21,14 +21,13 @@ import { Service } from "@dev-workflow/effect";
 import type { IssueRepository } from "../domain/issues/issue.js";
 import type { PlanRepository } from "../domain/plans/plan.js";
 import type { TaskRepository } from "../domain/tasks/task.js";
-import type { MilestoneRepository } from "../domain/milestones/milestone.js";
 import type { SnapshotRepository } from "../domain/snapshots/snapshot.js";
 import type { ExecutionLogRepository } from "../domain/execution-log.js";
 
 /**
  * DbClient provides access to project-scoped repositories.
  *
- * Global repositories (projects, types, globalSettings) are on DbSource.
+ * Global repositories (projects, types, globalSettings, milestones) are on DbSource.
  */
 export interface DbClient {
   /** The project ID this client is scoped to */
@@ -38,7 +37,6 @@ export interface DbClient {
   readonly issues: IssueRepository;
   readonly plans: PlanRepository;
   readonly tasks: TaskRepository;
-  readonly milestones: MilestoneRepository;
   readonly snapshots: SnapshotRepository;
   readonly executionLogs: ExecutionLogRepository;
 

@@ -89,9 +89,6 @@ export interface Milestone {
   startDate: string;
   endDate: string;
   status: "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "DELAYED";
-  projectId: string;
-  projectName?: string;
-  projectSlug?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -195,12 +192,16 @@ export interface IssueDetail {
 
 export interface MilestoneWithIssues {
   milestone: Milestone;
+  // Milestones are global, so each issue carries its own project context for
+  // cross-project links and labels.
   issues: {
     number: number;
     title: string;
     status: string;
     computedStatus: ComputedIssueStatus;
     type: string;
+    projectSlug: string;
+    projectName: string;
   }[];
   progress: {
     total: number;

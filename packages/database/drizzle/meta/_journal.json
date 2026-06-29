@@ -197,6 +197,13 @@
       "when": 1768531200000,
       "tag": "0027_provider_agnostic_rename",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1769731200000,
+      "tag": "0028_global_milestones",
+      "breakpoints": true
     }
   ]
 }

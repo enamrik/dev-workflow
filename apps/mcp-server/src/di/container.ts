@@ -271,8 +271,8 @@ export async function createMcpContainer(projectSlug: string): Promise<AwilixCon
     ).singleton(),
 
     milestoneDomainService: asFunction(
-      ({ dbClient }: { dbClient: DbClient }) =>
-        new MilestoneDomainService(dbClient.milestones, dbClient.issues)
+      ({ dbSource: src }: { dbSource: DbSource }) =>
+        new MilestoneDomainService(src.milestones, src.milestoneIssues)
     ).singleton(),
 
     // Events

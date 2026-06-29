@@ -313,6 +313,8 @@ export const taskExecutionLogs = sqliteTable("task_execution_logs", {
  * Milestones table schema
  *
  * Time-bounded collections of issues displayed on a timeline.
+ * Milestones are global (not project-scoped) - a single milestone can group
+ * issues from any project, so its number is unique across the whole install.
  */
 export const milestones = sqliteTable(
   "milestones",
@@ -320,11 +322,7 @@ export const milestones = sqliteTable(
     // Primary key
     id: text("id").primaryKey(),
 
-    // Project identifier (e.g., "dev-workflow-abc123")
-    projectId: text("project_id").notNull(),
-
-    // Milestone number within the project (e.g., M1, M2, M3)
-    // Unique per project
+    // Global milestone number (e.g., M1, M2, M3) - unique across all projects
     number: integer("number").notNull(),
 
     // Core milestone fields
@@ -343,11 +341,8 @@ export const milestones = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => ({
-    // Milestone number must be unique within a project
-    projectNumberIdx: uniqueIndex("milestones_project_number_idx").on(
-      table.projectId,
-      table.number
-    ),
+    // Milestone number must be globally unique
+    numberIdx: uniqueIndex("milestones_number_idx").on(table.number),
   })
 );
 

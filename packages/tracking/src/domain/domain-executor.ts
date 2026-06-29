@@ -22,6 +22,7 @@
 
 import { Effect, Service } from "@dev-workflow/effect";
 import type { DbClient } from "../data-access/db-client.js";
+import type { DbSource } from "../data-access/db-source.js";
 import type { DbSourceProvider } from "../data-access/db-source-provider.js";
 import { resolveConfig } from "./projects/projects-resolver.js";
 import { IssueDomainService } from "./issues/issue-domain-service.js";
@@ -90,7 +91,7 @@ export class DomainExecutorFactory extends Service<DomainExecutorFactory>()("dom
         connectionString: config.database,
       });
       const db = source.createClient(config.projectId);
-      return this.fromClient(db);
+      return this.fromClient(db, source);
     });
   }
 
@@ -98,17 +99,20 @@ export class DomainExecutorFactory extends Service<DomainExecutorFactory>()("dom
    * Create a ProjectDomain from an existing DbClient.
    *
    * Use this when the DbClient is already resolved (e.g., from DI container).
+   * The DbSource supplies global (cross-project) milestone access. Milestones
+   * are never written transactionally through ProjectDomain, so the milestone
+   * service is always built from the source's global gateway.
    */
-  fromClient(db: DbClient): ProjectDomain {
+  fromClient(db: DbClient, source: DbSource): ProjectDomain {
     return {
-      ...this.buildServices(db),
+      ...this.buildServices(db, source),
       transaction: <T, E>(fn: (tx: DomainServices) => Effect<T, E, never>): Effect<T, E, never> => {
         return Effect.tryPromise({
           try: () =>
             // db.transaction requires a Promise callback - Effect.runPromise is the
             // correct boundary between Effect and the Promise-based transaction API
             db.transaction(async (txClient) => {
-              const txServices = this.buildServices(txClient);
+              const txServices = this.buildServices(txClient, source);
               return Effect.runPromise(fn(txServices));
             }),
           catch: (e) => e as E,
@@ -118,16 +122,17 @@ export class DomainExecutorFactory extends Service<DomainExecutorFactory>()("dom
   }
 
   /**
-   * Build domain services from a DbClient.
+   * Build domain services from a DbClient (project-scoped) and DbSource (global).
    *
    * Called both for direct use and inside transactions (with a tx-scoped DbClient).
+   * Milestones are global, so they come from the source rather than the DbClient.
    */
-  private buildServices(db: DbClient): DomainServices {
+  private buildServices(db: DbClient, source: DbSource): DomainServices {
     return {
       issues: new IssueDomainService(db.issues),
       tasks: new TaskDomainService(db.tasks, db.plans, db.issues),
       plans: new PlanDomainService(db.plans, db.tasks, db.issues, this.typeDomainService),
-      milestones: new MilestoneDomainService(db.milestones, db.issues),
+      milestones: new MilestoneDomainService(source.milestones, source.milestoneIssues),
     };
   }
 }

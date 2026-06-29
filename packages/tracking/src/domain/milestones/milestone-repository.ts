@@ -17,14 +17,12 @@ import { Effect } from "@dev-workflow/effect";
  * Follows Repository pattern from DDD.
  * Works with any Drizzle-supported database dialect.
  *
- * The repository is scoped to a specific project via projectId.
- * All queries automatically filter by this project.
+ * Milestones are global (not project-scoped) - a single milestone can group
+ * issues from any project, so this repository queries the whole milestones
+ * table without a project filter.
  */
 export class DrizzleMilestoneRepository implements MilestoneRepository {
-  constructor(
-    private readonly db: DrizzleDb,
-    private readonly projectId: string
-  ) {}
+  constructor(private readonly db: DrizzleDb) {}
 
   create(data: CreateMilestoneParams): Effect<Milestone> {
     const self = this;
@@ -35,7 +33,6 @@ export class DrizzleMilestoneRepository implements MilestoneRepository {
 
       const milestone = Milestone.from({
         id,
-        projectId: self.projectId,
         number,
         ...data,
         createdAt: now,
@@ -47,7 +44,6 @@ export class DrizzleMilestoneRepository implements MilestoneRepository {
         .insert(milestones)
         .values({
           id: milestone.id,
-          projectId: milestone.projectId,
           number: milestone.number,
           title: milestone.title,
           description: milestone.description,
@@ -65,11 +61,7 @@ export class DrizzleMilestoneRepository implements MilestoneRepository {
 
   findById(id: string): Effect<Milestone | null> {
     return Effect.promise(async () => {
-      const result = this.db
-        .select()
-        .from(milestones)
-        .where(and(eq(milestones.projectId, this.projectId), eq(milestones.id, id)))
-        .get();
+      const result = this.db.select().from(milestones).where(eq(milestones.id, id)).get();
 
       return result ? this.mapRowToMilestone(result) : null;
     });
@@ -77,11 +69,7 @@ export class DrizzleMilestoneRepository implements MilestoneRepository {
 
   findByNumber(number: number): Effect<Milestone | null> {
     return Effect.promise(async () => {
-      const result = this.db
-        .select()
-        .from(milestones)
-        .where(and(eq(milestones.projectId, this.projectId), eq(milestones.number, number)))
-        .get();
+      const result = this.db.select().from(milestones).where(eq(milestones.number, number)).get();
 
       return result ? this.mapRowToMilestone(result) : null;
     });
@@ -89,18 +77,15 @@ export class DrizzleMilestoneRepository implements MilestoneRepository {
 
   findMany(filters?: MilestoneFilters): Effect<Milestone[]> {
     return Effect.promise(async () => {
-      // Always filter by project
-      const conditions = [eq(milestones.projectId, this.projectId)];
+      const conditions = [];
 
       // Apply status filter if provided
       if (filters?.status) {
         conditions.push(eq(milestones.status, filters.status));
       }
 
-      const results = this.db
-        .select()
-        .from(milestones)
-        .where(and(...conditions))
+      const query = this.db.select().from(milestones);
+      const results = (conditions.length > 0 ? query.where(and(...conditions)) : query)
         .orderBy(asc(milestones.startDate))
         .all();
 
@@ -113,7 +98,6 @@ export class DrizzleMilestoneRepository implements MilestoneRepository {
       const result = this.db
         .select({ maxNumber: max(milestones.number) })
         .from(milestones)
-        .where(eq(milestones.projectId, this.projectId))
         .get();
 
       return (result?.maxNumber ?? 0) + 1;
@@ -131,7 +115,7 @@ export class DrizzleMilestoneRepository implements MilestoneRepository {
           ...data,
           updatedAt: now,
         })
-        .where(and(eq(milestones.projectId, self.projectId), eq(milestones.id, id)))
+        .where(eq(milestones.id, id))
         .run();
 
       const updated = yield* self.findById(id);
@@ -145,10 +129,7 @@ export class DrizzleMilestoneRepository implements MilestoneRepository {
 
   delete(id: string): Effect<void> {
     return Effect.promise(async () => {
-      this.db
-        .delete(milestones)
-        .where(and(eq(milestones.projectId, this.projectId), eq(milestones.id, id)))
-        .run();
+      this.db.delete(milestones).where(eq(milestones.id, id)).run();
     });
   }
 
@@ -158,7 +139,6 @@ export class DrizzleMilestoneRepository implements MilestoneRepository {
   private mapRowToMilestone(row: MilestoneRow): Milestone {
     return Milestone.from({
       id: row.id,
-      projectId: row.projectId,
       number: row.number,
       title: row.title,
       description: row.description,

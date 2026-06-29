@@ -75,8 +75,12 @@ describe("Milestone Tools Integration", () => {
     // Create client scoped to project
     client = createClientForProject(testDb, project.id);
 
-    // Create services with DbClient
-    const milestoneDomainService = new MilestoneDomainService(client.milestones, client.issues);
+    // Milestones are global - the repository + cross-project issue gateway live
+    // on the DbSource, not the project-scoped DbClient.
+    const milestoneDomainService = new MilestoneDomainService(
+      testDb.source.milestones,
+      testDb.source.milestoneIssues
+    );
     const issueDomainService = new IssueDomainService(client.issues);
 
     // Create test container with dependencies + tool class
@@ -149,7 +153,7 @@ describe("Milestone Tools Integration", () => {
     it("should get milestone by number", async () => {
       // Create a milestone
       const milestone = await Effect.runPromise(
-        client.milestones.create({
+        testDb.source.milestones.create({
           title: "MVP",
           description: "First release",
           startDate: "2026-01-01",
@@ -190,7 +194,7 @@ describe("Milestone Tools Integration", () => {
     it("should list all milestones", async () => {
       // Create milestones
       await Effect.runPromise(
-        client.milestones.create({
+        testDb.source.milestones.create({
           title: "M1",
           description: "First milestone",
           startDate: "2026-01-01",
@@ -199,7 +203,7 @@ describe("Milestone Tools Integration", () => {
         })
       );
       await Effect.runPromise(
-        client.milestones.create({
+        testDb.source.milestones.create({
           title: "M2",
           description: "Second milestone",
           startDate: "2026-02-01",
@@ -219,7 +223,7 @@ describe("Milestone Tools Integration", () => {
   describe("handleUpdateMilestone", () => {
     it("should update milestone title", async () => {
       const milestone = await Effect.runPromise(
-        client.milestones.create({
+        testDb.source.milestones.create({
           title: "Old Title",
           description: "Test milestone",
           startDate: "2026-01-01",
@@ -253,7 +257,7 @@ describe("Milestone Tools Integration", () => {
   describe("handleDeleteMilestone", () => {
     it("should delete milestone", async () => {
       const milestone = await Effect.runPromise(
-        client.milestones.create({
+        testDb.source.milestones.create({
           title: "To Delete",
           description: "Milestone to delete",
           startDate: "2026-01-01",
@@ -271,13 +275,13 @@ describe("Milestone Tools Integration", () => {
       expect(content.message).toContain("Deleted milestone");
 
       // Verify it's gone
-      const found = await Effect.runPromise(client.milestones.findById(milestone.id));
+      const found = await Effect.runPromise(testDb.source.milestones.findById(milestone.id));
       expect(found).toBeNull();
     });
 
     it("should unassign issues when deleting milestone", async () => {
       const milestone = await Effect.runPromise(
-        client.milestones.create({
+        testDb.source.milestones.create({
           title: "To Delete",
           description: "Milestone to delete with issues",
           startDate: "2026-01-01",
@@ -310,7 +314,7 @@ describe("Milestone Tools Integration", () => {
       });
 
       const milestone = await Effect.runPromise(
-        client.milestones.create({
+        testDb.source.milestones.create({
           title: "MVP",
           description: "First release",
           startDate: "2026-01-01",
@@ -335,7 +339,7 @@ describe("Milestone Tools Integration", () => {
 
     it("should return error if issue not found", async () => {
       const milestone = await Effect.runPromise(
-        client.milestones.create({
+        testDb.source.milestones.create({
           title: "MVP",
           description: "First release",
           startDate: "2026-01-01",
@@ -371,7 +375,7 @@ describe("Milestone Tools Integration", () => {
   describe("handleRemoveIssueFromMilestone", () => {
     it("should remove an issue from its milestone", async () => {
       const milestone = await Effect.runPromise(
-        client.milestones.create({
+        testDb.source.milestones.create({
           title: "MVP",
           description: "First release",
           startDate: "2026-01-01",

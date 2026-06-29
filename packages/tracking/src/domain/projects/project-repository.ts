@@ -1,11 +1,5 @@
 import { eq } from "drizzle-orm";
-import {
-  projects,
-  issues,
-  milestones,
-  snapshots,
-  type ProjectRow,
-} from "@dev-workflow/database/schema.js";
+import { projects, issues, snapshots, type ProjectRow } from "@dev-workflow/database/schema.js";
 import { Effect } from "@dev-workflow/effect";
 import type {
   Project,
@@ -167,13 +161,12 @@ export class DrizzleProjectRepository implements ProjectRepository {
       // 1. Delete snapshots for this project
       this.db.delete(snapshots).where(eq(snapshots.projectId, id)).run();
 
-      // 2. Delete milestones for this project
-      this.db.delete(milestones).where(eq(milestones.projectId, id)).run();
-
-      // 3. Delete issues for this project (cascades to plans, tasks, etc.)
+      // 2. Delete issues for this project (cascades to plans, tasks, etc.)
+      //    Milestones are global and survive a project deletion; the project's
+      //    issues simply stop referencing them.
       this.db.delete(issues).where(eq(issues.projectId, id)).run();
 
-      // 4. Finally delete the project itself
+      // 3. Finally delete the project itself
       this.db.delete(projects).where(eq(projects.id, id)).run();
     });
   }

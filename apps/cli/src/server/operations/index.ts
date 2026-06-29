@@ -16,7 +16,6 @@ export {
 export {
   listAllMilestones,
   getMilestonesWithDetails,
-  type MilestoneWithProject,
   type MilestoneWithDetails,
   type MilestoneIssueInfo,
   type MilestoneProgress,

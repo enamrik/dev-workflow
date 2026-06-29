@@ -13,6 +13,7 @@ import type { Issue } from "../domain/issues/issue.js";
 import type { Plan } from "../domain/plans/plan.js";
 import type { Task, TaskStatus } from "../domain/tasks/task.js";
 import type { DbClient } from "../data-access/db-client.js";
+import type { MilestoneRepository } from "../domain/milestones/milestone.js";
 import type { WorkerQueueDb } from "@dev-workflow/dispatch/worker-queue-db.js";
 import { Effect } from "@dev-workflow/effect";
 
@@ -128,6 +129,7 @@ const COLUMN_CONFIG: { status: TaskStatus; label: string }[] = [
 export class BoardQueryService {
   constructor(
     private readonly db: DbClient,
+    private readonly milestones: MilestoneRepository,
     private readonly workerQueueDb?: WorkerQueueDb
   ) {}
 
@@ -214,7 +216,7 @@ export class BoardQueryService {
 
         let milestone: { number: number; title: string } | undefined;
         if (issue.milestoneId) {
-          const m = yield* self.db.milestones.findById(issue.milestoneId);
+          const m = yield* self.milestones.findById(issue.milestoneId);
           if (m) {
             milestone = { number: m.number, title: m.title };
           }

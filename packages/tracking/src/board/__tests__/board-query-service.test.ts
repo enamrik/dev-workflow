@@ -126,7 +126,7 @@ beforeEach(async () => {
     completedAt: OLD,
   });
 
-  service = new BoardQueryService(source.createClient(PROJECT_ID));
+  service = new BoardQueryService(source.createClient(PROJECT_ID), source.milestones);
 });
 
 afterEach(() => {

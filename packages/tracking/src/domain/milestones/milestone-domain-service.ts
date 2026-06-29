@@ -11,10 +11,11 @@ import type {
   MilestoneStatus,
   MilestoneRepository,
   MilestoneIssueStats,
+  MilestoneIssue,
+  MilestoneIssueGateway,
   CreateMilestoneParams,
   UpdateMilestoneParams,
 } from "./milestone.js";
-import type { IssueRepository } from "../issues/issue.js";
 import { EntityNotFoundError, BusinessRuleError, ValidationError } from "../errors.js";
 
 export interface MilestoneWithStatus extends Milestone {
@@ -27,7 +28,7 @@ export class MilestoneDomainService extends Service<MilestoneDomainService>()(
 ) {
   constructor(
     private readonly repo: MilestoneRepository,
-    private readonly issueRepo: IssueRepository
+    private readonly issues: MilestoneIssueGateway
   ) {
     super();
   }
@@ -60,16 +61,25 @@ export class MilestoneDomainService extends Service<MilestoneDomainService>()(
   }
 
   /**
-   * Compute issue stats for a milestone.
+   * Find every issue assigned to a milestone, across all projects, each tagged
+   * with its owning project's id/slug/name.
+   */
+  findMilestoneIssues(milestoneId: string): Effect<MilestoneIssue[]> {
+    return this.issues.findIssuesByMilestoneId(milestoneId);
+  }
+
+  /**
+   * Compute issue stats for a milestone, aggregated across all projects.
    */
   computeIssueStats(milestoneId: string): Effect<MilestoneIssueStats, never, never> {
-    const issueRepo = this.issueRepo;
+    const issues = this.issues;
     return Effect.gen(function* () {
-      const issues = yield* issueRepo.findMany({ milestoneId });
+      const members = yield* issues.findIssuesByMilestoneId(milestoneId);
       return {
-        totalIssues: issues.length,
-        closedIssues: issues.filter((i) => i.isClosed).length,
-        openOrInProgressIssues: issues.filter((i) => !i.isClosed && !i.isInPlanning).length,
+        totalIssues: members.length,
+        closedIssues: members.filter((m) => m.issue.isClosed).length,
+        openOrInProgressIssues: members.filter((m) => !m.issue.isClosed && !m.issue.isInPlanning)
+          .length,
       };
     });
   }
@@ -292,15 +302,12 @@ export class MilestoneDomainService extends Service<MilestoneDomainService>()(
         return yield* Effect.fail(new EntityNotFoundError("Milestone", milestoneId));
       }
 
-      // Unassign all issues from this milestone
-      const issues = yield* self.issueRepo.findMany({ milestoneId });
-      for (const issue of issues) {
-        yield* self.issueRepo.update(issue.id, { milestoneId: undefined });
-      }
+      // Unassign all issues from this milestone (across every project)
+      const unassignedCount = yield* self.issues.clearMilestoneFromIssues(milestoneId);
 
       yield* self.repo.delete(milestoneId);
 
-      return issues.length;
+      return unassignedCount;
     });
   }
 
@@ -316,7 +323,7 @@ export class MilestoneDomainService extends Service<MilestoneDomainService>()(
         return yield* Effect.fail(new EntityNotFoundError("Milestone", milestoneId));
       }
 
-      yield* self.issueRepo.update(issueId, { milestoneId });
+      yield* self.issues.setIssueMilestone(issueId, milestone.id);
     });
   }
 
@@ -324,6 +331,6 @@ export class MilestoneDomainService extends Service<MilestoneDomainService>()(
    * Remove an issue from its milestone.
    */
   unassignIssue(issueId: string): Effect<void> {
-    return Effect.map(this.issueRepo.update(issueId, { milestoneId: undefined }), () => undefined);
+    return this.issues.setIssueMilestone(issueId, null);
   }
 }

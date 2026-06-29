@@ -41,12 +41,16 @@ import { openSqliteDatabase } from "@dev-workflow/database/open-database.js";
 import type { DbSource, TaskAssociation } from "./db-source.js";
 import type { DbClient } from "./db-client.js";
 import type { IssuePriority } from "../domain/issues/issue.js";
+import type { MilestoneIssue, MilestoneIssueGateway } from "../domain/milestones/milestone.js";
 import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
 
+import { Effect } from "@dev-workflow/effect";
 import { DrizzleDbClient } from "./drizzle-db-client.js";
 import { DrizzleProjectRepository } from "../domain/projects/project-repository.js";
 import { DrizzleTypeRepository } from "../domain/types/type-repository.js";
 import { DrizzleGlobalSettingsRepository } from "../domain/global-settings-repository.js";
+import { DrizzleMilestoneRepository } from "../domain/milestones/milestone-repository.js";
+import { mapRowToIssue } from "../domain/issues/issue-repository.js";
 import { DEFAULT_TYPE_DEFINITIONS } from "../domain/types/type-definition.js";
 
 // =============================================================================
@@ -153,6 +157,61 @@ export class DbSourceProvider extends Service<DbSourceProvider>()("sourceProvide
     const projects = new DrizzleProjectRepository(drizzleDb);
     const types = new DrizzleTypeRepository(drizzleDb);
     const globalSettings = new DrizzleGlobalSettingsRepository(drizzleDb);
+    const milestones = new DrizzleMilestoneRepository(drizzleDb);
+
+    // Cross-project issue port for milestones. Milestones are global, so reading
+    // a milestone's member issues joins issues → projects across every project,
+    // and writing a single issue's milestone link is a global update by issue id.
+    const milestoneIssues: MilestoneIssueGateway = {
+      findIssuesByMilestoneId: (milestoneId: string): Effect<MilestoneIssue[]> =>
+        Effect.promise(async () => {
+          const rows = drizzleDb
+            .select({
+              issue: issuesTable,
+              projectSlug: projectsTable.slug,
+              projectName: projectsTable.name,
+            })
+            .from(issuesTable)
+            .innerJoin(projectsTable, sql`${projectsTable.id} = ${issuesTable.projectId}`)
+            .where(
+              sql`${issuesTable.milestoneId} = ${milestoneId} AND ${issuesTable.isDeleted} = 0`
+            )
+            .all();
+
+          return rows.map((row) => ({
+            issue: mapRowToIssue(row.issue),
+            projectId: row.issue.projectId,
+            projectSlug: row.projectSlug,
+            projectName: row.projectName,
+          }));
+        }),
+
+      clearMilestoneFromIssues: (milestoneId: string): Effect<number> =>
+        Effect.promise(async () => {
+          const affected = drizzleDb
+            .select({ id: issuesTable.id })
+            .from(issuesTable)
+            .where(sql`${issuesTable.milestoneId} = ${milestoneId}`)
+            .all();
+
+          drizzleDb
+            .update(issuesTable)
+            .set({ milestoneId: null })
+            .where(sql`${issuesTable.milestoneId} = ${milestoneId}`)
+            .run();
+
+          return affected.length;
+        }),
+
+      setIssueMilestone: (issueId: string, milestoneId: string | null): Effect<void> =>
+        Effect.promise(async () => {
+          drizzleDb
+            .update(issuesTable)
+            .set({ milestoneId })
+            .where(sql`${issuesTable.id} = ${issueId}`)
+            .run();
+        }),
+    };
 
     return {
       provision: async () => {
@@ -166,6 +225,8 @@ export class DbSourceProvider extends Service<DbSourceProvider>()("sourceProvide
       projects,
       types,
       globalSettings,
+      milestones,
+      milestoneIssues,
 
       getDb: () => drizzleDb,
 
