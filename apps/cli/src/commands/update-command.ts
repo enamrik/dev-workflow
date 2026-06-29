@@ -1,11 +1,15 @@
 /**
  * UpdateCommand - Two-phase `dfl update`.
  *
- * PHASE 1 (ReleaseInstaller): fetch + apply the released artifact — install the
- *   latest GitHub release (or --version <v>) into ~/.dfl/install and rewrite the
- *   launcher. No npm. No-op when already on the target version.
+ * PHASE 1 (pluggable source): produce the `~/.dfl/install` bundle and rewrite the
+ *   launcher. Two sources, selected by options:
+ *     - default / --version <v>: ReleaseInstaller — fetch + apply a GitHub
+ *       release artifact (no npm; no-op when already on the target version).
+ *     - --from <path>: SourceBuildInstaller — build the bundle from a local
+ *       dev-workflow source tree/worktree (`make dogfood` as a command).
  * PHASE 2 (UpdateService): reconcile against the freshly-applied bundle — skills,
- *   templates, migrations, MCP registration. Runs only AFTER phase 1.
+ *   templates, migrations, MCP registration. Shared by both sources; runs only
+ *   AFTER phase 1.
  *
  * Receives all dependencies via constructor injection.
  */
@@ -13,6 +17,7 @@
 import { UpdateService } from "../application/update.service.js";
 import { UIService } from "../application/ui.service.js";
 import { ReleaseInstaller } from "../application/release-installer.js";
+import { SourceBuildInstaller } from "../application/source-build-installer.js";
 
 /** Options accepted by `dfl update`. */
 export interface UpdateExecuteOptions {
@@ -20,13 +25,16 @@ export interface UpdateExecuteOptions {
   version?: string;
   /** List recent releases and exit (read-only; no install/reconcile). */
   list?: boolean;
+  /** Build + install from a local dev-workflow source tree/worktree (dogfood). */
+  from?: string;
 }
 
 export class UpdateCommand {
   constructor(
     private readonly updateService: UpdateService,
     private readonly uiService: UIService,
-    private readonly releaseInstaller: ReleaseInstaller
+    private readonly releaseInstaller: ReleaseInstaller,
+    private readonly sourceBuildInstaller: SourceBuildInstaller
   ) {}
 
   /**
@@ -39,10 +47,19 @@ export class UpdateCommand {
         return;
       }
 
-      // ----- Phase 1: fetch + apply the released artifact -----
-      const targetLabel = options.version ? `version ${options.version}` : "the latest release";
+      // ----- Phase 1: produce the ~/.dfl/install bundle -----
+      // Source is selected here (the only thing that varies); phase 2 below is
+      // shared. --from builds the local tree; otherwise fetch a release artifact.
+      const fromSource = options.from !== undefined;
+      const targetLabel = fromSource
+        ? `local build from ${SourceBuildInstaller.resolveSourcePath(options.from)}`
+        : options.version
+          ? `version ${options.version}`
+          : "the latest release";
       console.log(`🔄 Updating dev-workflow to ${targetLabel}...`);
-      const result = await this.releaseInstaller.installRelease({ version: options.version });
+      const result = fromSource
+        ? await this.sourceBuildInstaller.installFromSource({ from: options.from })
+        : await this.releaseInstaller.installRelease({ version: options.version });
       if (result.changed) {
         console.log(`✓ Installed dev-workflow ${result.version}`);
       } else {

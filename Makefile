@@ -98,21 +98,17 @@ init: link
 	@echo "  3. Start using dev-workflow to build dev-workflow!"
 	@echo "  4. Or run '$(DEV_WORKFLOW) ui' to open the web UI"
 
-# Build the local code and publish it into the install.sh layout (~/.dfl/install), so the
-# global `dfl` command runs your working tree — no pnpm linking, no release. Data (~/.dfl/track)
-# is untouched. Requires `dfl` to have been installed once via curl (vendored better-sqlite3).
-dogfood: build
-	@echo "🔨 Bundling cli + mcp-server..."
-	@export DFL_VERSION="0.0.0-dev+g$$(git rev-parse --short HEAD)$$(git diff --quiet || echo .dirty)" && \
-		pnpm --filter @dev-workflow/cli exec tsup && \
-		pnpm --filter @dev-workflow/mcp-server exec tsup
-	@echo "📦 Publishing local build into ~/.dfl/install..."
-	@node scripts/dogfood.mjs
-	@echo "🔄 Restarting UI daemon to pick up changes (if running)..."
-	@dfl ui:stop >/dev/null 2>&1 || true
-	@dfl ui >/dev/null 2>&1 || true
-	@echo ""
-	@echo "🐕 Dogfood complete — the global 'dfl' now runs your local build."
+# Thin alias for `dfl update --from .`: build the local working tree and publish it into the
+# install.sh layout (~/.dfl/install) so the global `dfl` runs your code, then reconcile
+# (skills/templates/MCP/migrations) + restart the UI. The build/overlay/reconcile logic lives
+# in the command (SourceBuildInstaller + UpdateService) — there is no duplicated build logic here.
+# Data (~/.dfl/track) is untouched. Requires `dfl` to have been installed once via curl.
+# Bootstrap note: the installed `dfl` must already support `--from` (added in #53). If yours
+# predates it, bootstrap once by running the freshly-built local CLI directly:
+#   pnpm -r build && node apps/cli/dist/main.js update --from .
+# (dist/main.js is the tsc entry; its packageRoot resolves to apps/cli where skills/templates live.)
+dogfood:
+	@dfl update --from .
 
 test:
 	@echo "🧪 Running tests..."

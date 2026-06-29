@@ -16,6 +16,8 @@ export interface UpdateOptions {
   version?: string;
   /** List recent releases and exit. */
   list?: boolean;
+  /** Build + install from a local dev-workflow source tree/worktree (dogfood). */
+  from?: string;
 }
 
 /**

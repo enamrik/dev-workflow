@@ -38,6 +38,7 @@ import { UninstallService } from "../application/uninstall.service.js";
 import { InstallService } from "../application/install.service.js";
 import { UpdateService } from "../application/update.service.js";
 import { ReleaseInstaller } from "../application/release-installer.js";
+import { SourceBuildInstaller } from "../application/source-build-installer.js";
 import { ClaudeConfigService } from "../application/claude-config.service.js";
 import { UIService } from "../application/ui.service.js";
 
@@ -82,6 +83,7 @@ export interface CliCradle {
   installService: InstallService;
   updateService: UpdateService;
   releaseInstaller: ReleaseInstaller;
+  sourceBuildInstaller: SourceBuildInstaller;
   claudeConfigService: ClaudeConfigService;
   uiService: UIService;
   userPrompt: UserPrompt;
@@ -209,6 +211,8 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
       return new ReleaseInstaller(fileSystem);
     }).scoped(),
 
+    sourceBuildInstaller: asFunction(() => new SourceBuildInstaller()).scoped(),
+
     claudeConfigService: asFunction(() => new ClaudeConfigService()).scoped(),
 
     uiService: asFunction(
@@ -251,12 +255,14 @@ export function createCliContainer(): AwilixContainer<CliCradle> {
         updateService,
         uiService,
         releaseInstaller,
+        sourceBuildInstaller,
       }: {
         updateService: UpdateService;
         uiService: UIService;
         releaseInstaller: ReleaseInstaller;
+        sourceBuildInstaller: SourceBuildInstaller;
       }) => {
-        return new UpdateCommand(updateService, uiService, releaseInstaller);
+        return new UpdateCommand(updateService, uiService, releaseInstaller, sourceBuildInstaller);
       }
     ).scoped(),
 
