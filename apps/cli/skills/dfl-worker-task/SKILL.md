@@ -207,16 +207,24 @@ After implementing the task, create a PR and optionally submit for review.
    - **Why:** Ensures your PR is up-to-date with main, reduces merge conflicts, and catches integration issues early
 
 5. **Create the PR:**
-   - Call `create_pr` with task ID and a `title` that begins with the task ref:
-     `[#<issue>.<task>] <concise summary>` (e.g. `[#15.1] Add OAuth callback handler`).
+   - Call `create_pr` with task ID and a `title` of the form
+     `<type>: [#<issue>.<task>] <concise summary>` (e.g. `fix: [#15.1] Add OAuth callback handler`).
      You have the issue + task numbers from `load_task_session` / your worker prompt.
-   - **Why this form:** an issue can have several tasks (and several PRs), so the issue
-     number alone is ambiguous — the `[#15.1]` prefix maps the PR to a specific task at a
-     glance. This is personal tooling, not gated on conventional-commit release automation,
-     so the leading prefix is preferred over a `fix(#15.1): …` conventional-commit scope
-     (that scope form is an acceptable alternative if release automation is ever adopted).
-   - `create_pr` passes your title through unchanged, and as a safety net prefixes the ref
-     itself if you omit it — so a PR is never left referencing only the issue.
+   - **Choose `<type>` from the task/issue type:**
+     - `feat` — FEATURE or ENHANCEMENT (ships new behavior → semantic-release minor bump)
+     - `fix` — BUG (ships a fix → patch bump)
+     - `docs` / `chore` — non-shipping changes (docs-only, tooling, refactors with no
+       behavior change → intentionally **no** release bump)
+   - **Why this form:** two things ride in the title. The `<type>:` prefix lets
+     semantic-release bump + publish a release on every behavior-changing merge to `main`,
+     so `dfl update` can then fetch it (issue #54). The `[#<issue>.<task>]` ref maps the PR
+     to a specific task — an issue can have several tasks/PRs, so the issue number alone is
+     ambiguous (issue #26). Together: `feat: [#15.1] …` releases AND links.
+   - `create_pr` is the single source of truth for the format: it passes a complete title
+     through unchanged, but as a safety net it **derives the `<type>:` from the task's type
+     and injects the `[#<issue>.<task>]` ref** if you omit either — so a PR is never left
+     un-releasable or referencing only the issue. Still, pass the full title yourself so the
+     type reflects the actual change (the safety net can't tell a docs-only task from a fix).
    - This pushes the branch and creates the PR with GitHub issue linking
    - **Task status stays IN_PROGRESS** - this is intentional to let GitHub's automation set "In progress" first
    - Show the PR URL to user
@@ -408,7 +416,7 @@ Summary: Added OAuth flow, callback handler, tests (92% coverage)
 Acceptance Criteria: ✓ All met
 Validation: PASSED
 
-PR #42 created: "[#5.1] Add OAuth callback handler". Task still IN_PROGRESS.
+PR #42 created: "feat: [#5.1] Add OAuth callback handler". Task still IN_PROGRESS.
 Submit for review now?
 ```
 

@@ -13,6 +13,7 @@ import { PlanDomainService } from "../../domain/plans/plan-domain-service.js";
 import { GitHubCLI } from "@dev-workflow/git/github/github-cli.js";
 import { GitWorktreeService } from "@dev-workflow/git/worktrees/git-worktree-service.js";
 import type { PRStatus } from "../../domain/tasks/task.js";
+import type { IssueType } from "../../domain/issues/issue.js";
 import { validateInput } from "../validation.js";
 import { EntityNotFoundError, BusinessRuleError } from "../../domain/errors.js";
 
@@ -60,6 +61,91 @@ function mapGitHubStateToPRStatus(state: "OPEN" | "CLOSED" | "MERGED", isDraft: 
   if (state === "CLOSED") return "CLOSED";
   if (isDraft) return "DRAFT";
   return "OPEN";
+}
+
+/**
+ * Conventional-commit type for a task's {@link IssueType}. semantic-release reads the
+ * leading type on the squash-merge subject to decide a version bump: `feat` → minor,
+ * `fix` → patch, `chore` → no release (issue #54). Features/enhancements ship behavior
+ * (`feat`), bugs ship fixes (`fix`); plain tasks and spikes default to `chore` so they
+ * don't force a release on their own.
+ */
+function commitTypeForTaskType(type: IssueType): "feat" | "fix" | "chore" {
+  switch (type) {
+    case "FEATURE":
+    case "ENHANCEMENT":
+      return "feat";
+    case "BUG":
+      return "fix";
+    case "TASK":
+    case "SPIKE":
+      return "chore";
+  }
+}
+
+/**
+ * Conventional-commit types semantic-release's commit-analyzer recognizes (release-driving
+ * `feat`/`fix` plus the non-shipping types of the default angular preset). We honor an
+ * explicit prefix only if its type is in this set — an arbitrary `word:` (e.g. `wip:`,
+ * `note:`) must NOT be mistaken for a deliberate type, since that would bypass the derived
+ * type and could silently suppress the release issue #54 wants.
+ */
+const KNOWN_COMMIT_TYPES = new Set([
+  "feat",
+  "fix",
+  "docs",
+  "chore",
+  "refactor",
+  "test",
+  "perf",
+  "build",
+  "ci",
+  "style",
+  "revert",
+]);
+
+/** Leading conventional-commit prefix, capturing the bare type, e.g. `feat`, `chore` in `chore(scope)!: `. */
+const CONVENTIONAL_PREFIX = /^([a-z]+)(\([^)]*\))?!?:\s/;
+
+/** Any leading `[#<issue>.<task>]` task ref — this task's or a stray one pasted by mistake. */
+const LEADING_TASK_REF = /^\[#\d+\.\d+\]\s*/;
+
+/**
+ * Build the worker PR/squash title: `<type>: [#<issue>.<task>] <description>`.
+ *
+ * This is the single source of truth for the format. Two guarantees compose here so a
+ * worker (or the prompt/skill) that forgets either piece still produces a correct title:
+ *
+ *  - **`<type>:` prefix (issue #54)** — lets semantic-release bump a version on every
+ *    behavior-changing merge. An explicit *recognized* conventional prefix the worker chose
+ *    (any {@link KNOWN_COMMIT_TYPES} type or scope, e.g. `docs:`) is honored; otherwise
+ *    (no prefix, or an unrecognized `word:`) the type is derived from `task.type`.
+ *  - **`[#N.task]` ref (issue #26)** — maps the PR to a specific task, not just the issue.
+ *    Injected right after the type and never duplicated: any leading ref is stripped first.
+ *
+ * (github-cli passes the result to `gh pr create` verbatim.)
+ */
+function buildPrTitle(args: {
+  issueNumber: number;
+  taskNumber: number;
+  taskType: IssueType;
+  title: string;
+}): string {
+  const { issueNumber, taskNumber, taskType, title } = args;
+  const taskRef = `[#${issueNumber}.${taskNumber}]`;
+  const raw = title.trim();
+
+  // Honor an explicit prefix only if it's a recognized conventional type; else derive one
+  // from task.type (so an arbitrary `word:` can't silently become a no-release type).
+  const prefixMatch = raw.match(CONVENTIONAL_PREFIX);
+  const honorExplicit = prefixMatch !== null && KNOWN_COMMIT_TYPES.has(prefixMatch[1]!);
+  const typePrefix = honorExplicit ? prefixMatch![0] : `${commitTypeForTaskType(taskType)}: `;
+  const afterType = honorExplicit ? raw.slice(prefixMatch![0].length) : raw;
+
+  // Strip any leading ref so the correct one appears exactly once, right after the type.
+  const description = afterType.replace(LEADING_TASK_REF, "");
+
+  return `${typePrefix}${taskRef} ${description}`.trimEnd();
 }
 
 // =============================================================================
@@ -179,16 +265,17 @@ export function createPR(input: CreatePRInput) {
       return yield* Effect.fail(new BusinessRuleError(`Failed to push branch: ${message}`));
     }
 
-    // Build PR title. Every task PR carries a `[#<issue>.<task>]` ref prefix so the
-    // PR maps to a specific task at a glance (issue #26) — an issue can have several
-    // tasks/PRs, so the issue number alone is ambiguous. We respect an explicit title
-    // but guarantee the prefix is present, and default to the task title otherwise.
-    // This is the single source of truth for the format; the dfl-worker-task skill and
-    // worker prompt tell the worker to pass a matching title, but a forgotten title
-    // still gets the ref here. (github-cli passes this title to `gh pr create` verbatim.)
-    const taskRef = `[#${issue.number}.${task.number}]`;
-    const titleText = title ?? task.title;
-    const prTitle = titleText.startsWith(taskRef) ? titleText : `${taskRef} ${titleText}`;
+    // Build PR title: `<type>: [#<issue>.<task>] <desc>` (see {@link buildPrTitle}). The
+    // `<type>:` prefix lets semantic-release bump a release on behavior-changing merges
+    // (issue #54); the `[#N.task]` ref maps the PR to a specific task (issue #26). The
+    // skill/prompt tell the worker to pass a matching title, but both pieces are
+    // guaranteed here so a forgotten or partial title is still correct.
+    const prTitle = buildPrTitle({
+      issueNumber: issue.number,
+      taskNumber: task.number,
+      taskType: task.type,
+      title: title ?? task.title,
+    });
 
     // Build PR body
     let prBody = body ?? task.description;
