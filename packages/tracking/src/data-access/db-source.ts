@@ -10,6 +10,7 @@
  */
 
 import type { ProjectRepository } from "../domain/projects/project.js";
+import type { IssuePriority } from "../domain/issues/issue.js";
 import type { TypeRepository } from "../domain/types/type-definition.js";
 import type { GlobalSettingsRepository } from "../domain/global-settings-repository.js";
 import type { DbClient } from "./db-client.js";
@@ -74,6 +75,24 @@ export interface DbSource {
    * @returns The compact association, or null if the task does not exist
    */
   findTaskAssociationById(taskId: string): TaskAssociation | null;
+
+  /**
+   * Resolve a plan's inherited issue priority.
+   *
+   * Joins plans → issues on the (global) tracking database, so the priority is
+   * resolved from the issue that actually owns the plan regardless of which
+   * project a caller happens to be scoped to. This is the authoritative lookup
+   * for auto-claim ordering: a project-scoped {@link DbClient.issues} would
+   * return `null` for any plan whose issue lives in a different project (the
+   * shared tracking DB holds every project's rows), silently degrading the
+   * priority to LOW.
+   *
+   * @param planId - Plan ID to resolve
+   * @returns The owning issue's priority, or null if the plan/issue does not
+   *   exist (an integrity violation the caller should surface, not treat as a
+   *   real priority)
+   */
+  findIssuePriorityByPlanId(planId: string): IssuePriority | null;
 
   /**
    * Create a project-scoped client

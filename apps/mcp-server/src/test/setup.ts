@@ -18,6 +18,7 @@ import {
   DrizzleGlobalSettingsRepository,
   type DbClient,
   type DbSource,
+  type IssuePriority,
 } from "@dev-workflow/tracking";
 import type { DrizzleDb } from "@dev-workflow/database/drizzle-db.js";
 
@@ -130,6 +131,15 @@ export function createTestDatabase(projectId: string = TEST_PROJECT_ID): TestDat
         .where(schema.sql`${schema.tasks.id} = ${taskId}`)
         .get();
       return result ?? null;
+    },
+    findIssuePriorityByPlanId: (planId: string) => {
+      const result = drizzleDb
+        .select({ priority: schema.issues.priority })
+        .from(schema.plans)
+        .innerJoin(schema.issues, schema.sql`${schema.issues.id} = ${schema.plans.issueId}`)
+        .where(schema.sql`${schema.plans.id} = ${planId}`)
+        .get();
+      return (result?.priority as IssuePriority) ?? null;
     },
     createClient: (pid: string) => new DrizzleDbClient(drizzleDb, pid),
     close: () => sqlite.close(),

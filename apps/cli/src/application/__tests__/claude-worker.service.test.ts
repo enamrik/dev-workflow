@@ -436,8 +436,15 @@ describe("ClaudeWorkerService.tryAutoClaimReadyTask — order by priority then a
   }
 
   /**
-   * Build a fake source whose client serves the READY tasks plus the
-   * plan→issue resolution used to inherit each task's priority.
+   * Build a fake source that serves the READY tasks (via a project-scoped
+   * client) plus the GLOBAL plan→issue priority resolution used to inherit each
+   * task's priority.
+   *
+   * `findIssuePriorityByPlanId` is a source-level (un-scoped) join in production
+   * because READY tasks are read across every project from the shared tracking
+   * DB; composing planToIssue→issueToPrio here mirrors that global lookup. A
+   * plan with no mapping resolves to null (unresolvable), exactly as the real
+   * join returns null for an orphaned plan.
    *
    * @param tasks       READY tasks in the (arbitrary) order findMany returns them
    * @param planToIssue planId → issueId
@@ -450,23 +457,13 @@ describe("ClaudeWorkerService.tryAutoClaimReadyTask — order by priority then a
   ) {
     return {
       types: {},
+      findIssuePriorityByPlanId: vi.fn().mockImplementation((planId: string) => {
+        const issueId = planToIssue[planId];
+        return (issueId ? issueToPrio[issueId] : undefined) ?? null;
+      }),
       createClient: vi.fn().mockReturnValue({
         tasks: {
           findMany: vi.fn().mockImplementation(() => Effect.succeed(tasks)),
-        },
-        plans: {
-          findById: vi
-            .fn()
-            .mockImplementation((id: string) =>
-              Effect.succeed(planToIssue[id] ? { id, issueId: planToIssue[id] } : null)
-            ),
-        },
-        issues: {
-          findById: vi
-            .fn()
-            .mockImplementation((id: string) =>
-              Effect.succeed(issueToPrio[id] ? { id, priority: issueToPrio[id] } : null)
-            ),
         },
       }),
     };
@@ -536,6 +533,74 @@ describe("ClaudeWorkerService.tryAutoClaimReadyTask — order by priority then a
     const order = await enqueueOrderFor(source);
 
     expect(order).toEqual(["older-task", "newer-task"]);
+  });
+
+  it("resolves real priorities for valid plans without logging the LOW fallback", async () => {
+    // Regression for #43: valid plans must resolve their real priority and must
+    // NOT emit the "Could not resolve … defaulting to LOW" warning.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const low = readyTask("low-task", "plan-low", "2024-01-01T00:00:00.000Z");
+    const high = readyTask("high-task", "plan-high", "2024-02-01T00:00:00.000Z");
+    const source = makeAutoClaimSource(
+      [low, high],
+      { "plan-low": "issue-low", "plan-high": "issue-high" },
+      { "issue-low": "LOW", "issue-high": "HIGH" }
+    );
+
+    const order = await enqueueOrderFor(source);
+
+    expect(order).toEqual(["high-task", "low-task"]);
+    expect(
+      errorSpy.mock.calls.some((call) =>
+        String(call[0]).includes("Could not resolve issue priority")
+      )
+    ).toBe(false);
+    errorSpy.mockRestore();
+  });
+
+  it("logs the unresolvable-plan fallback once per plan, not on every poll tick", async () => {
+    // Regression for #43: an orphaned plan (no resolvable issue) must still be
+    // considered at LOW, but the warning must be logged at most once across
+    // repeated poll ticks rather than spamming every ~2s.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const orphan = readyTask("orphan-task", "plan-orphan", "2024-01-01T00:00:00.000Z");
+    const source = makeAutoClaimSource([orphan], {}, {}); // no plan→issue mapping → null
+
+    const queue = {
+      findByTaskId: vi.fn().mockReturnValue(null),
+      enqueue: vi.fn(),
+      claimTask: vi.fn().mockReturnValue(null), // always lose the race → keep looping
+    };
+    const sourceProvider = { getOrCreate: vi.fn().mockReturnValue(source) };
+    const projectsResolver = {
+      getAllProjects: vi.fn().mockReturnValue(Effect.succeed([autoProjectInfo])),
+    };
+    const service = new ClaudeWorkerService(
+      queue as never,
+      sourceProvider as never,
+      projectsResolver as never
+    );
+    const runTick = () =>
+      (
+        service as unknown as { tryAutoClaimReadyTask: () => Promise<unknown> }
+      ).tryAutoClaimReadyTask();
+
+    await runTick();
+    await runTick();
+    await runTick();
+
+    // The orphan task is still considered (enqueued) every tick...
+    expect(queue.enqueue.mock.calls.map((c) => c[0])).toEqual([
+      "orphan-task",
+      "orphan-task",
+      "orphan-task",
+    ]);
+    // ...but the unresolvable warning is logged exactly once, not per tick.
+    const warnings = errorSpy.mock.calls.filter((call) =>
+      String(call[0]).includes("Could not resolve issue priority for plan plan-orphan")
+    );
+    expect(warnings).toHaveLength(1);
+    errorSpy.mockRestore();
   });
 });
 
