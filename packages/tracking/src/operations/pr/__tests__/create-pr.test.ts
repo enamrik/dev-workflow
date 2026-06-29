@@ -1,15 +1,16 @@
 /**
- * Tests for createPR — task-scoped PR title ref prefix (issue #26).
+ * Tests for createPR — conventional-commit PR title format (issues #26 + #54).
  *
- * Regression guard: a worker-created PR must carry a `[#<issue>.<task>]` ref so the
- * PR maps to a specific task, not just the issue (an issue can have several tasks/PRs).
- * The default title used to be the bare `task.title` with no ref at all; the fix builds
- * the title around the ref in create-pr.ts (the single source of truth for the format),
- * so the prefix is present whether or not the caller passes an explicit title.
+ * A worker-created PR title is the single source of truth at `<type>: [#<issue>.<task>]
+ * <desc>`, built in create-pr.ts. Two guarantees compose there:
+ *  - the `<type>:` prefix (issue #54) lets semantic-release bump a release on a
+ *    behavior-changing merge — derived from `task.type` (FEATURE/ENHANCEMENT→feat,
+ *    BUG→fix, TASK/SPIKE→chore) unless the title already carries an explicit prefix;
+ *  - the `[#N.task]` ref (issue #26) maps the PR to a specific task, injected once.
  *
- * These tests pin the three cases: no title (default), an explicit title missing the
- * ref (prefixed), and an explicit title that already carries the ref (passed through
- * unchanged — criterion 2: create_pr does not strip or override the worker's title).
+ * These tests pin: the default (no title) case, an explicit bare title, an explicit
+ * title already carrying the ref, the type mapping (feat/fix), and an explicit
+ * conventional prefix being honored (and getting the ref injected if missing).
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
@@ -36,8 +37,11 @@ const TASK_ID = "task-create-pr";
 let source: DbSource;
 let client: DbClient;
 
-/** Seed issue #15 + plan + an IN_PROGRESS task #1 ("Add OAuth callback handler"). */
-function seed(): void {
+/**
+ * Seed issue #15 + plan + an IN_PROGRESS task #1 ("Add OAuth callback handler").
+ * `taskType` drives the derived conventional-commit prefix (defaults to TASK → chore).
+ */
+function seed(taskType: "FEATURE" | "BUG" | "ENHANCEMENT" | "TASK" | "SPIKE" = "TASK"): void {
   source
     .getDb()
     .insert(issues)
@@ -81,7 +85,7 @@ function seed(): void {
       title: "Add OAuth callback handler",
       description: "desc",
       status: "IN_PROGRESS",
-      type: "TASK",
+      type: taskType,
       source: "generated",
       worktreePath: WORKTREE_PATH,
       branchName: BRANCH_NAME,
@@ -142,11 +146,11 @@ beforeEach(async () => {
   source = provider.getOrCreate({ connectionString: "sqlite::memory:" });
   await source.provision();
   client = source.createClient(PROJECT_ID);
-  seed();
 });
 
-describe("createPR — task-scoped title ref prefix (issue #26)", () => {
-  it("defaults to the task title prefixed with [#<issue>.<task>]", async () => {
+describe("createPR — conventional-commit title format (issues #26 + #54)", () => {
+  it("defaults to the task title as `<type>: [#<issue>.<task>] <desc>` (TASK → chore)", async () => {
+    seed("TASK");
     const { cli, titles } = capturingGitHubCLI();
 
     const result = await Effect.runPromise(
@@ -154,11 +158,24 @@ describe("createPR — task-scoped title ref prefix (issue #26)", () => {
       buildDeps(cli)
     );
 
-    expect(titles).toEqual(["[#15.1] Add OAuth callback handler"]);
-    expect(result.pr.title).toBe("[#15.1] Add OAuth callback handler");
+    expect(titles).toEqual(["chore: [#15.1] Add OAuth callback handler"]);
+    expect(result.pr.title).toBe("chore: [#15.1] Add OAuth callback handler");
   });
 
-  it("prefixes the ref onto an explicit title that omits it", async () => {
+  it("derives `feat:` for FEATURE/ENHANCEMENT tasks", async () => {
+    seed("FEATURE");
+    const { cli, titles } = capturingGitHubCLI();
+
+    await Effect.runPromise(
+      createPR({ taskId: TASK_ID, title: "Add SSO login", draft: false, force: false }),
+      buildDeps(cli)
+    );
+
+    expect(titles).toEqual(["feat: [#15.1] Add SSO login"]);
+  });
+
+  it("derives `fix:` for BUG tasks", async () => {
+    seed("BUG");
     const { cli, titles } = capturingGitHubCLI();
 
     await Effect.runPromise(
@@ -166,10 +183,11 @@ describe("createPR — task-scoped title ref prefix (issue #26)", () => {
       buildDeps(cli)
     );
 
-    expect(titles).toEqual(["[#15.1] Fix the login redirect"]);
+    expect(titles).toEqual(["fix: [#15.1] Fix the login redirect"]);
   });
 
-  it("passes an explicit title that already carries the ref through unchanged", async () => {
+  it("injects the ref after a derived type when the title already carries a bare ref", async () => {
+    seed("BUG");
     const { cli, titles } = capturingGitHubCLI();
 
     await Effect.runPromise(
@@ -177,6 +195,68 @@ describe("createPR — task-scoped title ref prefix (issue #26)", () => {
       buildDeps(cli)
     );
 
-    expect(titles).toEqual(["[#15.1] Already scoped"]);
+    expect(titles).toEqual(["fix: [#15.1] Already scoped"]);
+  });
+
+  it("passes a complete `<type>: [#N.task] <desc>` title through unchanged", async () => {
+    seed("BUG");
+    const { cli, titles } = capturingGitHubCLI();
+
+    await Effect.runPromise(
+      createPR({
+        taskId: TASK_ID,
+        title: "feat: [#15.1] Worker chose feat deliberately",
+        draft: false,
+        force: false,
+      }),
+      buildDeps(cli)
+    );
+
+    expect(titles).toEqual(["feat: [#15.1] Worker chose feat deliberately"]);
+  });
+
+  it("honors an explicit conventional prefix and injects the missing ref", async () => {
+    seed("FEATURE");
+    const { cli, titles } = capturingGitHubCLI();
+
+    await Effect.runPromise(
+      createPR({ taskId: TASK_ID, title: "docs: update the README", draft: false, force: false }),
+      buildDeps(cli)
+    );
+
+    // The worker's chosen `docs:` type is kept; the [#N.task] ref (issue #26) is injected.
+    expect(titles).toEqual(["docs: [#15.1] update the README"]);
+  });
+
+  it("does NOT treat an arbitrary `word:` as a type — derives from task.type instead", async () => {
+    // Regression: `wip:`/`note:` are not conventional types; honoring them would bypass the
+    // derived type and could silently suppress the release issue #54 wants.
+    seed("BUG");
+    const { cli, titles } = capturingGitHubCLI();
+
+    await Effect.runPromise(
+      createPR({ taskId: TASK_ID, title: "wip: still hacking", draft: false, force: false }),
+      buildDeps(cli)
+    );
+
+    expect(titles).toEqual(["fix: [#15.1] wip: still hacking"]);
+  });
+
+  it("never duplicates the ref — strips a stray wrong-task ref before injecting the correct one", async () => {
+    seed("BUG");
+    const { cli, titles } = capturingGitHubCLI();
+
+    await Effect.runPromise(
+      createPR({
+        taskId: TASK_ID,
+        title: "feat: [#99.9] pasted wrong ref",
+        draft: false,
+        force: false,
+      }),
+      buildDeps(cli)
+    );
+
+    // Exactly one ref, and it's THIS task's; the worker's explicit `feat:` type is kept.
+    expect(titles).toEqual(["feat: [#15.1] pasted wrong ref"]);
   });
 });

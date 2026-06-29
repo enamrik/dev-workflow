@@ -60,10 +60,13 @@ Before creating the PR, sync your task branch with the latest main so the PR is 
 - Rebase your task branch onto \`origin/main\` (rebase, NOT merge — main uses squash merges, so a rebased branch squash-merges cleanly)
 - Resolve any conflicts now, in-context — you have the change loaded; do not defer them to merge time
 - Re-run \`make prep\` after rebasing and confirm it still passes
-- Only then create_pr — pass a \`title\` that begins with the task ref
-  \`[#{{issueNumber}}.{{taskNumber}}] <concise summary>\` so the PR maps to this task,
-  not just the issue. See the dfl-worker-task skill's "Create the PR" step for the why
-  (the skill remains the source of truth for the lifecycle).
+- Only then create_pr — pass a \`title\` of the form
+  \`<type>: [#{{issueNumber}}.{{taskNumber}}] <concise summary>\` (e.g. \`fix: [#{{issueNumber}}.{{taskNumber}}] …\`).
+  The \`<type>:\` prefix (feat for FEATURE/ENHANCEMENT, fix for BUG, docs/chore for
+  non-shipping) lets semantic-release publish a release on merge; the \`[#N.task]\` ref
+  maps the PR to this task, not just the issue. See the dfl-worker-task skill's "Create
+  the PR" step for the type-selection rules and why (the skill remains the source of
+  truth for the lifecycle).
 
 ## Task Lifecycle — Delegate to the Skill
 
