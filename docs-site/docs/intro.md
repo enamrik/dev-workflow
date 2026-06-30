@@ -3,6 +3,9 @@ slug: /
 sidebar_position: 1
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Welcome to dev-workflow
 
 **dev-workflow** is an AI-driven development workflow system that helps you manage issues, plans, and tasks with Claude AI integration.
@@ -40,17 +43,22 @@ Full snapshot history with time-travel capabilities to view or revert to any pre
 
 ## Quick Install
 
-macOS / Linux:
+<Tabs groupId="os">
+<TabItem value="unix" label="macOS / Linux">
 
 ```bash
 curl -fsSL https://enamrik.github.io/dev-workflow/install.sh | bash
 ```
 
-Windows (PowerShell):
+</TabItem>
+<TabItem value="windows" label="Windows (PowerShell)">
 
 ```powershell
 irm https://enamrik.github.io/dev-workflow/install.ps1 | iex
 ```
+
+</TabItem>
+</Tabs>
 
 Then in your git repository:
 

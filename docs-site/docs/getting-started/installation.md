@@ -2,23 +2,31 @@
 sidebar_position: 1
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Installation
 
 ## Quick Install (Recommended)
 
-Run the install script.
+Run the install script for your platform:
 
-**macOS / Linux:**
+<Tabs groupId="os">
+<TabItem value="unix" label="macOS / Linux">
 
 ```bash
 curl -fsSL https://enamrik.github.io/dev-workflow/install.sh | bash
 ```
 
-**Windows (PowerShell):**
+</TabItem>
+<TabItem value="windows" label="Windows (PowerShell)">
 
 ```powershell
 irm https://enamrik.github.io/dev-workflow/install.ps1 | iex
 ```
+
+</TabItem>
+</Tabs>
 
 This checks prerequisites, installs the CLI, and verifies optional dependencies.
 
