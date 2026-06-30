@@ -40,8 +40,16 @@ Full snapshot history with time-travel capabilities to view or revert to any pre
 
 ## Quick Install
 
+macOS / Linux:
+
 ```bash
 curl -fsSL https://enamrik.github.io/dev-workflow/install.sh | bash
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://enamrik.github.io/dev-workflow/install.ps1 | iex
 ```
 
 Then in your git repository:

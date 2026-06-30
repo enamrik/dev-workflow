@@ -20,6 +20,16 @@ die() { printf "%bError:%b %s\n" "$RED" "$NC" "$1" >&2; exit 1; }
 
 info "Installing dev-workflow..."
 
+# This installer is for macOS/Linux. On Windows it runs under Git Bash/MSYS/Cygwin
+# (uname reports MINGW*/MSYS*/CYGWIN*), where it can't set up the Windows PATH or pick the
+# Windows-native artifact. Redirect to the PowerShell installer instead of failing obscurely.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*|Windows_NT)
+    warn "Windows detected — use the PowerShell installer instead. Run in PowerShell:"
+    printf '\n  irm https://enamrik.github.io/dev-workflow/install.ps1 | iex\n\n'
+    exit 1 ;;
+esac
+
 # Node.js is required to run the CLI (a Node app); we don't install deps via npm.
 command -v node >/dev/null 2>&1 || die "Node.js 20+ is required. Install from https://nodejs.org"
 NODE_MAJOR=$(node -v | sed 's/v\([0-9]*\).*/\1/')

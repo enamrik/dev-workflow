@@ -6,10 +6,18 @@ sidebar_position: 1
 
 ## Quick Install (Recommended)
 
-Run the install script:
+Run the install script.
+
+**macOS / Linux:**
 
 ```bash
 curl -fsSL https://enamrik.github.io/dev-workflow/install.sh | bash
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://enamrik.github.io/dev-workflow/install.ps1 | iex
 ```
 
 This checks prerequisites, installs the CLI, and verifies optional dependencies.
