@@ -119,7 +119,7 @@ function resolveAssetPath(assetsDir: string, pathname: string): string | null {
   return requested;
 }
 
-async function serveStatic(
+export async function serveStatic(
   res: http.ServerResponse,
   assetsDir: string,
   pathname: string
@@ -147,6 +147,27 @@ async function serveStatic(
     }
   } catch {
     // Fall through to SPA fallback handling below.
+  }
+
+  // Next.js static export (`output: "export"`) emits one HTML file per route
+  // (e.g. /milestones -> milestones.html). For an extensionless route, serve that
+  // per-route file before any index.html fallback, so refreshing on a deep route
+  // renders that route instead of the root (Kanban) page.
+  if (path.extname(pathname) === "") {
+    const routeFile = resolveAssetPath(assetsDir, `${pathname.replace(/\/+$/, "")}.html`);
+    if (routeFile !== null) {
+      try {
+        const stat = await fsp.stat(routeFile);
+        if (stat.isFile()) {
+          const data = await fsp.readFile(routeFile);
+          res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+          res.end(data);
+          return;
+        }
+      } catch {
+        // no per-route file → fall through to the index.html fallback below
+      }
+    }
   }
 
   // SPA fallback: paths without a file extension serve index.html.
